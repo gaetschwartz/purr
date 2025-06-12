@@ -109,12 +109,6 @@ fn test_error_types() {
 async fn test_transcription_configurations() {
     let sample_path = "../samples/jfk.wav";
 
-    // Skip if sample doesn't exist
-    if !Path::new(sample_path).exists() {
-        println!("⏭ Skipping configuration test - sample file not found");
-        return;
-    }
-
     // Test with different configurations
     let configs = vec![
         TranscriptionConfig::new()

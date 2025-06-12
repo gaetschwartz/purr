@@ -35,6 +35,7 @@ impl SimpleAudioProcessor {
         // Use FFmpeg to convert to raw f32 samples at 16kHz mono
         let output = Command::new("ffmpeg")
             .args([
+                "-loglevel", "quiet", // Suppress FFmpeg output
                 "-i", &path.to_string_lossy(),
                 "-acodec", "pcm_f32le",
                 "-ac", "1",
