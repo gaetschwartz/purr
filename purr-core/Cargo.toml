@@ -12,9 +12,6 @@ ffmpeg-next = { version = "7.0", features = [] }
 # FFmpeg bindings for audio processing
 # Async runtime
 tokio = { version = "1.0", features = ["full"] }
-
-# Error handling
-anyhow = "1.0"
 thiserror = "1.0"
 
 # Serialization
@@ -24,17 +21,16 @@ serde_json = "1.0"
 # Logging
 tracing = "0.1.41"
 
-# Path handling
-path-absolutize = "3.1"
-
 # XDG directory support
 directories = "5.0"
 
 # HTTP client for model downloading
 reqwest = { version = "0.11", features = ["stream"] }
 futures-util = "0.3"
-tracing-subscriber = { version = "0.3.19", features = ["tracing-log"] }
 
 [dev-dependencies]
 tempfile = "3.8"
 rstest = "0.18"
+
+[features]
+cuda = ["whisper-rs/cuda"]

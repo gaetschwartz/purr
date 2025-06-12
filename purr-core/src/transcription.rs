@@ -1,16 +1,15 @@
 //! Whisper transcription functionality
 
-use crate::audio::AudioData;
-use crate::config::TranscriptionConfig;
-use crate::error::{Result, WhisperError};
+use crate::{
+    audio::AudioData,
+    config::TranscriptionConfig,
+    error::{Result, WhisperError},
+};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use tokio::sync::mpsc;
-use tokio::task;
+use tokio::{sync::mpsc, task};
 use tracing::{error, info};
-use whisper_rs::{
-    FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters, WhisperLogCallback,
-};
+use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
 
 /// Transcription result
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -362,13 +361,8 @@ impl WhisperTranscriber {
             });
         }
 
-        // Try to detect language if not specified
-        let detected_language = if config.language.is_none() {
-            // whisper-rs doesn't expose language detection yet
-            None
-        } else {
-            config.language
-        };
+        // FIXME: Implement language detection
+        let detected_language = config.language;
 
         Ok(TranscriptionResult {
             text: full_text,

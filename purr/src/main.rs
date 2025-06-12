@@ -1,6 +1,7 @@
 //! Whisper UI CLI - Audio transcription command-line interface
 mod fmt;
 
+use anyhow::bail;
 use clap::{Parser, Subcommand};
 use owo_colors::OwoColorize as _;
 use purr_core::{
@@ -10,8 +11,8 @@ use purr_core::{
 use std::io::{self, Write};
 use std::path::PathBuf;
 use std::process;
+use std::str::FromStr as _;
 use tracing::{debug, error, info};
-use tracing_log::LogTracer;
 
 use crate::fmt::MyFormatter;
 
@@ -125,7 +126,7 @@ enum OutputFormat {
 async fn handle_streaming_output(
     receiver: &mut purr_core::StreamingReceiver,
     cli: &Cli,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> anyhow::Result<()> {
     use std::fs;
 
     let mut all_chunks = Vec::new();
@@ -171,7 +172,7 @@ async fn handle_streaming_output(
                 write!(stdout, "{}", chunk_text)?;
                 if !chunk.text.is_empty() && !chunk.text.ends_with('\n') {
                     if matches!(cli.output, OutputFormat::Srt) {
-                        write!(stdout, "\n")?;
+                        writeln!(stdout)?;
                     } else {
                         write!(stdout, " ")?;
                     }
@@ -204,7 +205,7 @@ async fn handle_streaming_output(
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     // Setup logging
@@ -232,12 +233,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(command) = cli.command {
         return handle_command(command, cli.verbose).await;
     }
-
     // Handle transcription (original behavior)
-    let audio_file = cli
-        .audio_file
-        .clone()
-        .ok_or("Audio file is required when no subcommand is provided")?;
+    let Some(audio_file) = cli.audio_file.clone() else {
+        bail!("No audio file specified. Please provide an audio file to transcribe or use a subcommand.",
+           
+        );
+    };
 
     // Validate audio file exists
     if !audio_file.exists() {
@@ -475,7 +476,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 /// Prompt user to download base model when none is found
-async fn prompt_for_model_download() -> Result<bool, Box<dyn std::error::Error>> {
+async fn prompt_for_model_download() -> anyhow::Result<bool> {
     println!();
     println!("{} No Whisper model found!", "Notice:".yellow().bold());
     println!("To transcribe audio, you need to download a Whisper model first.");
@@ -512,44 +513,39 @@ async fn prompt_for_model_download() -> Result<bool, Box<dyn std::error::Error>>
                     model_path.display()
                 );
                 println!();
-                return Ok(true);
+                Ok(true)
             }
             Err(e) => {
                 eprintln!("{} Failed to download model: {}", "Error:".red().bold(), e);
-                return Ok(false);
+                Ok(false)
             }
         }
     } else {
         println!();
         println!("Model download cancelled. You can download a model later with:");
         println!("  {}", "whisper-ui models download base".cyan());
-        return Ok(false);
+        Ok(false)
     }
 }
 
 /// Handle subcommands
-async fn handle_command(
-    command: Commands,
-    verbose: bool,
-) -> Result<(), Box<dyn std::error::Error>> {
+async fn handle_command(command: Commands, verbose: bool) -> anyhow::Result<()> {
     match command {
         Commands::Models { command } => handle_model_command(command, verbose).await,
     }
 }
 
 /// Handle model management subcommands
-async fn handle_model_command(
-    command: ModelCommands,
-    verbose: bool,
-) -> Result<(), Box<dyn std::error::Error>> {
+async fn handle_model_command(command: ModelCommands, verbose: bool) -> anyhow::Result<()> {
     let model_manager = ModelManager::new()?;
 
     match command {
         ModelCommands::Download { model } => {
-            let whisper_model = WhisperModel::from_str(&model).ok_or_else(|| {
-                format!(
-                    "Unknown model: {}. Use 'models list' to see available models.",
-                    model
+            let whisper_model = WhisperModel::from_str(&model).map_err(|e| {
+                anyhow::anyhow!(
+                    "Unknown model: {}. Use 'models list' to see available models. Error: {}",
+                    model,
+                    e
                 )
             })?;
 
@@ -620,10 +616,11 @@ async fn handle_model_command(
         }
 
         ModelCommands::Delete { model } => {
-            let whisper_model = WhisperModel::from_str(&model).ok_or_else(|| {
-                format!(
-                    "Unknown model: {}. Use 'models downloaded' to see available models.",
-                    model
+            let whisper_model = WhisperModel::from_str(&model).map_err(|e| {
+                anyhow::anyhow!(
+                    "Unknown model: {}. Use 'models list' to see available models. Error: {}",
+                    model,
+                    e
                 )
             })?;
 
@@ -646,10 +643,11 @@ async fn handle_model_command(
         }
 
         ModelCommands::Info { model } => {
-            let whisper_model = WhisperModel::from_str(&model).ok_or_else(|| {
-                format!(
-                    "Unknown model: {}. Use 'models list' to see available models.",
-                    model
+            let whisper_model = WhisperModel::from_str(&model).map_err(|e| {
+                anyhow::anyhow!(
+                    "Unknown model: {}. Use 'models list' to see available models. Error: {}",
+                    model,
+                    e
                 )
             })?;
 
@@ -791,7 +789,7 @@ fn print_model_groups() {
             for model in &group.quantized {
                 let name = model.as_str();
                 // Extract quantization type (q5_0, q5_1, q8_0)
-                if let Some(q_part) = name.split('-').last() {
+                if let Some(q_part) = name.split('-').next_back() {
                     if q_part.starts_with('q') {
                         quantized_types.insert(q_part.to_string());
                     }

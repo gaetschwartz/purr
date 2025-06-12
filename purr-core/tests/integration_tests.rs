@@ -36,9 +36,8 @@ async fn test_missing_audio_file() {
 /// Test audio processor creation
 #[tokio::test]
 async fn test_audio_processor() {
-    let _processor = AudioProcessor::new();
     // Just test that we can create it
-    assert!(true);
+    let _processor = AudioProcessor::new();
 }
 
 /// Test serialization of transcription results
