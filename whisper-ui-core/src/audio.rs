@@ -86,7 +86,12 @@ impl AudioProcessor {
         let mut samples = Vec::new();
         let mut frame = ffmpeg::frame::Audio::empty();
         let mut resampled = ffmpeg::frame::Audio::empty();
+        
+        // Resampler state tracking
         let mut resampler: Option<ffmpeg::software::resampling::context::Context> = None;
+        let mut last_format: Option<ffmpeg::format::Sample> = None;
+        let mut last_channel_layout: Option<ffmpeg::channel_layout::ChannelLayout> = None;
+        let mut last_rate: Option<u32> = None;
         
         // Process packets
         for (stream, packet) in ictx.packets() {
@@ -95,81 +100,15 @@ impl AudioProcessor {
                     .map_err(|e| WhisperError::FFmpeg(format!("Failed to send packet: {}", e)))?;
                 
                 while decoder.receive_frame(&mut frame).is_ok() {
-                    // Check if we need resampling or can use direct conversion  
-                    let needs_resampling = frame.rate() != 16000 || 
-                                          frame.channels() != 1;
-                    
-                    if needs_resampling {
-                        // Initialize resampler on first frame if not already done
-                        if resampler.is_none() {
-                            let input_channel_layout = if frame.channel_layout().channels() == 0 {
-                                // Use default based on channel count
-                                match frame.channels() {
-                                    1 => ffmpeg::channel_layout::ChannelLayout::MONO,
-                                    2 => ffmpeg::channel_layout::ChannelLayout::STEREO,
-                                    _ => ffmpeg::channel_layout::ChannelLayout::default(frame.channels() as i32),
-                                }
-                            } else {
-                                frame.channel_layout()
-                            };
-                            
-                            resampler = Some(ffmpeg::software::resampling::context::Context::get(
-                                frame.format(),
-                                input_channel_layout,
-                                frame.rate(),
-                                ffmpeg::format::Sample::F32(ffmpeg::format::sample::Type::Planar),
-                                ffmpeg::channel_layout::ChannelLayout::MONO,
-                                16000,
-                            ).map_err(|e| WhisperError::FFmpeg(format!("Failed to create resampler: {}", e)))?);
-                        }
-                        
-                        // Resample frame
-                        if let Some(ref mut resampler) = resampler {
-                            resampler.run(&frame, &mut resampled)
-                                .map_err(|e| WhisperError::FFmpeg(format!("Failed to resample: {}", e)))?;
-                            
-                            // Extract f32 samples
-                            let data = resampled.data(0);
-                            let sample_count = resampled.samples();
-                            
-                            unsafe {
-                                let ptr = data.as_ptr() as *const f32;
-                                let slice = std::slice::from_raw_parts(ptr, sample_count);
-                                samples.extend_from_slice(slice);
-                            }
-                        }
-                    } else {
-                        // Direct conversion for frames that are already in the right format
-                        let data = frame.data(0);
-                        let sample_count = frame.samples();
-                        
-                        match frame.format() {
-                            ffmpeg::format::Sample::I16(_) => {
-                                // Convert s16 to f32
-                                unsafe {
-                                    let ptr = data.as_ptr() as *const i16;
-                                    let slice = std::slice::from_raw_parts(ptr, sample_count);
-                                    for &sample in slice {
-                                        samples.push(sample as f32 / 32768.0);
-                                    }
-                                }
-                            },
-                            ffmpeg::format::Sample::F32(_) => {
-                                // Already f32, direct copy
-                                unsafe {
-                                    let ptr = data.as_ptr() as *const f32;
-                                    let slice = std::slice::from_raw_parts(ptr, sample_count);
-                                    samples.extend_from_slice(slice);
-                                }
-                            },
-                            _ => {
-                                // Fall back to resampling for other formats
-                                return Err(WhisperError::AudioProcessing(
-                                    format!("Unsupported audio format: {:?}", frame.format())
-                                ));
-                            }
-                        }
-                    }
+                    Self::process_audio_frame(
+                        &frame,
+                        &mut samples,
+                        &mut resampled,
+                        &mut resampler,
+                        &mut last_format,
+                        &mut last_channel_layout,
+                        &mut last_rate,
+                    )?;
                 }
             }
         }
@@ -179,57 +118,15 @@ impl AudioProcessor {
             .map_err(|e| WhisperError::FFmpeg(format!("Failed to flush decoder: {}", e)))?;
         
         while decoder.receive_frame(&mut frame).is_ok() {
-            // Handle remaining frames the same way as during packet processing
-            let needs_resampling = frame.rate() != 16000 || 
-                                  frame.channels() != 1 || 
-                                  frame.format() != ffmpeg::format::Sample::F32(ffmpeg::format::sample::Type::Planar);
-            
-            if needs_resampling {
-                if let Some(ref mut resampler) = resampler {
-                    resampler.run(&frame, &mut resampled)
-                        .map_err(|e| WhisperError::FFmpeg(format!("Failed to resample final frames: {}", e)))?;
-                    
-                    let data = resampled.data(0);
-                    let sample_count = resampled.samples();
-                    
-                    unsafe {
-                        let ptr = data.as_ptr() as *const f32;
-                        let slice = std::slice::from_raw_parts(ptr, sample_count);
-                        samples.extend_from_slice(slice);
-                    }
-                }
-            } else {
-                // Direct conversion for frames that are already in the right format
-                let data = frame.data(0);
-                let sample_count = frame.samples();
-                
-                match frame.format() {
-                    ffmpeg::format::Sample::I16(_) => {
-                        // Convert s16 to f32
-                        unsafe {
-                            let ptr = data.as_ptr() as *const i16;
-                            let slice = std::slice::from_raw_parts(ptr, sample_count);
-                            for &sample in slice {
-                                samples.push(sample as f32 / 32768.0);
-                            }
-                        }
-                    },
-                    ffmpeg::format::Sample::F32(_) => {
-                        // Already f32, direct copy
-                        unsafe {
-                            let ptr = data.as_ptr() as *const f32;
-                            let slice = std::slice::from_raw_parts(ptr, sample_count);
-                            samples.extend_from_slice(slice);
-                        }
-                    },
-                    _ => {
-                        // Fall back to resampling for other formats
-                        return Err(WhisperError::AudioProcessing(
-                            format!("Unsupported audio format: {:?}", frame.format())
-                        ));
-                    }
-                }
-            }
+            Self::process_audio_frame(
+                &frame,
+                &mut samples,
+                &mut resampled,
+                &mut resampler,
+                &mut last_format,
+                &mut last_channel_layout,
+                &mut last_rate,
+            )?;
         }
         
         let duration = samples.len() as f32 / 16000.0;
@@ -239,6 +136,114 @@ impl AudioProcessor {
             sample_rate: 16000,
             duration,
         })
+    }
+    
+    /// Process a single audio frame with proper resampling
+    fn process_audio_frame(
+        frame: &ffmpeg::frame::Audio,
+        samples: &mut Vec<f32>,
+        resampled: &mut ffmpeg::frame::Audio,
+        resampler: &mut Option<ffmpeg::software::resampling::context::Context>,
+        last_format: &mut Option<ffmpeg::format::Sample>,
+        last_channel_layout: &mut Option<ffmpeg::channel_layout::ChannelLayout>,
+        last_rate: &mut Option<u32>,
+    ) -> Result<()> {
+        // Check if frame properties have changed and we need to recreate the resampler
+        let current_format = frame.format();
+        let current_rate = frame.rate();
+        
+        // Determine the channel layout for this frame
+        let current_channel_layout = if frame.channel_layout().channels() == 0 {
+            // Use default based on channel count
+            match frame.channels() {
+                1 => ffmpeg::channel_layout::ChannelLayout::MONO,
+                2 => ffmpeg::channel_layout::ChannelLayout::STEREO,
+                _ => ffmpeg::channel_layout::ChannelLayout::default(frame.channels() as i32),
+            }
+        } else {
+            frame.channel_layout()
+        };
+        
+        // Check if we need to recreate the resampler
+        let resampler_needs_update = last_format.map_or(true, |f| f != current_format) ||
+                                   last_channel_layout.map_or(true, |cl| cl != current_channel_layout) ||
+                                   last_rate.map_or(true, |r| r != current_rate);
+        
+        // Determine if we need resampling at all
+        // We can do direct conversion for I16 and F32 formats at 16kHz mono
+        let is_direct_convertible = matches!(current_format, 
+            ffmpeg::format::Sample::I16(_) | ffmpeg::format::Sample::F32(_));
+        let needs_resampling = current_rate != 16000 || 
+                             frame.channels() != 1 ||
+                             !is_direct_convertible;
+        
+        if needs_resampling {
+            // Create or recreate resampler if needed
+            if resampler_needs_update || resampler.is_none() {
+                *resampler = Some(ffmpeg::software::resampling::context::Context::get(
+                    current_format,
+                    current_channel_layout,
+                    current_rate,
+                    ffmpeg::format::Sample::F32(ffmpeg::format::sample::Type::Planar),
+                    ffmpeg::channel_layout::ChannelLayout::MONO,
+                    16000,
+                ).map_err(|e| WhisperError::FFmpeg(format!("Failed to create resampler: {}", e)))?);
+                
+                // Update our tracking variables
+                *last_format = Some(current_format);
+                *last_channel_layout = Some(current_channel_layout);
+                *last_rate = Some(current_rate);
+            }
+            
+            // Resample frame
+            if let Some(ref mut resampler) = resampler {
+                resampler.run(frame, resampled)
+                    .map_err(|e| WhisperError::FFmpeg(format!("Failed to resample: {}", e)))?;
+                
+                // Extract f32 samples
+                let data = resampled.data(0);
+                let sample_count = resampled.samples();
+                
+                unsafe {
+                    let ptr = data.as_ptr() as *const f32;
+                    let slice = std::slice::from_raw_parts(ptr, sample_count);
+                    samples.extend_from_slice(slice);
+                }
+            }
+        } else {
+            // Direct conversion for frames that are already in the right format
+            let data = frame.data(0);
+            let sample_count = frame.samples();
+            
+            match current_format {
+                ffmpeg::format::Sample::I16(_) => {
+                    // Convert s16 to f32
+                    unsafe {
+                        let ptr = data.as_ptr() as *const i16;
+                        let slice = std::slice::from_raw_parts(ptr, sample_count);
+                        for &sample in slice {
+                            samples.push(sample as f32 / 32768.0);
+                        }
+                    }
+                },
+                ffmpeg::format::Sample::F32(_) => {
+                    // Already f32, direct copy
+                    unsafe {
+                        let ptr = data.as_ptr() as *const f32;
+                        let slice = std::slice::from_raw_parts(ptr, sample_count);
+                        samples.extend_from_slice(slice);
+                    }
+                },
+                _ => {
+                    // This shouldn't happen since we checked needs_resampling above
+                    return Err(WhisperError::AudioProcessing(
+                        format!("Unexpected audio format in direct conversion path: {:?}", current_format)
+                    ));
+                }
+            }
+        }
+        
+        Ok(())
     }
 }
 
