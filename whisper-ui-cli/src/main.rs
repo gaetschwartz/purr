@@ -346,26 +346,12 @@ async fn handle_model_command(command: ModelCommands, verbose: bool) -> Result<(
             println!("{}", "Available Whisper Models:".blue().bold());
             println!();
             
-            let models = WhisperModel::all_models();
-            let mut current_family = "";
-            
-            for model in models {
-                let family = model.as_str().split('-').next().unwrap_or("");
-                if family != current_family {
-                    if !current_family.is_empty() {
-                        println!();
-                    }
-                    println!("{} models:", family.to_uppercase().yellow().bold());
-                    current_family = family;
-                }
-                
-                println!("  {} - {}", 
-                        model.as_str().green(), 
-                        model.description().dimmed());
-            }
+            // Group models by base type and show quantized variants together
+            print_model_groups();
             
             println!();
             println!("{}", "Usage: whisper-ui models download <model>".dimmed());
+            println!("{}", "Example: whisper-ui models download base".dimmed());
         },
         
         ModelCommands::Downloaded => {
@@ -478,6 +464,116 @@ fn format_srt_time(seconds: f64) -> String {
     let millis = ((seconds % 1.0) * 1000.0) as u32;
     
     format!("{:02}:{:02}:{:02},{:03}", hours, minutes, secs, millis)
+}
+
+/// Print grouped model information with quantized variants
+fn print_model_groups() {
+    use colored::*;
+    
+    // Define model groups with their base models and quantized variants
+    let model_groups = vec![
+        ModelGroup {
+            name: "tiny",
+            description: "fastest, lowest accuracy",
+            size: "39 MB",
+            base_models: vec![WhisperModel::Tiny, WhisperModel::TinyEn],
+            quantized: vec![WhisperModel::TinyQ5_1, WhisperModel::TinyEnQ5_1, WhisperModel::TinyQ8_0],
+        },
+        ModelGroup {
+            name: "base",
+            description: "good balance of speed and accuracy (recommended)",
+            size: "142 MB",
+            base_models: vec![WhisperModel::Base, WhisperModel::BaseEn],
+            quantized: vec![WhisperModel::BaseQ5_1, WhisperModel::BaseEnQ5_1, WhisperModel::BaseQ8_0],
+        },
+        ModelGroup {
+            name: "small",
+            description: "good accuracy",
+            size: "466 MB", 
+            base_models: vec![WhisperModel::Small, WhisperModel::SmallEn, WhisperModel::SmallEnTdrz],
+            quantized: vec![WhisperModel::SmallQ5_1, WhisperModel::SmallEnQ5_1, WhisperModel::SmallQ8_0],
+        },
+        ModelGroup {
+            name: "medium",
+            description: "high accuracy",
+            size: "1.5 GB",
+            base_models: vec![WhisperModel::Medium, WhisperModel::MediumEn],
+            quantized: vec![WhisperModel::MediumQ5_0, WhisperModel::MediumEnQ5_0, WhisperModel::MediumQ8_0],
+        },
+        ModelGroup {
+            name: "large-v3",
+            description: "most accurate",
+            size: "3.0 GB",
+            base_models: vec![WhisperModel::LargeV3],
+            quantized: vec![WhisperModel::LargeV3Q5_0],
+        },
+        ModelGroup {
+            name: "large-v3-turbo",
+            description: "faster large model",
+            size: "1.5 GB",
+            base_models: vec![WhisperModel::LargeV3Turbo],
+            quantized: vec![WhisperModel::LargeV3TurboQ5_0, WhisperModel::LargeV3TurboQ8_0],
+        },
+    ];
+    
+    for group in model_groups {
+        // Print main model line
+        let quantized_info = if group.quantized.is_empty() {
+            String::new()
+        } else {
+            let mut quantized_types = std::collections::HashSet::new();
+            for model in &group.quantized {
+                let name = model.as_str();
+                // Extract quantization type (q5_0, q5_1, q8_0)
+                if let Some(q_part) = name.split('-').last() {
+                    if q_part.starts_with('q') {
+                        quantized_types.insert(q_part.to_string());
+                    }
+                }
+            }
+            let mut sorted_types: Vec<String> = quantized_types.into_iter().collect();
+            sorted_types.sort();
+            format!(" [quantized: {}]", sorted_types.join(", "))
+        };
+        
+        println!("  {} - {}, {}{}", 
+                group.name.green().bold(),
+                group.description,
+                group.size.yellow(),
+                quantized_info.dimmed());
+        
+        // Show base models (non-quantized variants) only if they're different from the group name
+        let mut shown_variants = false;
+        for model in &group.base_models {
+            let name = model.as_str();
+            if name != group.name {
+                if !shown_variants {
+                    shown_variants = true;
+                }
+                if name.contains(".en") && name.contains("tdrz") {
+                    println!("    {} - speaker diarization, {}", name.cyan(), group.size.yellow());
+                } else if name.contains(".en") {
+                    println!("    {} - English-only, {}", name.cyan(), group.size.yellow());
+                } else if name.contains("tdrz") {
+                    println!("    {} - speaker diarization, {}", name.cyan(), group.size.yellow());
+                } else {
+                    println!("    {} - {}", name.cyan(), group.size.yellow());
+                }
+            }
+        }
+        
+        // Add newline for spacing
+        println!();
+    }
+}
+
+/// Helper struct for organizing model information
+struct ModelGroup {
+    name: &'static str,
+    description: &'static str, 
+    size: &'static str,
+    base_models: Vec<WhisperModel>,
+    quantized: Vec<WhisperModel>,
 }
 
 #[cfg(test)]
