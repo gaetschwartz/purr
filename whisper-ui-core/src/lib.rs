@@ -5,12 +5,14 @@
 pub mod audio;
 pub mod config;
 pub mod error;
+pub mod model;
 pub mod simple_audio;
 pub mod transcription;
 
 pub use audio::AudioProcessor;
 pub use config::TranscriptionConfig;
 pub use error::{Result, WhisperError};
+pub use model::{ModelManager, WhisperModel};
 pub use simple_audio::SimpleAudioProcessor;
 pub use transcription::{TranscriptionResult, WhisperTranscriber};
 
