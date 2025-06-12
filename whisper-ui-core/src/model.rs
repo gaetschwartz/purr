@@ -6,6 +6,7 @@ use reqwest;
 use std::path::{Path, PathBuf};
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
+use tracing::info;
 
 /// Available Whisper model types
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -124,7 +125,9 @@ impl WhisperModel {
             WhisperModel::BaseQ8_0 => "Base quantized Q8_0 (149 MB)",
             WhisperModel::Small => "Small model (466 MB, good accuracy)",
             WhisperModel::SmallEn => "Small English-only model (466 MB)",
-            WhisperModel::SmallEnTdrz => "Small English-only TinyDiarize model (speaker diarization)",
+            WhisperModel::SmallEnTdrz => {
+                "Small English-only TinyDiarize model (speaker diarization)"
+            }
             WhisperModel::SmallQ5_1 => "Small quantized Q5_1 (340 MB)",
             WhisperModel::SmallEnQ5_1 => "Small English-only quantized Q5_1 (340 MB)",
             WhisperModel::SmallQ8_0 => "Small quantized Q8_0 (488 MB)",
@@ -225,7 +228,7 @@ impl WhisperModel {
         } else {
             "https://huggingface.co/ggerganov/whisper.cpp/resolve/main"
         };
-        
+
         format!("{}/ggml-{}.bin", base_url, self.as_str())
     }
 
@@ -243,11 +246,13 @@ pub struct ModelManager {
 impl ModelManager {
     /// Create a new model manager
     pub fn new() -> Result<Self> {
-        let project_dirs = ProjectDirs::from("ai", "whisper-ui", "whisper-ui")
-            .ok_or_else(|| WhisperError::Configuration("Failed to get XDG directories".to_string()))?;
-        
+        let project_dirs =
+            ProjectDirs::from("ai", "whisper-ui", "whisper-ui").ok_or_else(|| {
+                WhisperError::Configuration("Failed to get XDG directories".to_string())
+            })?;
+
         let models_dir = project_dirs.data_dir().join("models");
-        
+
         Ok(Self { models_dir })
     }
 
@@ -258,8 +263,9 @@ impl ModelManager {
 
     /// Ensure the models directory exists
     pub async fn ensure_models_dir(&self) -> Result<()> {
-        fs::create_dir_all(&self.models_dir).await
-            .map_err(|e| WhisperError::AudioProcessing(format!("Failed to create models directory: {}", e)))?;
+        fs::create_dir_all(&self.models_dir).await.map_err(|e| {
+            WhisperError::AudioProcessing(format!("Failed to create models directory: {}", e))
+        })?;
         Ok(())
     }
 
@@ -305,54 +311,68 @@ impl ModelManager {
     /// Download a model
     pub async fn download_model(&self, model: WhisperModel) -> Result<PathBuf> {
         self.ensure_models_dir().await?;
-        
+
         let model_path = self.get_model_path(&model);
-        
+
         // Check if already exists
         if model_path.exists() {
-            log::info!("Model {} already exists at {:?}", model.as_str(), model_path);
+            info!(
+                "Model {} already exists at {:?}",
+                model.as_str(),
+                model_path
+            );
             return Ok(model_path);
         }
 
-        log::info!("Downloading model {} to {:?}", model.as_str(), model_path);
-        
+        info!("Downloading model {} to {:?}", model.as_str(), model_path);
+
         let url = model.get_url();
-        let response = reqwest::get(&url).await
+        let response = reqwest::get(&url)
+            .await
             .map_err(|e| WhisperError::Configuration(format!("Failed to download model: {}", e)))?;
 
         if !response.status().is_success() {
             return Err(WhisperError::Configuration(format!(
-                "Failed to download model {}: HTTP {}", 
-                model.as_str(), 
+                "Failed to download model {}: HTTP {}",
+                model.as_str(),
                 response.status()
             )));
         }
 
         // Create temporary file first, then rename
         let temp_path = model_path.with_extension("tmp");
-        let mut file = fs::File::create(&temp_path).await
-            .map_err(|e| WhisperError::AudioProcessing(format!("Failed to create temporary file: {}", e)))?;
+        let mut file = fs::File::create(&temp_path).await.map_err(|e| {
+            WhisperError::AudioProcessing(format!("Failed to create temporary file: {}", e))
+        })?;
 
         let mut stream = response.bytes_stream();
         use futures_util::StreamExt;
-        
+
         while let Some(chunk) = stream.next().await {
-            let chunk = chunk
-                .map_err(|e| WhisperError::Configuration(format!("Failed to read download chunk: {}", e)))?;
-            file.write_all(&chunk).await
-                .map_err(|e| WhisperError::AudioProcessing(format!("Failed to write to file: {}", e)))?;
+            let chunk = chunk.map_err(|e| {
+                WhisperError::Configuration(format!("Failed to read download chunk: {}", e))
+            })?;
+            file.write_all(&chunk).await.map_err(|e| {
+                WhisperError::AudioProcessing(format!("Failed to write to file: {}", e))
+            })?;
         }
 
-        file.flush().await
+        file.flush()
+            .await
             .map_err(|e| WhisperError::AudioProcessing(format!("Failed to flush file: {}", e)))?;
-        
+
         drop(file);
 
         // Rename temporary file to final name
-        fs::rename(&temp_path, &model_path).await
-            .map_err(|e| WhisperError::AudioProcessing(format!("Failed to rename downloaded file: {}", e)))?;
+        fs::rename(&temp_path, &model_path).await.map_err(|e| {
+            WhisperError::AudioProcessing(format!("Failed to rename downloaded file: {}", e))
+        })?;
 
-        log::info!("Successfully downloaded model {} to {:?}", model.as_str(), model_path);
+        info!(
+            "Successfully downloaded model {} to {:?}",
+            model.as_str(),
+            model_path
+        );
         Ok(model_path)
     }
 
@@ -363,26 +383,27 @@ impl ModelManager {
         }
 
         let mut downloaded = Vec::new();
-        
+
         for model in WhisperModel::all_models() {
             if self.is_model_downloaded(&model).await {
                 downloaded.push(model);
             }
         }
-        
+
         Ok(downloaded)
     }
 
     /// Delete a downloaded model
     pub async fn delete_model(&self, model: &WhisperModel) -> Result<()> {
         let model_path = self.get_model_path(model);
-        
+
         if model_path.exists() {
-            fs::remove_file(&model_path).await
-                .map_err(|e| WhisperError::AudioProcessing(format!("Failed to delete model file: {}", e)))?;
-            log::info!("Deleted model {} from {:?}", model.as_str(), model_path);
+            fs::remove_file(&model_path).await.map_err(|e| {
+                WhisperError::AudioProcessing(format!("Failed to delete model file: {}", e))
+            })?;
+            info!("Deleted model {} from {:?}", model.as_str(), model_path);
         }
-        
+
         Ok(())
     }
 }
@@ -400,14 +421,20 @@ mod tests {
     #[test]
     fn test_model_parsing() {
         assert_eq!(WhisperModel::from_str("base"), Some(WhisperModel::Base));
-        assert_eq!(WhisperModel::from_str("base.en"), Some(WhisperModel::BaseEn));
+        assert_eq!(
+            WhisperModel::from_str("base.en"),
+            Some(WhisperModel::BaseEn)
+        );
         assert_eq!(WhisperModel::from_str("invalid"), None);
     }
 
     #[test]
     fn test_model_filename() {
         assert_eq!(WhisperModel::Base.filename(), "ggml-base.bin");
-        assert_eq!(WhisperModel::LargeV3Turbo.filename(), "ggml-large-v3-turbo.bin");
+        assert_eq!(
+            WhisperModel::LargeV3Turbo.filename(),
+            "ggml-large-v3-turbo.bin"
+        );
     }
 
     #[test]
