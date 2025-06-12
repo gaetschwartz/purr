@@ -1,0 +1,3 @@
+[workspace]
+members = ["whisper-ui-core", "whisper-ui-cli"]
+resolver = "2"
