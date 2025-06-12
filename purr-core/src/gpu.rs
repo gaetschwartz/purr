@@ -9,6 +9,7 @@ pub struct GpuDevice {
     pub name: String,
     pub vram_free: usize,
     pub vram_total: usize,
+    pub tpe: DeviceType, // Type of GPU (e.g., "Vulkan", "CUDA")
 }
 
 /// GPU acceleration status
@@ -21,34 +22,32 @@ pub struct GpuStatus {
 
 /// List available GPU devices
 pub fn list_gpu_devices() -> Vec<GpuDevice> {
+    // TODO: maybe use ggml_backend_dev_count instead?
+    #[allow(unused_mut)]
+    let mut devices = Vec::new();
     #[cfg(feature = "vulkan")]
     {
-        whisper_rs::vulkan::list_devices()
-            .into_iter()
-            .map(|dev| GpuDevice {
-                id: dev.id,
-                name: dev.name,
-                vram_free: dev.vram.free,
-                vram_total: dev.vram.total,
-            })
-            .collect()
+        devices.extend(
+            whisper_rs::vulkan::list_devices()
+                .into_iter()
+                .map(|dev| GpuDevice {
+                    id: dev.id,
+                    name: dev.name,
+                    vram_free: dev.vram.free,
+                    vram_total: dev.vram.total,
+                    tpe: DeviceType::Vulkan,
+                }),
+        )
     }
     #[cfg(feature = "cuda")]
     {
-        whisper_rs::cuda::list_devices()
-            .into_iter()
-            .map(|dev| GpuDevice {
-                id: dev.id,
-                name: dev.name,
-                vram_free: dev.vram.free,
-                vram_total: dev.vram.total,
-            })
-            .collect()
+        // TODO: Implement CUDA device listing
     }
-    #[cfg(not(feature = "vulkan"))]
+    #[cfg(not(any(feature = "vulkan", feature = "cuda")))]
     {
-        Vec::new()
+        // No GPU features enabled, return empty list
     }
+    devices
 }
 
 /// Check GPU acceleration status
@@ -60,4 +59,10 @@ pub fn check_gpu_status() -> GpuStatus {
         cuda_available: cfg!(feature = "cuda"),
         devices,
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum DeviceType {
+    Vulkan,
+    CUDA,
 }

@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 # Whisper.cpp bindings
-whisper-rs = { version = "0.14", features = ["tracing_backend"] }
+whisper-rs = { version = "0.14", features = ["tracing_backend", "raw-api"] }
 
 ffmpeg-next = { version = "7.0", features = [] }
 
