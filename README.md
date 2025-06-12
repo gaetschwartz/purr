@@ -1,243 +1,252 @@
-# Whisper UI
+# Purr - Audio Transcription Suite
 
-A high-performance audio transcription tool built with Rust, using OpenAI's Whisper model via whisper.cpp bindings and FFmpeg for audio processing.
+A comprehensive audio transcription suite built with Rust, featuring CLI tools and cross-platform GUI applications powered by OpenAI's Whisper AI.
 
-## Features
+## Projects Overview
 
-- 🚀 **High Performance**: Built with Rust for maximum performance
-- 🎯 **GPU Acceleration**: CUDA/OpenCL support for faster transcription
-- 🎵 **Multiple Audio Formats**: Supports MP3, WAV, FLAC, M4A, and more via FFmpeg
-- 🌍 **Multi-language**: Support for 99+ languages with auto-detection
-- 📝 **Multiple Output Formats**: Text, JSON, and SRT subtitle formats
-- ⚡ **Async Processing**: Non-blocking audio processing and transcription
-- 🔧 **Configurable**: Extensive configuration options for fine-tuning
+This workspace contains multiple components for audio transcription:
 
-## Architecture
+### 🖥️ **Desktop App** (`desktop/`)
+Native desktop application with drag-and-drop transcription interface
 
-The project consists of two main crates:
+### 🌐 **Web App** (`web/`)  
+Web-based transcription interface (future implementation)
 
-- **`whisper-ui-core`**: Core library with transcription functionality
-- **`whisper-ui-cli`**: Command-line interface using the core library
+### 📱 **Mobile App** (`mobile/`)
+Mobile transcription app (future implementation)
 
-## Prerequisites
+### 🎨 **UI Components** (`ui/`)
+Shared cross-platform UI components built with Dioxus
 
-### System Dependencies
+### 🔧 **CLI Tool** (`purr/`)
+Command-line interface for batch transcription and model management
 
-#### Windows
-```powershell
-# Install FFmpeg (using Chocolatey)
-choco install ffmpeg
+### ⚙️ **Core Engine** (`purr-core/`)
+Rust library providing Whisper AI transcription functionality
 
-# Or download from: https://ffmpeg.org/download.html
-```
+### 🌍 **API** (`api/`)
+Shared backend logic and server functions
 
-#### Linux (Ubuntu/Debian)
-```bash
-sudo apt update
-sudo apt install ffmpeg libavformat-dev libavcodec-dev libavutil-dev libswresample-dev pkg-config
-```
+## 🚀 Quick Start
 
-#### macOS
-```bash
-brew install ffmpeg pkg-config
-```
+### Prerequisites
 
-### Whisper Model
+- [Rust](https://rustup.rs/) (latest stable)
+- [Dioxus CLI](https://github.com/DioxusLabs/dioxus): `cargo install dioxus-cli`
 
-You'll need a Whisper model file. Download from the official repository:
+### Running the Desktop App
 
 ```bash
-# Create models directory
-mkdir models
-
-# Download base English model (39 MB)
-curl -L "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin" -o models/ggml-base.en.bin
-
-# Or download base multilingual model (142 MB)
-curl -L "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin" -o models/ggml-base.bin
+cd desktop
+dx serve --platform desktop
 ```
 
-Available models:
-- `tiny.en` / `tiny` - 39 MB / 39 MB
-- `base.en` / `base` - 142 MB / 142 MB  
-- `small.en` / `small` - 466 MB / 466 MB
-- `medium.en` / `medium` - 1.5 GB / 1.5 GB
-- `large-v1` / `large-v2` / `large-v3` - 2.9 GB
-
-## Installation
-
-### Building from Source
+### Using the CLI Tool
 
 ```bash
-# Clone the repository
-git clone <repository-url>
-cd whisper-ui
+# Install CLI tool
+cargo install --path purr
 
-# Build the project
-cargo build --release
+# Download a model (first time setup)
+purr models download base
 
-# The binary will be at target/release/whisper-ui-cli
+# Transcribe an audio file
+purr path/to/audio.mp3
+
+# Streaming transcription
+purr --no-stream path/to/audio.mp3
 ```
 
-### Running Tests
+### Development
 
 ```bash
-# Run all tests
+# Build all workspace members
+cargo build
+
+# Run tests
 cargo test
 
-# Run tests with verbose output
-cargo test -- --nocapture
-
-# Run only core library tests
-cargo test -p whisper-ui-core
-
-# Run only CLI tests  
-cargo test -p whisper-ui-cli
+# Run with GPU acceleration
+cargo run --features vulkan  # or cuda, metal, coreml
 ```
 
-## Usage
+## 🎵 Features
 
-### Basic Usage
+### Core Transcription
+- **High-quality transcription** using OpenAI's Whisper AI
+- **Multiple model sizes** (tiny, base, small, medium, large-v3)
+- **GPU acceleration** support (CUDA, Vulkan, Metal, CoreML)
+- **Multiple output formats** (text, JSON, SRT subtitles)
+- **Language detection** and manual language specification
+
+### Desktop GUI
+- **🖱️ Drag & Drop**: Drop audio files directly onto the interface
+- **📁 File Browser**: Manual file selection with format filtering
+- **📋 Clipboard Integration**: Copy transcription results instantly
+- **🔄 Real-time Status**: Visual feedback during processing
+- **❌ Error Handling**: Clear error messages and recovery
+
+### CLI Interface
+- **Batch processing** of multiple files
+- **Streaming output** for real-time results
+- **Model management** (download, list, delete)
+- **GPU device listing** and status checks
+- **Flexible output options** (stdout, file, different formats)
+
+### Cross-Platform Support
+- **Desktop**: Windows, macOS, Linux
+- **Web**: Browser-based interface (planned)
+- **Mobile**: iOS and Android apps (planned)
+
+## 📁 Architecture
+
+```
+purr/
+├── desktop/           # Desktop app (Dioxus native)
+├── web/              # Web app (Dioxus + WASM)
+├── mobile/           # Mobile app (Dioxus + Mobile)
+├── ui/               # Shared UI components
+│   └── transcription.rs  # Cross-platform transcription component
+├── api/              # Shared backend logic
+├── purr/             # CLI application
+├── purr-core/        # Core transcription engine
+└── samples/          # Example audio files
+```
+
+### Cross-Platform Component Design
+
+The transcription functionality is implemented as a shared component in `ui/src/transcription.rs` with platform-specific adaptations:
+
+- **Feature Gates**: Desktop-specific dependencies (file dialogs, clipboard) are optional
+- **Platform Detection**: Runtime adaptation for different platforms
+- **Shared Logic**: Core transcription flow works across all platforms
+- **UI Consistency**: Same interface and behavior across desktop, web, and mobile
+
+## 🔧 Supported Audio Formats
+
+- **MP3** - Most common format
+- **WAV** - Uncompressed audio
+- **M4A** - Apple audio format
+- **FLAC** - Lossless compression
+- **OGG** - Open source format
+
+## ⚡ Performance
+
+### GPU Acceleration
+- **CUDA** - NVIDIA graphics cards
+- **Vulkan** - Cross-platform GPU API
+- **Metal** - Apple Silicon and Intel Macs
+- **CoreML** - Apple's machine learning framework
+
+### Model Sizes
+- **tiny** - 39MB, fastest (good for real-time)
+- **base** - 142MB, recommended balance
+- **small** - 466MB, better accuracy
+- **medium** - 1.5GB, high accuracy
+- **large-v3** - 3.0GB, best accuracy
+
+## 🛠️ Development Guide
+
+### Building Components
 
 ```bash
-# Transcribe an audio file
-./target/release/whisper-ui-cli audio.wav
+# Desktop app
+cd desktop && dx serve
 
-# Specify a model
-./target/release/whisper-ui-cli audio.mp3 --model models/ggml-base.en.bin
+# CLI tool
+cargo run --bin purr -- --help
 
-# Specify language
-./target/release/whisper-ui-cli audio.wav --language en
+# Core library tests
+cd purr-core && cargo test
+
+# Cross-platform UI development
+cd ui && cargo check --features desktop
 ```
 
-### Advanced Usage
+### Adding New Features
 
-```bash
-# JSON output with timestamps
-./target/release/whisper-ui-cli audio.wav --output json --timestamps
+1. **Core Logic**: Add to `purr-core/` for shared functionality
+2. **UI Components**: Add to `ui/` for cross-platform interface elements
+3. **Platform-Specific**: Implement in respective platform directories
+4. **CLI Features**: Add to `purr/` for command-line functionality
 
-# SRT subtitle format
-./target/release/whisper-ui-cli audio.wav --output srt
-
-# Disable GPU acceleration
-./target/release/whisper-ui-cli audio.wav --no-gpu
-
-# Set number of threads
-./target/release/whisper-ui-cli audio.wav --threads 4
-
-# Verbose output
-./target/release/whisper-ui-cli audio.wav --verbose
-
-# All options combined
-./target/release/whisper-ui-cli audio.wav \\
-  --model models/ggml-base.en.bin \\
-  --language en \\
-  --output json \\
-  --timestamps \\
-  --threads 8 \\
-  --temperature 0.2 \\
-  --verbose
-```
-
-### CLI Options
-
-```
-Usage: whisper-ui-cli [OPTIONS] <AUDIO_FILE>
-
-Arguments:
-  <AUDIO_FILE>  Path to the audio file to transcribe
-
-Options:
-  -m, --model <MODEL>              Path to the Whisper model file
-  -l, --language <LANGUAGE>        Language code (e.g., en, es, fr)
-      --no-gpu                     Disable GPU acceleration
-  -t, --threads <THREADS>          Number of threads to use
-  -o, --output <OUTPUT>            Output format [default: text] [possible values: text, json, srt]
-      --timestamps                 Include timestamps in output (text format only)
-      --word-timestamps            Include word-level timestamps (if supported)
-      --temperature <TEMPERATURE>  Temperature for sampling [default: 0.0]
-  -v, --verbose                    Verbose output
-  -h, --help                       Print help
-  -V, --version                    Print version
-```
-
-## Library Usage
-
-You can also use the core library in your own Rust projects:
+### Feature Flags
 
 ```toml
-[dependencies]
-whisper-ui-core = { path = "path/to/whisper-ui-core" }
-tokio = { version = "1.0", features = ["full"] }
+[features]
+default = []
+desktop = ["rfd", "copypasta"]  # Desktop-specific dependencies
+vulkan = ["purr-core/vulkan"]   # Vulkan GPU acceleration
+cuda = ["purr-core/cuda"]       # CUDA GPU acceleration
+metal = ["purr-core/metal"]     # Metal GPU acceleration
+coreml = ["purr-core/coreml"]   # CoreML acceleration
 ```
 
-```rust
-use purr_core::{transcribe_audio_file, TranscriptionConfig};
+## 📖 Documentation
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let config = TranscriptionConfig::new()
-        .with_language("en")
-        .with_gpu(true)
-        .with_threads(4);
+- **CLI Usage**: See `purr --help` and `purr models --help`
+- **Core API**: Check `purr-core/src/lib.rs` for library documentation
+- **UI Components**: Review `ui/src/` for component APIs
+- **Examples**: Sample code in `examples/` directories
 
-    let result = transcribe_audio_file("audio.wav", Some(config)).await?;
-    
-    println!("Transcription: {}", result.text);
-    println!("Duration: {:.2}s", result.audio_duration);
-    println!("Processing time: {:.2}s", result.processing_time);
-    
-    Ok(())
-}
-```
-
-## Performance Tips
-
-1. **GPU Acceleration**: Enable GPU acceleration for significantly faster processing
-2. **Model Selection**: Use smaller models (tiny, base) for faster processing, larger models (large) for better accuracy
-3. **Threading**: Set `--threads` to match your CPU cores for optimal performance
-4. **Audio Format**: WAV files typically process faster than compressed formats
-
-## Troubleshooting
-
-### Common Issues
-
-1. **FFmpeg not found**: Ensure FFmpeg is installed and in your PATH
-2. **Model not found**: Download a Whisper model or specify the correct path
-3. **GPU errors**: Try using `--no-gpu` flag to disable GPU acceleration
-4. **Out of memory**: Use a smaller model or disable GPU acceleration
-
-### Performance Monitoring
-
-Use the `--verbose` flag to see detailed performance information:
-
-```bash
-./target/release/whisper-ui-cli audio.wav --verbose
-```
-
-This shows:
-- Audio duration
-- Processing time  
-- Real-time factor (processing_time / audio_duration)
-- Number of segments
-- GPU acceleration status
-
-## Contributing
+## 🤝 Contributing
 
 1. Fork the repository
-2. Create a feature branch
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
 3. Make your changes
-4. Add tests
-5. Run `cargo test`
-6. Submit a pull request
+4. Test across platforms (`cargo test`, `dx check`)
+5. Commit your changes (`git commit -m 'Add amazing feature'`)
+6. Push to the branch (`git push origin feature/amazing-feature`)
+7. Open a Pull Request
 
-## License
+### Code Style
+- Follow Rust conventions (`cargo fmt`, `cargo clippy`)
+- Add tests for new functionality
+- Update documentation for API changes
+- Ensure cross-platform compatibility
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+## 🐛 Troubleshooting
 
-## Acknowledgments
+### Model Issues
+```bash
+# Download a model manually
+purr models download base
 
-- [OpenAI Whisper](https://github.com/openai/whisper) - The original Whisper model
-- [whisper.cpp](https://github.com/ggerganov/whisper.cpp) - C++ implementation  
-- [whisper-rs](https://github.com/tazz4843/whisper-rs) - Rust bindings
-- [FFmpeg](https://ffmpeg.org/) - Audio processing
+# Check available models
+purr models list
+
+# Check downloaded models
+purr models downloaded
+```
+
+### GPU Issues
+```bash
+# Check GPU status
+purr gpu status
+
+# List available devices
+purr gpu list
+
+# Disable GPU if needed
+purr --no-gpu audio.mp3
+```
+
+### File Format Issues
+- Ensure your audio file is in a supported format
+- Try converting with tools like `ffmpeg` if needed
+- Check file permissions and accessibility
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🙏 Acknowledgments
+
+- [OpenAI Whisper](https://openai.com/research/whisper) - The amazing speech recognition model
+- [Dioxus](https://dioxuslabs.com/) - Cross-platform Rust GUI framework
+- [whisper-rs](https://github.com/tazz4843/whisper-rs) - Rust bindings for Whisper
+- [Rust Community](https://www.rust-lang.org/community) - For amazing tools and libraries
+
+---
+
+**Built with ❤️ in Rust** | **Powered by Whisper AI** | **Cross-platform with Dioxus**

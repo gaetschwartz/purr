@@ -11,7 +11,7 @@ ffmpeg-next = { version = "7.0", features = [] }
 
 # FFmpeg bindings for audio processing
 # Async runtime
-tokio = { version = "1.0", features = ["full"] }
+tokio = { version = "1.0", features = ["rt"] }
 thiserror = "1.0"
 
 # Serialization

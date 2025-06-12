@@ -1,0 +1,14 @@
+[application]
+name = "web"
+default_platform = "web"
+
+[web.app]
+title = "Purr - Audio Transcription"
+
+[web.watcher]
+reload_html = true
+watch_path = ["src", "assets"]
+
+[bundler]
+identifier = "io.github.purr.web"
+publisher = "Purr"

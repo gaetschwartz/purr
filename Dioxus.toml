@@ -1,0 +1,6 @@
+[application]
+[web.app]
+title = "Purr"
+[web.watcher]
+reload_html = true
+watch_path = ["src", "public"]
