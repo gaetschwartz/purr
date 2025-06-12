@@ -73,40 +73,48 @@ impl WhisperTranscriber {
     pub async fn new(config: TranscriptionConfig) -> Result<Self> {
         let config_clone = config.clone();
         
-        // Load the model in a blocking task
-        let context = task::spawn_blocking(move || {
-            Self::load_model(&config_clone)
-        }).await
-        .map_err(|e| WhisperError::WhisperModel(format!("Task join error: {}", e)))?;
+        // Load the model (which may involve async model discovery)
+        let context = Self::load_model(&config_clone).await?;
         
         Ok(Self {
-            context: context?,
+            context,
             config,
         })
     }
     
     /// Load the Whisper model
-    fn load_model(config: &TranscriptionConfig) -> Result<WhisperContext> {
+    async fn load_model(config: &TranscriptionConfig) -> Result<WhisperContext> {
         // Determine model path
         let model_path = if let Some(path) = &config.model_path {
             path.clone()
         } else {
             // Try to find a default model
-            Self::find_default_model()?
+            Self::find_default_model().await?
         };
         
         // Setup context parameters
         let mut params = WhisperContextParameters::default();
         params.use_gpu(config.use_gpu);
         
-        // Load the model
-        WhisperContext::new_with_params(&model_path.to_string_lossy(), params)
-            .map_err(|e| WhisperError::WhisperModel(format!("Failed to load model: {}", e)))
+        // Load the model in a blocking task since it's a synchronous operation
+        let model_path_str = model_path.to_string_lossy().to_string();
+        task::spawn_blocking(move || {
+            WhisperContext::new_with_params(&model_path_str, params)
+        }).await
+        .map_err(|e| WhisperError::WhisperModel(format!("Task join error: {}", e)))?
+        .map_err(|e| WhisperError::WhisperModel(format!("Failed to load model: {}", e)))
     }
     
     /// Find a default model file
-    fn find_default_model() -> Result<PathBuf> {
-        // Common locations for Whisper models
+    async fn find_default_model() -> Result<PathBuf> {
+        // First try to find a model using the model manager (XDG compliant)
+        if let Ok(model_manager) = crate::model::ModelManager::new() {
+            if let Some(model_path) = model_manager.find_first_available_model().await {
+                return Ok(model_path);
+            }
+        }
+        
+        // Fallback to legacy locations for backward compatibility
         let possible_paths = [
             "models/ggml-base.en.bin",
             "models/ggml-base.bin", 
@@ -124,7 +132,7 @@ impl WhisperTranscriber {
         }
         
         Err(WhisperError::Configuration(
-            "No Whisper model found. Please specify a model path or place a model file in the models/ directory".to_string()
+            "No Whisper model found".to_string()
         ))
     }
     
