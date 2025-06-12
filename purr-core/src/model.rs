@@ -4,6 +4,7 @@ use crate::error::{Result, WhisperError};
 use directories::ProjectDirs;
 use reqwest;
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
 use tracing::info;
@@ -148,43 +149,6 @@ impl WhisperModel {
         }
     }
 
-    /// Parse a model string to a WhisperModel enum
-    pub fn from_str(s: &str) -> Option<Self> {
-        match s {
-            "tiny" => Some(WhisperModel::Tiny),
-            "tiny.en" => Some(WhisperModel::TinyEn),
-            "tiny-q5_1" => Some(WhisperModel::TinyQ5_1),
-            "tiny.en-q5_1" => Some(WhisperModel::TinyEnQ5_1),
-            "tiny-q8_0" => Some(WhisperModel::TinyQ8_0),
-            "base" => Some(WhisperModel::Base),
-            "base.en" => Some(WhisperModel::BaseEn),
-            "base-q5_1" => Some(WhisperModel::BaseQ5_1),
-            "base.en-q5_1" => Some(WhisperModel::BaseEnQ5_1),
-            "base-q8_0" => Some(WhisperModel::BaseQ8_0),
-            "small" => Some(WhisperModel::Small),
-            "small.en" => Some(WhisperModel::SmallEn),
-            "small.en-tdrz" => Some(WhisperModel::SmallEnTdrz),
-            "small-q5_1" => Some(WhisperModel::SmallQ5_1),
-            "small.en-q5_1" => Some(WhisperModel::SmallEnQ5_1),
-            "small-q8_0" => Some(WhisperModel::SmallQ8_0),
-            "medium" => Some(WhisperModel::Medium),
-            "medium.en" => Some(WhisperModel::MediumEn),
-            "medium-q5_0" => Some(WhisperModel::MediumQ5_0),
-            "medium.en-q5_0" => Some(WhisperModel::MediumEnQ5_0),
-            "medium-q8_0" => Some(WhisperModel::MediumQ8_0),
-            "large-v1" => Some(WhisperModel::LargeV1),
-            "large-v2" => Some(WhisperModel::LargeV2),
-            "large-v2-q5_0" => Some(WhisperModel::LargeV2Q5_0),
-            "large-v2-q8_0" => Some(WhisperModel::LargeV2Q8_0),
-            "large-v3" => Some(WhisperModel::LargeV3),
-            "large-v3-q5_0" => Some(WhisperModel::LargeV3Q5_0),
-            "large-v3-turbo" => Some(WhisperModel::LargeV3Turbo),
-            "large-v3-turbo-q5_0" => Some(WhisperModel::LargeV3TurboQ5_0),
-            "large-v3-turbo-q8_0" => Some(WhisperModel::LargeV3TurboQ8_0),
-            _ => None,
-        }
-    }
-
     /// Get all available models
     pub fn all_models() -> Vec<Self> {
         vec![
@@ -235,6 +199,49 @@ impl WhisperModel {
     /// Get the filename for this model
     pub fn filename(&self) -> String {
         format!("ggml-{}.bin", self.as_str())
+    }
+}
+
+impl FromStr for WhisperModel {
+    type Err = WhisperError;
+
+    fn from_str(s: &str) -> Result<Self> {
+        match s {
+            "tiny" => Ok(WhisperModel::Tiny),
+            "tiny.en" => Ok(WhisperModel::TinyEn),
+            "tiny-q5_1" => Ok(WhisperModel::TinyQ5_1),
+            "tiny.en-q5_1" => Ok(WhisperModel::TinyEnQ5_1),
+            "tiny-q8_0" => Ok(WhisperModel::TinyQ8_0),
+            "base" => Ok(WhisperModel::Base),
+            "base.en" => Ok(WhisperModel::BaseEn),
+            "base-q5_1" => Ok(WhisperModel::BaseQ5_1),
+            "base.en-q5_1" => Ok(WhisperModel::BaseEnQ5_1),
+            "base-q8_0" => Ok(WhisperModel::BaseQ8_0),
+            "small" => Ok(WhisperModel::Small),
+            "small.en" => Ok(WhisperModel::SmallEn),
+            "small.en-tdrz" => Ok(WhisperModel::SmallEnTdrz),
+            "small-q5_1" => Ok(WhisperModel::SmallQ5_1),
+            "small.en-q5_1" => Ok(WhisperModel::SmallEnQ5_1),
+            "small-q8_0" => Ok(WhisperModel::SmallQ8_0),
+            "medium" => Ok(WhisperModel::Medium),
+            "medium.en" => Ok(WhisperModel::MediumEn),
+            "medium-q5_0" => Ok(WhisperModel::MediumQ5_0),
+            "medium.en-q5_0" => Ok(WhisperModel::MediumEnQ5_0),
+            "medium-q8_0" => Ok(WhisperModel::MediumQ8_0),
+            "large-v1" => Ok(WhisperModel::LargeV1),
+            "large-v2" => Ok(WhisperModel::LargeV2),
+            "large-v2-q5_0" => Ok(WhisperModel::LargeV2Q5_0),
+            "large-v2-q8_0" => Ok(WhisperModel::LargeV2Q8_0),
+            "large-v3" => Ok(WhisperModel::LargeV3),
+            "large-v3-q5_0" => Ok(WhisperModel::LargeV3Q5_0),
+            "large-v3-turbo" => Ok(WhisperModel::LargeV3Turbo),
+            "large-v3-turbo-q5_0" => Ok(WhisperModel::LargeV3TurboQ5_0),
+            "large-v3-turbo-q8_0" => Ok(WhisperModel::LargeV3TurboQ8_0),
+            _ => Err(WhisperError::Configuration(format!(
+                "Unknown Whisper model: {}",
+                s
+            ))),
+        }
     }
 }
 
@@ -420,12 +427,10 @@ mod tests {
 
     #[test]
     fn test_model_parsing() {
-        assert_eq!(WhisperModel::from_str("base"), Some(WhisperModel::Base));
-        assert_eq!(
-            WhisperModel::from_str("base.en"),
-            Some(WhisperModel::BaseEn)
-        );
-        assert_eq!(WhisperModel::from_str("invalid"), None);
+        assert_eq!(WhisperModel::from_str("base"), Ok(WhisperModel::Base));
+        assert_eq!(WhisperModel::from_str("base.en"), Ok(WhisperModel::BaseEn));
+        let invalid = WhisperModel::from_str("invalid_model");
+        assert!(invalid.is_err(), "Expected an error but got: {:?}", invalid);
     }
 
     #[test]
