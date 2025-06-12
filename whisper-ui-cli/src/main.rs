@@ -36,9 +36,13 @@ struct Cli {
     #[arg(short, long)]
     threads: Option<usize>,
 
-    /// Output format: text, json, srt
+    /// Output format: text, json, srt, txt
     #[arg(short, long, default_value = "text")]
     output: OutputFormat,
+
+    /// Output file path (writes to file instead of stdout)
+    #[arg(short = 'f', long = "output-file")]
+    output_file: Option<PathBuf>,
 
     /// Include timestamps in output (text format only)
     #[arg(long)]
@@ -95,12 +99,14 @@ enum ModelCommands {
 /// Output format options
 #[derive(Clone, Debug, clap::ValueEnum)]
 enum OutputFormat {
-    /// Plain text output
+    /// Plain text output with optional timestamps
     Text,
     /// JSON output with metadata
     Json,
     /// SRT subtitle format
     Srt,
+    /// Plain text output (clean, no timestamps)
+    Txt,
 }
 
 #[tokio::main]
@@ -219,31 +225,47 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
-    // Output results
-    match cli.output {
+    // Prepare output content
+    let output_content = match cli.output {
         OutputFormat::Text => {
             if cli.timestamps {
-                for segment in &result.segments {
-                    println!("[{:.2}s -> {:.2}s] {}", 
-                            segment.start, segment.end, segment.text);
-                }
+                result.segments.iter()
+                    .map(|segment| format!("[{:.2}s -> {:.2}s] {}", segment.start, segment.end, segment.text))
+                    .collect::<Vec<_>>()
+                    .join("\n")
             } else {
-                println!("{}", result.text);
+                result.text.clone()
             }
         },
         OutputFormat::Json => {
-            let json = serde_json::to_string_pretty(&result)?;
-            println!("{}", json);
+            serde_json::to_string_pretty(&result)?
         },
         OutputFormat::Srt => {
-            for (i, segment) in result.segments.iter().enumerate() {
-                println!("{}", i + 1);
-                println!("{} --> {}", 
-                        format_srt_time(segment.start), 
-                        format_srt_time(segment.end));
-                println!("{}\n", segment.text);
-            }
+            result.segments.iter().enumerate()
+                .map(|(i, segment)| format!(
+                    "{}\n{} --> {}\n{}\n",
+                    i + 1,
+                    format_srt_time(segment.start),
+                    format_srt_time(segment.end),
+                    segment.text
+                ))
+                .collect::<Vec<_>>()
+                .join("\n")
         },
+        OutputFormat::Txt => {
+            result.text.clone()
+        },
+    };
+
+    // Write output to file or stdout
+    if let Some(output_file) = cli.output_file {
+        use std::fs;
+        fs::write(&output_file, &output_content)?;
+        if cli.verbose {
+            println!("{} Output written to: {}", "Success:".green().bold(), output_file.display());
+        }
+    } else {
+        print!("{}", output_content);
     }
 
     // Print summary if verbose
@@ -603,5 +625,14 @@ mod tests {
         assert_eq!(cli.model, Some(PathBuf::from("model.bin")));
         assert_eq!(cli.language, Some("en".to_string()));
         assert!(matches!(cli.output, OutputFormat::Json));
+        
+        // Test txt format
+        let cli_txt = Cli::try_parse_from(&[
+            "whisper-ui",
+            "test.wav",
+            "--output", "txt"
+        ]).unwrap();
+        
+        assert!(matches!(cli_txt.output, OutputFormat::Txt));
     }
 }
