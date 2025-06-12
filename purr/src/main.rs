@@ -6,7 +6,7 @@ use clap::{Parser, Subcommand};
 use owo_colors::OwoColorize as _;
 use purr_core::{
     transcribe_audio_file, transcribe_audio_file_streaming, ModelManager, TranscriptionConfig,
-    WhisperError, WhisperModel,
+    WhisperError, WhisperModel, check_gpu_status, list_gpu_devices,
 };
 use std::io::{self, Write};
 use std::path::PathBuf;
@@ -81,6 +81,11 @@ enum Commands {
         #[command(subcommand)]
         command: ModelCommands,
     },
+    /// GPU acceleration commands
+    Gpu {
+        #[command(subcommand)]
+        command: GpuCommands,
+    },
 }
 
 #[derive(Subcommand)]
@@ -107,6 +112,14 @@ enum ModelCommands {
         #[arg(value_name = "MODEL")]
         model: String,
     },
+}
+
+#[derive(Subcommand)]
+enum GpuCommands {
+    /// List GPU devices available for acceleration
+    List,
+    /// Check GPU acceleration status
+    Status,
 }
 
 /// Output format options
@@ -527,11 +540,12 @@ async fn prompt_for_model_download() -> anyhow::Result<bool> {
         Ok(false)
     }
 }
-
+ 
 /// Handle subcommands
 async fn handle_command(command: Commands, verbose: bool) -> anyhow::Result<()> {
     match command {
         Commands::Models { command } => handle_model_command(command, verbose).await,
+        Commands::Gpu { command } => handle_gpu_command(command, verbose).await,
     }
 }
 
@@ -678,6 +692,89 @@ async fn handle_model_command(command: ModelCommands, verbose: bool) -> anyhow::
         }
     }
 
+    Ok(())
+}
+
+/// Handle GPU acceleration subcommands
+async fn handle_gpu_command(command: GpuCommands, verbose: bool) -> anyhow::Result<()> {
+    match command {
+        GpuCommands::List => {
+            println!("{}", "GPU Devices:".blue().bold());
+            println!();
+            
+            let devices = list_gpu_devices();
+            
+            if devices.is_empty() {
+                println!("{} No GPU devices found or Vulkan support not available.", "Info:".blue().bold());
+                println!("To enable GPU support, ensure:");
+                println!("  • Vulkan drivers are installed");
+                println!("  • Compatible GPU hardware is available");
+                println!("  • Vulkan feature is enabled (use --features vulkan)");
+            } else {
+                for device in devices {
+                    println!("  {} - {}", 
+                            format!("GPU {}", device.id).green().bold(),
+                            device.name);
+                    
+                    if verbose {
+                        println!("    VRAM: {} / {} ({} free)", 
+                                format_file_size(device.vram_total as u64 - device.vram_free as u64).yellow(),
+                                format_file_size(device.vram_total as u64).yellow(),
+                                format_file_size(device.vram_free as u64).green());
+                    } else {
+                        println!("    VRAM: {}", format_file_size(device.vram_total as u64).yellow());
+                    }
+                    println!();
+                }
+            }
+        }
+        
+        GpuCommands::Status => {
+            let status = check_gpu_status();
+            
+            println!("{}", "GPU Acceleration Status:".blue().bold());
+            println!();
+            
+            println!("Vulkan support: {}", 
+                    if status.vulkan_available { 
+                        "Available".green().bold().to_string() 
+                    } else { 
+                        "Not available".red().bold().to_string() 
+                    });
+            
+            println!("CUDA support: {}", 
+                    if status.cuda_available { 
+                        "Available".green().bold().to_string()  
+                    } else { 
+                        "Not available".red().bold().to_string() 
+                    });
+            
+            println!("GPU devices: {}", 
+                    if status.devices.is_empty() {  
+                        "None detected".red().bold().to_string() 
+                    } else { 
+                        format!("{} found", status.devices.len()).green().bold().to_string() 
+                    });
+            
+            if verbose && !status.devices.is_empty() {
+                println!();
+                println!("Detected devices:");
+                for device in status.devices {
+                    println!("  • {} (ID: {})", device.name, device.id);
+                }
+            }
+            
+            println!();
+            if status.vulkan_available || status.cuda_available {
+                println!("{} GPU acceleration is available for faster transcription.", 
+                        "Success:".green().bold());
+            } else {
+                println!("{} GPU acceleration is not available. Transcription will use CPU.", 
+                        "Warning:".yellow().bold());
+            }
+        }
+    }
+    
     Ok(())
 }
 

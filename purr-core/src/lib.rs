@@ -5,6 +5,7 @@
 pub mod audio;
 pub mod config;
 pub mod error;
+pub mod gpu;
 pub mod model;
 pub mod simple_audio;
 pub mod transcription;
@@ -12,6 +13,7 @@ pub mod transcription;
 pub use audio::AudioProcessor;
 pub use config::TranscriptionConfig;
 pub use error::{Result, WhisperError};
+pub use gpu::{GpuDevice, GpuStatus, check_gpu_status, list_gpu_devices};
 pub use model::{ModelManager, WhisperModel};
 pub use simple_audio::SimpleAudioProcessor;
 pub use transcription::{
