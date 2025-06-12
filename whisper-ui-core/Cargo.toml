@@ -5,11 +5,11 @@ edition = "2021"
 
 [dependencies]
 # Whisper.cpp bindings
-whisper-rs = "0.12"
+whisper-rs = "0.14"
+
+ffmpeg-next = { version = "7.0", features = [] }
 
 # FFmpeg bindings for audio processing
-ffmpeg-next = "7.0"
-
 # Async runtime
 tokio = { version = "1.0", features = ["full"] }
 

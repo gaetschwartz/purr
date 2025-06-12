@@ -158,8 +158,6 @@ impl Default for AudioProcessor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::NamedTempFile;
-    use std::io::Write;
     
     #[tokio::test]
     async fn test_audio_processor_creation() {
