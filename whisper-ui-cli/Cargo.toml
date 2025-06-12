@@ -1,0 +1,31 @@
+[package]
+name = "whisper-ui-cli"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# Core library
+whisper-ui-core = { path = "../whisper-ui-core" }
+
+# CLI argument parsing
+clap = { version = "4.4", features = ["derive"] }
+
+# Async runtime
+tokio = { version = "1.0", features = ["full"] }
+
+# Error handling
+anyhow = "1.0"
+
+# Serialization for output
+serde_json = "1.0"
+
+# Logging
+log = "0.4"
+env_logger = "0.11"
+
+# Colored output
+colored = "2.0"
+
+[dev-dependencies]
+tempfile = "3.8"
+assert_cmd = "2.0"
