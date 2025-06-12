@@ -7,22 +7,22 @@ use thiserror::Error;
 pub enum WhisperError {
     #[error("Audio processing error: {0}")]
     AudioProcessing(String),
-    
+
     #[error("Whisper model error: {0}")]
     WhisperModel(String),
-    
+
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
-    
+
     #[error("FFmpeg error: {0}")]
     FFmpeg(String),
-    
+
     #[error("Configuration error: {0}")]
     Configuration(String),
-    
+
     #[error("Transcription error: {0}")]
     Transcription(String),
-    
+
     #[error("GPU acceleration error: {0}")]
     GpuAcceleration(String),
 }
@@ -33,5 +33,33 @@ pub type Result<T> = std::result::Result<T, WhisperError>;
 impl From<ffmpeg_next::Error> for WhisperError {
     fn from(err: ffmpeg_next::Error) -> Self {
         WhisperError::FFmpeg(err.to_string())
+    }
+}
+
+impl PartialEq for WhisperError {
+    fn eq(&self, other: &Self) -> bool {
+        match self {
+            WhisperError::AudioProcessing(msg) => {
+                matches!(other, WhisperError::AudioProcessing(o) if msg == o)
+            }
+            WhisperError::WhisperModel(msg) => {
+                matches!(other, WhisperError::WhisperModel(o) if msg == o)
+            }
+            WhisperError::Io(err) => {
+                matches!(other, WhisperError::Io(e) if err.to_string() == e.to_string())
+            }
+            WhisperError::FFmpeg(msg) => {
+                matches!(other, WhisperError::FFmpeg(o) if msg == o)
+            }
+            WhisperError::Configuration(msg) => {
+                matches!(other, WhisperError::Configuration(o) if msg == o)
+            }
+            WhisperError::Transcription(msg) => {
+                matches!(other, WhisperError::Transcription(o) if msg == o)
+            }
+            WhisperError::GpuAcceleration(msg) => {
+                matches!(other, WhisperError::GpuAcceleration(o) if msg == o)
+            }
+        }
     }
 }

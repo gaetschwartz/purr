@@ -285,7 +285,6 @@ fn test_cli_verbose_mode() {
         let stderr = String::from_utf8(output.stderr).unwrap();
         if stderr.contains("No Whisper model found") || stderr.contains("No model available") {
             println!("⚠ Skipping CLI verbose test - no model available");
-            return;
         } else {
             panic!("CLI verbose test failed: {}", stderr);
         }
