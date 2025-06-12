@@ -33,6 +33,12 @@ impl AudioProcessor {
     fn ensure_initialized(&mut self) -> Result<()> {
         if !self.initialized {
             ffmpeg::init().map_err(|e| WhisperError::FFmpeg(format!("Failed to initialize FFmpeg: {}", e)))?;
+            
+            // Set FFmpeg log level to quiet to suppress output
+            unsafe {
+                ffmpeg_next::sys::av_log_set_level(ffmpeg_next::sys::AV_LOG_QUIET);
+            }
+            
             self.initialized = true;
         }
         Ok(())

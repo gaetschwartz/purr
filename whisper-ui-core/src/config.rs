@@ -32,6 +32,9 @@ pub struct TranscriptionConfig {
     
     /// Output format options
     pub output_format: OutputFormat,
+    
+    /// Enable verbose debug output
+    pub verbose: bool,
 }
 
 /// Output format options
@@ -59,6 +62,7 @@ impl Default for TranscriptionConfig {
             temperature: 0.0,
             beam_size: None,
             output_format: OutputFormat::default(),
+            verbose: false,
         }
     }
 }
@@ -106,6 +110,12 @@ impl TranscriptionConfig {
     /// Set the sample rate
     pub fn with_sample_rate(mut self, rate: u32) -> Self {
         self.sample_rate = rate;
+        self
+    }
+    
+    /// Enable or disable verbose output
+    pub fn with_verbose(mut self, verbose: bool) -> Self {
+        self.verbose = verbose;
         self
     }
 }
