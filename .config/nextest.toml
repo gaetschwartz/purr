@@ -1,0 +1,5 @@
+[profile.default]
+default-filter = "not (test(slow_tests) or binary(slow_tests))"
+
+[profile.all]
+default-filter = "all()"
