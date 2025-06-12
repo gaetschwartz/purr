@@ -3,11 +3,13 @@
 //! This library provides audio transcription functionality using whisper.cpp and FFmpeg.
 
 pub mod audio;
+pub mod simple_audio;
 pub mod transcription;
 pub mod error;
 pub mod config;
 
 pub use audio::AudioProcessor;
+pub use simple_audio::SimpleAudioProcessor;
 pub use transcription::{WhisperTranscriber, TranscriptionResult};
 pub use error::{WhisperError, Result};
 pub use config::TranscriptionConfig;
@@ -22,8 +24,8 @@ pub async fn transcribe_audio_file<P: AsRef<std::path::Path>>(
     // Initialize transcriber
     let mut transcriber = WhisperTranscriber::new(config.clone()).await?;
     
-    // Process audio
-    let mut audio_processor = AudioProcessor::new();
+    // Process audio using simple processor
+    let audio_processor = SimpleAudioProcessor::new();
     let audio_data = audio_processor.load_audio(audio_path).await?;
     
     // Transcribe
