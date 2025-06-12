@@ -37,3 +37,4 @@ futures-util = "0.3"
 
 [dev-dependencies]
 tempfile = "3.8"
+rstest = "0.18"

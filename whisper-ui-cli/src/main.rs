@@ -503,7 +503,7 @@ mod tests {
             "--output", "json"
         ]).unwrap();
         
-        assert_eq!(cli.audio_file, PathBuf::from("test.wav"));
+        assert_eq!(cli.audio_file, Some(PathBuf::from("test.wav")));
         assert_eq!(cli.model, Some(PathBuf::from("model.bin")));
         assert_eq!(cli.language, Some("en".to_string()));
         assert!(matches!(cli.output, OutputFormat::Json));
