@@ -34,3 +34,4 @@ rstest = "0.18"
 
 [features]
 cuda = ["whisper-rs/cuda"]
+vulkan = ["whisper-rs/vulkan"]
