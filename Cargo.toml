@@ -1,3 +1,6 @@
 [workspace]
-members = ["whisper-ui-core", "whisper-ui-cli"]
+members = ["purr", "purr-core"]
 resolver = "2"
+
+[workspace.dependencies]
+purr-core = { path = "purr-core" }

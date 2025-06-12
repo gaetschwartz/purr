@@ -1,8 +1,8 @@
 //! Integration tests for whisper-ui-core
 
+use purr_core::*;
 use rstest::rstest;
 use std::path::PathBuf;
-use whisper_ui_core::*;
 
 /// Test transcription with all sample files
 #[rstest]
