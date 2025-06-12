@@ -129,20 +129,16 @@ impl WhisperTranscriber {
     }
     
     /// Transcribe audio data
-    pub async fn transcribe(&self, audio_data: AudioData) -> Result<TranscriptionResult> {
-        let context = self.context.clone();
+    pub async fn transcribe(&mut self, audio_data: AudioData) -> Result<TranscriptionResult> {
         let config = self.config.clone();
         
-        // Run transcription in a blocking task
-        task::spawn_blocking(move || {
-            Self::transcribe_sync(context, audio_data, config)
-        }).await
-        .map_err(|e| WhisperError::Transcription(format!("Task join error: {}", e)))?
+        // Run transcription synchronously since we can't clone the context
+        Self::transcribe_sync(&mut self.context, audio_data, config)
     }
     
     /// Synchronous transcription implementation
     fn transcribe_sync(
-        mut context: WhisperContext, 
+        context: &mut WhisperContext, 
         audio_data: AudioData, 
         config: TranscriptionConfig
     ) -> Result<TranscriptionResult> {
@@ -163,28 +159,31 @@ impl WhisperTranscriber {
         params.set_temperature(config.temperature);
         params.set_print_timestamps(config.output_format.include_timestamps);
         
-        // Run transcription
-        context
-            .full(params, &audio_data.samples)
+        // Create a state for processing
+        let mut state = context.create_state()
+            .map_err(|e| WhisperError::Transcription(format!("Failed to create state: {}", e)))?;
+        
+        // Run transcription using state.full()
+        state.full(params, &audio_data.samples)
             .map_err(|e| WhisperError::Transcription(format!("Transcription failed: {}", e)))?;
         
         let processing_time = start_time.elapsed().as_secs_f64();
         
-        // Extract results
-        let num_segments = context.full_n_segments()
+        // Extract results from state
+        let num_segments = state.full_n_segments()
             .map_err(|e| WhisperError::Transcription(format!("Failed to get segment count: {}", e)))?;
         
         let mut segments = Vec::new();
         let mut full_text = String::new();
         
         for i in 0..num_segments {
-            let text = context.full_get_segment_text(i)
+            let text = state.full_get_segment_text(i)
                 .map_err(|e| WhisperError::Transcription(format!("Failed to get segment text: {}", e)))?;
             
-            let start = context.full_get_segment_t0(i)
+            let start = state.full_get_segment_t0(i)
                 .map_err(|e| WhisperError::Transcription(format!("Failed to get segment start time: {}", e)))? as f64 / 100.0;
             
-            let end = context.full_get_segment_t1(i)
+            let end = state.full_get_segment_t1(i)
                 .map_err(|e| WhisperError::Transcription(format!("Failed to get segment end time: {}", e)))? as f64 / 100.0;
             
             full_text.push_str(&text);

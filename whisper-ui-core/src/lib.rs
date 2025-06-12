@@ -20,10 +20,10 @@ pub async fn transcribe_audio_file<P: AsRef<std::path::Path>>(
     let config = config.unwrap_or_default();
     
     // Initialize transcriber
-    let transcriber = WhisperTranscriber::new(config.clone()).await?;
+    let mut transcriber = WhisperTranscriber::new(config.clone()).await?;
     
     // Process audio
-    let audio_processor = AudioProcessor::new();
+    let mut audio_processor = AudioProcessor::new();
     let audio_data = audio_processor.load_audio(audio_path).await?;
     
     // Transcribe
@@ -32,7 +32,6 @@ pub async fn transcribe_audio_file<P: AsRef<std::path::Path>>(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
 
     #[tokio::test]
     async fn test_basic_functionality() {
