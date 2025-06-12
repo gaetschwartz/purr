@@ -8,7 +8,9 @@ use std::path::PathBuf;
 use tokio::sync::mpsc;
 use tokio::task;
 use tracing::{error, info};
-use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
+use whisper_rs::{
+    FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters, WhisperLogCallback,
+};
 
 /// Transcription result
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -250,12 +252,11 @@ impl WhisperTranscriber {
             }
 
             params.set_temperature(temperature);
-            if !config.verbose {
-                params.set_print_timestamps(false);
-                params.set_print_progress(false);
-                params.set_print_special(false);
-                params.set_print_realtime(false);
-            }
+
+            params.set_print_timestamps(false); // Disable whisper.cpp's internal timestamp printing
+            params.set_print_progress(false); // Disable progress output
+            params.set_print_special(false); // Disable special token printing
+            params.set_print_realtime(false); // Disable real-time printing
 
             // Set up safe segment callback for real-time streaming
             let mut segment_index = 0;
@@ -309,12 +310,11 @@ impl WhisperTranscriber {
         }
 
         params.set_temperature(config.temperature);
-        if !config.verbose {
-            params.set_print_timestamps(false); // Disable whisper.cpp's internal timestamp printing
-            params.set_print_progress(false); // Disable progress output
-            params.set_print_special(false); // Disable special token printing
-            params.set_print_realtime(false); // Disable real-time printing
-        }
+
+        params.set_print_timestamps(false); // Disable whisper.cpp's internal timestamp printing
+        params.set_print_progress(false); // Disable progress output
+        params.set_print_special(false); // Disable special token printing
+        params.set_print_realtime(false); // Disable real-time printing
 
         // Create a state for processing
         let mut state = context

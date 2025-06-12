@@ -1196,6 +1196,47 @@ dependencies = [
 ]
 
 [[package]]
+name = "purr"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "assert_cmd",
+ "clap",
+ "num_cpus",
+ "owo-colors",
+ "purr-core",
+ "rstest",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "tracing-core",
+ "tracing-log",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "purr-core"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "directories",
+ "ffmpeg-next",
+ "futures-util",
+ "path-absolutize",
+ "reqwest",
+ "rstest",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "whisper-rs",
+]
+
+[[package]]
 name = "quote"
 version = "1.0.40"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1968,6 +2009,7 @@ version = "0.14.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c03469c15b9529a30cdf866ea2391b8236922a12a87b9d9f1973a258e748d56d"
 dependencies = [
+ "tracing",
  "whisper-rs-sys",
 ]
 
@@ -1981,44 +2023,6 @@ dependencies = [
  "cfg-if",
  "cmake",
  "fs_extra",
-]
-
-[[package]]
-name = "whisper-ui-cli"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "assert_cmd",
- "clap",
- "owo-colors",
- "rstest",
- "serde_json",
- "tempfile",
- "tokio",
- "tracing",
- "tracing-core",
- "tracing-subscriber",
- "whisper-ui-core",
-]
-
-[[package]]
-name = "whisper-ui-core"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "directories",
- "ffmpeg-next",
- "futures-util",
- "path-absolutize",
- "reqwest",
- "rstest",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror",
- "tokio",
- "tracing",
- "whisper-rs",
 ]
 
 [[package]]

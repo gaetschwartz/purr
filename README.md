@@ -172,7 +172,7 @@ tokio = { version = "1.0", features = ["full"] }
 ```
 
 ```rust
-use whisper_ui_core::{transcribe_audio_file, TranscriptionConfig};
+use purr_core::{transcribe_audio_file, TranscriptionConfig};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

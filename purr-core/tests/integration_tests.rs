@@ -1,9 +1,9 @@
 //! Integration tests for whisper-ui-core
 
+use purr_core::transcription::TranscriptionSegment;
+use purr_core::*;
 use rstest::rstest;
 use std::path::Path;
-use whisper_ui_core::transcription::TranscriptionSegment;
-use whisper_ui_core::*;
 
 /// Test transcription configuration
 #[tokio::test]

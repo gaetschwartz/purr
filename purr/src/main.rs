@@ -3,14 +3,15 @@ mod fmt;
 
 use clap::{Parser, Subcommand};
 use owo_colors::OwoColorize as _;
+use purr_core::{
+    transcribe_audio_file, transcribe_audio_file_streaming, ModelManager, TranscriptionConfig,
+    WhisperError, WhisperModel,
+};
 use std::io::{self, Write};
 use std::path::PathBuf;
 use std::process;
 use tracing::{debug, error, info};
-use whisper_ui_core::{
-    transcribe_audio_file, transcribe_audio_file_streaming, ModelManager, TranscriptionConfig,
-    WhisperError, WhisperModel,
-};
+use tracing_log::LogTracer;
 
 use crate::fmt::MyFormatter;
 
@@ -122,7 +123,7 @@ enum OutputFormat {
 
 /// Handle streaming transcription output
 async fn handle_streaming_output(
-    receiver: &mut whisper_ui_core::StreamingReceiver,
+    receiver: &mut purr_core::StreamingReceiver,
     cli: &Cli,
 ) -> Result<(), Box<dyn std::error::Error>> {
     use std::fs;
@@ -261,9 +262,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         config = config.with_language(language.clone());
     }
 
-    if let Some(threads) = cli.threads {
-        config = config.with_threads(threads);
-    }
+    config = config.with_threads(cli.threads.unwrap_or_else(num_cpus::get));
 
     config.temperature = cli.temperature;
     config.output_format.include_timestamps = cli.timestamps;
@@ -310,9 +309,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             config = config.with_language(language.clone());
                         }
 
-                        if let Some(threads) = cli.threads {
-                            config = config.with_threads(threads);
-                        }
+                        config = config.with_threads(cli.threads.unwrap_or_else(num_cpus::get));
 
                         config.temperature = cli.temperature;
                         config.output_format.include_timestamps = cli.timestamps;
@@ -376,9 +373,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         config = config.with_language(language.clone());
                     }
 
-                    if let Some(threads) = cli.threads {
-                        config = config.with_threads(threads);
-                    }
+                    config = config.with_threads(cli.threads.unwrap_or_else(num_cpus::get));
 
                     config.temperature = cli.temperature;
                     config.output_format.include_timestamps = cli.timestamps;
