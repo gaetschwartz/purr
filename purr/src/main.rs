@@ -97,10 +97,12 @@ enum ModelCommands {
         #[arg(value_name = "MODEL")]
         model: String,
     },
-    /// List available models
-    List,
-    /// List downloaded models
-    Downloaded,
+    /// List models (downloaded by default, use --available to list all available models)
+    List {
+        /// List all available models instead of downloaded models
+        #[arg(short, long)]
+        available: bool,
+    },
     /// Delete a downloaded model
     Delete {
         /// Model to delete (e.g., base, small, large-v3)
@@ -344,8 +346,11 @@ async fn main() -> anyhow::Result<()> {
                             }
                         }
                     } else {
-                        error!("{} No model available. Download one with: whisper-ui models download base", 
-                                 "Error:".red().bold());
+                        error!("{} No model available. Download one with: {}{}",
+                        "Error:".red().bold(),
+                         env!("CARGO_PKG_NAME").cyan(),
+                        " models download base".cyan()
+                    );
                         process::exit(1);
                     }
                 } else {
@@ -405,8 +410,10 @@ async fn main() -> anyhow::Result<()> {
                     }
                 } else {
                     eprintln!(
-                        "{} No model available. Download one with: whisper-ui models download base",
-                        "Error:".red().bold()
+                        "{} No model available. Download one with: {}{}",
+                        "Error:".red().bold(),
+                        env!("CARGO_PKG_NAME").cyan(),
+                        " models download base".cyan()
                     );
                     process::exit(1);
                 }
@@ -537,7 +544,7 @@ async fn prompt_for_model_download() -> anyhow::Result<bool> {
     } else {
         println!();
         println!("Model download cancelled. You can download a model later with:");
-        println!("  {}", "whisper-ui models download base".cyan());
+        println!("  {}{}", env!("CARGO_PKG_NAME").cyan(), " models download base".cyan());
         Ok(false)
     }
 }
@@ -580,53 +587,58 @@ async fn handle_model_command(command: ModelCommands, verbose: bool) -> anyhow::
             );
         }
 
-        ModelCommands::List => {
-            println!("{}", "Available Whisper Models:".blue().bold());
-            println!();
+        ModelCommands::List { available } => {
+            if available {
+                // List available models
+                println!("{}", "Available Whisper Models:".blue().bold());
+                println!();
 
-            // Group models by base type and show quantized variants together
-            print_model_groups();
+                // Group models by base type and show quantized variants together
+                print_model_groups();
 
-            println!();
-            println!("{}", "Usage: whisper-ui models download <model>".dimmed());
-            println!("{}", "Example: whisper-ui models download base".dimmed());
-        }
-
-        ModelCommands::Downloaded => {
-            let downloaded = model_manager.list_downloaded_models().await?;
-
-            if downloaded.is_empty() {
-                println!("{} No models downloaded yet.", "Info:".blue().bold());
-                println!("Use 'whisper-ui models download <model>' to download a model.");
+                println!();
+                println!("{}{}{}", "Usage: ".dimmed(), env!("CARGO_PKG_NAME").cyan().dimmed(), " models download <model>".cyan().dimmed());
+                println!("{}{}{}", "Example: ".dimmed(), env!("CARGO_PKG_NAME").cyan().dimmed(), " models download base".cyan().dimmed());
             } else {
-                println!("{} Downloaded models:", "Info:".blue().bold());
-                println!();
+                // List downloaded models (default behavior)
+                let downloaded = model_manager.list_downloaded_models().await?;
 
-                for model in downloaded {
-                    let path = model_manager.get_model_path(&model);
-                    let size = if let Ok(metadata) = std::fs::metadata(&path) {
-                        format_file_size(metadata.len())
-                    } else {
-                        "unknown size".to_string()
-                    };
-
-                    println!(
-                        "  {} - {} ({})",
-                        model.as_str().green(),
-                        model.description().dimmed(),
-                        size.yellow()
-                    );
-
-                    if verbose {
-                        println!("    Path: {}", path.display().to_string().dimmed());
-                    }
-                }
-
-                println!();
-                println!(
-                    "XDG data directory: {}",
-                    model_manager.models_dir().display().to_string().dimmed()
+                if downloaded.is_empty() {
+                    println!("{} No models downloaded yet.", "Info:".blue().bold());
+                    println!("Use {}{} models download <model> to download a model.",
+                        env!("CARGO_PKG_NAME").cyan(),
+                        " models download base".cyan()
                 );
+                } else {
+                    println!("{} Downloaded models:", "Info:".blue().bold());
+                    println!();
+
+                    for model in downloaded {
+                        let path = model_manager.get_model_path(&model);
+                        let size = if let Ok(metadata) = std::fs::metadata(&path) {
+                            format_file_size(metadata.len())
+                        } else {
+                            "unknown size".to_string()
+                        };
+
+                        println!(
+                            "  {} - {} ({})",
+                            model.as_str().green(),
+                            model.description().dimmed(),
+                            size.yellow()
+                        );
+
+                        if verbose {
+                            println!("    Path: {}", path.display().to_string().dimmed());
+                        }
+                    }
+
+                    println!();
+                    println!(
+                        "XDG data directory: {}",
+                        model_manager.models_dir().display().to_string().dimmed()
+                    );
+                }
             }
         }
 

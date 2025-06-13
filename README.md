@@ -16,8 +16,8 @@ A high-performance audio transcription tool built with Rust, using OpenAI's Whis
 
 The project consists of two main crates:
 
-- **`whisper-ui-core`**: Core library with transcription functionality
-- **`whisper-ui-cli`**: Command-line interface using the core library
+- **`purr-core`**: Core library with transcription functionality
+- **`purr`**: Command-line interface using the core library
 
 ## Prerequisites
 
@@ -71,12 +71,12 @@ Available models:
 ```bash
 # Clone the repository
 git clone <repository-url>
-cd whisper-ui
+cd purr
 
 # Build the project
 cargo build --release
 
-# The binary will be at target/release/whisper-ui-cli
+# The binary will be at target/release/purr
 ```
 
 ### Running Tests
@@ -89,10 +89,10 @@ cargo test
 cargo test -- --nocapture
 
 # Run only core library tests
-cargo test -p whisper-ui-core
+cargo test -p purr-core
 
 # Run only CLI tests  
-cargo test -p whisper-ui-cli
+cargo test -p purr
 ```
 
 ## Usage
@@ -101,35 +101,35 @@ cargo test -p whisper-ui-cli
 
 ```bash
 # Transcribe an audio file
-./target/release/whisper-ui-cli audio.wav
+./target/release/purr audio.wav
 
 # Specify a model
-./target/release/whisper-ui-cli audio.mp3 --model models/ggml-base.en.bin
+./target/release/purr audio.mp3 --model models/ggml-base.en.bin
 
 # Specify language
-./target/release/whisper-ui-cli audio.wav --language en
+./target/release/purr audio.wav --language en
 ```
 
 ### Advanced Usage
 
 ```bash
 # JSON output with timestamps
-./target/release/whisper-ui-cli audio.wav --output json --timestamps
+./target/release/purr audio.wav --output json --timestamps
 
 # SRT subtitle format
-./target/release/whisper-ui-cli audio.wav --output srt
+./target/release/purr audio.wav --output srt
 
 # Disable GPU acceleration
-./target/release/whisper-ui-cli audio.wav --no-gpu
+./target/release/purr audio.wav --no-gpu
 
 # Set number of threads
-./target/release/whisper-ui-cli audio.wav --threads 4
+./target/release/purr audio.wav --threads 4
 
 # Verbose output
-./target/release/whisper-ui-cli audio.wav --verbose
+./target/release/purr audio.wav --verbose
 
 # All options combined
-./target/release/whisper-ui-cli audio.wav \\
+./target/release/purr audio.wav \\
   --model models/ggml-base.en.bin \\
   --language en \\
   --output json \\
@@ -142,7 +142,7 @@ cargo test -p whisper-ui-cli
 ### CLI Options
 
 ```
-Usage: whisper-ui-cli [OPTIONS] <AUDIO_FILE>
+Usage: purr [OPTIONS] <AUDIO_FILE>
 
 Arguments:
   <AUDIO_FILE>  Path to the audio file to transcribe
@@ -167,7 +167,7 @@ You can also use the core library in your own Rust projects:
 
 ```toml
 [dependencies]
-whisper-ui-core = { path = "path/to/whisper-ui-core" }
+purr-core = { path = "path/to/purr-core" }
 tokio = { version = "1.0", features = ["full"] }
 ```
 
@@ -212,7 +212,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 Use the `--verbose` flag to see detailed performance information:
 
 ```bash
-./target/release/whisper-ui-cli audio.wav --verbose
+./target/release/purr audio.wav --verbose
 ```
 
 This shows:

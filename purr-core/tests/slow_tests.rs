@@ -1,4 +1,4 @@
-//! Integration tests for whisper-ui-core
+//! Integration tests for purr-core
 
 use purr_core::*;
 use rstest::rstest;
