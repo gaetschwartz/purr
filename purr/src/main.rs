@@ -285,6 +285,22 @@ async fn handle_streaming_output(
             OutputFormat::Txt => chunk.text.clone(),
         };
 
+        // Check for final statistics
+        if let Some(ref stats) = chunk.final_stats {
+            // Display statistics after processing is complete
+            if cli.verbose {
+                println!();
+                println!("{}", "Streaming Transcription Statistics:".green().bold());
+                println!("Audio duration: {:.2}s", stats.audio_duration);
+                println!("Processing time: {:.2}s", stats.processing_time);
+                println!("Real-time factor: {:.2}x", stats.real_time_factor);
+                println!("Segments: {}", stats.segment_count);
+                println!("Average segment length: {:.2}s", stats.avg_segment_length);
+                println!("Words: {}", stats.word_count);
+                println!("Words per minute: {:.1}", stats.words_per_minute);
+            }
+        }
+
         // Print to stdout or accumulate for file output
         if cli.output_file.is_some() {
             output_buffer.push_str(&chunk_text);
@@ -1055,20 +1071,20 @@ fn handle_output(result: purr_core::SyncTranscriptionResult, cli: &Cli) -> anyho
         print!("{}", output_content);
     }
 
-    // Print summary if verbose
+    // Print statistics
     if cli.verbose {
         println!();
-        println!("{}", "Transcription Summary:".green().bold());
-        println!("Audio duration: {:.2}s", result.audio_duration);
-        println!("Processing time: {:.2}s", result.processing_time);
-        println!(
-            "Real-time factor: {:.2}x",
-            result.processing_time / result.audio_duration as f64
-        );
+        println!("{}", "Transcription Statistics:".green().bold());
+        println!("Audio duration: {:.2}s", result.stats.audio_duration);
+        println!("Processing time: {:.2}s", result.stats.processing_time);
+        println!("Real-time factor: {:.2}x", result.stats.real_time_factor);
+        println!("Segments: {}", result.stats.segment_count);
+        println!("Average segment length: {:.2}s", result.stats.avg_segment_length);
+        println!("Words: {}", result.stats.word_count);
+        println!("Words per minute: {:.1}", result.stats.words_per_minute);
         if let Some(lang) = &result.language {
             println!("Detected language: {}", lang);
         }
-        println!("Segments: {}", result.segments.len());
     }
 
     Ok(())

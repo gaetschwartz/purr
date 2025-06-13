@@ -1,5 +1,5 @@
 use crate::{
-    whisper::{load_model, StreamingChunk, TranscriptionResult, WhisperTranscriber},
+    whisper::{load_model, StreamingChunk, TranscriptionResult, TranscriptionStats, WhisperTranscriber},
     AudioStream, ModelManager, TranscriptionConfig,
 };
 use futures::{Stream, StreamExt};
@@ -66,10 +66,19 @@ impl StreamWhisperTranscriber {
             crate::WhisperError::Transcription(format!("Failed to create state: {}", e))
         })?;
 
+        // Statistics tracking
+        let start_time = std::time::Instant::now();
+        let mut total_audio_duration = 0.0f32;
+        let mut total_word_count = 0usize;
+        let mut total_segments = 0usize;
+
         // Process each audio chunk
         while let Some(chunk_result) = input.next().await {
             match chunk_result {
                 Ok(audio_chunk) => {
+                    // Update statistics tracking
+                    total_audio_duration += audio_chunk.duration;
+
                     // Create fresh params for each chunk
                     let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
 
@@ -109,6 +118,23 @@ impl StreamWhisperTranscriber {
                                         }
                                     }
 
+                                    // Update statistics
+                                    total_segments += num_segments as usize;
+                                    total_word_count += chunk_text.split_whitespace().count();
+
+                                    // Calculate final statistics if this is the last chunk
+                                    let final_stats = if audio_chunk.is_final {
+                                        let processing_time = start_time.elapsed().as_secs_f64();
+                                        Some(TranscriptionStats::new(
+                                            processing_time,
+                                            total_audio_duration,
+                                            total_segments,
+                                            total_word_count,
+                                        ))
+                                    } else {
+                                        None
+                                    };
+
                                     // Send the chunk result
                                     let streaming_chunk = StreamingChunk {
                                         text: chunk_text,
@@ -116,6 +142,7 @@ impl StreamWhisperTranscriber {
                                         end: (audio_chunk.start_time + audio_chunk.duration) as f64,
                                         is_final: audio_chunk.is_final,
                                         chunk_index: audio_chunk.index,
+                                        final_stats,
                                     };
 
                                     if tx.send(Ok(streaming_chunk)).is_err() {
