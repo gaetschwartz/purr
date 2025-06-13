@@ -1,6 +1,6 @@
 //! Integration tests for purr-core
 
-use purr_core::{whisper::TranscriptionSegment, *};
+use purr_core::{whisper::{TranscriptionSegment, TranscriptionStats}, *};
 use rstest::rstest;
 use std::path::Path;
 
@@ -53,12 +53,14 @@ fn test_transcription_result_serialization() {
         words: None,
     };
 
+    let stats = TranscriptionStats::new(1.5, 2.5, 1, 2);
     let result = SyncTranscriptionResult {
         text: "Hello world".to_string(),
         language: Some("en".to_string()),
         segments: vec![segment],
         processing_time: 1.5,
         audio_duration: 2.5,
+        stats,
     };
 
     // Test JSON serialization
