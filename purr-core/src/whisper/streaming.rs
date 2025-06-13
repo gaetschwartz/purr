@@ -3,7 +3,10 @@ use crate::{
     AudioStream, ModelManager, TranscriptionConfig,
 };
 use futures::{Stream, StreamExt};
-use std::{future::Future, pin::Pin, task::{Context, Poll}};
+use std::{
+    pin::Pin,
+    task::{Context, Poll},
+};
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use tracing::warn;
@@ -35,25 +38,20 @@ impl WhisperTranscriber for StreamWhisperTranscriber {
         Ok(Self { context, config })
     }
 
-    fn transcribe(
-        self,
-        input: AudioStream,
-    ) -> impl Future<Output = crate::Result<StreamingTranscriptionResult>> {
-        async move {
-            let (tx, rx) = mpsc::unbounded_channel();
-            
-            // Spawn background task to process audio stream
-            tokio::spawn(async move {
-                let mut transcriber = self;
-                if let Err(e) = transcriber.process_audio_stream(input, tx.clone()).await {
-                    let _ = tx.send(Err(e));
-                }
-            });
+    async fn transcribe(self, input: AudioStream) -> crate::Result<StreamingTranscriptionResult> {
+        let (tx, rx) = mpsc::unbounded_channel();
 
-            Ok(StreamingTranscriptionResult {
-                stream: Box::pin(UnboundedReceiverStream::new(rx)),
-            })
-        }
+        // Spawn background task to process audio stream
+        tokio::spawn(async move {
+            let mut transcriber = self;
+            if let Err(e) = transcriber.process_audio_stream(input, tx.clone()).await {
+                let _ = tx.send(Err(e));
+            }
+        });
+
+        Ok(StreamingTranscriptionResult {
+            stream: Box::pin(UnboundedReceiverStream::new(rx)),
+        })
     }
 }
 
@@ -64,10 +62,9 @@ impl StreamWhisperTranscriber {
         tx: mpsc::UnboundedSender<crate::Result<StreamingChunk>>,
     ) -> crate::Result<()> {
         // Create a state for processing all chunks
-        let mut state = self
-            .context
-            .create_state()
-            .map_err(|e| crate::WhisperError::Transcription(format!("Failed to create state: {}", e)))?;
+        let mut state = self.context.create_state().map_err(|e| {
+            crate::WhisperError::Transcription(format!("Failed to create state: {}", e))
+        })?;
 
         // Process each audio chunk
         while let Some(chunk_result) = input.next().await {
@@ -105,7 +102,10 @@ impl StreamWhisperTranscriber {
                                                 chunk_text.push_str(&text);
                                             }
                                             Err(e) => {
-                                                warn!("Failed to get segment text for segment {}: {}", i, e);
+                                                warn!(
+                                                    "Failed to get segment text for segment {}: {}",
+                                                    i, e
+                                                );
                                             }
                                         }
                                     }
@@ -131,7 +131,10 @@ impl StreamWhisperTranscriber {
                             }
                         }
                         Err(e) => {
-                            warn!("Transcription failed for chunk {}: {}", audio_chunk.index, e);
+                            warn!(
+                                "Transcription failed for chunk {}: {}",
+                                audio_chunk.index, e
+                            );
                             // Continue with next chunk instead of failing completely
                         }
                     }
@@ -154,10 +157,7 @@ pub struct StreamingTranscriptionResult {
 impl Stream for StreamingTranscriptionResult {
     type Item = Result<StreamingChunk, crate::WhisperError>;
 
-    fn poll_next(
-        mut self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-    ) -> Poll<Option<Self::Item>> {
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         self.stream.as_mut().poll_next(cx)
     }
 }
