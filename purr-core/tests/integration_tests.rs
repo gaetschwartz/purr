@@ -1,7 +1,6 @@
 //! Integration tests for purr-core
 
-use purr_core::transcription::TranscriptionSegment;
-use purr_core::*;
+use purr_core::{whisper::TranscriptionSegment, *};
 use rstest::rstest;
 use std::path::Path;
 
@@ -54,7 +53,7 @@ fn test_transcription_result_serialization() {
         words: None,
     };
 
-    let result = TranscriptionResult {
+    let result = SyncTranscriptionResult {
         text: "Hello world".to_string(),
         language: Some("en".to_string()),
         segments: vec![segment],
@@ -64,7 +63,7 @@ fn test_transcription_result_serialization() {
 
     // Test JSON serialization
     let json = serde_json::to_string(&result).unwrap();
-    let deserialized: TranscriptionResult = serde_json::from_str(&json).unwrap();
+    let deserialized: SyncTranscriptionResult = serde_json::from_str(&json).unwrap();
 
     assert_eq!(result.text, deserialized.text);
     assert_eq!(result.language, deserialized.language);
