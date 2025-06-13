@@ -16,7 +16,9 @@
       "WebFetch(domain:raw.githubusercontent.com)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(cargo:*)"
+      "Bash(cargo:*)",
+      "Bash(rg:*)",
+      "Bash(./target/release/purr --help)"
     ],
     "deny": []
   }

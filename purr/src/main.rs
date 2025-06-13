@@ -137,6 +137,10 @@ struct Cli {
     #[arg(short, long)]
     language: Option<String>,
 
+    /// Translate to English (like whisper.cpp --translate)
+    #[arg(long)]
+    translate: bool,
+
     /// Disable GPU acceleration
     #[arg(long)]
     no_gpu: bool,
@@ -987,6 +991,7 @@ async fn setup_config(cli: &Cli) -> anyhow::Result<TranscriptionConfig> {
         config = config.with_language(language);
     }
 
+    config = config.with_translate(cli.translate);
     config = config.with_threads(cli.threads.unwrap_or_else(num_cpus::get));
     config.temperature = cli.temperature;
     config.output_format.include_timestamps = cli.timestamps;

@@ -12,6 +12,9 @@ pub struct TranscriptionConfig {
     /// Language code (e.g., "en", "es", "fr")
     pub language: Option<String>,
     
+    /// Translate to English (like whisper.cpp --translate flag)
+    pub translate: bool,
+    
     /// Use GPU acceleration if available
     pub use_gpu: bool,
     
@@ -55,6 +58,7 @@ impl Default for TranscriptionConfig {
         Self {
             model_path: None, // Will use default model
             language: None,   // Auto-detect
+            translate: false,
             use_gpu: true,
             num_threads: None, // Use system default
             sample_rate: 16000, // Whisper's preferred sample rate
@@ -116,6 +120,12 @@ impl TranscriptionConfig {
     /// Enable or disable verbose output
     pub fn with_verbose(mut self, verbose: bool) -> Self {
         self.verbose = verbose;
+        self
+    }
+    
+    /// Enable or disable translation to English
+    pub fn with_translate(mut self, translate: bool) -> Self {
+        self.translate = translate;
         self
     }
 }
