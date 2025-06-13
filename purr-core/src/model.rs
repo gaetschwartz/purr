@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
-use tracing::info;
+use tracing::{debug, info};
 
 /// Available Whisper model types
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -316,21 +316,23 @@ impl ModelManager {
 
     /// Download a model
     pub async fn download_model(&self, model: WhisperModel) -> Result<PathBuf> {
+        self.download_model_with_progress(model, |_, _| {}).await
+    }
+
+    /// Download a model with progress callback
+    pub async fn download_model_with_progress<F>(
+        &self,
+        model: WhisperModel,
+        mut progress_callback: F,
+    ) -> Result<PathBuf>
+    where
+        F: FnMut(u64, Option<u64>), // (downloaded_bytes, total_bytes)
+    {
         self.ensure_models_dir().await?;
 
         let model_path = self.get_model_path(&model);
 
-        // Check if already exists
-        if model_path.exists() {
-            info!(
-                "Model {} already exists at {:?}",
-                model.as_str(),
-                model_path
-            );
-            return Ok(model_path);
-        }
-
-        info!("Downloading model {} to {:?}", model.as_str(), model_path);
+        debug!("Downloading model {} to {:?}", model.as_str(), model_path);
 
         let url = model.get_url();
         let response = reqwest::get(&url)
@@ -345,6 +347,9 @@ impl ModelManager {
             )));
         }
 
+        // Get content length for progress reporting
+        let total_size = response.content_length();
+
         // Create temporary file first, then rename
         let temp_path = model_path.with_extension("tmp");
         let mut file = fs::File::create(&temp_path).await.map_err(|e| {
@@ -352,15 +357,21 @@ impl ModelManager {
         })?;
 
         let mut stream = response.bytes_stream();
+        let mut downloaded = 0u64;
+
         use futures_util::StreamExt;
 
         while let Some(chunk) = stream.next().await {
             let chunk = chunk.map_err(|e| {
                 WhisperError::Configuration(format!("Failed to read download chunk: {}", e))
             })?;
+
             file.write_all(&chunk).await.map_err(|e| {
                 WhisperError::AudioProcessing(format!("Failed to write to file: {}", e))
             })?;
+
+            downloaded += chunk.len() as u64;
+            progress_callback(downloaded, total_size);
         }
 
         file.flush()
@@ -374,7 +385,7 @@ impl ModelManager {
             WhisperError::AudioProcessing(format!("Failed to rename downloaded file: {}", e))
         })?;
 
-        info!(
+        debug!(
             "Successfully downloaded model {} to {:?}",
             model.as_str(),
             model_path
