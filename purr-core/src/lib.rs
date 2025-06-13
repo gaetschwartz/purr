@@ -19,10 +19,14 @@ use tokio::try_join;
 use tracing::info;
 
 use crate::whisper::{
-    streaming::{StreamWhisperTranscriber, StreamingTranscriptionResult},
+    streaming::StreamWhisperTranscriber,
     sync::SyncWhisperTranscriber,
-    SyncTranscriptionResult, WhisperTranscriber,
+    WhisperTranscriber,
 };
+
+// Re-export public types from whisper module for CLI
+pub use whisper::{SyncTranscriptionResult, StreamingChunk};
+pub use whisper::streaming::StreamingTranscriptionResult;
 
 /// High-level transcription function
 pub async fn transcribe_file_sync<P: AsRef<std::path::Path>>(

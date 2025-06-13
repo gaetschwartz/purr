@@ -7,7 +7,7 @@ use owo_colors::OwoColorize as _;
 use purr_core::math::{ByteSpeed, RoundToUnit as _};
 use purr_core::{
     check_gpu_status, list_devices, transcribe_file_stream, transcribe_file_sync, ModelManager,
-    SyncTranscriptionResult, TranscriptionConfig, WhisperModel,
+    TranscriptionConfig, WhisperModel,
 };
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
@@ -100,8 +100,8 @@ async fn main() -> anyhow::Result<()> {
         info!("Streaming transcription...");
 
         // Handle streaming transcription
-        let mut receiver = match transcribe_file_stream(&audio_file, Some(config)).await {
-            Ok(receiver) => receiver,
+        let stream = match transcribe_file_stream(&audio_file, Some(config)).await {
+            Ok(stream) => stream,
             Err(e) => {
                 // Check if this is a "no model found" error
                 error!("Streaming transcription failed: {}", e);
@@ -110,7 +110,7 @@ async fn main() -> anyhow::Result<()> {
         };
 
         // Process streaming results
-        handle_streaming_output(&mut receiver, &cli).await?;
+        handle_streaming_output(stream, &cli).await?;
     }
 
     Ok(())
@@ -244,7 +244,7 @@ enum OutputFormat {
 
 /// Handle streaming transcription output
 async fn handle_streaming_output(
-    receiver: &mut purr_core::StreamingReceiver,
+    mut stream: purr_core::StreamingTranscriptionResult,
     cli: &Cli,
 ) -> anyhow::Result<()> {
     use std::fs;
@@ -253,7 +253,10 @@ async fn handle_streaming_output(
     let mut output_buffer = String::new();
     let mut stdout = io::stdout();
 
-    while let Some(chunk) = receiver.recv().await {
+    use futures::StreamExt;
+    
+    while let Some(chunk_result) = stream.next().await {
+        let chunk = chunk_result?;
         all_chunks.push(chunk.clone());
 
         // Format the chunk for real-time output
@@ -994,7 +997,7 @@ async fn setup_config(cli: &Cli) -> anyhow::Result<TranscriptionConfig> {
     Ok(config)
 }
 
-fn handle_output(result: TranscriptionResult, cli: &Cli) -> anyhow::Result<()> {
+fn handle_output(result: purr_core::SyncTranscriptionResult, cli: &Cli) -> anyhow::Result<()> {
     // Prepare output content
     let output_content = match cli.output {
         OutputFormat::Text => {
