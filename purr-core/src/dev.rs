@@ -22,6 +22,7 @@ pub struct GpuStatus {
     pub vulkan_available: bool,
     pub cuda_available: bool,
     pub coreml_available: bool,
+    pub metal_available: bool,
     pub devices: Vec<Device>,
 }
 
@@ -97,6 +98,7 @@ pub fn check_gpu_status() -> GpuStatus {
         vulkan_available: cfg!(feature = "vulkan") && !devices.is_empty(),
         cuda_available: cfg!(feature = "cuda"),
         coreml_available: cfg!(feature = "coreml"),
+        metal_available: cfg!(feature = "metal"),
         devices,
     }
 }
