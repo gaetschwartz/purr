@@ -22,7 +22,7 @@ async fn test_transcribe_sample_files(#[files("../samples/*")] sample_path: Path
                 .with_gpu(false) // Use CPU for consistent test results
                 .with_sample_rate(16000);
 
-            let result = transcribe_audio_file(&sample_path, Some(config)).await;
+            let result = transcribe_file_sync(&sample_path, Some(config)).await;
 
             match result {
                 Ok(transcription) => {

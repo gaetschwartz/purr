@@ -15,34 +15,35 @@ pub use config::TranscriptionConfig;
 pub use dev::{check_gpu_status, list_devices, Device, GpuStatus};
 pub use error::{Result, WhisperError};
 pub use model::{ModelManager, WhisperModel};
+use tokio::try_join;
 use tracing::info;
 pub use transcription::{
     StreamingChunk, StreamingReceiver, TranscriptionResult, WhisperTranscriber,
 };
 
 /// High-level transcription function
-pub async fn transcribe_audio_file<P: AsRef<std::path::Path>>(
+pub async fn transcribe_file_sync<P: AsRef<std::path::Path>>(
     audio_path: P,
     config: Option<TranscriptionConfig>,
 ) -> Result<TranscriptionResult> {
     let config = config.unwrap_or_default();
 
     // Initialize transcriber
-    let mut transcriber = WhisperTranscriber::new(config.clone()).await?;
+    let mut transcriber = WhisperTranscriber::new(config).await?;
 
     info!("Transcribing audio file: {:?}", audio_path.as_ref());
     // Process audio
-    let mut audio_processor = AudioProcessor::new();
+    let mut audio_processor = AudioProcessor::new()?;
     let audio_data = audio_processor.load_audio(audio_path).await?;
 
     info!("Audio data loaded, starting transcription...");
 
     // Transcribe
-    transcriber.transcribe(audio_data).await
+    transcriber.transcribe_sync(audio_data)
 }
 
 /// True streaming transcription function that processes audio in chunks
-pub async fn transcribe_audio_file_streaming_realtime<P: AsRef<std::path::Path>>(
+pub async fn transcribe_file_stream<P: AsRef<std::path::Path>>(
     audio_path: P,
     config: Option<TranscriptionConfig>,
 ) -> Result<StreamingReceiver> {
@@ -54,11 +55,10 @@ pub async fn transcribe_audio_file_streaming_realtime<P: AsRef<std::path::Path>>
     );
 
     // Initialize transcriber
-    let transcriber = WhisperTranscriber::new(config.clone()).await?;
-
-    // Start streaming audio processing
-    let mut audio_processor = AudioProcessor::new();
-    let audio_stream = audio_processor.stream_audio(audio_path).await?;
+    let (transcriber, audio_stream) = try_join!(
+        WhisperTranscriber::new(config),
+        AudioProcessor::stream(audio_path)
+    )?;
 
     info!("Audio stream created, starting transcription...");
 

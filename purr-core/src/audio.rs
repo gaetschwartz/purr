@@ -6,8 +6,8 @@ use futures::Stream;
 use std::path::Path;
 use std::pin::Pin;
 use std::task::{Context, Poll};
-use tokio::task;
 use tokio::sync::mpsc;
+use tokio::task;
 use tracing::warn;
 
 /// Audio data structure
@@ -41,10 +41,10 @@ pub struct AudioChunk {
 impl AudioChunk {
     /// Target chunk duration in seconds
     pub const TARGET_DURATION: f32 = 10.0;
-    
+
     /// Target samples per chunk (10 seconds at 16kHz)
     pub const TARGET_SAMPLES: usize = (Self::TARGET_DURATION * 16000.0) as usize;
-    
+
     /// Create a new audio chunk
     pub fn new(samples: Vec<f32>, index: usize, start_time: f32, is_final: bool) -> Self {
         let duration = samples.len() as f32 / 16000.0;
@@ -79,30 +79,20 @@ impl Stream for AudioStream {
 }
 
 /// Audio processor using FFmpeg
-pub struct AudioProcessor {
-    initialized: bool,
-}
+pub struct AudioProcessor {}
 
 impl AudioProcessor {
     /// Create a new audio processor
-    pub fn new() -> Self {
-        Self { initialized: false }
-    }
+    pub fn new() -> Result<Self> {
+        ffmpeg::init()
+            .map_err(|e| WhisperError::FFmpeg(format!("Failed to initialize FFmpeg: {}", e)))?;
 
-    /// Initialize FFmpeg (call once)
-    fn ensure_initialized(&mut self) -> Result<()> {
-        if !self.initialized {
-            ffmpeg::init()
-                .map_err(|e| WhisperError::FFmpeg(format!("Failed to initialize FFmpeg: {}", e)))?;
-
-            // Set FFmpeg log level to quiet to suppress output
-            unsafe {
-                ffmpeg_next::sys::av_log_set_level(ffmpeg_next::sys::AV_LOG_QUIET);
-            }
-
-            self.initialized = true;
+        // Set FFmpeg log level to quiet to suppress output
+        unsafe {
+            ffmpeg_next::sys::av_log_set_level(ffmpeg_next::sys::AV_LOG_QUIET);
         }
-        Ok(())
+
+        Ok(Self {})
     }
 
     /// Load audio file and convert to the format expected by Whisper
@@ -111,8 +101,7 @@ impl AudioProcessor {
 
         // Run FFmpeg processing in a blocking task to avoid blocking the async runtime
         task::spawn_blocking(move || {
-            let mut processor = AudioProcessor::new();
-            processor.ensure_initialized()?;
+            let mut processor = AudioProcessor::new()?;
             processor.load_audio_sync(&path)
         })
         .await
@@ -120,32 +109,32 @@ impl AudioProcessor {
     }
 
     /// Stream audio file as chunks for real-time processing
-    pub async fn stream_audio<P: AsRef<Path>>(&mut self, path: P) -> Result<AudioStream> {
+    pub async fn stream<P: AsRef<Path>>(path: P) -> Result<AudioStream> {
         let path = path.as_ref().to_path_buf();
-        
+
         let (tx, rx) = mpsc::unbounded_channel();
-        
+
         // Process audio in a background task
         task::spawn_blocking(move || {
-            let mut processor = AudioProcessor::new();
-            if let Err(e) = processor.ensure_initialized() {
-                let _ = tx.send(Err(e));
-                return;
-            }
-            
+            let mut processor = match AudioProcessor::new() {
+                Err(e) => {
+                    let _ = tx.send(Err(e));
+                    return;
+                }
+                Ok(p) => p,
+            };
+
             if let Err(e) = processor.stream_audio_sync(&path, tx) {
                 // Error will already be sent through channel if possible
                 warn!("Audio streaming failed: {}", e);
             }
         });
-        
+
         Ok(AudioStream::new(rx))
     }
 
     /// Synchronous audio loading implementation
     fn load_audio_sync(&mut self, path: &Path) -> Result<AudioData> {
-        self.ensure_initialized()?;
-
         // Validate file exists
         if !path.exists() {
             return Err(WhisperError::AudioProcessing(format!(
@@ -259,15 +248,15 @@ impl AudioProcessor {
     }
 
     /// Synchronous streaming audio implementation
-    fn stream_audio_sync(&mut self, path: &Path, tx: mpsc::UnboundedSender<Result<AudioChunk>>) -> Result<()> {
-        self.ensure_initialized()?;
-
+    fn stream_audio_sync(
+        &mut self,
+        path: &Path,
+        tx: mpsc::UnboundedSender<Result<AudioChunk>>,
+    ) -> Result<()> {
         // Validate file exists
         if !path.exists() {
-            let error = WhisperError::AudioProcessing(format!(
-                "Audio file not found: {}",
-                path.display()
-            ));
+            let error =
+                WhisperError::AudioProcessing(format!("Audio file not found: {}", path.display()));
             let _ = tx.send(Err(error.clone()));
             return Err(error);
         }
@@ -336,15 +325,16 @@ impl AudioProcessor {
                                 let chunk_data = chunk_samples
                                     .drain(..AudioChunk::TARGET_SAMPLES)
                                     .collect::<Vec<f32>>();
-                                
+
                                 let start_time = total_samples_processed as f32 / 16000.0;
-                                let chunk = AudioChunk::new(chunk_data, chunk_index, start_time, false);
-                                
+                                let chunk =
+                                    AudioChunk::new(chunk_data, chunk_index, start_time, false);
+
                                 if tx.send(Ok(chunk)).is_err() {
                                     // Receiver dropped, stop processing
                                     return Ok(());
                                 }
-                                
+
                                 chunk_index += 1;
                                 total_samples_processed += AudioChunk::TARGET_SAMPLES as u64;
                             }
@@ -399,7 +389,8 @@ impl AudioProcessor {
         } else if chunk_index == 0 {
             // No chunks were sent, send error
             let error = WhisperError::AudioProcessing(
-                "No audio data could be extracted from file - file may be corrupted or unsupported".to_string(),
+                "No audio data could be extracted from file - file may be corrupted or unsupported"
+                    .to_string(),
             );
             let _ = tx.send(Err(error.clone()));
             return Err(error);
@@ -578,7 +569,7 @@ impl AudioProcessor {
     ) -> Result<()> {
         // This is identical to process_audio_frame but writes to output_samples buffer
         // instead of appending to the main samples vector
-        
+
         // Check if frame properties have changed and we need to recreate the resampler
         let current_format = frame.format();
         let current_rate = frame.rate();
@@ -606,7 +597,7 @@ impl AudioProcessor {
             current_format,
             ffmpeg::format::Sample::I16(_) | ffmpeg::format::Sample::F32(_)
         ) && frame.channels() == 1;
-        
+
         // We can handle direct conversion even for different sample rates
         let needs_resampling = !is_direct_convertible;
 
@@ -675,7 +666,7 @@ impl AudioProcessor {
                     unsafe {
                         let ptr = data.as_ptr() as *const i16;
                         let slice = std::slice::from_raw_parts(ptr, sample_count);
-                        
+
                         if current_rate == 16000 {
                             // Direct conversion for 16kHz
                             for &sample in slice {
@@ -698,7 +689,7 @@ impl AudioProcessor {
                     unsafe {
                         let ptr = data.as_ptr() as *const f32;
                         let slice = std::slice::from_raw_parts(ptr, sample_count);
-                        
+
                         if current_rate == 16000 {
                             // Direct copy for 16kHz
                             output_samples.extend_from_slice(slice);
@@ -725,29 +716,5 @@ impl AudioProcessor {
         }
 
         Ok(())
-    }
-}
-
-impl Default for AudioProcessor {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn test_audio_processor_creation() {
-        let processor = AudioProcessor::new();
-        assert!(!processor.initialized);
-    }
-
-    #[tokio::test]
-    async fn test_missing_file_error() {
-        let mut processor = AudioProcessor::new();
-        let result = processor.load_audio("nonexistent_file.wav").await;
-        assert!(result.is_err());
     }
 }

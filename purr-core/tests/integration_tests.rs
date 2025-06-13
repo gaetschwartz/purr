@@ -24,7 +24,7 @@ async fn test_transcription_config() {
 #[tokio::test]
 async fn test_missing_audio_file() {
     let config = TranscriptionConfig::new().with_gpu(false);
-    let result = transcribe_audio_file("nonexistent_file.wav", Some(config)).await;
+    let result = transcribe_file_sync("nonexistent_file.wav", Some(config)).await;
 
     assert!(result.is_err());
     match result.unwrap_err() {
@@ -111,7 +111,7 @@ async fn test_transcription_configurations() {
     for (i, config) in configs.into_iter().enumerate() {
         println!("Testing configuration {}", i + 1);
 
-        let result = transcribe_audio_file(sample_path, Some(config)).await;
+        let result = transcribe_file_sync(sample_path, Some(config)).await;
 
         match result {
             Ok(transcription) => {
@@ -154,7 +154,7 @@ async fn test_transcription_output_formats() {
     config.output_format.include_timestamps = true;
     config.output_format.word_timestamps = true;
 
-    let result = transcribe_audio_file(sample_path, Some(config)).await;
+    let result = transcribe_file_sync(sample_path, Some(config)).await;
 
     match result {
         Ok(transcription) => {
@@ -190,7 +190,7 @@ async fn test_transcription_output_formats() {
 #[tokio::test]
 async fn test_transcription_error_handling(#[case] invalid_path: &str) {
     let config = TranscriptionConfig::new().with_gpu(false);
-    let result = transcribe_audio_file(invalid_path, Some(config)).await;
+    let result = transcribe_file_sync(invalid_path, Some(config)).await;
 
     assert!(
         result.is_err(),
