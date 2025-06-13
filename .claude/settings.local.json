@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cargo run:*)",
+      "Bash(ffprobe:*)",
+      "Bash(find:*)",
+      "Bash(cargo test:*)",
+      "Bash(ffmpeg:*)",
+      "Bash(dd:*)",
+      "Bash(rm:*)",
+      "Bash(:*)",
+      "Edit(*)",
+      "Read(*)",
+      "Bash(cargo check:*)"
+    ],
+    "deny": []
+  }
+}
