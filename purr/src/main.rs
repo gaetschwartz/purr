@@ -864,6 +864,15 @@ async fn handle_devices_command(command: GpuCommands, verbose: bool) -> anyhow::
             );
 
             println!(
+                "Metal support: {}",
+                if status.metal_available {
+                    "Available".green().bold().to_string()
+                } else {
+                    "Not available".red().bold().to_string()
+                }
+            );
+
+            println!(
                 "GPU devices: {}",
                 if status.devices.is_empty() {
                     "None detected".red().bold().to_string()
