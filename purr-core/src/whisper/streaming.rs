@@ -36,18 +36,19 @@ impl WhisperTranscriber for StreamWhisperTranscriber {
     }
 
     fn transcribe(
-        &mut self,
+        self,
         input: AudioStream,
-    ) -> impl Future<Output = crate::Result<StreamingTranscriptionResult>> + '_ {
+    ) -> impl Future<Output = crate::Result<StreamingTranscriptionResult>> {
         async move {
             let (tx, rx) = mpsc::unbounded_channel();
             
-            // Process the stream inline since we can't move the context
-            let result = self.process_audio_stream(input, tx.clone()).await;
-            
-            if let Err(e) = result {
-                let _ = tx.send(Err(e));
-            }
+            // Spawn background task to process audio stream
+            tokio::spawn(async move {
+                let mut transcriber = self;
+                if let Err(e) = transcriber.process_audio_stream(input, tx.clone()).await {
+                    let _ = tx.send(Err(e));
+                }
+            });
 
             Ok(StreamingTranscriptionResult {
                 stream: Box::pin(UnboundedReceiverStream::new(rx)),

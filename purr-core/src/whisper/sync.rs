@@ -35,7 +35,7 @@ impl WhisperTranscriber for SyncWhisperTranscriber {
     }
 
     /// Transcribe audio data
-    async fn transcribe(&mut self, audio_data: AudioData) -> Result<SyncTranscriptionResult> {
+    async fn transcribe(mut self, audio_data: AudioData) -> Result<SyncTranscriptionResult> {
         let config = self.config.clone();
 
         // Run transcription synchronously since we can't clone the context
