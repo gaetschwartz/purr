@@ -8,8 +8,8 @@ pub enum WhisperError {
     #[error("Audio processing error: {0}")]
     AudioProcessing(String),
 
-    #[error("Whisper model error: {0}")]
-    WhisperModel(String),
+    #[error("Whisper error: {0}")]
+    Whisper(whisper_rs::WhisperError),
 
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
@@ -25,6 +25,9 @@ pub enum WhisperError {
 
     #[error("GPU acceleration error: {0}")]
     GpuAcceleration(String),
+
+    #[error("Unknown error: {0}")]
+    Unknown(String),
 }
 
 /// Result type alias for purr operations
@@ -42,8 +45,8 @@ impl PartialEq for WhisperError {
             WhisperError::AudioProcessing(msg) => {
                 matches!(other, WhisperError::AudioProcessing(o) if msg == o)
             }
-            WhisperError::WhisperModel(msg) => {
-                matches!(other, WhisperError::WhisperModel(o) if msg == o)
+            WhisperError::Whisper(msg) => {
+                matches!(other, WhisperError::Whisper(o) if msg.to_string() == o.to_string())
             }
             WhisperError::Io(err) => {
                 matches!(other, WhisperError::Io(e) if err.to_string() == e.to_string())
@@ -59,6 +62,9 @@ impl PartialEq for WhisperError {
             }
             WhisperError::GpuAcceleration(msg) => {
                 matches!(other, WhisperError::GpuAcceleration(o) if msg == o)
+            }
+            WhisperError::Unknown(msg) => {
+                matches!(other, WhisperError::Unknown(o) if msg == o)
             }
         }
     }

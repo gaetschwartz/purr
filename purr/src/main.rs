@@ -4,12 +4,13 @@ mod fmt;
 use clap::{Parser, Subcommand};
 use indicatif::{HumanBytes, HumanDuration, ProgressBar, ProgressStyle};
 use owo_colors::OwoColorize as _;
+use purr_core::math::{ByteSpeed, RoundToUnit as _};
 use purr_core::{
     check_gpu_status, list_devices, transcribe_audio_file, transcribe_audio_file_streaming,
-    ModelManager, TranscriptionConfig, WhisperError, WhisperModel,
+    ModelManager, TranscriptionConfig, WhisperModel,
 };
 use std::io::{self, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process;
 use std::str::FromStr as _;
 use tracing::{debug, error, info};
@@ -25,13 +26,16 @@ async fn main() -> anyhow::Result<()> {
     if cli.verbose {
         tracing_subscriber::fmt()
             .with_max_level(tracing::Level::TRACE)
+            .with_env_filter(
+                EnvFilter::builder().parse("purr=trace,whisper_rs::whisper_logging_hook=warn")?,
+            )
             .with_writer(std::io::stderr)
             .init();
     } else {
         tracing_subscriber::fmt()
             .with_max_level(tracing::Level::INFO)
             .with_env_filter(
-                EnvFilter::builder().parse("info,whisper_rs::whisper_logging_hook=warn")?,
+                EnvFilter::builder().parse("info,whisper_rs::whisper_logging_hook=error")?,
             )
             .compact()
             .without_time()
@@ -64,25 +68,7 @@ async fn main() -> anyhow::Result<()> {
         process::exit(1);
     }
 
-    // Build transcription config
-    let mut config = TranscriptionConfig::new()
-        .with_gpu(!cli.no_gpu)
-        .with_sample_rate(16000); // Whisper's preferred sample rate
-
-    if let Some(ref model_path) = cli.model {
-        config = config.with_model_path(model_path.clone());
-    }
-
-    if let Some(ref language) = cli.language {
-        config = config.with_language(language.clone());
-    }
-
-    config = config.with_threads(cli.threads.unwrap_or_else(num_cpus::get));
-
-    config.temperature = cli.temperature;
-    config.output_format.include_timestamps = cli.timestamps;
-    config.output_format.word_timestamps = cli.word_timestamps;
-    config = config.with_verbose(cli.verbose);
+    let config = setup_config(&cli).await?;
 
     // Print startup info
     if cli.verbose {
@@ -107,50 +93,8 @@ async fn main() -> anyhow::Result<()> {
             Ok(receiver) => receiver,
             Err(e) => {
                 // Check if this is a "no model found" error
-
-                if matches!(e, WhisperError::WhisperModel(_)) {
-                    // Prompt user to download base model
-                    if prompt_for_model_download().await? {
-                        // Retry streaming transcription after downloading model
-                        let mut config = TranscriptionConfig::new()
-                            .with_gpu(!cli.no_gpu)
-                            .with_sample_rate(16000);
-
-                        if let Some(ref model_path) = cli.model {
-                            config = config.with_model_path(model_path.clone());
-                        }
-
-                        if let Some(ref language) = cli.language {
-                            config = config.with_language(language.clone());
-                        }
-
-                        config = config.with_threads(cli.threads.unwrap_or_else(num_cpus::get));
-
-                        config.temperature = cli.temperature;
-                        config.output_format.include_timestamps = cli.timestamps;
-                        config.output_format.word_timestamps = cli.word_timestamps;
-                        config = config.with_verbose(cli.verbose);
-
-                        println!("{} Streaming transcription...", "Info:".blue().bold());
-                        match transcribe_audio_file_streaming(&audio_file, Some(config)).await {
-                            Ok(receiver) => receiver,
-                            Err(e) => {
-                                error!("Streaming transcription failed: {}", e);
-                                process::exit(1);
-                            }
-                        }
-                    } else {
-                        error!(
-                            "No model available. Download one with: {}{}",
-                            env!("CARGO_PKG_NAME").cyan(),
-                            " models download base".cyan()
-                        );
-                        process::exit(1);
-                    }
-                } else {
-                    error!("Streaming transcription failed: {}", e);
-                    process::exit(1);
-                }
+                error!("Streaming transcription failed: {}", e);
+                process::exit(1);
             }
         };
 
@@ -165,51 +109,8 @@ async fn main() -> anyhow::Result<()> {
     let result = match transcribe_audio_file(&audio_file, Some(config)).await {
         Ok(result) => result,
         Err(e) => {
-            // Check if this is a "no model found" error
-            let error_str = e.to_string();
-            if error_str.contains("No Whisper model found") {
-                // Prompt user to download base model
-                if prompt_for_model_download().await? {
-                    // Retry transcription after downloading model
-                    let mut config = TranscriptionConfig::new()
-                        .with_gpu(!cli.no_gpu)
-                        .with_sample_rate(16000);
-
-                    if let Some(ref model_path) = cli.model {
-                        config = config.with_model_path(model_path.clone());
-                    }
-
-                    if let Some(ref language) = cli.language {
-                        config = config.with_language(language.clone());
-                    }
-
-                    config = config.with_threads(cli.threads.unwrap_or_else(num_cpus::get));
-
-                    config.temperature = cli.temperature;
-                    config.output_format.include_timestamps = cli.timestamps;
-                    config.output_format.word_timestamps = cli.word_timestamps;
-                    config = config.with_verbose(cli.verbose);
-
-                    println!("{} Transcribing audio...", "Info:".blue().bold());
-                    match transcribe_audio_file(&audio_file, Some(config)).await {
-                        Ok(result) => result,
-                        Err(e) => {
-                            error!("Transcription failed: {}", e);
-                            process::exit(1);
-                        }
-                    }
-                } else {
-                    error!(
-                        "No model available. Download one with: {}{}",
-                        env!("CARGO_PKG_NAME").cyan(),
-                        " models download base".cyan()
-                    );
-                    process::exit(1);
-                }
-            } else {
-                error!("Transcription failed: {}", e);
-                process::exit(1);
-            }
+            error!("Transcription failed: {}", e);
+            process::exit(1);
         }
     };
 
@@ -300,7 +201,7 @@ struct Cli {
 
     /// Path to the Whisper model file
     #[arg(short, long)]
-    model: Option<PathBuf>,
+    model: Option<String>,
 
     /// Language code (e.g., en, es, fr). Auto-detect if not specified
     #[arg(short, long)]
@@ -494,18 +395,36 @@ async fn handle_streaming_output(
 }
 
 /// Prompt user to download base model when none is found
-async fn prompt_for_model_download() -> anyhow::Result<bool> {
-    println!();
-    println!("{} No Whisper model found!", "Notice:".yellow().bold());
-    println!("To transcribe audio, you need to download a Whisper model first.");
-    println!();
+async fn prompt_for_model_download(
+    model: Option<WhisperModel>,
+) -> anyhow::Result<Option<WhisperModel>> {
+    if let Some(model) = model {
+        println!();
+        println!(
+            "{} Model {} is not downloaded!",
+            "Notice:".yellow().bold(),
+            model.as_str().green().bold()
+        );
+    } else {
+        println!();
+        println!("{} No Whisper model found!", "Notice:".yellow().bold());
+        println!("To transcribe audio, you need to download a Whisper model first.");
+        println!();
+        println!(
+            "The {} model is recommended for most users:",
+            "base".green().bold()
+        );
+    }
+    let model = model.unwrap_or(WhisperModel::Base);
+    println!("  • {}", model.description().green());
     println!(
-        "The {} model is recommended for most users:",
-        "base".green().bold()
+        "  • Size: ~{}",
+        HumanBytes(model.size().round_to_unit(1024)).yellow()
     );
-    println!("  • Good balance of speed and accuracy");
-    println!("  • Size: ~142 MB");
-    println!("  • Download time: ~1-2 minutes");
+    println!(
+        "  • Download time: {}",
+        HumanDuration(model.estimated_download_time(64u32 * ByteSpeed::MIBPS)).yellow()
+    );
     println!();
 
     print!("Would you like to download the base model now? [Y/n]: ");
@@ -523,7 +442,7 @@ async fn prompt_for_model_download() -> anyhow::Result<bool> {
         println!("{} Downloading base model...", "Info:".blue().bold());
 
         let model_manager = ModelManager::new()?;
-        match model_manager.download_model(WhisperModel::Base).await {
+        match model_manager.download_model(model).await {
             Ok(model_path) => {
                 println!(
                     "{} Model downloaded successfully to: {}",
@@ -531,11 +450,11 @@ async fn prompt_for_model_download() -> anyhow::Result<bool> {
                     model_path.display()
                 );
                 println!();
-                Ok(true)
+                Ok(Some(model))
             }
             Err(e) => {
                 error!("Failed to download model: {}", e);
-                Ok(false)
+                Err(e.into())
             }
         }
     } else {
@@ -544,9 +463,9 @@ async fn prompt_for_model_download() -> anyhow::Result<bool> {
         println!(
             "  {}{}",
             env!("CARGO_PKG_NAME").cyan(),
-            " models download base".cyan()
+            " models download <model>".cyan()
         );
-        Ok(false)
+        Ok(None)
     }
 }
 
@@ -573,7 +492,7 @@ async fn handle_model_command(command: ModelCommands, verbose: bool) -> anyhow::
             })?;
 
             // check if it is already downloaded
-            if !force && model_manager.is_model_downloaded(&whisper_model).await {
+            if !force && model_manager.is_model_downloaded(whisper_model).await {
                 println!(
                     "{} Model {} is already downloaded.",
                     "Info:".blue().bold(),
@@ -675,7 +594,7 @@ async fn handle_model_command(command: ModelCommands, verbose: bool) -> anyhow::
                     println!();
 
                     for model in downloaded {
-                        let path = model_manager.get_model_path(&model);
+                        let path = model_manager.get_model_path(model);
                         let size = if let Ok(metadata) = std::fs::metadata(&path) {
                             format_file_size(metadata.len())
                         } else {
@@ -712,7 +631,7 @@ async fn handle_model_command(command: ModelCommands, verbose: bool) -> anyhow::
                 )
             })?;
 
-            if !model_manager.is_model_downloaded(&whisper_model).await {
+            if !model_manager.is_model_downloaded(whisper_model).await {
                 println!(
                     "{} Model {} is not downloaded.",
                     "Warning:".yellow().bold(),
@@ -721,7 +640,7 @@ async fn handle_model_command(command: ModelCommands, verbose: bool) -> anyhow::
                 return Ok(());
             }
 
-            model_manager.delete_model(&whisper_model).await?;
+            model_manager.delete_model(whisper_model).await?;
 
             println!(
                 "{} Model {} deleted successfully.",
@@ -745,7 +664,7 @@ async fn handle_model_command(command: ModelCommands, verbose: bool) -> anyhow::
             println!("Description: {}", whisper_model.description());
             println!("Filename: {}", whisper_model.filename().yellow());
 
-            let is_downloaded = model_manager.is_model_downloaded(&whisper_model).await;
+            let is_downloaded = model_manager.is_model_downloaded(whisper_model).await;
             println!(
                 "Downloaded: {}",
                 if is_downloaded {
@@ -756,7 +675,7 @@ async fn handle_model_command(command: ModelCommands, verbose: bool) -> anyhow::
             );
 
             if is_downloaded {
-                let path = model_manager.get_model_path(&whisper_model);
+                let path = model_manager.get_model_path(whisper_model);
                 println!("Path: {}", path.display());
 
                 if let Ok(metadata) = std::fs::metadata(&path) {
@@ -1072,6 +991,77 @@ fn print_model_groups() {
         // Add newline for spacing
         println!();
     }
+}
+
+async fn setup_config(cli: &Cli) -> anyhow::Result<TranscriptionConfig> {
+    // Build transcription config
+    let mut config = TranscriptionConfig::new()
+        .with_gpu(!cli.no_gpu)
+        .with_sample_rate(16000); // Whisper's preferred sample rate
+
+    let model_manager = ModelManager::new()?;
+    if let Some(ref model_string) = cli.model {
+        let model_path = Path::new(model_string);
+        if model_path.is_absolute() {
+            // If absolute path, use it directly
+            if !model_path.exists() {
+                return Err(anyhow::anyhow!(
+                    "Model file not found at: {}",
+                    model_path.display()
+                ));
+            }
+            config = config.with_model_path(model_path);
+        } else {
+            // Otherwise, resolve relative to current directory
+            let model_path = std::env::current_dir()?.join(model_path);
+            if model_path.exists() {
+                config = config.with_model_path(model_path);
+            } else {
+                // intelligently check if the model is downloaded
+                let model = WhisperModel::from_str(model_string)?;
+                if model_manager.is_model_downloaded(model).await {
+                    config = config.with_model_path(model_manager.get_model_path(model));
+                } else {
+                    // If not downloaded, prompt user to download
+                    if let Some(model) = prompt_for_model_download(Some(model)).await? {
+                        model_manager.assign_model_path(&mut config, model);
+                    } else {
+                        return Err(anyhow::anyhow!(
+                            "No model specified and no downloaded models found."
+                        ));
+                    }
+                }
+            }
+        }
+    } else {
+        // No model specified, check if any downloaded models exist
+        if let Some(model) = model_manager.find_first_available_model().await {
+            config = config.with_model_path(model);
+        } else {
+            // Prompt user to download the base model
+            if let Some(model) = prompt_for_model_download(None).await? {
+                // If user agrees, download the base model
+                model_manager.assign_model_path(&mut config, model);
+            } else {
+                return Err(anyhow::anyhow!(
+                    "No model specified and no downloaded models found."
+                ));
+            }
+        }
+    }
+
+    if let Some(ref language) = cli.language {
+        config = config.with_language(language.clone());
+    }
+
+    config = config.with_threads(cli.threads.unwrap_or_else(num_cpus::get));
+
+    config.temperature = cli.temperature;
+    config.output_format.include_timestamps = cli.timestamps;
+    config.output_format.word_timestamps = cli.word_timestamps;
+    config = config.with_verbose(cli.verbose);
+
+    Ok(config)
 }
 
 /// Helper struct for organizing model information

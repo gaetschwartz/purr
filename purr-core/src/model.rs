@@ -1,16 +1,20 @@
 //! Model downloading and management functionality
 
 use crate::error::{Result, WhisperError};
+use crate::math::ByteSpeed;
+use core::str;
 use directories::ProjectDirs;
 use reqwest;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
+use std::time::Duration;
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
 use tracing::{debug, info};
 
 /// Available Whisper model types
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
 pub enum WhisperModel {
     /// Tiny model (39 MB, fastest)
     Tiny,
@@ -76,7 +80,7 @@ pub enum WhisperModel {
 
 impl WhisperModel {
     /// Get the model identifier string used in filenames and URLs
-    pub fn as_str(&self) -> &'static str {
+    pub const fn as_str(&self) -> &'static str {
         match self {
             WhisperModel::Tiny => "tiny",
             WhisperModel::TinyEn => "tiny.en",
@@ -112,7 +116,7 @@ impl WhisperModel {
     }
 
     /// Get the model description
-    pub fn description(&self) -> &'static str {
+    pub const fn description(&self) -> &'static str {
         match self {
             WhisperModel::Tiny => "Tiny model (39 MB, fastest, lowest accuracy)",
             WhisperModel::TinyEn => "Tiny English-only model (39 MB, fastest for English)",
@@ -150,8 +154,8 @@ impl WhisperModel {
     }
 
     /// Get all available models
-    pub fn all_models() -> Vec<Self> {
-        vec![
+    pub const fn all_models() -> &'static [WhisperModel] {
+        &[
             WhisperModel::Tiny,
             WhisperModel::TinyEn,
             WhisperModel::TinyQ5_1,
@@ -183,6 +187,50 @@ impl WhisperModel {
             WhisperModel::LargeV3TurboQ5_0,
             WhisperModel::LargeV3TurboQ8_0,
         ]
+    }
+
+    pub const fn size(&self) -> u64 {
+        match self {
+            WhisperModel::Tiny => 39 * 1024 * 1024,        // 39 MB
+            WhisperModel::TinyEn => 39 * 1024 * 1024,      // 39 MB
+            WhisperModel::TinyQ5_1 => 31 * 1024 * 1024,    // 31 MB
+            WhisperModel::TinyEnQ5_1 => 31 * 1024 * 1024,  // 31 MB
+            WhisperModel::TinyQ8_0 => 42 * 1024 * 1024,    // 42 MB
+            WhisperModel::Base => 142 * 1024 * 1024,       // 142 MB
+            WhisperModel::BaseEn => 142 * 1024 * 1024,     // 142 MB
+            WhisperModel::BaseQ5_1 => 103 * 1024 * 1024,   // 103 MB
+            WhisperModel::BaseEnQ5_1 => 103 * 1024 * 1024, // 103 MB
+            WhisperModel::BaseQ8_0 => 149 * 1024 * 1024,   // 149 MB
+            WhisperModel::Small => 466 * 1024 * 1024,      // 466 MB
+            WhisperModel::SmallEn => 466 * 1024 * 1024,    // 466 MB
+            // TinyDiarize model size is not specified, assuming similar to SmallEn
+            // Adjust if actual size is known
+            WhisperModel::SmallEnTdrz => {
+                466 * 1024 * 1024 // Assuming ~50MB extra for diarization features
+            }
+            WhisperModel::SmallQ5_1 => 340 * 1024 * 1024, // 340 MB
+            WhisperModel::SmallEnQ5_1 => 340 * 1024 * 1024, // 340 MB
+            WhisperModel::SmallQ8_0 => 488 * 1024 * 1024, // 488 MB
+            WhisperModel::Medium => 1_500 * 1024 * 1024,  // 1.5 GB
+            WhisperModel::MediumEn => 1_500 * 1024 * 1024, // 1.5 GB
+            WhisperModel::MediumQ5_0 => 1_100 * 1024 * 1024, // 1.1 GB
+            WhisperModel::MediumEnQ5_0 => 1_100 * 1024 * 1024, // 1.1 GB
+            WhisperModel::MediumQ8_0 => 1_600 * 1024 * 1024, // 1.6 GB
+            WhisperModel::LargeV1 => 3_000 * 1024 * 1024, // 3.0 GB
+            WhisperModel::LargeV2 => 3_000 * 1024 * 1024, // 3.0 GB
+            WhisperModel::LargeV2Q5_0 => 2_300 * 1024 * 1024, // 2.3 GB
+            WhisperModel::LargeV2Q8_0 => 3_200 * 1024 * 1024, // 3.2 GB
+            WhisperModel::LargeV3 => 3_000 * 1024 * 1024, // 3.0 GB
+            WhisperModel::LargeV3Q5_0 => 2_300 * 1024 * 1024, // 2.3 GB
+            WhisperModel::LargeV3Turbo => 1_500 * 1024 * 1024, // 1.5 GB
+            WhisperModel::LargeV3TurboQ5_0 => 1_200 * 1024 * 1024, // 1.2 GB
+            WhisperModel::LargeV3TurboQ8_0 => 1_600 * 1024 * 1024, // 1.6 GB
+        }
+    }
+
+    pub fn estimated_download_time(&self, speed: ByteSpeed) -> Duration {
+        // Calculate time in seconds
+        self.size() as usize / speed
     }
 
     /// Get the download URL for this model
@@ -276,14 +324,23 @@ impl ModelManager {
     }
 
     /// Check if a model is already downloaded
-    pub async fn is_model_downloaded(&self, model: &WhisperModel) -> bool {
+    pub async fn is_model_downloaded(&self, model: WhisperModel) -> bool {
         let model_path = self.get_model_path(model);
         model_path.exists()
     }
 
     /// Get the full path to a model file
-    pub fn get_model_path(&self, model: &WhisperModel) -> PathBuf {
+    pub fn get_model_path(&self, model: WhisperModel) -> PathBuf {
         self.models_dir.join(model.filename())
+    }
+
+    /// Assign a model path to a transcription configuration
+    pub fn assign_model_path(
+        &self,
+        config: &mut crate::config::TranscriptionConfig,
+        model: WhisperModel,
+    ) {
+        config.model_path = Some(self.get_model_path(model));
     }
 
     /// Find the first available model (for auto-selection)
@@ -298,16 +355,16 @@ impl ModelManager {
             WhisperModel::TinyEn,
         ];
 
-        for model in &recommended {
+        for model in recommended {
             if self.is_model_downloaded(model).await {
                 return Some(self.get_model_path(model));
             }
         }
 
         // Check any available model
-        for model in WhisperModel::all_models() {
-            if self.is_model_downloaded(&model).await {
-                return Some(self.get_model_path(&model));
+        for &model in WhisperModel::all_models() {
+            if self.is_model_downloaded(model).await {
+                return Some(self.get_model_path(model));
             }
         }
 
@@ -330,7 +387,7 @@ impl ModelManager {
     {
         self.ensure_models_dir().await?;
 
-        let model_path = self.get_model_path(&model);
+        let model_path = self.get_model_path(model);
 
         debug!("Downloading model {} to {:?}", model.as_str(), model_path);
 
@@ -401,8 +458,8 @@ impl ModelManager {
 
         let mut downloaded = Vec::new();
 
-        for model in WhisperModel::all_models() {
-            if self.is_model_downloaded(&model).await {
+        for &model in WhisperModel::all_models() {
+            if self.is_model_downloaded(model).await {
                 downloaded.push(model);
             }
         }
@@ -411,7 +468,7 @@ impl ModelManager {
     }
 
     /// Delete a downloaded model
-    pub async fn delete_model(&self, model: &WhisperModel) -> Result<()> {
+    pub async fn delete_model(&self, model: WhisperModel) -> Result<()> {
         let model_path = self.get_model_path(model);
 
         if model_path.exists() {
@@ -422,6 +479,37 @@ impl ModelManager {
         }
 
         Ok(())
+    }
+
+    /// Find a default model file
+    pub async fn find_default_model(&self) -> Result<PathBuf> {
+        // First try to find a model using the model manager (XDG compliant)
+        if let Ok(model_manager) = crate::model::ModelManager::new() {
+            if let Some(model_path) = model_manager.find_first_available_model().await {
+                return Ok(model_path);
+            }
+        }
+
+        // Fallback to legacy locations for backward compatibility
+        let possible_paths = [
+            "models/ggml-base.en.bin",
+            "models/ggml-base.bin",
+            "ggml-base.en.bin",
+            "ggml-base.bin",
+            "whisper-base.en.bin",
+            "whisper-base.bin",
+        ];
+
+        for path in &possible_paths {
+            let path_buf = PathBuf::from(path);
+            if path_buf.exists() {
+                return Ok(path_buf);
+            }
+        }
+
+        Err(WhisperError::Configuration(
+            "No Whisper model found".to_string(),
+        ))
     }
 }
 

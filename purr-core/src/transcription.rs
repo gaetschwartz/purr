@@ -4,9 +4,9 @@ use crate::{
     audio::AudioData,
     config::TranscriptionConfig,
     error::{Result, WhisperError},
+    ModelManager,
 };
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
 use tokio::{sync::mpsc, task};
 use tracing::{error, info};
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
@@ -101,20 +101,25 @@ impl WhisperTranscriber {
 
         let config_clone = config.clone();
 
+        let model_manager = ModelManager::new()?;
+
         // Load the model (which may involve async model discovery)
-        let context = Self::load_model(&config_clone).await?;
+        let context = Self::load_model(&config_clone, &model_manager).await?;
 
         Ok(Self { context, config })
     }
 
     /// Load the Whisper model
-    async fn load_model(config: &TranscriptionConfig) -> Result<WhisperContext> {
+    async fn load_model(
+        config: &TranscriptionConfig,
+        model_manager: &ModelManager,
+    ) -> Result<WhisperContext> {
         // Determine model path
         let model_path = if let Some(path) = &config.model_path {
             path.clone()
         } else {
             // Try to find a default model
-            Self::find_default_model().await?
+            model_manager.find_default_model().await?
         };
 
         if config.verbose {
@@ -131,39 +136,8 @@ impl WhisperTranscriber {
         let model_path_str = model_path.to_string_lossy().to_string();
         task::spawn_blocking(move || WhisperContext::new_with_params(&model_path_str, params))
             .await
-            .map_err(|e| WhisperError::WhisperModel(format!("Task join error: {}", e)))?
-            .map_err(|e| WhisperError::WhisperModel(format!("Failed to load model: {}", e)))
-    }
-
-    /// Find a default model file
-    async fn find_default_model() -> Result<PathBuf> {
-        // First try to find a model using the model manager (XDG compliant)
-        if let Ok(model_manager) = crate::model::ModelManager::new() {
-            if let Some(model_path) = model_manager.find_first_available_model().await {
-                return Ok(model_path);
-            }
-        }
-
-        // Fallback to legacy locations for backward compatibility
-        let possible_paths = [
-            "models/ggml-base.en.bin",
-            "models/ggml-base.bin",
-            "ggml-base.en.bin",
-            "ggml-base.bin",
-            "whisper-base.en.bin",
-            "whisper-base.bin",
-        ];
-
-        for path in &possible_paths {
-            let path_buf = PathBuf::from(path);
-            if path_buf.exists() {
-                return Ok(path_buf);
-            }
-        }
-
-        Err(WhisperError::Configuration(
-            "No Whisper model found".to_string(),
-        ))
+            .map_err(|e| WhisperError::Unknown(format!("Task join error: {}", e)))?
+            .map_err(WhisperError::Whisper)
     }
 
     /// Transcribe audio data

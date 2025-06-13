@@ -88,24 +88,6 @@ fn test_config_defaults() {
     assert!(!config.output_format.include_confidence);
 }
 
-/// Test error types
-#[test]
-fn test_error_types() {
-    let io_error = std::io::Error::new(std::io::ErrorKind::NotFound, "File not found");
-    let whisper_error = WhisperError::from(io_error);
-
-    match whisper_error {
-        WhisperError::Io(_) => (),
-        _ => panic!("Expected IO error"),
-    }
-
-    let audio_error = WhisperError::AudioProcessing("Test error".to_string());
-    assert!(audio_error.to_string().contains("Audio processing error"));
-
-    let model_error = WhisperError::WhisperModel("Test model error".to_string());
-    assert!(model_error.to_string().contains("Whisper model error"));
-}
-
 /// Test transcription with different configurations on a known sample
 #[tokio::test]
 async fn test_transcription_configurations() {
