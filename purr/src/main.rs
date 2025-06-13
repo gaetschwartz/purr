@@ -6,7 +6,7 @@ use indicatif::{HumanBytes, HumanDuration, ProgressBar, ProgressStyle};
 use owo_colors::OwoColorize as _;
 use purr_core::math::{ByteSpeed, RoundToUnit as _};
 use purr_core::{
-    check_gpu_status, list_devices, transcribe_audio_file, transcribe_audio_file_streaming,
+    check_gpu_status, list_devices, transcribe_audio_file, transcribe_audio_file_streaming_realtime,
     ModelManager, TranscriptionConfig, WhisperModel,
 };
 use std::io::{self, Write};
@@ -89,7 +89,7 @@ async fn main() -> anyhow::Result<()> {
         info!("Streaming transcription...");
 
         // Handle streaming transcription
-        let mut receiver = match transcribe_audio_file_streaming(&audio_file, Some(config)).await {
+        let mut receiver = match transcribe_audio_file_streaming_realtime(&audio_file, Some(config)).await {
             Ok(receiver) => receiver,
             Err(e) => {
                 // Check if this is a "no model found" error

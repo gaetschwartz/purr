@@ -10,7 +10,7 @@ pub mod math;
 pub mod model;
 pub mod transcription;
 
-pub use audio::AudioProcessor;
+pub use audio::{AudioChunk, AudioProcessor, AudioStream};
 pub use config::TranscriptionConfig;
 pub use dev::{check_gpu_status, list_devices, Device, GpuStatus};
 pub use error::{Result, WhisperError};
@@ -19,6 +19,7 @@ use tracing::info;
 pub use transcription::{
     StreamingChunk, StreamingReceiver, TranscriptionResult, WhisperTranscriber,
 };
+
 
 /// High-level transcription function
 pub async fn transcribe_audio_file<P: AsRef<std::path::Path>>(
@@ -41,7 +42,7 @@ pub async fn transcribe_audio_file<P: AsRef<std::path::Path>>(
     transcriber.transcribe(audio_data).await
 }
 
-/// High-level streaming transcription function
+/// High-level streaming transcription function (simulated streaming)
 pub async fn transcribe_audio_file_streaming<P: AsRef<std::path::Path>>(
     audio_path: P,
     config: Option<TranscriptionConfig>,
@@ -57,4 +58,26 @@ pub async fn transcribe_audio_file_streaming<P: AsRef<std::path::Path>>(
 
     // Start streaming transcription (consumes the transcriber)
     transcriber.transcribe_streaming(audio_data).await
+}
+
+/// True streaming transcription function that processes audio in chunks
+pub async fn transcribe_audio_file_streaming_realtime<P: AsRef<std::path::Path>>(
+    audio_path: P,
+    config: Option<TranscriptionConfig>,
+) -> Result<StreamingReceiver> {
+    let config = config.unwrap_or_default();
+
+    info!("Starting real-time streaming transcription for: {:?}", audio_path.as_ref());
+
+    // Initialize transcriber
+    let transcriber = WhisperTranscriber::new(config.clone()).await?;
+
+    // Start streaming audio processing
+    let mut audio_processor = AudioProcessor::new();
+    let audio_stream = audio_processor.stream_audio(audio_path).await?;
+
+    info!("Audio stream created, starting transcription...");
+
+    // Start streaming transcription (consumes both transcriber and stream)
+    transcriber.transcribe_audio_stream(audio_stream).await
 }

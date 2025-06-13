@@ -1,14 +1,15 @@
 //! Whisper transcription functionality
 
 use crate::{
-    audio::AudioData,
+    audio::{AudioData, AudioStream},
     config::TranscriptionConfig,
     error::{Result, WhisperError},
     ModelManager,
 };
+use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use tokio::{sync::mpsc, task};
-use tracing::{error, info};
+use tracing::{debug, error, info, warn};
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
 
 /// Transcription result
@@ -137,7 +138,7 @@ impl WhisperTranscriber {
         task::spawn_blocking(move || WhisperContext::new_with_params(&model_path_str, params))
             .await
             .map_err(|e| WhisperError::Unknown(format!("Task join error: {}", e)))?
-            .map_err(WhisperError::Whisper)
+            .map_err(|e| WhisperError::Whisper(e.to_string()))
     }
 
     /// Transcribe audio data
@@ -191,75 +192,81 @@ impl WhisperTranscriber {
         Ok(rx)
     }
 
-    /// Transcribe with streaming callback for real-time segment delivery (UNUSED)
-    #[allow(dead_code)]
-    async fn transcribe_with_streaming_callback(
-        context: &mut WhisperContext,
-        audio_data: AudioData,
-        config: TranscriptionConfig,
-        tx: mpsc::UnboundedSender<StreamingChunk>,
-    ) -> Result<()> {
-        // Create a state for processing
-        let mut state = context
-            .create_state()
-            .map_err(|e| WhisperError::Transcription(format!("Failed to create state: {}", e)))?;
+    /// True streaming transcription that processes audio chunks as they arrive
+    pub async fn transcribe_audio_stream(
+        mut self,
+        mut audio_stream: AudioStream,
+    ) -> Result<StreamingReceiver> {
+        let (tx, rx) = mpsc::unbounded_channel();
+        let config = self.config.clone();
 
-        // Clone values that need to be moved into the blocking task
-        let _language = config.language.clone();
-        let num_threads = config.num_threads;
-        let temperature = config.temperature;
+        // Process chunks in a background task
+        tokio::spawn(async move {
+            let mut chunk_count = 0;
 
-        // Run transcription with streaming callback in blocking task
-        task::spawn_blocking(move || {
-            // Setup transcription parameters
-            let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
+            while let Some(chunk_result) = audio_stream.next().await {
+                match chunk_result {
+                    Ok(chunk) => {
+                        debug!(
+                            "Processing audio chunk {} ({}s duration)",
+                            chunk.index, chunk.duration
+                        );
 
-            // Configure parameters (skip language for now due to lifetime issues)
-            // TODO: Fix language setting for streaming
-            // if let Some(lang) = language {
-            //     params.set_language(Some(&lang));
-            // }
-
-            if let Some(threads) = num_threads {
-                params.set_n_threads(threads as i32);
-            }
-
-            params.set_temperature(temperature);
-
-            params.set_print_timestamps(false); // Disable whisper.cpp's internal timestamp printing
-            params.set_print_progress(false); // Disable progress output
-            params.set_print_special(false); // Disable special token printing
-            params.set_print_realtime(false); // Disable real-time printing
-
-            // Set up safe segment callback for real-time streaming
-            let mut segment_index = 0;
-            params.set_segment_callback_safe(
-                move |segment_data: whisper_rs::SegmentCallbackData| {
-                    if !segment_data.text.trim().is_empty() {
-                        let chunk = StreamingChunk {
-                            text: segment_data.text.clone(),
-                            start: segment_data.start_timestamp as f64 / 100.0, // Convert from centiseconds
-                            end: segment_data.end_timestamp as f64 / 100.0,
-                            is_final: false, // We don't know if it's final in callback
-                            chunk_index: segment_index,
+                        // Convert chunk to AudioData for whisper processing
+                        let audio_data = AudioData {
+                            samples: chunk.samples,
+                            sample_rate: chunk.sample_rate,
+                            duration: chunk.duration,
                         };
 
-                        segment_index += 1;
+                        // Transcribe this chunk
+                        match Self::transcribe_sync(&mut self.context, audio_data, config.clone()) {
+                            Ok(result) => {
+                                // Send each segment from this chunk
+                                for segment in result.segments {
+                                    if !segment.text.trim().is_empty() {
+                                        let streaming_chunk = StreamingChunk {
+                                            text: segment.text,
+                                            start: chunk.start_time as f64 + segment.start,
+                                            end: chunk.start_time as f64 + segment.end,
+                                            is_final: chunk.is_final && chunk_count == 0, // Only final if last chunk and last segment
+                                            chunk_index: chunk.index,
+                                        };
 
-                        // Send chunk to receiver (ignore errors if receiver is dropped)
-                        let _ = tx.send(chunk);
+                                        if tx.send(streaming_chunk).is_err() {
+                                            warn!("Receiver dropped, stopping transcription");
+                                            return;
+                                        }
+                                    }
+                                }
+
+                                chunk_count += 1;
+
+                                // If this was the final chunk, we're done
+                                if chunk.is_final {
+                                    info!("Completed transcription of {} chunks", chunk_count);
+                                    break;
+                                }
+                            }
+                            Err(e) => {
+                                error!("Failed to transcribe chunk {}: {}", chunk.index, e);
+                                // Continue with next chunk rather than failing completely
+                                continue;
+                            }
+                        }
                     }
-                },
-            );
+                    Err(e) => {
+                        error!("Audio streaming error: {}", e);
+                        break;
+                    }
+                }
+            }
 
-            // Run transcription
-            state.full(params, &audio_data.samples)
-        })
-        .await
-        .map_err(|e| WhisperError::Transcription(format!("Task join error: {}", e)))?
-        .map_err(|e| WhisperError::Transcription(format!("Transcription failed: {}", e)))?;
+            // Explicitly drop the sender to signal completion
+            drop(tx);
+        });
 
-        Ok(())
+        Ok(rx)
     }
 
     /// Synchronous transcription implementation
@@ -310,9 +317,16 @@ impl WhisperTranscriber {
         let mut full_text = String::new();
 
         for i in 0..num_segments {
-            let text = state.full_get_segment_text(i).map_err(|e| {
-                WhisperError::Transcription(format!("Failed to get segment text: {}", e))
-            })?;
+            let text = match state.full_get_segment_text(i) {
+                Ok(text) => text,
+                Err(e) => {
+                    warn!(
+                        "Failed to get segment text for segment {}: {}. Skipping segment.",
+                        i, e
+                    );
+                    continue; // Skip this segment instead of failing completely
+                }
+            };
 
             let start = state.full_get_segment_t0(i).map_err(|e| {
                 WhisperError::Transcription(format!("Failed to get segment start time: {}", e))

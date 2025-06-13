@@ -3,16 +3,16 @@
 use thiserror::Error;
 
 /// Main error type for purr operations
-#[derive(Error, Debug)]
+#[derive(Error, Debug, Clone)]
 pub enum WhisperError {
     #[error("Audio processing error: {0}")]
     AudioProcessing(String),
 
     #[error("Whisper error: {0}")]
-    Whisper(whisper_rs::WhisperError),
+    Whisper(String),
 
     #[error("IO error: {0}")]
-    Io(#[from] std::io::Error),
+    Io(String),
 
     #[error("FFmpeg error: {0}")]
     FFmpeg(String),
@@ -39,6 +39,18 @@ impl From<ffmpeg_next::Error> for WhisperError {
     }
 }
 
+impl From<std::io::Error> for WhisperError {
+    fn from(err: std::io::Error) -> Self {
+        WhisperError::Io(err.to_string())
+    }
+}
+
+impl From<whisper_rs::WhisperError> for WhisperError {
+    fn from(err: whisper_rs::WhisperError) -> Self {
+        WhisperError::Whisper(err.to_string())
+    }
+}
+
 impl PartialEq for WhisperError {
     fn eq(&self, other: &Self) -> bool {
         match self {
@@ -46,10 +58,10 @@ impl PartialEq for WhisperError {
                 matches!(other, WhisperError::AudioProcessing(o) if msg == o)
             }
             WhisperError::Whisper(msg) => {
-                matches!(other, WhisperError::Whisper(o) if msg.to_string() == o.to_string())
+                matches!(other, WhisperError::Whisper(o) if msg == o)
             }
             WhisperError::Io(err) => {
-                matches!(other, WhisperError::Io(e) if err.to_string() == e.to_string())
+                matches!(other, WhisperError::Io(e) if err == e)
             }
             WhisperError::FFmpeg(msg) => {
                 matches!(other, WhisperError::FFmpeg(o) if msg == o)
