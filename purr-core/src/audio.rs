@@ -4,6 +4,7 @@ use crate::error::{Result, WhisperError};
 use ffmpeg_next as ffmpeg;
 use std::path::Path;
 use tokio::task;
+use tracing::warn;
 
 /// Audio data structure
 #[derive(Debug, Clone)]
@@ -121,10 +122,16 @@ impl AudioProcessor {
                             )?;
                         }
                     }
-                    Err(e) => {
+                    Err(ffmpeg_next::Error::InvalidData) => {
                         // Log the error but continue processing - skip corrupted packets
-                        eprintln!("Warning: Skipping corrupted packet: {}", e);
+                        warn!("Skipping invalid chunk at stream index {}", stream_index,);
                         continue;
+                    }
+                    Err(e) => {
+                        return Err(WhisperError::FFmpeg(format!(
+                            "Failed to send packet to decoder: {}",
+                            e
+                        )))
                     }
                 }
             }
@@ -153,7 +160,8 @@ impl AudioProcessor {
         // Check if we got any audio data
         if samples.is_empty() {
             return Err(WhisperError::AudioProcessing(
-                "No audio data could be extracted from file - file may be corrupted or unsupported".to_string(),
+                "No audio data could be extracted from file - file may be corrupted or unsupported"
+                    .to_string(),
             ));
         }
 
@@ -203,7 +211,7 @@ impl AudioProcessor {
             current_format,
             ffmpeg::format::Sample::I16(_) | ffmpeg::format::Sample::F32(_)
         ) && frame.channels() == 1;
-        
+
         // We can handle direct conversion even for different sample rates
         let needs_resampling = !is_direct_convertible;
 
@@ -239,13 +247,13 @@ impl AudioProcessor {
                     Err(e) => {
                         // Input format changed - skip this frame and continue
                         eprintln!("Warning: Skipping frame due to resampling error: {}", e);
-                        
+
                         // Force recreation of resampler for next frame
                         *resampler = None;
                         *last_format = None;
                         *last_channel_layout = None;
                         *last_rate = None;
-                        
+
                         // Skip processing this frame but continue with next ones
                         return Ok(());
                     }
@@ -272,7 +280,7 @@ impl AudioProcessor {
                     unsafe {
                         let ptr = data.as_ptr() as *const i16;
                         let slice = std::slice::from_raw_parts(ptr, sample_count);
-                        
+
                         if current_rate == 16000 {
                             // Direct conversion for 16kHz
                             for &sample in slice {
@@ -295,7 +303,7 @@ impl AudioProcessor {
                     unsafe {
                         let ptr = data.as_ptr() as *const f32;
                         let slice = std::slice::from_raw_parts(ptr, sample_count);
-                        
+
                         if current_rate == 16000 {
                             // Direct copy for 16kHz
                             samples.extend_from_slice(slice);

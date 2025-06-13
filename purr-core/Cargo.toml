@@ -32,6 +32,7 @@ strum = { version = "0.27.1", features = ["derive"] }
 [dev-dependencies]
 tempfile = "3.8"
 rstest = "0.18"
+pretty_assertions = "1.4.1"
 
 [features]
 cuda = ["whisper-rs/cuda"]
