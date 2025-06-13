@@ -254,7 +254,7 @@ async fn handle_streaming_output(
     let mut stdout = io::stdout();
 
     use futures::StreamExt;
-    
+
     while let Some(chunk_result) = stream.next().await {
         let chunk = chunk_result?;
         all_chunks.push(chunk.clone());
@@ -984,11 +984,10 @@ async fn setup_config(cli: &Cli) -> anyhow::Result<TranscriptionConfig> {
     }
 
     if let Some(ref language) = cli.language {
-        config = config.with_language(language.clone());
+        config = config.with_language(language);
     }
 
     config = config.with_threads(cli.threads.unwrap_or_else(num_cpus::get));
-
     config.temperature = cli.temperature;
     config.output_format.include_timestamps = cli.timestamps;
     config.output_format.word_timestamps = cli.word_timestamps;
