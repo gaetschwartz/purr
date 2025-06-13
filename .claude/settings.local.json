@@ -12,7 +12,7 @@
       "Edit(*)",
       "Read(*)",
       "Bash(cargo check:*)",
-      "Bash(timeout 30s cargo run -- -v --language fr /Users/gaetan/Downloads/out.opus)"
+      "Bash(timeout :*)"
     ],
     "deny": []
   }
