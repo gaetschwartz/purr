@@ -36,7 +36,7 @@ pub async fn transcribe_file_sync<P: AsRef<std::path::Path>>(
     let config = config.unwrap_or_default();
 
     // Initialize transcriber
-    let mut transcriber = SyncWhisperTranscriber::from_config(config).await?;
+    let transcriber = SyncWhisperTranscriber::from_config(config).await?;
 
     info!("Transcribing audio file: {:?}", audio_path.as_ref());
     // Process audio
@@ -62,7 +62,7 @@ pub async fn transcribe_file_stream<P: AsRef<std::path::Path>>(
     );
 
     // Initialize transcriber
-    let (mut transcriber, audio_stream) = try_join!(
+    let (transcriber, audio_stream) = try_join!(
         StreamWhisperTranscriber::from_config(config),
         AudioProcessor::stream(audio_path)
     )?;

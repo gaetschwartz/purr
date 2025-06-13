@@ -128,7 +128,7 @@ pub trait WhisperTranscriber {
 
     /// Transcribe audio data
     fn transcribe(
-        &mut self,
+        self,
         input: Self::InputData,
-    ) -> impl Future<Output = Result<Self::TranscriberResult>> + '_;
+    ) -> impl Future<Output = Result<Self::TranscriberResult>>;
 }
