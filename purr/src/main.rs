@@ -713,23 +713,29 @@ async fn handle_devices_command(command: GpuCommands, verbose: bool) -> anyhow::
                 println!("  • Vulkan feature is enabled (use --features vulkan)");
             } else {
                 for device in devices {
-                    println!("{} ({}) - {}", 
-                        format_args!("Device {}", device.id).green().bold(), 
-                        match device.tpe {
-                            purr_core::gpu::DeviceType::Cpu => "CPU".yellow(),
-                            purr_core::gpu::DeviceType::Gpu => "GPU".yellow(),
-                            purr_core::gpu::DeviceType::Accel => "Accelerator".yellow(),
+                    println!("{} - {} {} {}", 
+                        format_args!("Device {}", device.id.bold()).green(), 
+                        device.name.bold(),
+                        if device.description.is_empty() {
+                            "".to_string()
+                        } else {
+                            format_args!("{}", device.description).to_string()
                         },
-                        device.name
+                        match device.tpe {
+                            purr_core::dev::DeviceType::Cpu =>  format_args!("({})", "CPU".green()).dimmed().to_string(),
+                            purr_core::dev::DeviceType::Gpu => format_args!("({})", "GPU".blue()).dimmed().to_string(),
+                            purr_core::dev::DeviceType::Accel => format_args!("({})", "Accel".yellow()).dimmed().to_string(),
+                        },
                     );
-                    
-                    if verbose {
-                        println!("    VRAM: {} / {} ({} free)", 
-                                format_file_size(device.vram_total as u64 - device.vram_free as u64).yellow(),
-                                format_file_size(device.vram_total as u64).yellow(),
-                                format_file_size(device.vram_free as u64).green());
-                    } else {
-                        println!("    VRAM: {}", format_file_size(device.vram_total as u64).yellow());
+                    if device.vram_total != 0 {
+                        if verbose {
+                            println!("    VRAM: {} / {} ({} free)", 
+                            format_file_size(device.vram_total as u64 - device.vram_free as u64).yellow(),
+                            format_file_size(device.vram_total as u64).yellow(),
+                            format_file_size(device.vram_free as u64).green());
+                        } else {
+                            println!("    VRAM: {}", format_file_size(device.vram_total as u64).yellow());
+                        }
                     }
                     println!();
                 }
