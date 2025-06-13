@@ -12,7 +12,11 @@
       "Edit(*)",
       "Read(*)",
       "Bash(cargo check:*)",
-      "Bash(timeout :*)"
+      "Bash(timeout :*)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(cargo:*)"
     ],
     "deny": []
   }
