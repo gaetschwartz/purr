@@ -3,6 +3,7 @@ mod fmt;
 
 use anyhow::bail;
 use clap::{Parser, Subcommand};
+use indicatif::{HumanBytes, HumanDuration, ProgressBar, ProgressStyle};
 use owo_colors::OwoColorize as _;
 use purr_core::{
     transcribe_audio_file, transcribe_audio_file_streaming, ModelManager, TranscriptionConfig,
@@ -96,6 +97,10 @@ enum ModelCommands {
         /// Model to download (e.g., base, small, large-v3)
         #[arg(value_name = "MODEL")]
         model: String,
+
+        /// Force download even if the model is already downloaded
+        #[arg(short, long)]
+        force: bool,
     },
     /// List models (downloaded by default, use --available to list all available models)
     List {
@@ -562,7 +567,7 @@ async fn handle_model_command(command: ModelCommands, verbose: bool) -> anyhow::
     let model_manager = ModelManager::new()?;
 
     match command {
-        ModelCommands::Download { model } => {
+        ModelCommands::Download { model, force } => {
             let whisper_model = WhisperModel::from_str(&model).map_err(|e| {
                 anyhow::anyhow!(
                     "Unknown model: {}. Use 'models list' to see available models. Error: {}",
@@ -571,6 +576,16 @@ async fn handle_model_command(command: ModelCommands, verbose: bool) -> anyhow::
                 )
             })?;
 
+            // check if it is already downloaded
+            if !force && model_manager.is_model_downloaded(&whisper_model).await {
+                println!(
+                    "{} Model {} is already downloaded.",
+                    "Info:".blue().bold(),
+                    whisper_model.as_str()
+                );
+                return Ok(());
+            }
+
             println!(
                 "{} Downloading model: {} ({})",
                 "Info:".blue().bold(),
@@ -578,12 +593,51 @@ async fn handle_model_command(command: ModelCommands, verbose: bool) -> anyhow::
                 whisper_model.description()
             );
 
-            let model_path = model_manager.download_model(whisper_model).await?;
+            // Create progress bar
+            let progress_bar = ProgressBar::new(0);
+            progress_bar.set_style(
+                ProgressStyle::default_bar()
+                    .template("{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({bytes_per_sec}, {eta})")
+                    .unwrap()
+                    .progress_chars("#>-")
+            );
+
+            model_manager.download_model_with_progress(whisper_model, |downloaded, total| {
+                if let Some(total) = total {
+                    if progress_bar.length().unwrap_or(0) != total {
+                        progress_bar.set_length(total);
+                    }
+                    progress_bar.set_position(downloaded);
+                } else {
+                    // If total size is unknown, show as spinner with downloaded bytes
+                    progress_bar.set_style(
+                        ProgressStyle::default_spinner()
+                            .template("{spinner:.green} [{elapsed_precise}] {bytes} downloaded... {msg}")
+                            .unwrap()
+                    );
+                    progress_bar.set_position(downloaded);
+                }
+            }).await?;
+
+            let per_sec = progress_bar.length().map(|len| {
+                len as f64 / progress_bar.elapsed().as_secs_f64()
+            });
+            let elapsed = progress_bar.elapsed();
+            progress_bar.finish_and_clear();
 
             println!(
-                "{} Model downloaded successfully to: {}",
+                "{} Model downloaded in {:#}{}.",
                 "Success:".green().bold(),
-                model_path.display()
+                HumanDuration(elapsed).cyan(),
+                if let Some(per_sec) = per_sec {
+                    format!(" ({}{} avg)", 
+                        HumanBytes(per_sec as u64).cyan(),
+                         "/s".cyan()
+                    )
+                } else {
+                    "".to_string()
+                }
+                
             );
         }
 
