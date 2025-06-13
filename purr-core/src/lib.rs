@@ -13,7 +13,7 @@ pub mod transcription;
 pub use audio::AudioProcessor;
 pub use config::TranscriptionConfig;
 pub use error::{Result, WhisperError};
-pub use gpu::{GpuDevice, GpuStatus, check_gpu_status, list_gpu_devices};
+pub use gpu::{check_gpu_status, list_devices, Device, GpuStatus};
 pub use model::{ModelManager, WhisperModel};
 pub use simple_audio::SimpleAudioProcessor;
 pub use transcription::{
