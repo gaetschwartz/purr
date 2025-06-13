@@ -74,9 +74,7 @@ impl StreamWhisperTranscriber {
                     let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
 
                     // Configure parameters
-                    if let Some(lang) = &self.config.language {
-                        params.set_language(Some(lang));
-                    }
+                    params.set_language(self.config.language.as_deref());
 
                     if let Some(threads) = self.config.num_threads {
                         params.set_n_threads(threads as i32);
