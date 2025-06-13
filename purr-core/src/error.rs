@@ -1,8 +1,8 @@
-//! Error types for the whisper-ui-core library
+//! Error types for the purr-core library
 
 use thiserror::Error;
 
-/// Main error type for whisper-ui operations
+/// Main error type for purr operations
 #[derive(Error, Debug)]
 pub enum WhisperError {
     #[error("Audio processing error: {0}")]
@@ -27,7 +27,7 @@ pub enum WhisperError {
     GpuAcceleration(String),
 }
 
-/// Result type alias for whisper-ui operations
+/// Result type alias for purr operations
 pub type Result<T> = std::result::Result<T, WhisperError>;
 
 impl From<ffmpeg_next::Error> for WhisperError {

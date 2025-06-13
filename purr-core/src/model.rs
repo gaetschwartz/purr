@@ -253,10 +253,9 @@ pub struct ModelManager {
 impl ModelManager {
     /// Create a new model manager
     pub fn new() -> Result<Self> {
-        let project_dirs =
-            ProjectDirs::from("ai", "whisper-ui", "whisper-ui").ok_or_else(|| {
-                WhisperError::Configuration("Failed to get XDG directories".to_string())
-            })?;
+        let project_dirs = ProjectDirs::from("dev.gaetans", "", "purr").ok_or_else(|| {
+            WhisperError::Configuration("Failed to get XDG directories".to_string())
+        })?;
 
         let models_dir = project_dirs.data_dir().join("models");
 
