@@ -57,6 +57,7 @@ impl SyncWhisperTranscriber {
 
         // Configure parameters
         params.set_language(self.config.language.as_deref());
+        params.set_translate(self.config.translate);
 
         if let Some(threads) = config.num_threads {
             params.set_n_threads(threads as i32);
