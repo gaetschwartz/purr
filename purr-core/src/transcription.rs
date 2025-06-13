@@ -142,11 +142,11 @@ impl WhisperTranscriber {
     }
 
     /// Transcribe audio data
-    pub async fn transcribe(&mut self, audio_data: AudioData) -> Result<TranscriptionResult> {
+    pub fn transcribe_sync(&mut self, audio_data: AudioData) -> Result<TranscriptionResult> {
         let config = self.config.clone();
 
         // Run transcription synchronously since we can't clone the context
-        Self::transcribe_sync(&mut self.context, audio_data, config)
+        self.transcribe_sync_internal(audio_data, config)
     }
 
     /// True streaming transcription that processes audio chunks as they arrive
@@ -293,8 +293,8 @@ impl WhisperTranscriber {
     }
 
     /// Synchronous transcription implementation
-    fn transcribe_sync(
-        context: &mut WhisperContext,
+    fn transcribe_sync_internal(
+        &mut self,
         audio_data: AudioData,
         config: TranscriptionConfig,
     ) -> Result<TranscriptionResult> {
@@ -320,7 +320,8 @@ impl WhisperTranscriber {
         params.set_print_realtime(false); // Disable real-time printing
 
         // Create a state for processing
-        let mut state = context
+        let mut state = self
+            .context
             .create_state()
             .map_err(|e| WhisperError::Transcription(format!("Failed to create state: {}", e)))?;
 

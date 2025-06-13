@@ -6,8 +6,8 @@ use indicatif::{HumanBytes, HumanDuration, ProgressBar, ProgressStyle};
 use owo_colors::OwoColorize as _;
 use purr_core::math::{ByteSpeed, RoundToUnit as _};
 use purr_core::{
-    check_gpu_status, list_devices, transcribe_audio_file, transcribe_audio_file_streaming_realtime,
-    ModelManager, TranscriptionConfig, WhisperModel,
+    check_gpu_status, list_devices, transcribe_file_stream, transcribe_file_sync, ModelManager,
+    TranscriptionConfig, TranscriptionResult, WhisperModel,
 };
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
@@ -84,12 +84,23 @@ async fn main() -> anyhow::Result<()> {
         println!();
     }
 
-    // Perform transcription (streaming or batch)
-    if !cli.no_stream {
+    if cli.no_stream {
+        info!("Transcribing audio...");
+
+        let result = match transcribe_file_sync(&audio_file, Some(config)).await {
+            Ok(result) => result,
+            Err(e) => {
+                error!("Transcription failed: {}", e);
+                process::exit(1);
+            }
+        };
+
+        handle_output(result, &cli)?;
+    } else {
         info!("Streaming transcription...");
 
         // Handle streaming transcription
-        let mut receiver = match transcribe_audio_file_streaming_realtime(&audio_file, Some(config)).await {
+        let mut receiver = match transcribe_file_stream(&audio_file, Some(config)).await {
             Ok(receiver) => receiver,
             Err(e) => {
                 // Check if this is a "no model found" error
@@ -100,87 +111,6 @@ async fn main() -> anyhow::Result<()> {
 
         // Process streaming results
         handle_streaming_output(&mut receiver, &cli).await?;
-
-        return Ok(());
-    }
-
-    println!("{} Transcribing audio...", "Info:".blue().bold());
-
-    let result = match transcribe_audio_file(&audio_file, Some(config)).await {
-        Ok(result) => result,
-        Err(e) => {
-            error!("Transcription failed: {}", e);
-            process::exit(1);
-        }
-    };
-
-    // Prepare output content
-    let output_content = match cli.output {
-        OutputFormat::Text => {
-            if cli.timestamps {
-                result
-                    .segments
-                    .iter()
-                    .map(|segment| {
-                        format!(
-                            "[{:.2}s -> {:.2}s] {}",
-                            segment.start, segment.end, segment.text
-                        )
-                    })
-                    .collect::<Vec<_>>()
-                    .join("\n")
-            } else {
-                result.text.clone()
-            }
-        }
-        OutputFormat::Json => serde_json::to_string_pretty(&result)?,
-        OutputFormat::Srt => result
-            .segments
-            .iter()
-            .enumerate()
-            .map(|(i, segment)| {
-                format!(
-                    "{}\n{} --> {}\n{}\n",
-                    i + 1,
-                    format_srt_time(segment.start),
-                    format_srt_time(segment.end),
-                    segment.text
-                )
-            })
-            .collect::<Vec<_>>()
-            .join("\n"),
-        OutputFormat::Txt => result.text.clone(),
-    };
-
-    // Write output to file or stdout
-    if let Some(output_file) = cli.output_file {
-        use std::fs;
-        fs::write(&output_file, &output_content)?;
-        if cli.verbose {
-            println!(
-                "{} Output written to: {}",
-                "Success:".green().bold(),
-                output_file.display()
-            );
-        }
-    } else {
-        print!("{}", output_content);
-    }
-
-    // Print summary if verbose
-    if cli.verbose {
-        println!();
-        println!("{}", "Transcription Summary:".green().bold());
-        println!("Audio duration: {:.2}s", result.audio_duration);
-        println!("Processing time: {:.2}s", result.processing_time);
-        println!(
-            "Real-time factor: {:.2}x",
-            result.processing_time / result.audio_duration as f64
-        );
-        if let Some(lang) = &result.language {
-            println!("Detected language: {}", lang);
-        }
-        println!("Segments: {}", result.segments.len());
     }
 
     Ok(())
@@ -1062,6 +992,79 @@ async fn setup_config(cli: &Cli) -> anyhow::Result<TranscriptionConfig> {
     config = config.with_verbose(cli.verbose);
 
     Ok(config)
+}
+
+fn handle_output(result: TranscriptionResult, cli: &Cli) -> anyhow::Result<()> {
+    // Prepare output content
+    let output_content = match cli.output {
+        OutputFormat::Text => {
+            if cli.timestamps {
+                result
+                    .segments
+                    .iter()
+                    .map(|segment| {
+                        format!(
+                            "[{:.2}s -> {:.2}s] {}",
+                            segment.start, segment.end, segment.text
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            } else {
+                result.text.clone()
+            }
+        }
+        OutputFormat::Json => serde_json::to_string_pretty(&result)?,
+        OutputFormat::Srt => result
+            .segments
+            .iter()
+            .enumerate()
+            .map(|(i, segment)| {
+                format!(
+                    "{}\n{} --> {}\n{}\n",
+                    i + 1,
+                    format_srt_time(segment.start),
+                    format_srt_time(segment.end),
+                    segment.text
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n"),
+        OutputFormat::Txt => result.text.clone(),
+    };
+
+    // Write output to file or stdout
+    if let Some(output_file) = &cli.output_file {
+        use std::fs;
+        fs::write(output_file, &output_content)?;
+        if cli.verbose {
+            println!(
+                "{} Output written to: {}",
+                "Success:".green().bold(),
+                output_file.display()
+            );
+        }
+    } else {
+        print!("{}", output_content);
+    }
+
+    // Print summary if verbose
+    if cli.verbose {
+        println!();
+        println!("{}", "Transcription Summary:".green().bold());
+        println!("Audio duration: {:.2}s", result.audio_duration);
+        println!("Processing time: {:.2}s", result.processing_time);
+        println!(
+            "Real-time factor: {:.2}x",
+            result.processing_time / result.audio_duration as f64
+        );
+        if let Some(lang) = &result.language {
+            println!("Detected language: {}", lang);
+        }
+        println!("Segments: {}", result.segments.len());
+    }
+
+    Ok(())
 }
 
 /// Helper struct for organizing model information
