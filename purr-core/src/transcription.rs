@@ -149,52 +149,9 @@ impl WhisperTranscriber {
         Self::transcribe_sync(&mut self.context, audio_data, config)
     }
 
-    /// Start streaming transcription of audio data with simulated real-time output
-    pub async fn transcribe_streaming(
-        mut self,
-        audio_data: AudioData,
-    ) -> Result<StreamingReceiver> {
-        let (tx, rx) = mpsc::unbounded_channel();
-
-        // Move the transcriber to a background task for processing
-        tokio::spawn(async move {
-            // Process entire audio first, then stream results with timing
-            match self.transcribe(audio_data).await {
-                Ok(result) => {
-                    // Send segments with simulated real-time delays
-                    for (i, segment) in result.segments.iter().enumerate() {
-                        if !segment.text.trim().is_empty() {
-                            let chunk = StreamingChunk {
-                                text: segment.text.clone(),
-                                start: segment.start,
-                                end: segment.end,
-                                is_final: i == result.segments.len() - 1,
-                                chunk_index: i,
-                            };
-
-                            if tx.send(chunk).is_err() {
-                                break; // Receiver dropped
-                            }
-
-                            // Add a small delay to simulate real-time streaming
-                            tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
-                        }
-                    }
-                }
-                Err(e) => {
-                    error!("Streaming transcription failed: {}", e);
-                }
-            }
-            // Explicitly drop the sender to signal completion
-            drop(tx);
-        });
-
-        Ok(rx)
-    }
-
     /// True streaming transcription that processes audio chunks as they arrive
     pub async fn transcribe_audio_stream(
-        mut self,
+        self,
         mut audio_stream: AudioStream,
     ) -> Result<StreamingReceiver> {
         let (tx, rx) = mpsc::unbounded_channel();
@@ -203,6 +160,18 @@ impl WhisperTranscriber {
         // Process chunks in a background task
         tokio::spawn(async move {
             let mut chunk_count = 0;
+            let mut accumulated_samples = Vec::new();
+            let mut accumulated_duration = 0.0;
+            let mut global_offset = 0.0;
+
+            // Create a persistent state for streaming transcription
+            let mut state = match self.context.create_state() {
+                Ok(state) => state,
+                Err(e) => {
+                    error!("Failed to create Whisper state: {}", e);
+                    return;
+                }
+            };
 
             while let Some(chunk_result) = audio_stream.next().await {
                 match chunk_result {
@@ -212,47 +181,101 @@ impl WhisperTranscriber {
                             chunk.index, chunk.duration
                         );
 
-                        // Convert chunk to AudioData for whisper processing
-                        let audio_data = AudioData {
-                            samples: chunk.samples,
-                            sample_rate: chunk.sample_rate,
-                            duration: chunk.duration,
-                        };
+                        // Accumulate samples for processing
+                        accumulated_samples.extend_from_slice(&chunk.samples);
+                        accumulated_duration += chunk.duration as f64;
 
-                        // Transcribe this chunk
-                        match Self::transcribe_sync(&mut self.context, audio_data, config.clone()) {
-                            Ok(result) => {
-                                // Send each segment from this chunk
-                                for segment in result.segments {
-                                    if !segment.text.trim().is_empty() {
-                                        let streaming_chunk = StreamingChunk {
-                                            text: segment.text,
-                                            start: chunk.start_time as f64 + segment.start,
-                                            end: chunk.start_time as f64 + segment.end,
-                                            is_final: chunk.is_final && chunk_count == 0, // Only final if last chunk and last segment
-                                            chunk_index: chunk.index,
+                        // Process when we have enough audio or it's the final chunk
+                        if accumulated_duration >= 30.0 || chunk.is_final {
+                            // Setup transcription parameters
+                            let mut params =
+                                FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
+
+                            if let Some(lang) = &config.language {
+                                params.set_language(Some(lang));
+                            }
+                            if let Some(threads) = config.num_threads {
+                                params.set_n_threads(threads as i32);
+                            }
+                            params.set_temperature(config.temperature);
+                            params.set_print_timestamps(false);
+                            params.set_print_progress(false);
+                            params.set_print_special(false);
+                            params.set_print_realtime(false);
+
+                            // Run transcription on accumulated samples
+                            match state.full(params, &accumulated_samples) {
+                                Ok(_) => {
+                                    // Extract new segments
+                                    let num_segments = match state.full_n_segments() {
+                                        Ok(n) => n,
+                                        Err(e) => {
+                                            error!("Failed to get segment count: {}", e);
+                                            continue;
+                                        }
+                                    };
+
+                                    for i in 0..num_segments {
+                                        let text = match state.full_get_segment_text(i) {
+                                            Ok(text) => text,
+                                            Err(e) => {
+                                                warn!("Failed to get segment text for segment {}: {}. Skipping segment.", i, e);
+                                                continue;
+                                            }
                                         };
 
-                                        if tx.send(streaming_chunk).is_err() {
-                                            warn!("Receiver dropped, stopping transcription");
-                                            return;
+                                        if !text.trim().is_empty() {
+                                            let start = match state.full_get_segment_t0(i) {
+                                                Ok(t) => t as f64 / 100.0 + global_offset,
+                                                Err(e) => {
+                                                    warn!(
+                                                        "Failed to get segment start time: {}",
+                                                        e
+                                                    );
+                                                    global_offset
+                                                }
+                                            };
+
+                                            let end = match state.full_get_segment_t1(i) {
+                                                Ok(t) => t as f64 / 100.0 + global_offset,
+                                                Err(e) => {
+                                                    warn!("Failed to get segment end time: {}", e);
+                                                    start + 1.0
+                                                }
+                                            };
+
+                                            let streaming_chunk = StreamingChunk {
+                                                text,
+                                                start,
+                                                end,
+                                                is_final: chunk.is_final && i == num_segments - 1,
+                                                chunk_index: chunk_count,
+                                            };
+
+                                            if tx.send(streaming_chunk).is_err() {
+                                                warn!("Receiver dropped, stopping transcription");
+                                                return;
+                                            }
                                         }
                                     }
                                 }
-
-                                chunk_count += 1;
-
-                                // If this was the final chunk, we're done
-                                if chunk.is_final {
-                                    info!("Completed transcription of {} chunks", chunk_count);
-                                    break;
+                                Err(e) => {
+                                    error!("Failed to transcribe accumulated audio: {}", e);
                                 }
                             }
-                            Err(e) => {
-                                error!("Failed to transcribe chunk {}: {}", chunk.index, e);
-                                // Continue with next chunk rather than failing completely
-                                continue;
-                            }
+
+                            // Update global offset and reset accumulation
+                            global_offset += accumulated_duration;
+                            accumulated_samples.clear();
+                            accumulated_duration = 0.0;
+                        }
+
+                        chunk_count += 1;
+
+                        // If this was the final chunk, we're done
+                        if chunk.is_final {
+                            info!("Completed transcription of {} chunks", chunk_count);
+                            break;
                         }
                     }
                     Err(e) => {
