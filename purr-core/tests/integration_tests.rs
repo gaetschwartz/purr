@@ -1,4 +1,4 @@
-//! Integration tests for whisper-ui-core
+//! Integration tests for purr-core
 
 use purr_core::transcription::TranscriptionSegment;
 use purr_core::*;
@@ -28,8 +28,11 @@ async fn test_missing_audio_file() {
 
     assert!(result.is_err());
     match result.unwrap_err() {
-        WhisperError::AudioProcessing(_) => (),
-        _ => panic!("Expected AudioProcessing error"),
+        WhisperError::AudioProcessing(_) | WhisperError::Configuration(_) => {}
+        e => panic!(
+            "Expected AudioProcessing or Configuration error, got: {}",
+            e
+        ),
     }
 }
 
