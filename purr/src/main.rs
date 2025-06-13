@@ -1,13 +1,12 @@
 //! Whisper UI CLI - Audio transcription command-line interface
 mod fmt;
 
-use anyhow::bail;
 use clap::{Parser, Subcommand};
 use indicatif::{HumanBytes, HumanDuration, ProgressBar, ProgressStyle};
 use owo_colors::OwoColorize as _;
 use purr_core::{
-    transcribe_audio_file, transcribe_audio_file_streaming, ModelManager, TranscriptionConfig,
-    WhisperError, WhisperModel, check_gpu_status, list_devices,
+    check_gpu_status, list_devices, transcribe_audio_file, transcribe_audio_file_streaming,
+    ModelManager, TranscriptionConfig, WhisperError, WhisperModel,
 };
 use std::io::{self, Write};
 use std::path::PathBuf;
@@ -17,10 +16,10 @@ use tracing::{debug, error, info};
 
 use crate::fmt::MyFormatter;
 
-/// Audio transcription CLI using Whisper
-#[derive(Parser)]
+const ABOUT: &str = "😸 Transcribe audio files using Whisper AI";
+#[derive(Parser, Debug)]
 #[command(name = env!("CARGO_PKG_NAME"), author = env!("CARGO_PKG_AUTHORS"))]
-#[command(about = "😸 Transcribe audio files using Whisper AI")]
+#[command(about = ABOUT)]
 #[command(version = "0.1.0")]
 struct Cli {
     #[command(subcommand)]
@@ -71,11 +70,11 @@ struct Cli {
     temperature: f32,
 
     /// Verbose output
-    #[arg(short, long)]
+    #[arg(short, long, global = true)]
     verbose: bool,
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Debug)]
 enum Commands {
     /// Model management commands
     Models {
@@ -90,7 +89,7 @@ enum Commands {
     },
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Debug)]
 enum ModelCommands {
     /// Download a Whisper model
     Download {
@@ -122,7 +121,7 @@ enum ModelCommands {
     },
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Debug)]
 enum GpuCommands {
     /// List GPU devices available for acceleration
     List,
@@ -141,88 +140,6 @@ enum OutputFormat {
     Srt,
     /// Plain text output (clean, no timestamps)
     Txt,
-}
-
-/// Handle streaming transcription output
-async fn handle_streaming_output(
-    receiver: &mut purr_core::StreamingReceiver,
-    cli: &Cli,
-) -> anyhow::Result<()> {
-    use std::fs;
-
-    let mut all_chunks = Vec::new();
-    let mut output_buffer = String::new();
-    let mut stdout = io::stdout();
-
-    while let Some(chunk) = receiver.recv().await {
-        all_chunks.push(chunk.clone());
-
-        // Format the chunk for real-time output
-        let chunk_text = match cli.output {
-            OutputFormat::Text => {
-                if cli.timestamps {
-                    format!("[{:.2}s -> {:.2}s] {}", chunk.start, chunk.end, chunk.text)
-                } else {
-                    chunk.text.clone()
-                }
-            }
-            OutputFormat::Json => serde_json::to_string(&chunk)?,
-            OutputFormat::Srt => {
-                format!(
-                    "{}\n{} --> {}\n{}\n",
-                    chunk.chunk_index + 1,
-                    format_srt_time(chunk.start),
-                    format_srt_time(chunk.end),
-                    chunk.text
-                )
-            }
-            OutputFormat::Txt => chunk.text.clone(),
-        };
-
-        // Print to stdout or accumulate for file output
-        if cli.output_file.is_some() {
-            output_buffer.push_str(&chunk_text);
-            if !matches!(cli.output, OutputFormat::Txt) {
-                output_buffer.push('\n');
-            }
-        } else {
-            // IMMEDIATE real-time output to stdout
-            if matches!(cli.output, OutputFormat::Json) {
-                write!(stdout, "{}", chunk_text)?;
-            } else {
-                write!(stdout, "{}", chunk_text)?;
-                if !chunk.text.is_empty() && !chunk.text.ends_with('\n') {
-                    if matches!(cli.output, OutputFormat::Srt) {
-                        writeln!(stdout)?;
-                    } else {
-                        write!(stdout, " ")?;
-                    }
-                }
-                // CRITICAL: Flush immediately to show real-time output
-                stdout.flush()?;
-            }
-        }
-    }
-
-    // Write to file if specified
-    if let Some(output_file) = &cli.output_file {
-        fs::write(output_file, &output_buffer)?;
-        if cli.verbose {
-            info!(
-                "\n{} Streaming output written to: {}",
-                "Success:".green().bold(),
-                output_file.display()
-            );
-        }
-    } else {
-        println!(); // Final newline for stdout
-    }
-
-    if cli.verbose {
-        debug!("Processed {} chunks", all_chunks.len());
-    }
-
-    Ok(())
 }
 
 #[tokio::main]
@@ -249,16 +166,21 @@ async fn main() -> anyhow::Result<()> {
             .with_writer(std::io::stderr)
             .init();
     }
+    debug!("Command line arguments: {:?}", cli);
 
     // Handle subcommands
     if let Some(command) = cli.command {
         return handle_command(command, cli.verbose).await;
     }
+
     // Handle transcription (original behavior)
     let Some(audio_file) = cli.audio_file.clone() else {
-        bail!("No audio file specified. Please provide an audio file to transcribe or use a subcommand.",
-           
+        println!("{}\n", ASCII_ART);
+        eprintln!(
+            "{} No audio file specified. Please provide an audio file to transcribe.",
+            "Error:".red().bold()
         );
+        std::process::exit(1);
     };
 
     // Validate audio file exists
@@ -351,11 +273,12 @@ async fn main() -> anyhow::Result<()> {
                             }
                         }
                     } else {
-                        error!("{} No model available. Download one with: {}{}",
-                        "Error:".red().bold(),
-                         env!("CARGO_PKG_NAME").cyan(),
-                        " models download base".cyan()
-                    );
+                        error!(
+                            "{} No model available. Download one with: {}{}",
+                            "Error:".red().bold(),
+                            env!("CARGO_PKG_NAME").cyan(),
+                            " models download base".cyan()
+                        );
                         process::exit(1);
                     }
                 } else {
@@ -501,6 +424,88 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Handle streaming transcription output
+async fn handle_streaming_output(
+    receiver: &mut purr_core::StreamingReceiver,
+    cli: &Cli,
+) -> anyhow::Result<()> {
+    use std::fs;
+
+    let mut all_chunks = Vec::new();
+    let mut output_buffer = String::new();
+    let mut stdout = io::stdout();
+
+    while let Some(chunk) = receiver.recv().await {
+        all_chunks.push(chunk.clone());
+
+        // Format the chunk for real-time output
+        let chunk_text = match cli.output {
+            OutputFormat::Text => {
+                if cli.timestamps {
+                    format!("[{:.2}s -> {:.2}s] {}", chunk.start, chunk.end, chunk.text)
+                } else {
+                    chunk.text.clone()
+                }
+            }
+            OutputFormat::Json => serde_json::to_string(&chunk)?,
+            OutputFormat::Srt => {
+                format!(
+                    "{}\n{} --> {}\n{}\n",
+                    chunk.chunk_index + 1,
+                    format_srt_time(chunk.start),
+                    format_srt_time(chunk.end),
+                    chunk.text
+                )
+            }
+            OutputFormat::Txt => chunk.text.clone(),
+        };
+
+        // Print to stdout or accumulate for file output
+        if cli.output_file.is_some() {
+            output_buffer.push_str(&chunk_text);
+            if !matches!(cli.output, OutputFormat::Txt) {
+                output_buffer.push('\n');
+            }
+        } else {
+            // IMMEDIATE real-time output to stdout
+            if matches!(cli.output, OutputFormat::Json) {
+                write!(stdout, "{}", chunk_text)?;
+            } else {
+                write!(stdout, "{}", chunk_text)?;
+                if !chunk.text.is_empty() && !chunk.text.ends_with('\n') {
+                    if matches!(cli.output, OutputFormat::Srt) {
+                        writeln!(stdout)?;
+                    } else {
+                        write!(stdout, " ")?;
+                    }
+                }
+                // CRITICAL: Flush immediately to show real-time output
+                stdout.flush()?;
+            }
+        }
+    }
+
+    // Write to file if specified
+    if let Some(output_file) = &cli.output_file {
+        fs::write(output_file, &output_buffer)?;
+        if cli.verbose {
+            info!(
+                "\n{} Streaming output written to: {}",
+                "Success:".green().bold(),
+                output_file.display()
+            );
+        }
+    } else {
+        println!(); // Final newline for stdout
+    }
+
+    if cli.verbose {
+        debug!("Processed {} chunks", all_chunks.len());
+    }
+
+    Ok(())
+}
+
 /// Prompt user to download base model when none is found
 async fn prompt_for_model_download() -> anyhow::Result<bool> {
     println!();
@@ -549,11 +554,15 @@ async fn prompt_for_model_download() -> anyhow::Result<bool> {
     } else {
         println!();
         println!("Model download cancelled. You can download a model later with:");
-        println!("  {}{}", env!("CARGO_PKG_NAME").cyan(), " models download base".cyan());
+        println!(
+            "  {}{}",
+            env!("CARGO_PKG_NAME").cyan(),
+            " models download base".cyan()
+        );
         Ok(false)
     }
 }
- 
+
 /// Handle subcommands
 async fn handle_command(command: Commands, verbose: bool) -> anyhow::Result<()> {
     match command {
@@ -619,9 +628,9 @@ async fn handle_model_command(command: ModelCommands, verbose: bool) -> anyhow::
                 }
             }).await?;
 
-            let per_sec = progress_bar.length().map(|len| {
-                len as f64 / progress_bar.elapsed().as_secs_f64()
-            });
+            let per_sec = progress_bar
+                .length()
+                .map(|len| len as f64 / progress_bar.elapsed().as_secs_f64());
             let elapsed = progress_bar.elapsed();
             progress_bar.finish_and_clear();
 
@@ -630,14 +639,14 @@ async fn handle_model_command(command: ModelCommands, verbose: bool) -> anyhow::
                 "Success:".green().bold(),
                 HumanDuration(elapsed).cyan(),
                 if let Some(per_sec) = per_sec {
-                    format!(" ({}{} avg)", 
+                    format!(
+                        " ({}{} avg)",
                         HumanBytes(per_sec as u64).cyan(),
-                         "/s".cyan()
+                        "/s".cyan()
                     )
                 } else {
                     "".to_string()
                 }
-                
             );
         }
 
@@ -651,18 +660,29 @@ async fn handle_model_command(command: ModelCommands, verbose: bool) -> anyhow::
                 print_model_groups();
 
                 println!();
-                println!("{}{}{}", "Usage: ".dimmed(), env!("CARGO_PKG_NAME").cyan().dimmed(), " models download <model>".cyan().dimmed());
-                println!("{}{}{}", "Example: ".dimmed(), env!("CARGO_PKG_NAME").cyan().dimmed(), " models download base".cyan().dimmed());
+                println!(
+                    "{}{}{}",
+                    "Usage: ".dimmed(),
+                    env!("CARGO_PKG_NAME").cyan().dimmed(),
+                    " models download <model>".cyan().dimmed()
+                );
+                println!(
+                    "{}{}{}",
+                    "Example: ".dimmed(),
+                    env!("CARGO_PKG_NAME").cyan().dimmed(),
+                    " models download base".cyan().dimmed()
+                );
             } else {
                 // List downloaded models (default behavior)
                 let downloaded = model_manager.list_downloaded_models().await?;
 
                 if downloaded.is_empty() {
                     println!("{} No models downloaded yet.", "Info:".blue().bold());
-                    println!("Use {}{} models download <model> to download a model.",
+                    println!(
+                        "Use {}{} models download <model> to download a model.",
                         env!("CARGO_PKG_NAME").cyan(),
                         " models download base".cyan()
-                );
+                    );
                 } else {
                     println!("{} Downloaded models:", "Info:".blue().bold());
                     println!();
@@ -768,19 +788,23 @@ async fn handle_devices_command(command: GpuCommands, verbose: bool) -> anyhow::
         GpuCommands::List => {
             println!("{}", "Devices:".blue().bold());
             println!();
-            
+
             let devices = list_devices();
-            
+
             if devices.is_empty() {
-                println!("{} No GPU devices found or Vulkan support not available.", "Info:".blue().bold());
+                println!(
+                    "{} No GPU devices found or Vulkan support not available.",
+                    "Info:".blue().bold()
+                );
                 println!("To enable GPU support, ensure:");
                 println!("  • Vulkan drivers are installed");
                 println!("  • Compatible GPU hardware is available");
                 println!("  • Vulkan feature is enabled (use --features vulkan)");
             } else {
                 for device in devices {
-                    println!("{} - {} {} {}", 
-                        format_args!("Device {}", device.id.bold()).green(), 
+                    println!(
+                        "{} - {} {} {}",
+                        format_args!("Device {}", device.id.bold()).green(),
                         device.name.bold(),
                         if device.description.is_empty() {
                             "".to_string()
@@ -788,60 +812,82 @@ async fn handle_devices_command(command: GpuCommands, verbose: bool) -> anyhow::
                             format_args!("{}", device.description).to_string()
                         },
                         match device.tpe {
-                            purr_core::dev::DeviceType::Cpu =>  format_args!("({})", "CPU".green()).dimmed().to_string(),
-                            purr_core::dev::DeviceType::Gpu => format_args!("({})", "GPU".blue()).dimmed().to_string(),
-                            purr_core::dev::DeviceType::Accel => format_args!("({})", "Accel".yellow()).dimmed().to_string(),
+                            purr_core::dev::DeviceType::Cpu =>
+                                format_args!("({})", "CPU".green()).dimmed().to_string(),
+                            purr_core::dev::DeviceType::Gpu =>
+                                format_args!("({})", "GPU".blue()).dimmed().to_string(),
+                            purr_core::dev::DeviceType::Accel =>
+                                format_args!("({})", "Accel".yellow()).dimmed().to_string(),
                         },
                     );
                     if device.vram_total != 0 {
                         if verbose {
-                            println!("    VRAM: {} / {} ({} free)", 
-                            format_file_size(device.vram_total as u64 - device.vram_free as u64).yellow(),
-                            format_file_size(device.vram_total as u64).yellow(),
-                            format_file_size(device.vram_free as u64).green());
+                            println!(
+                                "    VRAM: {} / {} ({} free)",
+                                format_file_size(
+                                    device.vram_total as u64 - device.vram_free as u64
+                                )
+                                .yellow(),
+                                format_file_size(device.vram_total as u64).yellow(),
+                                format_file_size(device.vram_free as u64).green()
+                            );
                         } else {
-                            println!("    VRAM: {}", format_file_size(device.vram_total as u64).yellow());
+                            println!(
+                                "    VRAM: {}",
+                                format_file_size(device.vram_total as u64).yellow()
+                            );
                         }
                     }
                     println!();
                 }
             }
         }
-        
+
         GpuCommands::Status => {
             let status = check_gpu_status();
-            
+
             println!("{}", "GPU Acceleration Status:".blue().bold());
             println!();
-            
-            println!("Vulkan support: {}", 
-                    if status.vulkan_available { 
-                        "Available".green().bold().to_string() 
-                    } else { 
-                        "Not available".red().bold().to_string() 
-                    });
-            
-            println!("CUDA support: {}", 
-                    if status.cuda_available { 
-                        "Available".green().bold().to_string()  
-                    } else { 
-                        "Not available".red().bold().to_string() 
-                    });
 
-            println!("CoreML support: {}", 
-                    if status.coreml_available { 
-                        "Available".green().bold().to_string() 
-                    } else { 
-                        "Not available".red().bold().to_string() 
-                    });
-            
-            println!("GPU devices: {}", 
-                    if status.devices.is_empty() {  
-                        "None detected".red().bold().to_string() 
-                    } else { 
-                        format!("{} found", status.devices.len()).green().bold().to_string() 
-                    });
-            
+            println!(
+                "Vulkan support: {}",
+                if status.vulkan_available {
+                    "Available".green().bold().to_string()
+                } else {
+                    "Not available".red().bold().to_string()
+                }
+            );
+
+            println!(
+                "CUDA support: {}",
+                if status.cuda_available {
+                    "Available".green().bold().to_string()
+                } else {
+                    "Not available".red().bold().to_string()
+                }
+            );
+
+            println!(
+                "CoreML support: {}",
+                if status.coreml_available {
+                    "Available".green().bold().to_string()
+                } else {
+                    "Not available".red().bold().to_string()
+                }
+            );
+
+            println!(
+                "GPU devices: {}",
+                if status.devices.is_empty() {
+                    "None detected".red().bold().to_string()
+                } else {
+                    format!("{} found", status.devices.len())
+                        .green()
+                        .bold()
+                        .to_string()
+                }
+            );
+
             if verbose && !status.devices.is_empty() {
                 println!();
                 println!("Detected devices:");
@@ -849,18 +895,22 @@ async fn handle_devices_command(command: GpuCommands, verbose: bool) -> anyhow::
                     println!("  • {} (ID: {})", device.name, device.id);
                 }
             }
-            
+
             println!();
             if status.vulkan_available || status.cuda_available || status.coreml_available {
-                println!("{} GPU acceleration is available for faster transcription.", 
-                        "Success:".green().bold());
+                println!(
+                    "{} GPU acceleration is available for faster transcription.",
+                    "Success:".green().bold()
+                );
             } else {
-                println!("{} GPU acceleration is not available. Transcription will use CPU.", 
-                        "Warning:".yellow().bold());
+                println!(
+                    "{} GPU acceleration is not available. Transcription will use CPU.",
+                    "Warning:".yellow().bold()
+                );
             }
         }
     }
-    
+
     Ok(())
 }
 
@@ -1036,6 +1086,29 @@ struct ModelGroup {
     base_models: Vec<WhisperModel>,
     quantized: Vec<WhisperModel>,
 }
+
+const ASCII_ART: &str = r#"
+             *     ,MMM8&&&.            *
+                  MMMM88&&&&&    .
+                 MMMM88&&&&&&&
+     *           MMM88&&&&&&&&
+                 MMM88&&&&&&&&
+                 'MMM88&&&&&&'
+                   'MMM8&&&'      *
+          |\___/|
+          )     (             .              '
+         =\     /=
+           )===(       *
+          /     \
+          |     |
+         /       \
+         \       /
+  _/\_/\_/\__  _/_/\_/\_/\_/\_/\_/\_/\_/\_/\_
+  |  |  |  |( (  |  |  |  |  |  |  |  |  |  |
+  |  |  |  | ) ) |  |  |  |  |  |  |  |  |  |
+  |  |  |  |(_(  |  |  |  |  |  |  |  |  |  |
+  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
+  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |"#;
 
 #[cfg(test)]
 mod tests {
