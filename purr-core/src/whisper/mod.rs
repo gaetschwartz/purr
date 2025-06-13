@@ -11,6 +11,63 @@ use crate::{error::Result, ModelManager, TranscriptionConfig, WhisperError};
 
 pub trait TranscriptionResult {}
 
+/// Transcription statistics
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TranscriptionStats {
+    /// Total processing time in seconds
+    pub processing_time: f64,
+    
+    /// Audio duration in seconds
+    pub audio_duration: f32,
+    
+    /// Real-time factor (audio_duration / processing_time)
+    pub real_time_factor: f32,
+    
+    /// Number of segments produced
+    pub segment_count: usize,
+    
+    /// Average segment length in seconds
+    pub avg_segment_length: f32,
+    
+    /// Total number of words (estimated)
+    pub word_count: usize,
+    
+    /// Words per minute (estimated)
+    pub words_per_minute: f32,
+}
+
+impl TranscriptionStats {
+    pub fn new(processing_time: f64, audio_duration: f32, segment_count: usize, word_count: usize) -> Self {
+        let real_time_factor = if processing_time > 0.0 {
+            audio_duration as f64 / processing_time
+        } else {
+            0.0
+        } as f32;
+        
+        let avg_segment_length = if segment_count > 0 {
+            audio_duration / segment_count as f32
+        } else {
+            0.0
+        };
+        
+        let words_per_minute = if audio_duration > 0.0 {
+            (word_count as f32 * 60.0) / audio_duration
+        } else {
+            0.0
+        };
+        
+        Self {
+            processing_time,
+            audio_duration,
+            real_time_factor,
+            segment_count,
+            avg_segment_length,
+            word_count,
+            words_per_minute,
+        }
+    }
+}
+
 /// Transcription result
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SyncTranscriptionResult {
@@ -28,6 +85,9 @@ pub struct SyncTranscriptionResult {
 
     /// Audio duration in seconds
     pub audio_duration: f32,
+    
+    /// Transcription statistics
+    pub stats: TranscriptionStats,
 }
 
 impl TranscriptionResult for SyncTranscriptionResult {}
@@ -84,6 +144,9 @@ pub struct StreamingChunk {
 
     /// Chunk index
     pub chunk_index: usize,
+    
+    /// Final statistics (only present on the very last chunk)
+    pub final_stats: Option<TranscriptionStats>,
 }
 
 /// Load the Whisper model

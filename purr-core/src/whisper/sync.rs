@@ -4,7 +4,7 @@ use crate::{
     audio::AudioData,
     config::TranscriptionConfig,
     error::{Result, WhisperError},
-    whisper::{load_model, SyncTranscriptionResult, TranscriptionSegment, WhisperTranscriber},
+    whisper::{load_model, SyncTranscriptionResult, TranscriptionSegment, TranscriptionStats, WhisperTranscriber},
     ModelManager,
 };
 use tracing::warn;
@@ -127,12 +127,22 @@ impl SyncWhisperTranscriber {
         // FIXME: Implement language detection
         let detected_language = config.language;
 
+        // Calculate statistics
+        let word_count = full_text.split_whitespace().count();
+        let stats = TranscriptionStats::new(
+            processing_time,
+            audio_data.duration,
+            segments.len(),
+            word_count,
+        );
+
         Ok(SyncTranscriptionResult {
             text: full_text,
             language: detected_language,
             segments,
             processing_time,
             audio_duration: audio_data.duration,
+            stats,
         })
     }
 }
@@ -156,12 +166,14 @@ mod tests {
 
     #[test]
     fn test_transcription_result_serialization() {
+        let stats = TranscriptionStats::new(1.5, 3.0, 0, 2);
         let result = SyncTranscriptionResult {
             text: "Hello world".to_string(),
             language: Some("en".to_string()),
             segments: vec![],
             processing_time: 1.5,
             audio_duration: 3.0,
+            stats,
         };
 
         let json = serde_json::to_string(&result).unwrap();
