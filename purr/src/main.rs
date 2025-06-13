@@ -7,7 +7,7 @@ use owo_colors::OwoColorize as _;
 use purr_core::math::{ByteSpeed, RoundToUnit as _};
 use purr_core::{
     check_gpu_status, list_devices, transcribe_file_stream, transcribe_file_sync, ModelManager,
-    TranscriptionConfig, TranscriptionResult, WhisperModel,
+    SyncTranscriptionResult, TranscriptionConfig, WhisperModel,
 };
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
