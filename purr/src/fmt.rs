@@ -24,11 +24,15 @@ where
         // Format values from the event's's metadata:
         let metadata = event.metadata();
         match *metadata.level() {
-            Level::TRACE => write!(&mut writer, "{}: ", "TRACE".fg_rgb::<255, 105, 180>()),
-            Level::DEBUG => write!(&mut writer, "{}: ", "DEBUG".green()),
-            Level::INFO => write!(&mut writer, "{}: ", "INFO".blue()),
-            Level::WARN => write!(&mut writer, "{}: ", "WARN".yellow()),
-            Level::ERROR => write!(&mut writer, "{}: ", "ERROR".red()),
+            Level::TRACE => write!(
+                &mut writer,
+                "{}: ",
+                "trace".fg_rgb::<255, 105, 180>().bold()
+            ),
+            Level::DEBUG => write!(&mut writer, "{}: ", "debug".green().bold()),
+            Level::INFO => write!(&mut writer, "{}: ", "info".blue().bold()),
+            Level::WARN => write!(&mut writer, "{}: ", "warn".yellow().bold()),
+            Level::ERROR => write!(&mut writer, "{}: ", "error".red().bold()),
         }?;
 
         // Format all the spans in the event's span context.

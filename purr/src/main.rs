@@ -13,8 +13,277 @@ use std::path::PathBuf;
 use std::process;
 use std::str::FromStr as _;
 use tracing::{debug, error, info};
+use tracing_subscriber::EnvFilter;
 
 use crate::fmt::MyFormatter;
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    let cli = Cli::parse();
+
+    // Setup logging
+    if cli.verbose {
+        tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::TRACE)
+            .with_writer(std::io::stderr)
+            .init();
+    } else {
+        tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::INFO)
+            .with_env_filter(
+                EnvFilter::builder().parse("info,whisper_rs::whisper_logging_hook=warn")?,
+            )
+            .compact()
+            .without_time()
+            .with_file(false)
+            .with_line_number(false)
+            .with_thread_ids(false)
+            .with_thread_names(false)
+            .with_target(false)
+            .event_format(MyFormatter)
+            .with_writer(std::io::stderr)
+            .init();
+    }
+    debug!("Command line arguments: {:?}", cli);
+
+    // Handle subcommands
+    if let Some(command) = cli.command {
+        return handle_command(command, cli.verbose).await;
+    }
+
+    // Handle transcription (original behavior)
+    let Some(audio_file) = cli.audio_file.clone() else {
+        println!("{}\n", ASCII_ART);
+        error!("No audio file specified. Please provide an audio file to transcribe.",);
+        std::process::exit(1);
+    };
+
+    // Validate audio file exists
+    if !audio_file.exists() {
+        error!("Audio file not found: {}", audio_file.display());
+        process::exit(1);
+    }
+
+    // Build transcription config
+    let mut config = TranscriptionConfig::new()
+        .with_gpu(!cli.no_gpu)
+        .with_sample_rate(16000); // Whisper's preferred sample rate
+
+    if let Some(ref model_path) = cli.model {
+        config = config.with_model_path(model_path.clone());
+    }
+
+    if let Some(ref language) = cli.language {
+        config = config.with_language(language.clone());
+    }
+
+    config = config.with_threads(cli.threads.unwrap_or_else(num_cpus::get));
+
+    config.temperature = cli.temperature;
+    config.output_format.include_timestamps = cli.timestamps;
+    config.output_format.word_timestamps = cli.word_timestamps;
+    config = config.with_verbose(cli.verbose);
+
+    // Print startup info
+    if cli.verbose {
+        println!("{}", "Whisper UI - Audio Transcription".blue().bold());
+        if config.use_gpu {
+            println!("GPU acceleration: {}", "enabled".green());
+        } else {
+            println!("GPU acceleration: {}", "disabled".red());
+        }
+        if let Some(lang) = &config.language {
+            println!("Language: {}", lang);
+        }
+        println!();
+    }
+
+    // Perform transcription (streaming or batch)
+    if !cli.no_stream {
+        info!("Streaming transcription...");
+
+        // Handle streaming transcription
+        let mut receiver = match transcribe_audio_file_streaming(&audio_file, Some(config)).await {
+            Ok(receiver) => receiver,
+            Err(e) => {
+                // Check if this is a "no model found" error
+
+                if matches!(e, WhisperError::WhisperModel(_)) {
+                    // Prompt user to download base model
+                    if prompt_for_model_download().await? {
+                        // Retry streaming transcription after downloading model
+                        let mut config = TranscriptionConfig::new()
+                            .with_gpu(!cli.no_gpu)
+                            .with_sample_rate(16000);
+
+                        if let Some(ref model_path) = cli.model {
+                            config = config.with_model_path(model_path.clone());
+                        }
+
+                        if let Some(ref language) = cli.language {
+                            config = config.with_language(language.clone());
+                        }
+
+                        config = config.with_threads(cli.threads.unwrap_or_else(num_cpus::get));
+
+                        config.temperature = cli.temperature;
+                        config.output_format.include_timestamps = cli.timestamps;
+                        config.output_format.word_timestamps = cli.word_timestamps;
+                        config = config.with_verbose(cli.verbose);
+
+                        println!("{} Streaming transcription...", "Info:".blue().bold());
+                        match transcribe_audio_file_streaming(&audio_file, Some(config)).await {
+                            Ok(receiver) => receiver,
+                            Err(e) => {
+                                error!("Streaming transcription failed: {}", e);
+                                process::exit(1);
+                            }
+                        }
+                    } else {
+                        error!(
+                            "No model available. Download one with: {}{}",
+                            env!("CARGO_PKG_NAME").cyan(),
+                            " models download base".cyan()
+                        );
+                        process::exit(1);
+                    }
+                } else {
+                    error!("Streaming transcription failed: {}", e);
+                    process::exit(1);
+                }
+            }
+        };
+
+        // Process streaming results
+        handle_streaming_output(&mut receiver, &cli).await?;
+
+        return Ok(());
+    }
+
+    println!("{} Transcribing audio...", "Info:".blue().bold());
+
+    let result = match transcribe_audio_file(&audio_file, Some(config)).await {
+        Ok(result) => result,
+        Err(e) => {
+            // Check if this is a "no model found" error
+            let error_str = e.to_string();
+            if error_str.contains("No Whisper model found") {
+                // Prompt user to download base model
+                if prompt_for_model_download().await? {
+                    // Retry transcription after downloading model
+                    let mut config = TranscriptionConfig::new()
+                        .with_gpu(!cli.no_gpu)
+                        .with_sample_rate(16000);
+
+                    if let Some(ref model_path) = cli.model {
+                        config = config.with_model_path(model_path.clone());
+                    }
+
+                    if let Some(ref language) = cli.language {
+                        config = config.with_language(language.clone());
+                    }
+
+                    config = config.with_threads(cli.threads.unwrap_or_else(num_cpus::get));
+
+                    config.temperature = cli.temperature;
+                    config.output_format.include_timestamps = cli.timestamps;
+                    config.output_format.word_timestamps = cli.word_timestamps;
+                    config = config.with_verbose(cli.verbose);
+
+                    println!("{} Transcribing audio...", "Info:".blue().bold());
+                    match transcribe_audio_file(&audio_file, Some(config)).await {
+                        Ok(result) => result,
+                        Err(e) => {
+                            error!("Transcription failed: {}", e);
+                            process::exit(1);
+                        }
+                    }
+                } else {
+                    error!(
+                        "No model available. Download one with: {}{}",
+                        env!("CARGO_PKG_NAME").cyan(),
+                        " models download base".cyan()
+                    );
+                    process::exit(1);
+                }
+            } else {
+                error!("Transcription failed: {}", e);
+                process::exit(1);
+            }
+        }
+    };
+
+    // Prepare output content
+    let output_content = match cli.output {
+        OutputFormat::Text => {
+            if cli.timestamps {
+                result
+                    .segments
+                    .iter()
+                    .map(|segment| {
+                        format!(
+                            "[{:.2}s -> {:.2}s] {}",
+                            segment.start, segment.end, segment.text
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            } else {
+                result.text.clone()
+            }
+        }
+        OutputFormat::Json => serde_json::to_string_pretty(&result)?,
+        OutputFormat::Srt => result
+            .segments
+            .iter()
+            .enumerate()
+            .map(|(i, segment)| {
+                format!(
+                    "{}\n{} --> {}\n{}\n",
+                    i + 1,
+                    format_srt_time(segment.start),
+                    format_srt_time(segment.end),
+                    segment.text
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n"),
+        OutputFormat::Txt => result.text.clone(),
+    };
+
+    // Write output to file or stdout
+    if let Some(output_file) = cli.output_file {
+        use std::fs;
+        fs::write(&output_file, &output_content)?;
+        if cli.verbose {
+            println!(
+                "{} Output written to: {}",
+                "Success:".green().bold(),
+                output_file.display()
+            );
+        }
+    } else {
+        print!("{}", output_content);
+    }
+
+    // Print summary if verbose
+    if cli.verbose {
+        println!();
+        println!("{}", "Transcription Summary:".green().bold());
+        println!("Audio duration: {:.2}s", result.audio_duration);
+        println!("Processing time: {:.2}s", result.processing_time);
+        println!(
+            "Real-time factor: {:.2}x",
+            result.processing_time / result.audio_duration as f64
+        );
+        if let Some(lang) = &result.language {
+            println!("Detected language: {}", lang);
+        }
+        println!("Segments: {}", result.segments.len());
+    }
+
+    Ok(())
+}
 
 const ABOUT: &str = "😸 Transcribe audio files using Whisper AI";
 #[derive(Parser, Debug)]
@@ -142,288 +411,6 @@ enum OutputFormat {
     Txt,
 }
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    let cli = Cli::parse();
-
-    // Setup logging
-    if cli.verbose {
-        tracing_subscriber::fmt()
-            .with_max_level(tracing::Level::TRACE)
-            .with_writer(std::io::stderr)
-            .init();
-    } else {
-        tracing_subscriber::fmt()
-            .with_max_level(tracing::Level::INFO)
-            .compact()
-            .without_time()
-            .with_file(false)
-            .with_line_number(false)
-            .with_thread_ids(false)
-            .with_thread_names(false)
-            .with_target(false)
-            .event_format(MyFormatter)
-            .with_writer(std::io::stderr)
-            .init();
-    }
-    debug!("Command line arguments: {:?}", cli);
-
-    // Handle subcommands
-    if let Some(command) = cli.command {
-        return handle_command(command, cli.verbose).await;
-    }
-
-    // Handle transcription (original behavior)
-    let Some(audio_file) = cli.audio_file.clone() else {
-        println!("{}\n", ASCII_ART);
-        eprintln!(
-            "{} No audio file specified. Please provide an audio file to transcribe.",
-            "Error:".red().bold()
-        );
-        std::process::exit(1);
-    };
-
-    // Validate audio file exists
-    if !audio_file.exists() {
-        eprintln!(
-            "{} Audio file not found: {}",
-            "Error:".red().bold(),
-            audio_file.display()
-        );
-        process::exit(1);
-    }
-
-    // Build transcription config
-    let mut config = TranscriptionConfig::new()
-        .with_gpu(!cli.no_gpu)
-        .with_sample_rate(16000); // Whisper's preferred sample rate
-
-    if let Some(ref model_path) = cli.model {
-        config = config.with_model_path(model_path.clone());
-    }
-
-    if let Some(ref language) = cli.language {
-        config = config.with_language(language.clone());
-    }
-
-    config = config.with_threads(cli.threads.unwrap_or_else(num_cpus::get));
-
-    config.temperature = cli.temperature;
-    config.output_format.include_timestamps = cli.timestamps;
-    config.output_format.word_timestamps = cli.word_timestamps;
-    config = config.with_verbose(cli.verbose);
-
-    // Print startup info
-    if cli.verbose {
-        println!("{}", "Whisper UI - Audio Transcription".blue().bold());
-        if config.use_gpu {
-            println!("GPU acceleration: {}", "enabled".green());
-        } else {
-            println!("GPU acceleration: {}", "disabled".red());
-        }
-        if let Some(lang) = &config.language {
-            println!("Language: {}", lang);
-        }
-        println!();
-    }
-
-    // Perform transcription (streaming or batch)
-    if !cli.no_stream {
-        info!("Streaming transcription...");
-
-        // Handle streaming transcription
-        let mut receiver = match transcribe_audio_file_streaming(&audio_file, Some(config)).await {
-            Ok(receiver) => receiver,
-            Err(e) => {
-                // Check if this is a "no model found" error
-
-                if matches!(e, WhisperError::WhisperModel(_)) {
-                    // Prompt user to download base model
-                    if prompt_for_model_download().await? {
-                        // Retry streaming transcription after downloading model
-                        let mut config = TranscriptionConfig::new()
-                            .with_gpu(!cli.no_gpu)
-                            .with_sample_rate(16000);
-
-                        if let Some(ref model_path) = cli.model {
-                            config = config.with_model_path(model_path.clone());
-                        }
-
-                        if let Some(ref language) = cli.language {
-                            config = config.with_language(language.clone());
-                        }
-
-                        config = config.with_threads(cli.threads.unwrap_or_else(num_cpus::get));
-
-                        config.temperature = cli.temperature;
-                        config.output_format.include_timestamps = cli.timestamps;
-                        config.output_format.word_timestamps = cli.word_timestamps;
-                        config = config.with_verbose(cli.verbose);
-
-                        println!("{} Streaming transcription...", "Info:".blue().bold());
-                        match transcribe_audio_file_streaming(&audio_file, Some(config)).await {
-                            Ok(receiver) => receiver,
-                            Err(e) => {
-                                eprintln!(
-                                    "{} Streaming transcription failed: {}",
-                                    "Error:".red().bold(),
-                                    e
-                                );
-                                process::exit(1);
-                            }
-                        }
-                    } else {
-                        error!(
-                            "{} No model available. Download one with: {}{}",
-                            "Error:".red().bold(),
-                            env!("CARGO_PKG_NAME").cyan(),
-                            " models download base".cyan()
-                        );
-                        process::exit(1);
-                    }
-                } else {
-                    error!(
-                        "{} Streaming transcription failed: {}",
-                        "Error:".red().bold(),
-                        e
-                    );
-                    process::exit(1);
-                }
-            }
-        };
-
-        // Process streaming results
-        handle_streaming_output(&mut receiver, &cli).await?;
-
-        return Ok(());
-    }
-
-    println!("{} Transcribing audio...", "Info:".blue().bold());
-
-    let result = match transcribe_audio_file(&audio_file, Some(config)).await {
-        Ok(result) => result,
-        Err(e) => {
-            // Check if this is a "no model found" error
-            let error_str = e.to_string();
-            if error_str.contains("No Whisper model found") {
-                // Prompt user to download base model
-                if prompt_for_model_download().await? {
-                    // Retry transcription after downloading model
-                    let mut config = TranscriptionConfig::new()
-                        .with_gpu(!cli.no_gpu)
-                        .with_sample_rate(16000);
-
-                    if let Some(ref model_path) = cli.model {
-                        config = config.with_model_path(model_path.clone());
-                    }
-
-                    if let Some(ref language) = cli.language {
-                        config = config.with_language(language.clone());
-                    }
-
-                    config = config.with_threads(cli.threads.unwrap_or_else(num_cpus::get));
-
-                    config.temperature = cli.temperature;
-                    config.output_format.include_timestamps = cli.timestamps;
-                    config.output_format.word_timestamps = cli.word_timestamps;
-                    config = config.with_verbose(cli.verbose);
-
-                    println!("{} Transcribing audio...", "Info:".blue().bold());
-                    match transcribe_audio_file(&audio_file, Some(config)).await {
-                        Ok(result) => result,
-                        Err(e) => {
-                            eprintln!("{} Transcription failed: {}", "Error:".red().bold(), e);
-                            process::exit(1);
-                        }
-                    }
-                } else {
-                    eprintln!(
-                        "{} No model available. Download one with: {}{}",
-                        "Error:".red().bold(),
-                        env!("CARGO_PKG_NAME").cyan(),
-                        " models download base".cyan()
-                    );
-                    process::exit(1);
-                }
-            } else {
-                eprintln!("{} Transcription failed: {}", "Error:".red().bold(), e);
-                process::exit(1);
-            }
-        }
-    };
-
-    // Prepare output content
-    let output_content = match cli.output {
-        OutputFormat::Text => {
-            if cli.timestamps {
-                result
-                    .segments
-                    .iter()
-                    .map(|segment| {
-                        format!(
-                            "[{:.2}s -> {:.2}s] {}",
-                            segment.start, segment.end, segment.text
-                        )
-                    })
-                    .collect::<Vec<_>>()
-                    .join("\n")
-            } else {
-                result.text.clone()
-            }
-        }
-        OutputFormat::Json => serde_json::to_string_pretty(&result)?,
-        OutputFormat::Srt => result
-            .segments
-            .iter()
-            .enumerate()
-            .map(|(i, segment)| {
-                format!(
-                    "{}\n{} --> {}\n{}\n",
-                    i + 1,
-                    format_srt_time(segment.start),
-                    format_srt_time(segment.end),
-                    segment.text
-                )
-            })
-            .collect::<Vec<_>>()
-            .join("\n"),
-        OutputFormat::Txt => result.text.clone(),
-    };
-
-    // Write output to file or stdout
-    if let Some(output_file) = cli.output_file {
-        use std::fs;
-        fs::write(&output_file, &output_content)?;
-        if cli.verbose {
-            println!(
-                "{} Output written to: {}",
-                "Success:".green().bold(),
-                output_file.display()
-            );
-        }
-    } else {
-        print!("{}", output_content);
-    }
-
-    // Print summary if verbose
-    if cli.verbose {
-        println!();
-        println!("{}", "Transcription Summary:".green().bold());
-        println!("Audio duration: {:.2}s", result.audio_duration);
-        println!("Processing time: {:.2}s", result.processing_time);
-        println!(
-            "Real-time factor: {:.2}x",
-            result.processing_time / result.audio_duration as f64
-        );
-        if let Some(lang) = &result.language {
-            println!("Detected language: {}", lang);
-        }
-        println!("Segments: {}", result.segments.len());
-    }
-
-    Ok(())
-}
-
 /// Handle streaming transcription output
 async fn handle_streaming_output(
     receiver: &mut purr_core::StreamingReceiver,
@@ -547,7 +534,7 @@ async fn prompt_for_model_download() -> anyhow::Result<bool> {
                 Ok(true)
             }
             Err(e) => {
-                eprintln!("{} Failed to download model: {}", "Error:".red().bold(), e);
+                error!("Failed to download model: {}", e);
                 Ok(false)
             }
         }
