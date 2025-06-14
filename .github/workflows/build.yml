@@ -20,6 +20,31 @@ jobs:
         run: |
           apt update
           apt install -y --no-install-recommends clang curl pkg-config cmake sudo gcc
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+          components: rustfmt, clippy
+      - name: Build
+        run: |
+          cargo build --release
+      - name: Archive production artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          path: |
+            target/release/purr*
+
+  build-linux-cuda:
+    name: Linux - FFmpeg 7.1 - build
+    runs-on: ubuntu-latest
+    container: jrottenberg/ffmpeg:7.1-ubuntu
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install dependencies
+        run: |
+          apt update
+          apt install -y --no-install-recommends clang curl pkg-config cmake sudo gcc
       - uses: Jimver/cuda-toolkit@master
         id: cuda-toolkit
       - name: Set up Rust
@@ -30,7 +55,7 @@ jobs:
           components: rustfmt, clippy
       - name: Build
         run: |
-          cargo build --release
+          cargo build --release --features cuda
       - name: Archive production artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -53,7 +78,7 @@ jobs:
           components: rustfmt, clippy
       - name: Build
         run: |
-          cargo build --release
+          cargo build --release --features metal
       - name: Archive production artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -88,13 +113,12 @@ jobs:
       - uses: Jimver/cuda-toolkit@master
         id: cuda-toolkit
         with: 
-            use-github-cache: false
-            use-local-cache: false
+            method: network
       - name: Setup cmake
         uses: jwlawson/actions-setup-cmake@v2
       - name: Build
         run: |
-          cargo build --release
+          cargo build --release --features cuda
       - name: Archive production artifacts
         uses: actions/upload-artifact@v4
         with:
