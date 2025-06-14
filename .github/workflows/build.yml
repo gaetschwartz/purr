@@ -19,7 +19,7 @@ jobs:
       - name: Install dependencies
         run: |
           apt update
-          apt install -y --no-install-recommends clang curl pkg-config cmake sudo
+          apt install -y --no-install-recommends clang curl pkg-config cmake sudo gcc
       - uses: Jimver/cuda-toolkit@master
         id: cuda-toolkit
       - name: Set up Rust
@@ -89,6 +89,7 @@ jobs:
         id: cuda-toolkit
         with: 
             use-github-cache: false
+            use-local-cache: false
       - name: Setup cmake
         uses: jwlawson/actions-setup-cmake@v2
       - name: Build
