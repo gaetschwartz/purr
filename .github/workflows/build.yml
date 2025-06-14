@@ -25,7 +25,7 @@ jobs:
         with:
           toolchain: stable
           override: true
-          components: rustfmt, clippy
+          # components: rustfmt, clippy
       - name: Build
         run: |
           cargo build --release
@@ -36,7 +36,7 @@ jobs:
             target/release/purr*
 
   build-linux-cuda:
-    name: Linux - FFmpeg 7.1 - build
+    name: Linux - FFmpeg 7.1 - build with CUDA
     runs-on: ubuntu-latest
     container: jrottenberg/ffmpeg:7.1-ubuntu
     steps:
@@ -52,7 +52,6 @@ jobs:
         with:
           toolchain: stable
           override: true
-          components: rustfmt, clippy
       - name: Build
         run: |
           cargo build --release --features cuda
@@ -75,7 +74,6 @@ jobs:
         with:
           toolchain: stable
           override: true
-          components: rustfmt, clippy
       - name: Build
         run: |
           cargo build --release --features metal
@@ -108,7 +106,6 @@ jobs:
         with:
           toolchain: stable
           override: true
-          components: rustfmt, clippy
       - uses: ilammy/msvc-dev-cmd@v1.4.1
       - uses: Jimver/cuda-toolkit@master
         id: cuda-toolkit
