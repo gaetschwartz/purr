@@ -1,6 +1,4 @@
-
 # https://github.com/zmwangx/rust-ffmpeg/blob/master/.github/workflows/build.yml
-
 
 name: build
 on:
@@ -39,7 +37,7 @@ jobs:
             CUDA_VERSION="12-9"
             CUDA_PATH_VERSION="12.9"
           fi
-          
+
           wget https://developer.download.nvidia.com/compute/cuda/repos/${CUDA_REPO}/x86_64/cuda-keyring_1.1-1_all.deb
           sudo dpkg -i cuda-keyring_1.1-1_all.deb
           sudo apt update
@@ -86,7 +84,6 @@ jobs:
           path: |
             target/release/purr*
 
-
   build-windows:
     name: Build Windows (MSVC, cuda)
     runs-on: windows-2025
@@ -104,26 +101,39 @@ jobs:
           mv ffmpeg-*/* ffmpeg/
           Add-Content $env:GITHUB_ENV "FFMPEG_DIR=${pwd}\ffmpeg`n"
           Add-Content $env:GITHUB_PATH "${pwd}\ffmpeg\bin`n"
+      - name: Install Visual Studio components
+        run: |
+          $components = @(
+            "Microsoft.VisualStudio.Workload.NativeDesktop",
+            "Microsoft.VisualStudio.Component.VC.Tools.x86.x64",
+          )
+          $vs = vswhere -latest -property installationPath
+          if (-not $vs) {
+            Write-Error "No Visual Studio installation found"
+            exit 1
+          }
+          $vs_install = "$vs\Installer\vs_installer.exe"
+          if (-not (Test-Path $vs_install)) {
+            Write-Error "Visual Studio Installer executable not found at $vs_install"
+            exit 1
+          }
+          $arguments = @(
+            "--wait",
+            "--norestart",
+            "--quiet",
+            "--add", $components -join ","
+          )
+          Start-Process -FilePath $vs_install -ArgumentList $arguments -NoNewWindow -Wait
+      - name: Install cuda & cmake
+        run: |
+          choco install cuda --version 12.9.0
+          choco install cmake --installargs 'ADD_CMAKE_TO_PATH=System'
+          "CUDA_PATH=/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.9" >> $env:GITHUB_ENV
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
           toolchain: stable
-      - uses: ilammy/msvc-dev-cmd@v1.4.1
-      - name: Install cuda & cmake
-        run: |
-          Install-Module -AcceptLicense -Force -Name Microsoft.WinGet.Client -RequiredVersion 0.2.1
-          Import-Module -Name Microsoft.WinGet.Client
-          Install-WinGetPackage -Id Nvidia.CUDA
-          Install-WinGetPackage -Id Kitware.CMake 
-          # print env
-          if ($env:CUDA_PATH) {
-            Write-Host "CUDA_PATH ($($env:CUDA_PATH)) found"
-            Add-Content $env:GITHUB_ENV "CUDA_PATH=$($env:CUDA_PATH)`n"
-          } else {
-            Write-Error "CUDA_PATH ($($env:CUDA_PATH)) not found"
-            exit 1
-          }
       - name: Build
         run: |
           cargo build --release --features cuda
