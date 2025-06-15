@@ -18,7 +18,9 @@
       "Bash(git commit:*)",
       "Bash(cargo:*)",
       "Bash(rg:*)",
-      "Bash(./target/release/purr --help)"
+      "Bash(./target/release/purr --help)",
+      "Bash(act:*)",
+      "WebFetch(domain:github.com)"
     ],
     "deny": []
   }
