@@ -27,6 +27,12 @@ jobs:
       - uses: Jimver/cuda-toolkit@master
         id: cuda-toolkit
         if: ${{ matrix.cuda }} == true
+      - name: Set up CUDA
+        if: ${{ matrix.cuda }} == true
+        run: |
+          echo "CUDA_PATH=${{ steps.cuda-toolkit.outputs.CUDA_PATH }}" >> $GITHUB_ENV
+          echo "${{ steps.cuda-toolkit.outputs.CUDA_PATH }}/bin" >> $GITHUB_PATH
+          echo "${{ steps.cuda-toolkit.outputs.CUDA_PATH }}/lib64" >> $GITHUB_LIBRARY_PATH
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
         with:
