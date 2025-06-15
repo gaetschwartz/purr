@@ -21,11 +21,9 @@ jobs:
           apt update
           apt install -y --no-install-recommends clang curl pkg-config cmake sudo gcc
       - name: Set up Rust
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
-          override: true
-          # components: rustfmt, clippy
       - name: Build
         run: |
           cargo build --release
@@ -48,10 +46,9 @@ jobs:
       - uses: Jimver/cuda-toolkit@master
         id: cuda-toolkit
       - name: Set up Rust
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
-          override: true
       - name: Build
         run: |
           cargo build --release --features cuda
@@ -70,10 +67,9 @@ jobs:
         run: |
           brew install ffmpeg pkg-config cmake
       - name: Set up Rust
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
-          override: true
       - name: Build
         run: |
           cargo build --release --features metal
@@ -102,17 +98,14 @@ jobs:
           Add-Content $env:GITHUB_ENV "FFMPEG_DIR=${pwd}\ffmpeg`n"
           Add-Content $env:GITHUB_PATH "${pwd}\ffmpeg\bin`n"
       - name: Set up Rust
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
-          override: true
       - uses: ilammy/msvc-dev-cmd@v1.4.1
-      - uses: Jimver/cuda-toolkit@master
-        id: cuda-toolkit
-        with: 
-            method: network
-      - name: Setup cmake
-        uses: jwlawson/actions-setup-cmake@v2
+      - name: Install cuda & cmake
+        run: |
+          winget add --id NVIDIA.CUDA -e
+          winget add --id Kitware.CMake -e
       - name: Build
         run: |
           cargo build --release --features cuda
