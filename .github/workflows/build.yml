@@ -19,7 +19,7 @@ jobs:
       - name: Install dependencies
         run: |
           apt update
-          apt install -y --no-install-recommends clang curl pkg-config cmake sudo gcc
+          apt install -y --no-install-recommends clang curl pkg-config cmake sudo gcc ca-certificates
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -42,7 +42,7 @@ jobs:
       - name: Install dependencies
         run: |
           apt update
-          apt install -y --no-install-recommends clang curl pkg-config cmake sudo gcc
+          apt install -y --no-install-recommends clang curl pkg-config cmake sudo gcc ca-certificates
       - uses: Jimver/cuda-toolkit@master
         id: cuda-toolkit
       - name: Set up Rust
@@ -82,7 +82,7 @@ jobs:
 
   build-windows:
     name: Windows - FFmpeg latest - build
-    runs-on: windows-latest
+    runs-on: windows-2025
     env:
       FFMPEG_DOWNLOAD_URL: https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-full-shared.7z
     steps:
