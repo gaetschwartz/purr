@@ -110,10 +110,12 @@ jobs:
           components: clippy, rustfmt
           toolchain: stable
       - uses: ilammy/msvc-dev-cmd@v1.4.1
-      - uses: MinoruSekine/setup-scoop@v4.0.1
       - name: Install cuda & cmake
         run: |
-          scoop install -g cmake cuda
+          Install-Module -AcceptLicense -Force -Name Microsoft.WinGet.Client -RequiredVersion 0.2.1
+          Import-Module -Name Microsoft.WinGet.Client
+          Install-WinGetPackage -Id Nvidia.CUDA
+          Install-WinGetPackage -Id Kitware.CMake 
           # print env
           if ($env:CUDA_PATH) {
             Write-Host "CUDA_PATH ($($env:CUDA_PATH)) found"
