@@ -96,8 +96,9 @@ jobs:
       - uses: ilammy/msvc-dev-cmd@v1.4.1
       - name: Install cuda & cmake
         run: |
-          winget add --accept-source-agreements --id Nvidia.CUDA
-          winget add --accept-source-agreements --id Kitware.CMake 
+          Install-Module -AcceptLicense -Name Microsoft.WinGet.Client -RequiredVersion 0.2.1 
+          Install-WinGetPackage -Id Nvidia.CUDA
+          Install-WinGetPackage -Id Kitware.CMake 
           Add-Content $env:GITHUB_ENV "CUDA_PATH=C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.9`n"
       - name: Build
         run: |
