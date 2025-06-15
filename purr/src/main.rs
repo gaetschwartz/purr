@@ -1,6 +1,10 @@
 //! Whisper UI CLI - Audio transcription command-line interface
 mod fmt;
 
+use clap::builder::{
+    styling::{AnsiColor, Effects, Style},
+    Styles,
+};
 use clap::{Parser, Subcommand};
 use indicatif::{HumanBytes, HumanDuration, ProgressBar, ProgressStyle};
 use owo_colors::OwoColorize as _;
@@ -121,6 +125,7 @@ const ABOUT: &str = "😸 Transcribe audio files using Whisper AI";
 #[command(name = env!("CARGO_PKG_NAME"), author = env!("CARGO_PKG_AUTHORS"))]
 #[command(about = ABOUT)]
 #[command(version = "0.1.0")]
+#[command(styles = CLAP_STYLING)]
 struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
@@ -1079,7 +1084,10 @@ fn handle_output(result: purr_core::SyncTranscriptionResult, cli: &Cli) -> anyho
         println!("Processing time: {:.2}s", result.stats.processing_time);
         println!("Real-time factor: {:.2}x", result.stats.real_time_factor);
         println!("Segments: {}", result.stats.segment_count);
-        println!("Average segment length: {:.2}s", result.stats.avg_segment_length);
+        println!(
+            "Average segment length: {:.2}s",
+            result.stats.avg_segment_length
+        );
         println!("Words: {}", result.stats.word_count);
         println!("Words per minute: {:.1}", result.stats.words_per_minute);
         if let Some(lang) = &result.language {
@@ -1121,6 +1129,23 @@ const ASCII_ART: &str = r#"
   |  |  |  |(_(  |  |  |  |  |  |  |  |  |  |
   |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
   |  |  |  |  |  |  |  |  |  |  |  |  |  |  |"#;
+
+pub const HEADER: Style = AnsiColor::Green.on_default().effects(Effects::BOLD);
+pub const USAGE: Style = AnsiColor::Green.on_default().effects(Effects::BOLD);
+pub const LITERAL: Style = AnsiColor::Cyan.on_default().effects(Effects::BOLD);
+pub const PLACEHOLDER: Style = AnsiColor::Cyan.on_default().italic();
+pub const ERROR: Style = AnsiColor::Red.on_default().effects(Effects::BOLD);
+pub const VALID: Style = AnsiColor::Cyan.on_default().effects(Effects::BOLD);
+pub const INVALID: Style = AnsiColor::Yellow.on_default().effects(Effects::BOLD);
+
+pub const CLAP_STYLING: Styles = Styles::styled()
+    .header(HEADER)
+    .usage(USAGE)
+    .literal(LITERAL)
+    .placeholder(PLACEHOLDER)
+    .error(ERROR)
+    .valid(VALID)
+    .invalid(INVALID);
 
 #[cfg(test)]
 mod tests {
