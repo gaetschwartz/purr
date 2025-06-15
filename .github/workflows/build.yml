@@ -103,14 +103,10 @@ jobs:
           Add-Content $env:GITHUB_PATH "${pwd}\ffmpeg\bin`n"
       - name: Install Visual Studio components
         run: |
-          $components = @(
-            "Microsoft.VisualStudio.Workload.NativeDesktop"
-          )
-          $url = "https://aka.ms/vs/17/release/vs_enterprise.exe"
-          $vs_install = "$env:TEMP\vs_enterprise.exe"
-          Invoke-WebRequest -Uri $url -OutFile $vs_install
-          # Install Visual Studio components
-          Start-Process -FilePath $vs_install -ArgumentList "modify", "-quiet", "-wait", "--add", ($components -join ",") -ErrorAction Stop -Wait
+          & "C:\Program Files (x86)\Microsoft Visual Studio\Installer\vs_installer.exe" modify `
+          --installPath "C:\Program Files\Microsoft Visual Studio\2022\Enterprise" `
+          --add Microsoft.VisualStudio.Workload.NativeDesktop `
+          --quiet --wait
       - name: Install cuda & cmake
         run: |
           choco install cuda --version 12.9.0
