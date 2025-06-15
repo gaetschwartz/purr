@@ -19,7 +19,9 @@ jobs:
       - name: Install dependencies
         run: |
           apt update
-          apt install -y --no-install-recommends clang curl pkg-config cmake sudo gcc ca-certificates openssl libssl-dev
+          apt install -y --no-install-recommends clang curl pkg-config sudo gcc ca-certificates openssl libssl-dev
+      - name: Setup cmake
+        uses: jwlawson/actions-setup-cmake@v2
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -43,7 +45,9 @@ jobs:
       - name: Install dependencies
         run: |
           apt update
-          apt install -y --no-install-recommends clang curl pkg-config cmake sudo gcc ca-certificates openssl libssl-dev
+          apt install -y --no-install-recommends clang curl pkg-config sudo gcc ca-certificates openssl libssl-dev
+      - name: Setup cmake
+        uses: jwlawson/actions-setup-cmake@v2
       - uses: Jimver/cuda-toolkit@master
         id: cuda-toolkit
       - name: Set up Rust
@@ -108,8 +112,9 @@ jobs:
       - uses: ilammy/msvc-dev-cmd@v1.4.1
       - name: Install cuda & cmake
         run: |
-          winget add --id NVIDIA.CUDA -e --accept-source-agreements
-          winget add --id Kitware.CMake -e --accept-source-agreements
+          winget add --accept-source-agreements --id Nvidia.CUDA
+          winget add --accept-source-agreements --id Kitware.CMake 
+          Add-Content $env:GITHUB_ENV "CUDA_PATH=C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.9`n"
       - name: Build
         run: |
           cargo build --release --features cuda
