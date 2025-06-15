@@ -104,8 +104,7 @@ jobs:
       - name: Install Visual Studio components
         run: |
           $components = @(
-            "Microsoft.VisualStudio.Workload.NativeDesktop",
-            "Microsoft.VisualStudio.Component.VC.Tools.x86.x64",
+            "Microsoft.VisualStudio.Workload.NativeDesktop"
           )
           $vs = vswhere -latest -property installationPath
           if (-not $vs) {
