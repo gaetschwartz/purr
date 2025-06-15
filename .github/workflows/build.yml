@@ -109,11 +109,13 @@ jobs:
           if (Test-Path $GUESSED_CUDA_PATH) {
             Write-Host "GUESSED_CUDA_PATH exists, using it"
             Add-Content $env:GITHUB_ENV "CUDA_PATH=$GUESSED_CUDA_PATH`n"
-          } else if ($env:CUDA_PATH) {
-            Write-Host "CUDA_PATH exists, keeping it"
           } else {
-            Write-Error "CUDA_PATH not found, exiting"
-            exit 1
+            if ($env:CUDA_PATH) {
+              Write-Host "CUDA_PATH exists, keeping it"
+            } else {
+              Write-Error "CUDA_PATH not found, exiting"
+              exit 1
+            }
           }
       - name: Build
         run: |
