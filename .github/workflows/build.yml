@@ -102,20 +102,12 @@ jobs:
         run: |
           scoop install -g cmake cuda
           # print env
-          $GUESSED_CUDA_PATH = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.9"
-          Write-Host "CUDA_PATH before: $env:CUDA_PATH"
-          Write-Host "GUESSED_CUDA_PATH: $GUESSED_CUDA_PATH"
-          # check if the directory exists
-          if (Test-Path $GUESSED_CUDA_PATH) {
-            Write-Host "GUESSED_CUDA_PATH exists, using it"
-            Add-Content $env:GITHUB_ENV "CUDA_PATH=$GUESSED_CUDA_PATH`n"
+          if ($env:CUDA_PATH) {
+            Write-Host "CUDA_PATH ($($env:CUDA_PATH)) found"
+            Add-Content $env:GITHUB_ENV "CUDA_PATH=$($env:CUDA_PATH)`n"
           } else {
-            if ($env:CUDA_PATH) {
-              Write-Host "CUDA_PATH exists, keeping it"
-            } else {
-              Write-Error "CUDA_PATH not found, exiting"
-              exit 1
-            }
+            Write-Error "CUDA_PATH ($($env:CUDA_PATH)) not found"
+            exit 1
           }
       - name: Build
         run: |
