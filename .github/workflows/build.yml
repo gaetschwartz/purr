@@ -41,8 +41,9 @@ jobs:
           components: clippy, rustfmt
           targets: x86_64-unknown-linux-gnu
       - name: Build
-        run: |
-          cargo build --verbose --release
+        run: cargo build --verbose --release
+        env:
+          RUSTFLAGS: "-C link-arg=-Wl,--no-as-needed -C link-arg=-ldl"
       - name: Archive production artifacts
         uses: actions/upload-artifact@v4
         with:
