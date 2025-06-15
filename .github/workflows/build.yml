@@ -24,6 +24,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
+          components: clippy, rustfmt
       - name: Build
         run: |
           cargo build --release
@@ -48,6 +49,7 @@ jobs:
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
         with:
+          components: clippy, rustfmt
           toolchain: stable
       - name: Build
         run: |
@@ -69,6 +71,7 @@ jobs:
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
         with:
+          components: clippy, rustfmt
           toolchain: stable
       - name: Build
         run: |
@@ -100,6 +103,7 @@ jobs:
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
         with:
+          components: clippy, rustfmt
           toolchain: stable
       - uses: ilammy/msvc-dev-cmd@v1.4.1
       - name: Install cuda & cmake
