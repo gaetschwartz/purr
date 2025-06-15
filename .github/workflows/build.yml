@@ -27,6 +27,9 @@ jobs:
       - uses: Jimver/cuda-toolkit@master
         id: cuda-toolkit
         if: ${{ matrix.cuda }} == true
+        with:
+          method: network
+          log-file-suffix: 'cuda_${{matrix.cuda}}.txt'
       - name: Set up CUDA
         if: ${{ matrix.cuda }} == true
         run: |
