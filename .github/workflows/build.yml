@@ -93,7 +93,7 @@ jobs:
       - uses: ilammy/msvc-dev-cmd@v1.4.1
       - name: Install cuda & cmake
         run: |
-          Install-Module -AcceptLicense -Confirm -Name Microsoft.WinGet.Client -RequiredVersion 0.2.1
+          Install-Module -AcceptLicense -Force -Name Microsoft.WinGet.Client -RequiredVersion 0.2.1
           Import-Module -Name Microsoft.WinGet.Client
           Install-WinGetPackage -Id Nvidia.CUDA
           Install-WinGetPackage -Id Kitware.CMake 
