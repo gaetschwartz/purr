@@ -109,8 +109,8 @@ jobs:
           --wait
       - name: Install cuda & cmake
         run: |
-          winget install --id NVIDIA.CUDA -e --version 12.9
-          winget install --id Kitware.CMake -e
+          winget install --id NVIDIA.CUDA -e --version 12.9 --accept-source-agreements
+          winget install --id Kitware.CMake -e --accept-source-agreements
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
         with:
