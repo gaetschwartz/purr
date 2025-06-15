@@ -28,14 +28,26 @@ jobs:
       - name: Install cuda
         if: matrix.cuda == true
         run: |
-          wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb
+          # Detect Ubuntu version and set appropriate CUDA repo
+          UBUNTU_VERSION=$(lsb_release -rs | tr -d '.')
+          if [ "$UBUNTU_VERSION" = "2204" ]; then
+            CUDA_REPO="ubuntu2204"
+            CUDA_VERSION="12-6"
+            CUDA_PATH_VERSION="12.6"
+          else
+            CUDA_REPO="ubuntu2404"
+            CUDA_VERSION="12-9"
+            CUDA_PATH_VERSION="12.9"
+          fi
+          
+          wget https://developer.download.nvidia.com/compute/cuda/repos/${CUDA_REPO}/x86_64/cuda-keyring_1.1-1_all.deb
           sudo dpkg -i cuda-keyring_1.1-1_all.deb
           sudo apt update
-          sudo apt install -y cuda-toolkit-12-9
-          CUDA_PATH=/usr/local/cuda-12.9/
+          sudo apt install -y cuda-toolkit-${CUDA_VERSION}
+          CUDA_PATH=/usr/local/cuda-${CUDA_PATH_VERSION}/
           echo "CUDA_PATH=$CUDA_PATH" >> $GITHUB_ENV
           echo "$CUDA_PATH/bin" >> $GITHUB_PATH
-          echo "$CUDA_PATH/lib64" >> $GITHUB_LIBRARY_PATH
+          echo "GITHUB_LIBRARY_PATH=$CUDA_PATH/lib64${GITHUB_LIBRARY_PATH:+:$GITHUB_LIBRARY_PATH}" >> $GITHUB_ENV
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
         with:
