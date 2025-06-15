@@ -11,7 +11,7 @@ on:
 
 jobs:
   build-linux:
-    name: Build Linux (cuda=${matrix.cuda})
+    name: Build Linux (cuda=${{matrix.cuda}})
     runs-on: ubuntu-latest
     container: jrottenberg/ffmpeg:7.1-ubuntu
     strategy:
@@ -23,10 +23,10 @@ jobs:
       - name: Install dependencies
         run: |
           apt update
-          apt install -y --no-install-recommends clang curl pkg-config sudo gcc ca-certificates openssl libssl-dev cmake libc6-dev
+          apt install -y --no-install-recommends clang curl pkg-config sudo gcc ca-certificates openssl libssl-dev cmake libc6-dev make
       - uses: Jimver/cuda-toolkit@master
         id: cuda-toolkit
-        if: matrix.cuda == 'true'
+        if: ${{ matrix.cuda }} == true
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
         with:
