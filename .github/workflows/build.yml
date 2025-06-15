@@ -106,12 +106,12 @@ jobs:
           & "C:\Program Files (x86)\Microsoft Visual Studio\Installer\vs_installer.exe" modify `
           --installPath "C:\Program Files\Microsoft Visual Studio\2022\Enterprise" `
           --add Microsoft.VisualStudio.Workload.NativeDesktop `
-          --quiet --wait
+          --wait
       - name: Install cuda & cmake
         run: |
           choco install cuda --version 12.9.0
           choco install cmake --installargs 'ADD_CMAKE_TO_PATH=System'
-          "CUDA_PATH=/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.9" >> $env:GITHUB_ENV
+          "CUDA_PATH=C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.9" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
         with:
