@@ -11,49 +11,31 @@ on:
 
 jobs:
   build-linux:
-    name: Build Linux
+    name: Build Linux (cuda=${matrix.cuda})
     runs-on: ubuntu-latest
     container: jrottenberg/ffmpeg:7.1-ubuntu
+    strategy:
+      fail-fast: false
+      matrix:
+        cuda: [false, true]
     steps:
       - uses: actions/checkout@v2
       - name: Install dependencies
         run: |
           apt update
-          apt install -y --no-install-recommends clang curl pkg-config sudo gcc ca-certificates openssl libssl-dev build-essential cmake libc-dev libclang-dev
+          apt install -y --no-install-recommends clang curl pkg-config sudo gcc ca-certificates openssl libssl-dev cmake libc6-dev
+      - uses: Jimver/cuda-toolkit@master
+        id: cuda-toolkit
+        if: matrix.cuda == 'true'
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
           components: clippy, rustfmt
+          targets: x86_64-unknown-linux-gnu
       - name: Build
         run: |
           cargo build --verbose --release
-      - name: Archive production artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          path: |
-            target/release/purr*
-
-  build-linux-cuda:
-    name: Build Linux (cuda)
-    runs-on: ubuntu-latest
-    container: jrottenberg/ffmpeg:7.1-ubuntu
-    steps:
-      - uses: actions/checkout@v2
-      - name: Install dependencies
-        run: |
-          apt update
-          apt install -y --no-install-recommends clang curl pkg-config sudo gcc ca-certificates openssl libssl-dev build-essential cmake libc-dev libclang-dev
-      - uses: Jimver/cuda-toolkit@master
-        id: cuda-toolkit
-      - name: Set up Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy, rustfmt
-          toolchain: stable
-      - name: Build
-        run: |
-          cargo build --verbose --release --features cuda
       - name: Archive production artifacts
         uses: actions/upload-artifact@v4
         with:
