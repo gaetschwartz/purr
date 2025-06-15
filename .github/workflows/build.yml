@@ -106,23 +106,11 @@ jobs:
           $components = @(
             "Microsoft.VisualStudio.Workload.NativeDesktop"
           )
-          $vs = vswhere -latest -property installationPath
-          if (-not $vs) {
-            Write-Error "No Visual Studio installation found"
-            exit 1
-          }
-          $vs_install = "$vs\Installer\vs_installer.exe"
-          if (-not (Test-Path $vs_install)) {
-            Write-Error "Visual Studio Installer executable not found at $vs_install"
-            exit 1
-          }
-          $arguments = @(
-            "--wait",
-            "--norestart",
-            "--quiet",
-            "--add", $components -join ","
-          )
-          Start-Process -FilePath $vs_install -ArgumentList $arguments -NoNewWindow -Wait
+          $url = "https://aka.ms/vs/17/release/vs_enterprise.exe"
+          $vs_install = "$env:TEMP\vs_enterprise.exe"
+          Invoke-WebRequest -Uri $url -OutFile $vs_install
+          # Install Visual Studio components
+          Start-Process -FilePath $vs_install -ArgumentList "modify", "-quiet", "-wait", "--add", ($components -join ",") -ErrorAction Stop -Wait
       - name: Install cuda & cmake
         run: |
           choco install cuda --version 12.9.0
