@@ -24,6 +24,9 @@ jobs:
         run: |
           apt update
           apt install -y --no-install-recommends clang curl pkg-config sudo gcc ca-certificates openssl libssl-dev cmake libc6-dev make wget
+      - name: Install cuda
+        if: matrix.cuda == true
+        run: |
           wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb
           dpkg -i cuda-keyring_1.1-1_all.deb
           apt install -y cuda-toolkit-12-9
