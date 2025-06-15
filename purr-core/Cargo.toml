@@ -7,7 +7,7 @@ edition = "2021"
 # Whisper.cpp bindings
 whisper-rs = { version = "0.14", features = ["tracing_backend", "raw-api"] }
 
-ffmpeg-next = { version = "7.0", features = [] }
+ffmpeg-next = { version = "7.0", features = ["codec", "format"] }
 
 # FFmpeg bindings for audio processing
 # Async runtime
