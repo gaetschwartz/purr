@@ -19,7 +19,7 @@ jobs:
       - name: Install dependencies
         run: |
           apt update
-          apt install -y --no-install-recommends clang curl pkg-config cmake sudo gcc ca-certificates
+          apt install -y --no-install-recommends clang curl pkg-config cmake sudo gcc ca-certificates openssl libssl-dev
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -42,7 +42,7 @@ jobs:
       - name: Install dependencies
         run: |
           apt update
-          apt install -y --no-install-recommends clang curl pkg-config cmake sudo gcc ca-certificates
+          apt install -y --no-install-recommends clang curl pkg-config cmake sudo gcc ca-certificates openssl libssl-dev
       - uses: Jimver/cuda-toolkit@master
         id: cuda-toolkit
       - name: Set up Rust
@@ -104,8 +104,8 @@ jobs:
       - uses: ilammy/msvc-dev-cmd@v1.4.1
       - name: Install cuda & cmake
         run: |
-          winget add --id NVIDIA.CUDA -e
-          winget add --id Kitware.CMake -e
+          winget add --id NVIDIA.CUDA -e --accept-source-agreements
+          winget add --id Kitware.CMake -e --accept-source-agreements
       - name: Build
         run: |
           cargo build --release --features cuda
