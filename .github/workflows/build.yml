@@ -97,11 +97,7 @@ jobs:
           components: clippy, rustfmt
           toolchain: stable
       - uses: ilammy/msvc-dev-cmd@v1.4.1
-      - name: Install Scoop
-        uses: ScoopInstaller/GithubActions@main
-        env:
-          SKIP_UPDATED: '1'
-          THROW_ERROR: '0'
+      - uses: MinoruSekine/setup-scoop@v4.0.1
       - name: Install cuda & cmake
         run: |
           scoop install -g cmake cuda
