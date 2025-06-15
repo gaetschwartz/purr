@@ -11,7 +11,7 @@ on:
 
 jobs:
   build-linux:
-    name: Linux - FFmpeg 7.1 - build
+    name: Build Linux
     runs-on: ubuntu-latest
     container: jrottenberg/ffmpeg:7.1-ubuntu
     steps:
@@ -27,7 +27,7 @@ jobs:
           components: clippy, rustfmt
       - name: Build
         run: |
-          cargo build --release
+          cargo build --verbose --release
       - name: Archive production artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -35,7 +35,7 @@ jobs:
             target/release/purr*
 
   build-linux-cuda:
-    name: Linux - FFmpeg 7.1 - build with CUDA
+    name: Build Linux (cuda)
     runs-on: ubuntu-latest
     container: jrottenberg/ffmpeg:7.1-ubuntu
     steps:
@@ -53,7 +53,7 @@ jobs:
           toolchain: stable
       - name: Build
         run: |
-          cargo build --release --features cuda
+          cargo build --verbose --release --features cuda
       - name: Archive production artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -61,7 +61,7 @@ jobs:
             target/release/purr*
 
   build-macos:
-    name: macOS - FFmpeg latest - build
+    name: Build macOS (metal)
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v2
@@ -84,7 +84,7 @@ jobs:
 
 
   build-windows:
-    name: Windows - FFmpeg latest - build
+    name: Build Windows (MSVC, cuda)
     runs-on: windows-2025
     env:
       FFMPEG_DOWNLOAD_URL: https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-full-shared.7z
