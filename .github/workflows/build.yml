@@ -22,20 +22,14 @@ jobs:
       - uses: actions/checkout@v2
       - name: Install dependencies
         run: |
+          wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb
+          dpkg -i cuda-keyring_1.1-1_all.deb
           apt update
-          apt install -y --no-install-recommends clang curl pkg-config sudo gcc ca-certificates openssl libssl-dev cmake libc6-dev make
-      - uses: Jimver/cuda-toolkit@master
-        id: cuda-toolkit
-        if: ${{ matrix.cuda }} == true
-        with:
-          method: network
-          log-file-suffix: 'cuda_${{matrix.cuda}}.txt'
-      - name: Set up CUDA
-        if: ${{ matrix.cuda }} == true
-        run: |
-          echo "CUDA_PATH=${{ steps.cuda-toolkit.outputs.CUDA_PATH }}" >> $GITHUB_ENV
-          echo "${{ steps.cuda-toolkit.outputs.CUDA_PATH }}/bin" >> $GITHUB_PATH
-          echo "${{ steps.cuda-toolkit.outputs.CUDA_PATH }}/lib64" >> $GITHUB_LIBRARY_PATH
+          apt install -y --no-install-recommends clang curl pkg-config sudo gcc ca-certificates openssl libssl-dev cmake libc6-dev make cuda-toolkit-12-9
+          CUDA_PATH=/usr/local/cuda-12.9/
+          echo "CUDA_PATH=$CUDA_PATH" >> $GITHUB_ENV
+          echo "$CUDA_PATH/bin" >> $GITHUB_PATH
+          echo "$CUDA_PATH/lib64" >> $GITHUB_LIBRARY_PATH
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -99,7 +93,8 @@ jobs:
       - uses: ilammy/msvc-dev-cmd@v1.4.1
       - name: Install cuda & cmake
         run: |
-          Install-Module -AcceptLicense -Name Microsoft.WinGet.Client -RequiredVersion 0.2.1 
+          Install-Module -AcceptLicense -Name Microsoft.WinGet.Client -RequiredVersion 0.2.1
+          Import-Module -Name Microsoft.WinGet.Client
           Install-WinGetPackage -Id Nvidia.CUDA
           Install-WinGetPackage -Id Kitware.CMake 
           Add-Content $env:GITHUB_ENV "CUDA_PATH=C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.9`n"
