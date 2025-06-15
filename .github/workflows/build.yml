@@ -97,13 +97,28 @@ jobs:
           components: clippy, rustfmt
           toolchain: stable
       - uses: ilammy/msvc-dev-cmd@v1.4.1
+      - name: Install Scoop
+        uses: ScoopInstaller/GithubActions@main
+        env:
+          SKIP_UPDATED: '1'
+          THROW_ERROR: '0'
       - name: Install cuda & cmake
         run: |
-          Install-Module -AcceptLicense -Force -Name Microsoft.WinGet.Client -RequiredVersion 0.2.1
-          Import-Module -Name Microsoft.WinGet.Client
-          Install-WinGetPackage -Id Nvidia.CUDA
-          Install-WinGetPackage -Id Kitware.CMake 
-          Add-Content $env:GITHUB_ENV "CUDA_PATH=C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.9`n"
+          scoop install -g cmake cuda
+          # print env
+          $GUESSED_CUDA_PATH = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.9"
+          Write-Host "CUDA_PATH before: $env:CUDA_PATH"
+          Write-Host "GUESSED_CUDA_PATH: $GUESSED_CUDA_PATH"
+          # check if the directory exists
+          if (Test-Path $GUESSED_CUDA_PATH) {
+            Write-Host "GUESSED_CUDA_PATH exists, using it"
+            Add-Content $env:GITHUB_ENV "CUDA_PATH=$GUESSED_CUDA_PATH`n"
+          } else if ($env:CUDA_PATH) {
+            Write-Host "CUDA_PATH exists, keeping it"
+          } else {
+            Write-Error "CUDA_PATH not found, exiting"
+            exit 1
+          }
       - name: Build
         run: |
           cargo build --release --features cuda
