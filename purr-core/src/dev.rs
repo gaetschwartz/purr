@@ -1,7 +1,12 @@
 //! GPU detection and information
 
+use std::{
+    cell::{LazyCell, OnceCell},
+    sync::{LazyLock, OnceLock},
+};
+
 use serde::{Deserialize, Serialize};
-use whisper_rs::whisper_rs_sys::*;
+use whisper_rs::whisper_rs_sys::{self, ggml_backend_dev_caps, ggml_backend_dev_count};
 
 /// GPU device information
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -18,33 +23,121 @@ pub struct Device {
 
 /// GPU acceleration status
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GpuStatus {
-    pub vulkan_available: bool,
-    pub cuda_available: bool,
-    pub coreml_available: bool,
-    pub metal_available: bool,
+pub struct SystemInfo {
+    pub vulkan_available: FeatureStatus,
+    pub cuda_available: FeatureStatus,
+    pub coreml_available: FeatureStatus,
+    pub metal_available: FeatureStatus,
+    pub system_info: SystemCapabilities,
     pub devices: Vec<Device>,
+}
+
+impl SystemInfo {
+    /// Check system capabilities and available GPU devices
+    pub fn get() -> SystemInfo {
+        let devices = list_devices();
+
+        SystemInfo {
+            vulkan_available: {
+                #[cfg(feature = "vulkan")]
+                {
+                    if whisper_rs_sys::ggml_backend_vk_get_device_count() > 0 {
+                        FeatureStatus::Available
+                    } else {
+                        FeatureStatus::EnabledButNotAvailable
+                    }
+                }
+                #[cfg(not(feature = "vulkan"))]
+                {
+                    FeatureStatus::Disabled
+                }
+            },
+            cuda_available: {
+                #[cfg(feature = "cuda")]
+                {
+                    if whisper_rs_sys::ggml_backend_cuda_get_device_count() > 0 {
+                        FeatureStatus::Available
+                    } else {
+                        FeatureStatus::EnabledButNotAvailable
+                    }
+                }
+                #[cfg(not(feature = "cuda"))]
+                {
+                    FeatureStatus::Disabled
+                }
+            },
+            coreml_available: if cfg!(feature = "coreml") {
+                FeatureStatus::Available(None)
+            } else {
+                FeatureStatus::Disabled
+            },
+            metal_available: if cfg!(feature = "metal") {
+                FeatureStatus::Available(None)
+            } else {
+                FeatureStatus::Disabled
+            },
+            system_info: SystemCapabilities::get(),
+            devices,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+pub enum FeatureStatus {
+    Disabled,
+    EnabledButNotAvailable,
+    Available(Option<u8>),
+}
+
+impl SystemInfo {
+    /// Returns devices capable of acceleration
+    pub fn devices_can_accelerate(&self) -> impl Iterator<Item = &Device> {
+        self.devices
+            .iter()
+            .filter(|d| d.tpe == DeviceType::Gpu || d.tpe == DeviceType::Accel)
+    }
+
+    /// Returns devices capable of GPU acceleration
+    pub fn gpus(&self) -> impl Iterator<Item = &Device> {
+        self.devices.iter().filter(|d| d.tpe == DeviceType::Gpu)
+    }
+
+    /// Returns Accelerator devices (e.g., TPU, NPU)
+    pub fn accelerators_exclude_cpu(&self) -> impl Iterator<Item = &Device> {
+        self.devices.iter().filter(|d| d.tpe == DeviceType::Accel)
+    }
+
+    /// Returns CPU devices
+    pub fn cpus(&self) -> impl Iterator<Item = &Device> {
+        self.devices.iter().filter(|d| d.tpe == DeviceType::Cpu)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SystemCapabilities {
+    pub avx: bool,
+    pub avx2: bool,
+    pub fma: bool,
+    pub f16c: bool,
+}
+
+impl SystemCapabilities {
+    pub fn get() -> Self {
+        unsafe {
+            Self {
+                avx: whisper_rs_sys::ggml_cpu_has_avx() != 0,
+                avx2: whisper_rs_sys::ggml_cpu_has_avx2() != 0,
+                fma: whisper_rs_sys::ggml_cpu_has_fma() != 0,
+                f16c: whisper_rs_sys::ggml_cpu_has_f16c() != 0,
+            }
+        }
+    }
 }
 
 /// List available GPU devices
 pub fn list_devices() -> Vec<Device> {
-    // TODO: maybe use ggml_backend_dev_count instead?
     #[allow(unused_mut)]
     let mut devices = Vec::new();
-    #[cfg(feature = "vulkan")]
-    {
-        devices.extend(
-            whisper_rs::vulkan::list_devices()
-                .into_iter()
-                .map(|dev| Device {
-                    id: dev.id,
-                    name: dev.name,
-                    vram_free: dev.vram.free,
-                    vram_total: dev.vram.total,
-                    tpe: DeviceType::Vulkan,
-                }),
-        )
-    }
 
     let cnt = unsafe { ggml_backend_dev_count() };
     for i in 0..cnt {
@@ -90,20 +183,7 @@ pub fn list_devices() -> Vec<Device> {
     devices
 }
 
-/// Check GPU acceleration status
-pub fn check_gpu_status() -> GpuStatus {
-    let devices = list_devices();
-
-    GpuStatus {
-        vulkan_available: cfg!(feature = "vulkan") && !devices.is_empty(),
-        cuda_available: cfg!(feature = "cuda"),
-        coreml_available: cfg!(feature = "coreml"),
-        metal_available: cfg!(feature = "metal"),
-        devices,
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, strum::FromRepr)]
+#[derive(Debug, Clone, Serialize, Deserialize, strum::FromRepr, PartialEq, Eq)]
 #[repr(u8)]
 pub enum DeviceType {
     Cpu = 0,
