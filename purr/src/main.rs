@@ -1,45 +1,67 @@
 //! Whisper UI CLI - Audio transcription command-line interface
 mod fmt;
 
+use crate::fmt::MyFormatter;
 use clap::builder::{
     styling::{AnsiColor, Effects, Style},
     Styles,
 };
 use clap::{Parser, Subcommand};
+use const_str::format as cfmt;
 use indicatif::{HumanBytes, HumanDuration, ProgressBar, ProgressStyle};
 use owo_colors::OwoColorize as _;
-use purr_core::math::{ByteSpeed, RoundToUnit as _};
 use purr_core::{
-    check_gpu_status, list_devices, transcribe_file_stream, transcribe_file_sync, ModelManager,
+    dev::FeatureStatus, list_devices, transcribe_file_stream, transcribe_file_sync, ModelManager,
     TranscriptionConfig, WhisperModel,
 };
+use purr_core::{
+    math::{ByteSpeed, RoundToUnit as _},
+    SystemInfo,
+};
+use shadow_rs::shadow;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process;
 use std::str::FromStr as _;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn, Level};
 use tracing_subscriber::EnvFilter;
 
-use crate::fmt::MyFormatter;
+const APP_NAME: &str = env!("CARGO_PKG_NAME");
+
+shadow!(build);
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    // Initialize tracing subscriber
+    if let Err(e) = main_impl().await {
+        error!("Application error: {}", e);
+        drop(e);
+        process::exit(1);
+    }
+    Ok(())
+}
+
+async fn main_impl() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     // Setup logging
     if cli.verbose {
         tracing_subscriber::fmt()
-            .with_max_level(tracing::Level::TRACE)
             .with_env_filter(
-                EnvFilter::builder().parse("purr=trace,whisper_rs::whisper_logging_hook=warn")?,
+                EnvFilter::builder()
+                    .with_default_directive(Level::DEBUG.into())
+                    .from_env()?
+                    .add_directive("purr_core=trace".parse()?)
+                    .add_directive(cfmt!("{APP_NAME}=trace").parse()?),
             )
             .with_writer(std::io::stderr)
             .init();
     } else {
         tracing_subscriber::fmt()
-            .with_max_level(tracing::Level::INFO)
             .with_env_filter(
-                EnvFilter::builder().parse("info,whisper_rs::whisper_logging_hook=error")?,
+                EnvFilter::builder()
+                    .with_default_directive(Level::INFO.into())
+                    .from_env()?,
             )
             .compact()
             .without_time()
@@ -190,12 +212,9 @@ enum Commands {
         #[command(subcommand)]
         command: ModelCommands,
     },
-    /// GPU acceleration commands
-    #[clap(alias = "dev")]
-    Device {
-        #[command(subcommand)]
-        command: GpuCommands,
-    },
+    /// System commands
+    #[clap(alias = "s")]
+    Sys {},
 }
 
 #[derive(Subcommand, Debug)]
@@ -231,11 +250,9 @@ enum ModelCommands {
 }
 
 #[derive(Subcommand, Debug)]
-enum GpuCommands {
+enum SysCommands {
     /// List GPU devices available for acceleration
-    List,
-    /// Check GPU acceleration status
-    Status,
+    Info,
 }
 
 /// Output format options
@@ -431,7 +448,7 @@ async fn prompt_for_model_download(
 async fn handle_command(command: Commands, verbose: bool) -> anyhow::Result<()> {
     match command {
         Commands::Models { command } => handle_model_command(command, verbose).await,
-        Commands::Device { command } => handle_devices_command(command, verbose).await,
+        Commands::Sys {} => handle_sys_command(verbose).await,
     }
 }
 
@@ -646,141 +663,75 @@ async fn handle_model_command(command: ModelCommands, verbose: bool) -> anyhow::
     Ok(())
 }
 
-/// Handle GPU acceleration subcommands
-async fn handle_devices_command(command: GpuCommands, verbose: bool) -> anyhow::Result<()> {
-    match command {
-        GpuCommands::List => {
-            println!("{}", "Devices:".blue().bold());
-            println!();
+/// Handle system subcommands
+async fn handle_sys_command(verbose: bool) -> anyhow::Result<()> {
+    let sys = SystemInfo::get();
 
-            let devices = list_devices();
-
-            if devices.is_empty() {
-                println!(
-                    "{} No GPU devices found or Vulkan support not available.",
-                    "Info:".blue().bold()
-                );
-                println!("To enable GPU support, ensure:");
-                println!("  • Vulkan drivers are installed");
-                println!("  • Compatible GPU hardware is available");
-                println!("  • Vulkan feature is enabled (use --features vulkan)");
-            } else {
-                for device in devices {
-                    println!(
-                        "{} - {} {} {}",
-                        format_args!("Device {}", device.id.bold()).green(),
-                        device.name.bold(),
-                        if device.description.is_empty() {
-                            "".to_string()
-                        } else {
-                            format_args!("{}", device.description).to_string()
-                        },
-                        match device.tpe {
-                            purr_core::dev::DeviceType::Cpu =>
-                                format_args!("({})", "CPU".green()).dimmed().to_string(),
-                            purr_core::dev::DeviceType::Gpu =>
-                                format_args!("({})", "GPU".blue()).dimmed().to_string(),
-                            purr_core::dev::DeviceType::Accel =>
-                                format_args!("({})", "Accel".yellow()).dimmed().to_string(),
-                        },
-                    );
-                    if device.vram_total != 0 {
-                        if verbose {
-                            println!(
-                                "    VRAM: {} / {} ({} free)",
-                                format_file_size(
-                                    device.vram_total as u64 - device.vram_free as u64
-                                )
-                                .yellow(),
-                                format_file_size(device.vram_total as u64).yellow(),
-                                format_file_size(device.vram_free as u64).green()
-                            );
-                        } else {
-                            println!(
-                                "    VRAM: {}",
-                                format_file_size(device.vram_total as u64).yellow()
-                            );
-                        }
-                    }
-                    println!();
-                }
+    fn feature_status(feature: FeatureStatus) -> String {
+        match feature {
+            FeatureStatus::Disabled => "Disabled".red().bold().to_string(),
+            FeatureStatus::EnabledButNotAvailable => {
+                "Enabled (but not available)".yellow().bold().to_string()
             }
+            FeatureStatus::Available(_) => "Available".green().bold().to_string(),
         }
+    }
 
-        GpuCommands::Status => {
-            let status = check_gpu_status();
+    println!("Vulkan support: {}", feature_status(sys.vulkan_available));
+    println!("CUDA support: {}", feature_status(sys.cuda_available));
+    if cfg!(target_os = "macos") {
+        println!("CoreML support: {}", feature_status(sys.coreml_available));
+        println!("Metal support: {}", feature_status(sys.metal_available));
+    }
 
-            println!("{}", "GPU Acceleration Status:".blue().bold());
-            println!();
+    println!("{}", "Devices:".blue().bold());
+    println!();
 
+    let devices = list_devices();
+
+    if devices.is_empty() {
+        warn!("{} No devices found.", "Info:".blue().bold());
+        warn!("{} To enable GPU support, ensure:", "Info:".blue().bold());
+        warn!("  • Vulkan drivers are installed");
+        warn!("  • Compatible GPU hardware is available");
+        warn!("  • Vulkan feature is enabled (use --features vulkan)");
+    } else {
+        for device in devices {
             println!(
-                "Vulkan support: {}",
-                if status.vulkan_available {
-                    "Available".green().bold().to_string()
+                "{} - {} {} {}",
+                format_args!("Device {}", device.id.bold()).green(),
+                device.name.bold(),
+                if device.description.is_empty() {
+                    "".to_string()
                 } else {
-                    "Not available".red().bold().to_string()
-                }
+                    format_args!("{}", device.description).to_string()
+                },
+                match device.tpe {
+                    purr_core::dev::DeviceType::Cpu =>
+                        format_args!("({})", "CPU".green()).dimmed().to_string(),
+                    purr_core::dev::DeviceType::Gpu =>
+                        format_args!("({})", "GPU".blue()).dimmed().to_string(),
+                    purr_core::dev::DeviceType::Accel =>
+                        format_args!("({})", "Accel".yellow()).dimmed().to_string(),
+                },
             );
-
-            println!(
-                "CUDA support: {}",
-                if status.cuda_available {
-                    "Available".green().bold().to_string()
+            if device.vram_total != 0 {
+                if verbose {
+                    println!(
+                        "    VRAM: {} / {} ({} free)",
+                        format_file_size(device.vram_total as u64 - device.vram_free as u64)
+                            .yellow(),
+                        format_file_size(device.vram_total as u64).yellow(),
+                        format_file_size(device.vram_free as u64).green()
+                    );
                 } else {
-                    "Not available".red().bold().to_string()
-                }
-            );
-
-            println!(
-                "CoreML support: {}",
-                if status.coreml_available {
-                    "Available".green().bold().to_string()
-                } else {
-                    "Not available".red().bold().to_string()
-                }
-            );
-
-            println!(
-                "Metal support: {}",
-                if status.metal_available {
-                    "Available".green().bold().to_string()
-                } else {
-                    "Not available".red().bold().to_string()
-                }
-            );
-
-            println!(
-                "GPU devices: {}",
-                if status.devices.is_empty() {
-                    "None detected".red().bold().to_string()
-                } else {
-                    format!("{} found", status.devices.len())
-                        .green()
-                        .bold()
-                        .to_string()
-                }
-            );
-
-            if verbose && !status.devices.is_empty() {
-                println!();
-                println!("Detected devices:");
-                for device in status.devices {
-                    println!("  • {} (ID: {})", device.name, device.id);
+                    println!(
+                        "    VRAM: {}",
+                        format_file_size(device.vram_total as u64).yellow()
+                    );
                 }
             }
-
             println!();
-            if status.vulkan_available || status.cuda_available || status.coreml_available {
-                println!(
-                    "{} GPU acceleration is available for faster transcription.",
-                    "Success:".green().bold()
-                );
-            } else {
-                println!(
-                    "{} GPU acceleration is not available. Transcription will use CPU.",
-                    "Warning:".yellow().bold()
-                );
-            }
         }
     }
 
