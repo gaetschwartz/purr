@@ -1,10 +1,5 @@
 //! GPU detection and information
 
-use std::{
-    cell::{LazyCell, OnceCell},
-    sync::{LazyLock, OnceLock},
-};
-
 use serde::{Deserialize, Serialize};
 use whisper_rs::whisper_rs_sys::{self, ggml_backend_dev_caps, ggml_backend_dev_count};
 
@@ -41,8 +36,9 @@ impl SystemInfo {
             vulkan_available: {
                 #[cfg(feature = "vulkan")]
                 {
-                    if whisper_rs_sys::ggml_backend_vk_get_device_count() > 0 {
-                        FeatureStatus::Available
+                    let dev_count = unsafe { whisper_rs_sys::ggml_backend_vk_get_device_count() };
+                    if dev_count > 0 {
+                        FeatureStatus::Available(Some(dev_count as u8))
                     } else {
                         FeatureStatus::EnabledButNotAvailable
                     }
@@ -55,8 +51,9 @@ impl SystemInfo {
             cuda_available: {
                 #[cfg(feature = "cuda")]
                 {
-                    if whisper_rs_sys::ggml_backend_cuda_get_device_count() > 0 {
-                        FeatureStatus::Available
+                    let dev_count = unsafe { whisper_rs_sys::ggml_backend_cuda_get_device_count() };
+                    if whisper_rs_sys::ggml_backend_cuda_is_available() != 0 && dev_count > 0 {
+                        FeatureStatus::Available(Some(dev_count as u8))
                     } else {
                         FeatureStatus::EnabledButNotAvailable
                     }
