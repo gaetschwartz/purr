@@ -121,17 +121,12 @@ jobs:
           mv ffmpeg-*/* ffmpeg/
           Add-Content $env:GITHUB_ENV "FFMPEG_DIR=${pwd}\ffmpeg`n"
           Add-Content $env:GITHUB_PATH "${pwd}\ffmpeg\bin`n"
-      - name: Install Visual Studio components
-        run: |
-          & "C:\Program Files (x86)\Microsoft Visual Studio\Installer\vs_installer.exe" modify `
-          --installPath "C:\Program Files\Microsoft Visual Studio\2022\Enterprise" `
-          --add Microsoft.VisualStudio.Workload.NativeDesktop `
-          --wait
-      - name: Install cuda & cmake
+          choco install cmake
+      - name: Install cuda
         if: matrix.backend == 'cuda'
         run: |
-          winget install --id Nvidia.CUDA --version 12.9 --accept-source-agreements
-          winget install --id Kitware.CMake
+          choco install cuda -c nvidia -y --version 12.9.1.576 --install-args "nvcc_12.9 cublas_12.9 opencl_12.9"
+          Add-Content $env:GITHUB_ENV "CUDA_PATH=C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.9`n"
       - name: Install Vulkan SDK
         if: matrix.backend == 'vulkan'
         run: |
@@ -142,10 +137,6 @@ jobs:
           $env:VULKAN_SDK = "C:\VulkanSDK\$VulkanSDKVersion"
           Add-Content $env:GITHUB_ENV "VULKAN_SDK=$env:VULKAN_SDK"
           Add-Content $env:GITHUB_PATH "$env:VULKAN_SDK\Bin"
-      - name: Install CMake (for non-CUDA builds)
-        if: matrix.backend != 'cuda'
-        run: |
-          winget install --id Kitware.CMake
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
         with:
