@@ -125,8 +125,7 @@ jobs:
       - name: Install cuda
         if: matrix.backend == 'cuda'
         run: |
-          choco install vcredist140
-          choco install visualstudio2022-workload-nativedesktop
+          choco install visualstudio2022buildtools --installargs "--quiet --wait --norestart --includeRecommended --includeOptional --add Microsoft.VisualStudio.Workload.VCTools"
           choco install cuda --version 12.9.1.576
           # $CUDA_PATH = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.9\"
           # Add-Content $env:GITHUB_ENV "CUDA_PATH=$CUDA_PATH`n"
