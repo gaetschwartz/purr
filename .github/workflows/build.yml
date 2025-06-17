@@ -129,6 +129,19 @@ jobs:
           Invoke-WebRequest -Uri $url -OutFile cuda_installer.exe
           Start-Process -Wait -FilePath .\cuda_installer.exe -ArgumentList "-s nvcc_12.9 cuda-compiler-12-9 cuda-libraries-12-9 cuda-libraries-dev-12-9"
           $CUDA_PATH = "${env:ProgramFiles}\NVIDIA Corporation\CUDA\v12.9"
+          # make sure the path exists
+          if (-not (Test-Path $CUDA_PATH)) {
+              Write-Host "CUDA installation path not found at $CUDA_PATH, trying to find it..."
+              # try to find the path by looking for nvcc.exe in C:
+              $nvccPath = Get-ChildItem -Path "C:\" -Recurse -Filter "nvcc.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+              if ($nvccPath) {
+                  $CUDA_PATH = Split-Path -Path $nvccPath.FullName -Parent
+              } else {
+                  Write-Error "CUDA installation path not found."
+                  exit 1
+              }
+          }
+          Write-Host "Found CUDA installation path: $CUDA_PATH"
           Add-Content $env:GITHUB_ENV "CUDA_PATH=$CUDA_PATH`n"
           Add-Content $env:GITHUB_PATH "${CUDA_PATH}\bin`n"
       - name: Install Vulkan SDK
