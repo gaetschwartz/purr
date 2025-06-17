@@ -4,7 +4,10 @@ use crate::{
     audio::AudioData,
     config::TranscriptionConfig,
     error::{Result, WhisperError},
-    whisper::{load_model, SyncTranscriptionResult, TranscriptionSegment, TranscriptionStats, WhisperTranscriber},
+    whisper::{
+        load_model, SyncTranscriptionResult, TranscriptionSegment, TranscriptionStats,
+        WhisperTranscriber,
+    },
     ModelManager,
 };
 use tracing::warn;
@@ -21,9 +24,6 @@ impl WhisperTranscriber for SyncWhisperTranscriber {
     type InputData = AudioData;
     /// Create a new transcriber with the given configuration
     async fn from_config(config: TranscriptionConfig) -> Result<Self> {
-        // Install logging hooks to redirect whisper.cpp output to Rust logging
-        whisper_rs::install_logging_hooks();
-
         let config_clone = config.clone();
 
         let model_manager = ModelManager::new()?;

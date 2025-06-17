@@ -11,8 +11,8 @@ use const_str::format as cfmt;
 use indicatif::{HumanBytes, HumanDuration, ProgressBar, ProgressStyle};
 use owo_colors::OwoColorize as _;
 use purr_core::{
-    dev::FeatureStatus, list_devices, transcribe_file_stream, transcribe_file_sync, ModelManager,
-    TranscriptionConfig, WhisperModel,
+    dev::FeatureStatus, install_logging_hooks, list_devices, transcribe_file_stream,
+    transcribe_file_sync, ModelManager, TranscriptionConfig, WhisperModel,
 };
 use purr_core::{
     math::{ByteSpeed, RoundToUnit as _},
@@ -75,6 +75,7 @@ async fn main_impl() -> anyhow::Result<()> {
             .init();
     }
     debug!("Command line arguments: {:?}", cli);
+    install_logging_hooks();
 
     // Handle subcommands
     if let Some(command) = cli.command {
