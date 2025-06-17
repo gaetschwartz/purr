@@ -128,7 +128,8 @@ jobs:
           $url = "https://developer.download.nvidia.com/compute/cuda/12.9.1/network_installers/cuda_12.9.1_windows_network.exe"
           Invoke-WebRequest -Uri $url -OutFile cuda_installer.exe
           Start-Process -Wait -FilePath .\cuda_installer.exe -ArgumentList "-s nvcc_12.9 cuda-compiler-12-9 cuda-libraries-12-9 cuda-libraries-dev-12-9"
-          Add-Content $env:GITHUB_ENV "CUDA_PATH=C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.9`n"
+          Add-Content $env:GITHUB_ENV "CUDA_PATH=C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.9\bin`n"
+          Add-Content $env:GITHUB_PATH "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.9\bin`n"
       - name: Install Vulkan SDK
         if: matrix.backend == 'vulkan'
         run: |
