@@ -89,7 +89,7 @@ jobs:
           toolchain: stable
       - name: Build
         run: |
-          cargo build --release --features metal
+          cargo build --release --features metal,coreml
       - name: Archive production artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -127,16 +127,16 @@ jobs:
         run: |
           $url = "https://developer.download.nvidia.com/compute/cuda/12.9.1/network_installers/cuda_12.9.1_windows_network.exe"
           Invoke-WebRequest -Uri $url -OutFile cuda_installer.exe
-          Start-Process -Wait -FilePath .\cuda_installer.exe -ArgumentList "-s cuda-compiler-12-9 cuda-libraries-12-9 cuda-libraries-dev-12-9"
+          Start-Process -Wait -FilePath .\cuda_installer.exe -ArgumentList "-s nvcc_12.9 cuda-compiler-12-9 cuda-libraries-12-9 cuda-libraries-dev-12-9"
           Add-Content $env:GITHUB_ENV "CUDA_PATH=C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.9`n"
       - name: Install Vulkan SDK
         if: matrix.backend == 'vulkan'
         run: |
-          $VulkanSDKVersion = "1.3.290.0"
-          $VulkanSDKUrl = "https://sdk.lunarg.com/sdk/download/$VulkanSDKVersion/windows/VulkanSDK-$VulkanSDKVersion-Installer.exe"
-          Invoke-WebRequest -Uri $VulkanSDKUrl -OutFile VulkanSDK-Installer.exe
-          Start-Process -Wait -FilePath .\VulkanSDK-Installer.exe -ArgumentList "/S"
-          $env:VULKAN_SDK = "C:\VulkanSDK\$VulkanSDKVersion"
+          $VulkanSDKVersion = "1.4.313.2"
+          $VulkanSDKUrl = "https://sdk.lunarg.com/sdk/download/${VulkanSDKVersion}/windows/vulkansdk-windows-X64-${VulkanSDKVersion}.exe"
+          Invoke-WebRequest -Uri ${VulkanSDKUrl} -OutFile VulkanSDK-Installer.exe
+          Start-Process -Wait -FilePath .\VulkanSDK-Installer.exe -ArgumentList "--accept-licenses --default-answer --confirm-command install --root C:\VulkanSDK\${VulkanSDKVersion} --no-shortcuts --no-start-menu --no-desktop-icon --no-update-check"
+          $env:VULKAN_SDK = "C:\VulkanSDK\${VulkanSDKVersion}"
           Add-Content $env:GITHUB_ENV "VULKAN_SDK=$env:VULKAN_SDK"
           Add-Content $env:GITHUB_PATH "$env:VULKAN_SDK\Bin"
       - name: Set up Rust
