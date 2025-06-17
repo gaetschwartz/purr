@@ -1,7 +1,6 @@
 use crate::{
     whisper::{
-        load_model, logging::install_logging_hooks, StreamingChunk, TranscriptionResult,
-        TranscriptionStats, WhisperTranscriber,
+        load_model, StreamingChunk, TranscriptionResult, TranscriptionStats, WhisperTranscriber,
     },
     AudioStream, ModelManager, TranscriptionConfig,
 };
@@ -28,9 +27,6 @@ impl WhisperTranscriber for StreamWhisperTranscriber {
     where
         Self: Sized,
     {
-        // Install logging hooks to redirect whisper.cpp output to Rust logging
-        install_logging_hooks();
-
         let config_clone = config.clone();
 
         let model_manager = ModelManager::new()?;

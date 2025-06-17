@@ -17,6 +17,7 @@ pub use error::{Result, WhisperError};
 pub use model::{ModelManager, WhisperModel};
 use tokio::try_join;
 use tracing::info;
+pub use whisper::logging::install_logging_hooks;
 
 use crate::whisper::{
     streaming::StreamWhisperTranscriber, sync::SyncWhisperTranscriber, WhisperTranscriber,
