@@ -125,7 +125,9 @@ jobs:
       - name: Install cuda
         if: matrix.backend == 'cuda'
         run: |
-          choco install cuda -c nvidia -y --version 12.9.1.576 --install-args "nvcc_12.9 cublas_12.9 opencl_12.9"
+          $url = "https://developer.download.nvidia.com/compute/cuda/12.9.1/network_installers/cuda_12.9.1_windows_network.exe"
+          Invoke-WebRequest -Uri $url -OutFile cuda_installer.exe
+          Start-Process -Wait -FilePath .\cuda_installer.exe -ArgumentList "-s cuda-compiler-12-9 cuda-libraries-12-9 cuda-libraries-dev-12-9"
           Add-Content $env:GITHUB_ENV "CUDA_PATH=C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.9`n"
       - name: Install Vulkan SDK
         if: matrix.backend == 'vulkan'
