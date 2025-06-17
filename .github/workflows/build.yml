@@ -125,18 +125,15 @@ jobs:
       - name: Install cuda
         if: matrix.backend == 'cuda'
         run: |
-          $url = "https://developer.download.nvidia.com/compute/cuda/12.9.1/network_installers/cuda_12.9.1_windows_network.exe"
-          $installerPath = "$env:TEMP\cuda_installer.exe"
-          Invoke-WebRequest -Uri $url -OutFile $installerPath
-          & $installerPath -s nvcc_12.9 cuda-compiler-12-9 cuda-libraries-12-9 cuda-libraries-dev-12-9
-          $CUDA_PATH = "${env:ProgramFiles}\NVIDIA Corporation\CUDA\v12.9"
+          choco install cuda --version 12.9.1.576
+          $CUDA_PATH = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.9\"
           # make sure the path exists
           if (-not (Test-Path $CUDA_PATH)) {
               Write-Host "CUDA installation path not found at $CUDA_PATH, trying to find it..."
               # try to find the path by looking for nvcc.exe in C:
               $res = fd "nvcc\.exe" C:\
               Write-Host "Search result: $res"
-              $CUDA_PATH = $res | Select-Object -First 1 | Split-Path -Parent
+              exit 1
           }
           Write-Host "Found CUDA installation path: $CUDA_PATH"
           Add-Content $env:GITHUB_ENV "CUDA_PATH=$CUDA_PATH`n"
