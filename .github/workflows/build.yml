@@ -9,12 +9,12 @@ on:
 
 jobs:
   build-linux:
-    name: Build Linux${{ matrix.cuda && ' - cuda' || '' }}
+    name: Build Linux${{ matrix.backend != 'none' && format(' - {0}', matrix.backend) || '' }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        cuda: [false, true]
+        backend: [none, cuda, vulkan]
     steps:
       - uses: actions/checkout@v2
       - name: Install dependencies
@@ -24,7 +24,7 @@ jobs:
             libavcodec-dev libavformat-dev libavutil-dev libavfilter-dev libavdevice-dev libswscale-dev libswresample-dev \
             llvm
       - name: Install cuda
-        if: matrix.cuda == true
+        if: matrix.backend == 'cuda'
         run: |
           # Detect Ubuntu version and set appropriate CUDA repo
           UBUNTU_VERSION=$(lsb_release -rs | tr -d '.')
@@ -45,7 +45,20 @@ jobs:
           CUDA_PATH=/usr/local/cuda-${CUDA_PATH_VERSION}/
           echo "CUDA_PATH=$CUDA_PATH" >> $GITHUB_ENV
           echo "$CUDA_PATH/bin" >> $GITHUB_PATH
-          echo "GITHUB_LIBRARY_PATH=$CUDA_PATH/lib64${GITHUB_LIBRARY_PATH:+:$GITHUB_LIBRARY_PATH}" >> $GITHUB_ENV
+          echo "LD_LIBRARY_PATH=$CUDA_PATH/lib64${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" >> $GITHUB_ENV
+      - name: Install Vulkan SDK
+        if: matrix.backend == 'vulkan'
+        run: |
+          # Install Vulkan SDK using system packages for Ubuntu 24.04
+          sudo apt update
+          sudo apt install -y libvulkan-dev vulkan-tools vulkan-utility-libraries-dev spirv-tools
+          # Download and install latest Vulkan SDK manually
+          VULKAN_SDK_VERSION="1.3.290.0"
+          wget https://sdk.lunarg.com/sdk/download/${VULKAN_SDK_VERSION}/linux/vulkansdk-linux-x86_64-${VULKAN_SDK_VERSION}.tar.xz
+          tar -xf vulkansdk-linux-x86_64-${VULKAN_SDK_VERSION}.tar.xz
+          export VULKAN_SDK="$(pwd)/${VULKAN_SDK_VERSION}/x86_64"
+          echo "VULKAN_SDK=$VULKAN_SDK" >> $GITHUB_ENV
+          echo "$VULKAN_SDK/bin" >> $GITHUB_PATH
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -53,11 +66,11 @@ jobs:
           components: clippy, rustfmt
           targets: x86_64-unknown-linux-gnu
       - name: Build
-        run: cargo build --verbose --release ${{ matrix.cuda && ' --features cuda' || '' }}
+        run: cargo build --verbose --release ${{ matrix.backend != 'none' && format(' --features {0}', matrix.backend) || '' }}
       - name: Archive production artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: purr-linux${{ matrix.cuda && '-cuda' || '' }}
+          name: purr-linux${{ matrix.backend != 'none' && format('-{0}', matrix.backend) || '' }}
           path: |
             target/release/purr*
 
@@ -85,8 +98,15 @@ jobs:
             target/release/purr*
 
   build-windows:
-    name: Build Windows (MSVC, cuda)
+    defaults:
+      run:
+        shell: pwsh
+    name: Build Windows${{ matrix.backend != 'none' && format(' - {0}', matrix.backend) || '' }}
     runs-on: windows-2025
+    strategy:
+      fail-fast: false
+      matrix:
+        backend: [none, cuda, vulkan]
     env:
       FFMPEG_DOWNLOAD_URL: https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-full-shared.7z
     steps:
@@ -108,8 +128,23 @@ jobs:
           --add Microsoft.VisualStudio.Workload.NativeDesktop `
           --wait
       - name: Install cuda & cmake
+        if: matrix.backend == 'cuda'
         run: |
           winget install --id Nvidia.CUDA --version 12.9 --accept-source-agreements
+          winget install --id Kitware.CMake
+      - name: Install Vulkan SDK
+        if: matrix.backend == 'vulkan'
+        run: |
+          $VulkanSDKVersion = "1.3.290.0"
+          $VulkanSDKUrl = "https://sdk.lunarg.com/sdk/download/$VulkanSDKVersion/windows/VulkanSDK-$VulkanSDKVersion-Installer.exe"
+          Invoke-WebRequest -Uri $VulkanSDKUrl -OutFile VulkanSDK-Installer.exe
+          Start-Process -Wait -FilePath .\VulkanSDK-Installer.exe -ArgumentList "/S"
+          $env:VULKAN_SDK = "C:\VulkanSDK\$VulkanSDKVersion"
+          Add-Content $env:GITHUB_ENV "VULKAN_SDK=$env:VULKAN_SDK"
+          Add-Content $env:GITHUB_PATH "$env:VULKAN_SDK\Bin"
+      - name: Install CMake (for non-CUDA builds)
+        if: matrix.backend != 'cuda'
+        run: |
           winget install --id Kitware.CMake
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
@@ -118,10 +153,10 @@ jobs:
           toolchain: stable
       - name: Build
         run: |
-          cargo build --release --features cuda
+          cargo build --release ${{ matrix.backend != 'none' && format('--features {0}', matrix.backend) || '' }}
       - name: Archive production artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: purr-windows-cuda
+          name: purr-windows${{ matrix.backend != 'none' && format('-{0}', matrix.backend) || '' }}
           path: |
             target/release/purr*

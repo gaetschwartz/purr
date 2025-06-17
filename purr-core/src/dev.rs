@@ -38,7 +38,7 @@ impl SystemInfo {
                 {
                     let dev_count = unsafe { whisper_rs_sys::ggml_backend_vk_get_device_count() };
                     if dev_count > 0 {
-                        FeatureStatus::Available(Some(dev_count as u8))
+                        FeatureStatus::Available(Some(dev_count as u16))
                     } else {
                         FeatureStatus::EnabledButNotAvailable
                     }
@@ -51,12 +51,7 @@ impl SystemInfo {
             cuda_available: {
                 #[cfg(feature = "cuda")]
                 {
-                    let dev_count = unsafe { whisper_rs_sys::ggml_backend_cuda_get_device_count() };
-                    if whisper_rs_sys::ggml_backend_cuda_is_available() != 0 && dev_count > 0 {
-                        FeatureStatus::Available(Some(dev_count as u8))
-                    } else {
-                        FeatureStatus::EnabledButNotAvailable
-                    }
+                    FeatureStatus::Available(None)
                 }
                 #[cfg(not(feature = "cuda"))]
                 {
@@ -83,7 +78,7 @@ impl SystemInfo {
 pub enum FeatureStatus {
     Disabled,
     EnabledButNotAvailable,
-    Available(Option<u8>),
+    Available(Option<u16>),
 }
 
 impl SystemInfo {
