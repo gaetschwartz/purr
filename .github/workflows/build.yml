@@ -125,19 +125,12 @@ jobs:
       - name: Install cuda
         if: matrix.backend == 'cuda'
         run: |
+          choco install vcredist140
+          choco install visualstudio2022-workload-nativedesktop
           choco install cuda --version 12.9.1.576
-          $CUDA_PATH = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.9\"
-          # make sure the path exists
-          if (-not (Test-Path $CUDA_PATH)) {
-              Write-Host "CUDA installation path not found at $CUDA_PATH, trying to find it..."
-              # try to find the path by looking for nvcc.exe in C:
-              $res = fd "nvcc\.exe" C:\
-              Write-Host "Search result: $res"
-              exit 1
-          }
-          Write-Host "Found CUDA installation path: $CUDA_PATH"
-          Add-Content $env:GITHUB_ENV "CUDA_PATH=$CUDA_PATH`n"
-          Add-Content $env:GITHUB_PATH "${CUDA_PATH}\bin`n"
+          # $CUDA_PATH = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.9\"
+          # Add-Content $env:GITHUB_ENV "CUDA_PATH=$CUDA_PATH`n"
+          # Add-Content $env:GITHUB_PATH "${CUDA_PATH}\bin`n"
       - name: Install Vulkan SDK
         if: matrix.backend == 'vulkan'
         run: |
@@ -154,8 +147,13 @@ jobs:
           components: clippy, rustfmt
           toolchain: stable
       - name: Build
+        if : matrix.backend != 'cuda'
         run: |
           cargo build --release ${{ matrix.backend != 'none' && format('--features {0}', matrix.backend) || '' }}
+      - name: Build with CUDA
+        if: matrix.backend == 'cuda'
+        run: |
+          cargo build --release --features cuda --target x86_64-pc-windows-msvc
       - name: Archive production artifacts
         uses: actions/upload-artifact@v4
         with:
