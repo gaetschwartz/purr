@@ -129,6 +129,9 @@ jobs:
           choco install -r cuda --version 12.9.1.576
           $CUDA_PATH = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.9\"
           Add-Content $env:GITHUB_ENV "CUDA_PATH=${CUDA_PATH}`n"
+          Add-Content $env:GITHUB_ENV "CUDA_PATH_V12_9=${CUDA_PATH}`n"
+          Add-Content $env:GITHUB_ENV "CUDA_BIN_PATH=${CUDA_PATH}\bin`n"
+          Add-Content $env:GITHUB_ENV "CUDA_LIB_PATH=${CUDA_PATH}\lib\x64`n"
           Add-Content $env:GITHUB_PATH "${CUDA_PATH}\bin`n"
       - name: Install Vulkan SDK
         if: matrix.backend == 'vulkan'
