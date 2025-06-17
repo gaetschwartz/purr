@@ -121,7 +121,7 @@ jobs:
           mv ffmpeg-*/* ffmpeg/
           Add-Content $env:GITHUB_ENV "FFMPEG_DIR=${pwd}\ffmpeg`n"
           Add-Content $env:GITHUB_PATH "${pwd}\ffmpeg\bin`n"
-          choco install cmake
+          choco install cmake fd
       - name: Install cuda
         if: matrix.backend == 'cuda'
         run: |
@@ -133,13 +133,9 @@ jobs:
           if (-not (Test-Path $CUDA_PATH)) {
               Write-Host "CUDA installation path not found at $CUDA_PATH, trying to find it..."
               # try to find the path by looking for nvcc.exe in C:
-              $nvccPath = Get-ChildItem -Path "C:\" -Recurse -Filter "nvcc.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
-              if ($nvccPath) {
-                  $CUDA_PATH = Split-Path -Path $nvccPath.FullName -Parent
-              } else {
-                  Write-Error "CUDA installation path not found."
-                  exit 1
-              }
+              $res = fd "nvcc\.exe" C:\
+              Write-Host "Search result: $res"
+              $CUDA_PATH = $res | Select-Object -First 1 | Split-Path -Parent
           }
           Write-Host "Found CUDA installation path: $CUDA_PATH"
           Add-Content $env:GITHUB_ENV "CUDA_PATH=$CUDA_PATH`n"
