@@ -128,11 +128,16 @@ jobs:
           choco install -r visualstudio2022community --installargs "--quiet --wait --norestart --includeRecommended --includeOptional --add Microsoft.VisualStudio.Workload.VCTools --add Microsoft.VisualStudio.Component.VC.Tools.x86.x64"
           choco install -r cuda --version 12.9.1.576
           $CUDA_PATH = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.9\"
-          Add-Content $env:GITHUB_ENV "CUDA_PATH=${CUDA_PATH}`n"
-          Add-Content $env:GITHUB_ENV "CUDA_PATH_V12_9=${CUDA_PATH}`n"
-          Add-Content $env:GITHUB_ENV "CUDA_BIN_PATH=${CUDA_PATH}\bin`n"
-          Add-Content $env:GITHUB_ENV "CUDA_LIB_PATH=${CUDA_PATH}\lib\x64`n"
-          Add-Content $env:GITHUB_PATH "${CUDA_PATH}\bin`n"
+          # check if CUDA_PATH exists
+          if (-Not (Test-Path $CUDA_PATH)) {
+              Write-Error "CUDA_PATH does not exist: $CUDA_PATH"
+              exit 1
+          }
+          Add-Content $env:GITHUB_ENV "CUDA_PATH=${CUDA_PATH}"
+          Add-Content $env:GITHUB_ENV "CUDA_PATH_V12_9=${CUDA_PATH}"
+          Add-Content $env:GITHUB_ENV "CUDA_BIN_PATH=${CUDA_PATH}\bin"
+          Add-Content $env:GITHUB_ENV "CUDA_LIB_PATH=${CUDA_PATH}\lib\x64"
+          Add-Content $env:GITHUB_PATH "${CUDA_PATH}\bin"
       - name: Install Vulkan SDK
         if: matrix.backend == 'vulkan'
         run: |
@@ -154,11 +159,9 @@ jobs:
           cargo build --release ${{ matrix.backend != 'none' && format('--features {0}', matrix.backend) || '' }}
       - name: Build with CUDA
         if: matrix.backend == 'cuda'
-        shell: cmd
         run: |
-          $VSINSTALLDIR = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
-          & "${VSINSTALLDIR}\VC\Auxiliary\Build\vcvars64.bat"
-          cargo build --release --features cuda --target x86_64-pc-windows-msvc
+          echo "$env:PATH"
+          cargo build --release --features cuda
       - name: Archive production artifacts
         uses: actions/upload-artifact@v4
         with:
