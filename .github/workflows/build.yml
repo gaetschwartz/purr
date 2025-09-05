@@ -16,36 +16,19 @@ jobs:
       matrix:
         backend: [none, cuda, vulkan]
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - name: Install dependencies
         run: |
           sudo apt update
           sudo apt install -y --no-install-recommends clang curl pkg-config gcc ca-certificates openssl libssl-dev cmake libc6-dev make wget \
             libavcodec-dev libavformat-dev libavutil-dev libavfilter-dev libavdevice-dev libswscale-dev libswresample-dev \
             llvm
-      - name: Install cuda
+      - name: Install CUDA Toolkit
         if: matrix.backend == 'cuda'
-        run: |
-          # Detect Ubuntu version and set appropriate CUDA repo
-          UBUNTU_VERSION=$(lsb_release -rs | tr -d '.')
-          if [ "$UBUNTU_VERSION" = "2204" ]; then
-            CUDA_REPO="ubuntu2204"
-            CUDA_VERSION="12-6"
-            CUDA_PATH_VERSION="12.6"
-          else
-            CUDA_REPO="ubuntu2404"
-            CUDA_VERSION="12-9"
-            CUDA_PATH_VERSION="12.9"
-          fi
-
-          wget https://developer.download.nvidia.com/compute/cuda/repos/${CUDA_REPO}/x86_64/cuda-keyring_1.1-1_all.deb
-          sudo dpkg -i cuda-keyring_1.1-1_all.deb
-          sudo apt update
-          sudo apt install -y cuda-toolkit-${CUDA_VERSION}
-          CUDA_PATH=/usr/local/cuda-${CUDA_PATH_VERSION}/
-          echo "CUDA_PATH=$CUDA_PATH" >> $GITHUB_ENV
-          echo "$CUDA_PATH/bin" >> $GITHUB_PATH
-          echo "LD_LIBRARY_PATH=$CUDA_PATH/lib64${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" >> $GITHUB_ENV
+        uses: Jimver/cuda-toolkit@v0.2.18
+        with:
+          cuda: '12.4.1'  # Use same version as Windows for consistency
+          method: 'network'
       - name: Install Vulkan SDK
         if: matrix.backend == 'vulkan'
         run: |
@@ -78,7 +61,7 @@ jobs:
     name: Build macOS (metal)
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - name: Install dependencies
         run: |
           brew install ffmpeg
@@ -102,7 +85,7 @@ jobs:
       run:
         shell: pwsh
     name: Build Windows${{ matrix.backend != 'none' && format(' - {0}', matrix.backend) || '' }}
-    runs-on: windows-2025
+    runs-on: windows-2022  # Use windows-2022 for better CUDA compatibility
     strategy:
       fail-fast: false
       matrix:
@@ -110,7 +93,7 @@ jobs:
     env:
       FFMPEG_DOWNLOAD_URL: https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-full-shared.7z
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - name: Install dependencies
         run: |
           $VCINSTALLDIR = $(& "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath)
@@ -122,22 +105,13 @@ jobs:
           Add-Content $env:GITHUB_ENV "FFMPEG_DIR=${pwd}\ffmpeg`n"
           Add-Content $env:GITHUB_PATH "${pwd}\ffmpeg\bin`n"
           choco install -r cmake
-      - name: Install cuda
+      - name: Install CUDA Toolkit
         if: matrix.backend == 'cuda'
-        run: |
-          choco install -r visualstudio2022community --installargs "--quiet --wait --norestart --includeRecommended --includeOptional --add Microsoft.VisualStudio.Workload.VCTools --add Microsoft.VisualStudio.Component.VC.Tools.x86.x64"
-          choco install -r cuda --version 12.9.1.576
-          $CUDA_PATH = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.9\"
-          # check if CUDA_PATH exists
-          if (-Not (Test-Path $CUDA_PATH)) {
-              Write-Error "CUDA_PATH does not exist: $CUDA_PATH"
-              exit 1
-          }
-          Add-Content $env:GITHUB_ENV "CUDA_PATH=${CUDA_PATH}"
-          Add-Content $env:GITHUB_ENV "CUDA_PATH_V12_9=${CUDA_PATH}"
-          Add-Content $env:GITHUB_ENV "CUDA_BIN_PATH=${CUDA_PATH}\bin"
-          Add-Content $env:GITHUB_ENV "CUDA_LIB_PATH=${CUDA_PATH}\lib\x64"
-          Add-Content $env:GITHUB_PATH "${CUDA_PATH}\bin"
+        uses: Jimver/cuda-toolkit@v0.2.18
+        with:
+          cuda: '12.4.1'  # Use a stable, well-supported version
+          method: 'network'
+          sub-packages: '["nvcc", "cudart", "cublas", "curand", "cufft", "cusparse", "cusolver", "visual_studio_integration"]'
       - name: Install Vulkan SDK
         if: matrix.backend == 'vulkan'
         run: |
