@@ -16,7 +16,7 @@ jobs:
       matrix:
         backend: [none, cuda, vulkan]
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - name: Install dependencies
         run: |
           sudo apt update
@@ -102,7 +102,7 @@ jobs:
       run:
         shell: pwsh
     name: Build Windows${{ matrix.backend != 'none' && format(' - {0}', matrix.backend) || '' }}
-    runs-on: windows-2022 # Use windows-2022 for better CUDA compatibility
+    runs-on: windows-2025
     strategy:
       fail-fast: false
       matrix:
@@ -122,13 +122,22 @@ jobs:
           Add-Content $env:GITHUB_ENV "FFMPEG_DIR=${pwd}\ffmpeg`n"
           Add-Content $env:GITHUB_PATH "${pwd}\ffmpeg\bin`n"
           choco install -r cmake
-      - name: Install CUDA Toolkit
+      - name: Install cuda
         if: matrix.backend == 'cuda'
-        uses: Jimver/cuda-toolkit@v0.2.18
-        with:
-          cuda: "12.4.1" # Use a stable, well-supported version
-          method: "network"
-          sub-packages: '["nvcc", "cudart", "cublas", "curand", "cufft", "cusparse", "cusolver", "visual_studio_integration"]'
+        run: |
+          choco install -r visualstudio2022community --installargs "--quiet --wait --norestart --includeRecommended --includeOptional --add Microsoft.VisualStudio.Workload.VCTools --add Microsoft.VisualStudio.Component.VC.Tools.x86.x64"
+          choco install -r cuda --version 12.9.1.576
+          $CUDA_PATH = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.9\"
+          # check if CUDA_PATH exists
+          if (-Not (Test-Path $CUDA_PATH)) {
+              Write-Error "CUDA_PATH does not exist: $CUDA_PATH"
+              exit 1
+          }
+          Add-Content $env:GITHUB_ENV "CUDA_PATH=${CUDA_PATH}"
+          Add-Content $env:GITHUB_ENV "CUDA_PATH_V12_9=${CUDA_PATH}"
+          Add-Content $env:GITHUB_ENV "CUDA_BIN_PATH=${CUDA_PATH}\bin"
+          Add-Content $env:GITHUB_ENV "CUDA_LIB_PATH=${CUDA_PATH}\lib\x64"
+          Add-Content $env:GITHUB_PATH "${CUDA_PATH}\bin"
       - name: Install Vulkan SDK
         if: matrix.backend == 'vulkan'
         run: |
