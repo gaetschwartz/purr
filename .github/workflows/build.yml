@@ -81,7 +81,7 @@ jobs:
       - uses: actions/checkout@v2
       - name: Install dependencies
         run: |
-          brew install ffmpeg pkg-config cmake
+          brew install ffmpeg
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -154,7 +154,7 @@ jobs:
           components: clippy, rustfmt
           toolchain: stable
       - name: Build
-        if : matrix.backend != 'cuda'
+        if: matrix.backend != 'cuda'
         run: |
           cargo build --release ${{ matrix.backend != 'none' && format('--features {0}', matrix.backend) || '' }}
       - name: Build with CUDA
