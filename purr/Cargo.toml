@@ -8,10 +8,10 @@ edition = "2021"
 purr-core.workspace = true
 
 # CLI argument parsing
-clap = { version = "4.4", features = ["derive"] }
+clap = { version = "4.5", features = ["derive"] }
 
 # Async runtime
-tokio = { version = "1.0", features = ["full"] }
+tokio = { version = "1.47", features = ["full"] }
 futures = "0.3"
 
 # Serialization for output
@@ -21,22 +21,22 @@ serde_json = "1.0"
 tracing = "0.1.41"
 
 # Progress bars
-indicatif = "0.17"
+indicatif = "0.18"
 
 # Colored output
-owo-colors = "4.2.1"
-tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
+owo-colors = "4.2.2"
+tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
 tracing-core = "0.1.34"
 num_cpus = "1.17.0"
-anyhow = "1.0.98"
-konst = { version = "0.3.16", features = ["alloc"] }
-const-str = { version = "0.6.2", features = ["proc"] }
-shadow-rs = { version = "1.2.0", default-features = false }
+anyhow = "1.0.99"
+konst = { version = "0.4.1", features = ["alloc"] }
+const-str = { version = "0.7.0", features = ["proc"] }
+shadow-rs = { version = "1.3.0", default-features = false }
 
 [dev-dependencies]
-tempfile = "3.8"
+tempfile = "3.21"
 assert_cmd = "2.0"
-rstest = "0.18"
+rstest = "0.26"
 
 [features]
 cuda = ["purr-core/cuda"]
@@ -45,4 +45,4 @@ metal = ["purr-core/metal"]
 coreml = ["purr-core/coreml"]
 
 [build-dependencies]
-shadow-rs = "1.2.0"
+shadow-rs = "1.3.0"

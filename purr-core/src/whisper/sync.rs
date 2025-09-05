@@ -84,44 +84,40 @@ impl SyncWhisperTranscriber {
         let processing_time = start_time.elapsed().as_secs_f64();
 
         // Extract results from state
-        let num_segments = state.full_n_segments().map_err(|e| {
-            WhisperError::Transcription(format!("Failed to get segment count: {}", e))
-        })?;
+        let num_segments = state.full_n_segments();
 
         let mut segments = Vec::new();
         let mut full_text = String::new();
 
         for i in 0..num_segments {
-            let text = match state.full_get_segment_text(i) {
-                Ok(text) => text,
-                Err(e) => {
-                    warn!(
-                        "Failed to get segment text for segment {}: {}. Skipping segment.",
-                        i, e
-                    );
-                    continue; // Skip this segment instead of failing completely
+            if let Some(segment) = state.get_segment(i) {
+                match segment.to_str() {
+                    Ok(text) => {
+                        let start = segment.start_timestamp() as f64 / 100.0;
+                        let end = segment.end_timestamp() as f64 / 100.0;
+
+                        full_text.push_str(text);
+
+                        segments.push(TranscriptionSegment {
+                            text: text.to_string(),
+                            start,
+                            end,
+                            confidence: None, // whisper-rs doesn't expose confidence scores yet
+                            words: None,      // Word-level timestamps not implemented yet
+                        });
+                    }
+                    Err(e) => {
+                        warn!("Failed to get segment text: {}", e);
+                        continue;
+                    }
                 }
-            };
-
-            let start = state.full_get_segment_t0(i).map_err(|e| {
-                WhisperError::Transcription(format!("Failed to get segment start time: {}", e))
-            })? as f64
-                / 100.0;
-
-            let end = state.full_get_segment_t1(i).map_err(|e| {
-                WhisperError::Transcription(format!("Failed to get segment end time: {}", e))
-            })? as f64
-                / 100.0;
-
-            full_text.push_str(&text);
-
-            segments.push(TranscriptionSegment {
-                text,
-                start,
-                end,
-                confidence: None, // whisper-rs doesn't expose confidence scores yet
-                words: None,      // Word-level timestamps not implemented yet
-            });
+            } else {
+                warn!(
+                    "Failed to get segment {} (out of {}). Skipping segment.",
+                    i, num_segments
+                );
+                continue; // Skip this segment instead of failing completely
+            }
         }
 
         // FIXME: Implement language detection

@@ -99,60 +99,52 @@ impl StreamWhisperTranscriber {
                     match state.full(params, &audio_chunk.samples) {
                         Ok(_) => {
                             // Extract results from state
-                            match state.full_n_segments() {
-                                Ok(num_segments) => {
-                                    let mut chunk_text = String::new();
+                            let num_segments = state.full_n_segments();
+                            let mut chunk_text = String::new();
 
-                                    for i in 0..num_segments {
-                                        match state.full_get_segment_text(i) {
-                                            Ok(text) => {
-                                                chunk_text.push_str(&text);
-                                            }
-                                            Err(e) => {
-                                                warn!(
-                                                    "Failed to get segment text for segment {}: {}",
-                                                    i, e
-                                                );
-                                            }
+                            for i in 0..num_segments {
+                                if let Some(segment) = state.get_segment(i) {
+                                    match segment.to_str() {
+                                        Ok(text) => chunk_text.push_str(text),
+                                        Err(e) => {
+                                            warn!("Failed to get segment text: {}", e);
                                         }
                                     }
-
-                                    // Update statistics
-                                    total_segments += num_segments as usize;
-                                    total_word_count += chunk_text.split_whitespace().count();
-
-                                    // Calculate final statistics if this is the last chunk
-                                    let final_stats = if audio_chunk.is_final {
-                                        let processing_time = start_time.elapsed().as_secs_f64();
-                                        Some(TranscriptionStats::new(
-                                            processing_time,
-                                            total_audio_duration,
-                                            total_segments,
-                                            total_word_count,
-                                        ))
-                                    } else {
-                                        None
-                                    };
-
-                                    // Send the chunk result
-                                    let streaming_chunk = StreamingChunk {
-                                        text: chunk_text,
-                                        start: audio_chunk.start_time as f64,
-                                        end: (audio_chunk.start_time + audio_chunk.duration) as f64,
-                                        is_final: audio_chunk.is_final,
-                                        chunk_index: audio_chunk.index,
-                                        final_stats,
-                                    };
-
-                                    if tx.send(Ok(streaming_chunk)).is_err() {
-                                        // Receiver dropped, stop processing
-                                        break;
-                                    }
+                                } else {
+                                    warn!("Failed to get segment {} (out of {})", i, num_segments);
                                 }
-                                Err(e) => {
-                                    warn!("Failed to get segment count: {}", e);
-                                    // Continue with next chunk
-                                }
+                            }
+
+                            // Update statistics
+                            total_segments += num_segments as usize;
+                            total_word_count += chunk_text.split_whitespace().count();
+
+                            // Calculate final statistics if this is the last chunk
+                            let final_stats = if audio_chunk.is_final {
+                                let processing_time = start_time.elapsed().as_secs_f64();
+                                Some(TranscriptionStats::new(
+                                    processing_time,
+                                    total_audio_duration,
+                                    total_segments,
+                                    total_word_count,
+                                ))
+                            } else {
+                                None
+                            };
+
+                            // Send the chunk result
+                            let streaming_chunk = StreamingChunk {
+                                text: chunk_text,
+                                start: audio_chunk.start_time as f64,
+                                end: (audio_chunk.start_time + audio_chunk.duration) as f64,
+                                is_final: audio_chunk.is_final,
+                                chunk_index: audio_chunk.index,
+                                final_stats,
+                            };
+
+                            if tx.send(Ok(streaming_chunk)).is_err() {
+                                // Receiver dropped, stop processing
+                                break;
                             }
                         }
                         Err(e) => {
