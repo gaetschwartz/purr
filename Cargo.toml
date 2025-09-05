@@ -1,6 +1,6 @@
 [workspace]
-members = ["purr", "purr-core"]
+members = ["crates/purr", "crates/purr-core"]
 resolver = "2"
 
 [workspace.dependencies]
-purr-core = { path = "purr-core" }
+purr-core = { path = "crates/purr-core" }
