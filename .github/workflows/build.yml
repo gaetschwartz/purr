@@ -16,19 +16,36 @@ jobs:
       matrix:
         backend: [none, cuda, vulkan]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v2
       - name: Install dependencies
         run: |
           sudo apt update
           sudo apt install -y --no-install-recommends clang curl pkg-config gcc ca-certificates openssl libssl-dev cmake libc6-dev make wget \
             libavcodec-dev libavformat-dev libavutil-dev libavfilter-dev libavdevice-dev libswscale-dev libswresample-dev \
             llvm
-      - name: Install CUDA Toolkit
+      - name: Install cuda
         if: matrix.backend == 'cuda'
-        uses: Jimver/cuda-toolkit@v0.2.18
-        with:
-          cuda: '12.4.1'  # Use same version as Windows for consistency
-          method: 'network'
+        run: |
+          # Detect Ubuntu version and set appropriate CUDA repo
+          UBUNTU_VERSION=$(lsb_release -rs | tr -d '.')
+          if [ "$UBUNTU_VERSION" = "2204" ]; then
+            CUDA_REPO="ubuntu2204"
+            CUDA_VERSION="12-6"
+            CUDA_PATH_VERSION="12.6"
+          else
+            CUDA_REPO="ubuntu2404"
+            CUDA_VERSION="12-9"
+            CUDA_PATH_VERSION="12.9"
+          fi
+
+          wget https://developer.download.nvidia.com/compute/cuda/repos/${CUDA_REPO}/x86_64/cuda-keyring_1.1-1_all.deb
+          sudo dpkg -i cuda-keyring_1.1-1_all.deb
+          sudo apt update
+          sudo apt install -y cuda-toolkit-${CUDA_VERSION}
+          CUDA_PATH=/usr/local/cuda-${CUDA_PATH_VERSION}/
+          echo "CUDA_PATH=$CUDA_PATH" >> $GITHUB_ENV
+          echo "$CUDA_PATH/bin" >> $GITHUB_PATH
+          echo "LD_LIBRARY_PATH=$CUDA_PATH/lib64${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" >> $GITHUB_ENV
       - name: Install Vulkan SDK
         if: matrix.backend == 'vulkan'
         run: |
@@ -85,7 +102,7 @@ jobs:
       run:
         shell: pwsh
     name: Build Windows${{ matrix.backend != 'none' && format(' - {0}', matrix.backend) || '' }}
-    runs-on: windows-2022  # Use windows-2022 for better CUDA compatibility
+    runs-on: windows-2022 # Use windows-2022 for better CUDA compatibility
     strategy:
       fail-fast: false
       matrix:
@@ -109,8 +126,8 @@ jobs:
         if: matrix.backend == 'cuda'
         uses: Jimver/cuda-toolkit@v0.2.18
         with:
-          cuda: '12.4.1'  # Use a stable, well-supported version
-          method: 'network'
+          cuda: "12.4.1" # Use a stable, well-supported version
+          method: "network"
           sub-packages: '["nvcc", "cudart", "cublas", "curand", "cufft", "cusparse", "cusolver", "visual_studio_integration"]'
       - name: Install Vulkan SDK
         if: matrix.backend == 'vulkan'
