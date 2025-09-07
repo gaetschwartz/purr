@@ -7,7 +7,7 @@ use std::path::PathBuf;
 /// Test transcription with all sample files
 #[rstest]
 #[tokio::test]
-async fn test_transcribe_sample_files(#[files("../samples/*")] sample_path: PathBuf) {
+async fn test_transcribe_sample_files(#[files("../../samples/*")] sample_path: PathBuf) {
     // Skip README.md and other non-audio files
     let extension = sample_path
         .extension()
