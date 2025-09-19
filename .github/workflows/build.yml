@@ -3,7 +3,7 @@
 name: build
 on:
   push:
-  # pull_request:
+  pull_request:
   # schedule:
   #   - cron: "0 0 * * *"
 
@@ -64,7 +64,26 @@ jobs:
         with:
           toolchain: stable
           components: clippy, rustfmt
-          targets: x86_64-unknown-linux-gnu
+          targets: x86_64-unknown-linux-gnu, wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - name: Install cargo-nextest and Dioxus CLI
+        run: |
+          cargo install cargo-nextest --locked
+          cargo install dioxus-cli --version 0.7.0-rc.0 --locked
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+      - name: Run clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+      - name: Run tests
+        run: cargo nextest run --all-features
+      - name: Build Dioxus web app
+        run: |
+          cd crates/purr-ui
+          dx build --web --release
+      - name: Build Dioxus server
+        run: |
+          cd crates/purr-ui
+          dx build --server --release --features server
       - name: Build
         run: cargo build --verbose --release ${{ matrix.backend != 'none' && format(' --features {0}', matrix.backend) || '' }}
       - name: Archive production artifacts
@@ -73,6 +92,8 @@ jobs:
           name: purr-linux${{ matrix.backend != 'none' && format('-{0}', matrix.backend) || '' }}
           path: |
             target/release/purr*
+            target/dx/purr-ui/release/web/public/
+            target/dx/purr-ui/release/server/
 
   build-macos:
     name: Build macOS (metal)
@@ -88,6 +109,22 @@ jobs:
         with:
           components: clippy, rustfmt
           toolchain: stable
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - name: Install cargo-nextest and Dioxus CLI
+        run: |
+          cargo install cargo-nextest --locked
+          cargo install dioxus-cli --version 0.7.0-rc.0 --locked
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+      - name: Run clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+      - name: Run tests
+        run: cargo nextest run --all-features
+      - name: Build Dioxus web app
+        run: |
+          cd crates/purr-ui
+          dx build --web --release
       - name: Build
         run: |
           cargo build --release --features metal,coreml
@@ -97,13 +134,14 @@ jobs:
           name: purr-macos
           path: |
             target/release/purr*
+            target/dx/purr-ui/release/web/public/
 
   build-windows:
     defaults:
       run:
         shell: pwsh
     name: Build Windows${{ matrix.backend != 'none' && format(' - {0}', matrix.backend) || '' }}
-    runs-on: windows-2025
+    runs-on: windows-latest
     strategy:
       fail-fast: false
       matrix:
@@ -154,6 +192,22 @@ jobs:
         with:
           components: clippy, rustfmt
           toolchain: stable
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - name: Install cargo-nextest and Dioxus CLI
+        run: |
+          cargo install cargo-nextest --locked
+          cargo install dioxus-cli --version 0.7.0-rc.0 --locked
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+      - name: Run clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+      - name: Run tests
+        run: cargo nextest run --all-features
+      - name: Build Dioxus web app
+        run: |
+          cd crates/purr-ui
+          dx build --web --release
       - name: Build
         if: matrix.backend != 'cuda'
         run: |
@@ -162,6 +216,9 @@ jobs:
         if: matrix.backend == 'cuda'
         run: |
           echo "$env:PATH"
+          cd crates/purr-ui
+          dx build --web --release
+          cd ../..
           cargo build --verbose --release --features cuda
       - name: Archive production artifacts
         uses: actions/upload-artifact@v4
@@ -169,3 +226,39 @@ jobs:
           name: purr-windows${{ matrix.backend != 'none' && format('-{0}', matrix.backend) || '' }}
           path: |
             target/release/purr*
+            target/dx/purr-ui/release/web/public/
+
+  build-ui:
+    name: Build Dioxus UI (cross-platform)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y --no-install-recommends clang curl pkg-config gcc ca-certificates openssl libssl-dev cmake libc6-dev make wget
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          components: clippy, rustfmt
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - name: Install Dioxus CLI
+        run: |
+          cargo install dioxus-cli --version 0.7.0-rc.0 --locked
+      - name: Build Dioxus web app
+        run: |
+          cd crates/purr-ui
+          dx build --web --release
+      - name: Build Dioxus server (Linux)
+        run: |
+          cd crates/purr-ui
+          dx build --server --release --features server
+      - name: Archive UI artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: purr-ui-builds
+          path: |
+            target/dx/purr-ui/release/web/public/
+            target/dx/purr-ui/release/server/

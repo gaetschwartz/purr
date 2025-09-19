@@ -1,0 +1,26 @@
+# act configuration for local GitHub Actions testing
+# https://github.com/nektos/act
+
+# Use medium sized images by default for better compatibility
+-P ubuntu-latest=catthehacker/ubuntu:act-latest
+-P ubuntu-22.04=catthehacker/ubuntu:act-22.04
+-P ubuntu-20.04=catthehacker/ubuntu:act-20.04
+
+# Use larger images for Windows and macOS if available
+-P windows-latest=catthehacker/ubuntu:act-latest
+-P macos-latest=catthehacker/ubuntu:act-latest
+
+# Default artifact server port
+--artifact-server-port=34567
+
+# Bind to all interfaces for artifact server
+--artifact-server-addr=0.0.0.0
+
+# Set default secrets (add your own as needed)
+# -s GITHUB_TOKEN=your_token_here
+
+# Verbose output for debugging
+# --verbose
+
+# Container architecture (uncomment if needed for M1/ARM64 Macs)
+# --container-architecture linux/amd64
