@@ -11,6 +11,7 @@
     "report": "playwright show-report"
   },
   "devDependencies": {
-    "@playwright/test": "^1.55.0"
+    "@playwright/test": "^1.55.0",
+    "tailwindcss": "^4.1.13"
   }
 }

@@ -12,7 +12,7 @@ pub enum UploadStatus {
 }
 
 /// Transcription status updates
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub enum TranscriptionStatus {
     Starting,
     ProcessingAudio,

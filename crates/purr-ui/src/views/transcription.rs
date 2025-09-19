@@ -1,4 +1,7 @@
-use crate::client::{default_client, TranscriptionStatus};
+use crate::{
+    client::{default_client, TranscriptionStatus},
+    components::{Button, ButtonVariant, Card, IconType, TranscriptionDisplay},
+};
 use dioxus::prelude::*;
 use tracing::info;
 
@@ -36,26 +39,15 @@ pub fn Transcription(file: String) -> Element {
     };
 
     rsx! {
-        div { class: "flex flex-col min-h-screen bg-gradient-to-br from-gray-50 to-gray-100",
+        div { class: "main-layout",
             // Header with file info and back button
-            div { class: "bg-white/80 backdrop-blur-sm shadow-sm border-b border-gray-200 px-6 py-4",
+            div { class: "backdrop-glass shadow-sm border-b border-gray-200 px-6 py-4",
                 div { class: "flex items-center justify-between max-w-4xl mx-auto",
                     div { class: "flex items-center space-x-4",
-                        button {
-                            class: "flex items-center px-4 py-2 text-sm font-medium text-gray-600 hover:text-teal-600 hover:bg-teal-50 rounded-lg transition-all duration-200",
-                            onclick: handle_back,
-                            svg {
-                                class: "w-4 h-4 mr-2",
-                                fill: "none",
-                                stroke: "currentColor",
-                                view_box: "0 0 24 24",
-                                path {
-                                    stroke_linecap: "round",
-                                    stroke_linejoin: "round",
-                                    stroke_width: "2",
-                                    d: "M15 19l-7-7 7-7",
-                                }
-                            }
+                        Button {
+                            variant: ButtonVariant::Ghost,
+                            icon: Some(IconType::BackArrow),
+                            onclick: move |evt| handle_back(evt),
                             "Back"
                         }
                         h1 { class: "text-2xl font-bold text-gray-900", "Audio Transcription" }
@@ -64,158 +56,24 @@ pub fn Transcription(file: String) -> Element {
             }
 
             // Main content area
-            div { class: "flex-1 max-w-4xl mx-auto w-full px-6 py-8",
+            div { class: "content-container",
                 // Transcription status and content
-                div { class: "bg-white/90 backdrop-blur-sm rounded-xl shadow-lg border border-gray-200 p-8",
-                    match transcription_status() {
-                        Some(TranscriptionStatus::Starting) => rsx! {
-                            div { class: "text-center py-16",
-                                div { class: "flex justify-center mb-6",
-                                    div { class: "animate-spin rounded-full h-16 w-16 border-4 border-teal-200 border-t-teal-500" }
-                                }
-                                h3 { class: "text-xl font-semibold text-gray-900 mb-3", "Initializing transcription..." }
-                                p { class: "text-gray-600 text-lg", "Setting up transcription for: {file_for_ui}" }
-                            }
-                        },
-                        Some(TranscriptionStatus::ProcessingAudio) => rsx! {
-                            div { class: "text-center py-16",
-                                div { class: "flex justify-center mb-6",
-                                    div { class: "animate-spin rounded-full h-16 w-16 border-4 border-teal-200 border-t-teal-500" }
-                                }
-                                h3 { class: "text-xl font-semibold text-gray-900 mb-3", "Processing audio file..." }
-                                p { class: "text-gray-600 text-lg", "Preparing audio for transcription" }
-                            }
-                        },
-                        Some(TranscriptionStatus::InProgress { chunk_index, .. }) => {
-                            rsx! {
-                                div { class: "text-center py-16",
-                                    div { class: "flex justify-center mb-6",
-                                        div { class: "animate-pulse rounded-full h-16 w-16 bg-gradient-to-r from-teal-400 to-teal-600 shadow-lg" }
-                                    }
-                                    h3 { class: "text-xl font-semibold text-gray-900 mb-3", "Transcribing audio..." }
-                                    div { class: "inline-flex items-center px-4 py-2 bg-teal-100 text-teal-800 rounded-full text-sm font-medium mb-8",
-                                        "Processing chunk {chunk_index + 1}"
-                                    }
+                Card {
+                    TranscriptionDisplay {
+                        status: transcription_status(),
+                        text: transcription_text(),
+                        file_name: file_for_ui.clone(),
+                    }
 
-                                    // Show live transcription results
-                                    if !transcription_text().is_empty() {
-                                        div { class: "mt-8 p-6 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border border-blue-200 text-left shadow-sm",
-                                            h4 { class: "text-lg font-semibold text-blue-900 mb-4 flex items-center",
-                                                svg {
-                                                    class: "w-5 h-5 mr-2 text-blue-600",
-                                                    fill: "currentColor",
-                                                    view_box: "0 0 20 20",
-                                                    path {
-                                                        d: "M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z"
-                                                    }
-                                                }
-                                                "Live Transcription"
-                                            }
-                                            p { class: "text-gray-800 whitespace-pre-wrap leading-relaxed text-lg", "{transcription_text()}" }
-                                        }
-                                    }
-                                }
+                    // Add back button for error state
+                    if let Some(TranscriptionStatus::Error { .. }) = transcription_status() {
+                        div { class: "mt-8 text-center",
+                            Button {
+                                variant: ButtonVariant::Primary,
+                                onclick: move |evt| handle_back(evt),
+                                "Try Another File"
                             }
                         }
-                        Some(
-                            TranscriptionStatus::Completed {
-                                processing_time,
-                                audio_duration,
-                                word_count,
-                            },
-                        ) => rsx! {
-                            div { class: "text-center py-16",
-                                div { class: "flex justify-center mb-6",
-                                    div { class: "w-20 h-20 bg-green-100 rounded-full flex items-center justify-center",
-                                        svg {
-                                            class: "w-10 h-10 text-green-600",
-                                            fill: "currentColor",
-                                            view_box: "0 0 20 20",
-                                            path {
-                                                fill_rule: "evenodd",
-                                                d: "M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z",
-                                                clip_rule: "evenodd",
-                                            }
-                                        }
-                                    }
-                                }
-                                h3 { class: "text-2xl font-bold text-green-700 mb-8", "Transcription Complete!" }
-
-                                // Statistics
-                                div { class: "grid grid-cols-2 md:grid-cols-4 gap-6 max-w-2xl mx-auto mb-10",
-                                    div { class: "bg-white p-4 rounded-lg shadow-sm border border-gray-200 text-center",
-                                        p { class: "text-sm font-medium text-gray-600 mb-1", "Processing Time" }
-                                        p { class: "text-2xl font-bold text-teal-600", "{processing_time:.1}s" }
-                                    }
-                                    div { class: "bg-white p-4 rounded-lg shadow-sm border border-gray-200 text-center",
-                                        p { class: "text-sm font-medium text-gray-600 mb-1", "Audio Duration" }
-                                        p { class: "text-2xl font-bold text-teal-600", "{audio_duration:.1}s" }
-                                    }
-                                    div { class: "bg-white p-4 rounded-lg shadow-sm border border-gray-200 text-center",
-                                        p { class: "text-sm font-medium text-gray-600 mb-1", "Word Count" }
-                                        p { class: "text-2xl font-bold text-teal-600", "{word_count}" }
-                                    }
-                                    div { class: "bg-white p-4 rounded-lg shadow-sm border border-gray-200 text-center",
-                                        p { class: "text-sm font-medium text-gray-600 mb-1", "Speed" }
-                                        p { class: "text-2xl font-bold text-teal-600", "{audio_duration / processing_time as f32:.1}x" }
-                                    }
-                                }
-
-                                // Final transcription results
-                                div { class: "mt-8 p-8 bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl border border-green-200 text-left shadow-lg",
-                                    h4 { class: "text-xl font-bold text-green-900 mb-6 flex items-center",
-                                        svg {
-                                            class: "w-6 h-6 mr-3 text-green-600",
-                                            fill: "currentColor",
-                                            view_box: "0 0 20 20",
-                                            path {
-                                                d: "M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z"
-                                            }
-                                        }
-                                        "Final Transcription"
-                                    }
-                                    p { class: "text-gray-800 whitespace-pre-wrap leading-relaxed text-lg", "{transcription_text()}" }
-                                }
-                            }
-                        },
-                        Some(TranscriptionStatus::Error { message }) => {
-                            rsx! {
-                                div { class: "text-center py-16",
-                                    div { class: "flex justify-center mb-6",
-                                        div { class: "w-20 h-20 bg-red-100 rounded-full flex items-center justify-center",
-                                            svg {
-                                                class: "w-10 h-10 text-red-600",
-                                                fill: "currentColor",
-                                                view_box: "0 0 20 20",
-                                                path {
-                                                    fill_rule: "evenodd",
-                                                    d: "M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z",
-                                                    clip_rule: "evenodd",
-                                                }
-                                            }
-                                        }
-                                    }
-                                    h3 { class: "text-xl font-semibold text-red-800 mb-4", "Transcription Failed" }
-                                    div { class: "bg-red-50 border border-red-200 rounded-lg p-4 mb-8 max-w-md mx-auto",
-                                        p { class: "text-red-700 text-sm", "{message}" }
-                                    }
-                                    button {
-                                        class: "px-6 py-3 bg-teal-500 text-white rounded-lg hover:bg-teal-600 transition-colors shadow-md hover:shadow-lg",
-                                        onclick: handle_back,
-                                        "Try Another File"
-                                    }
-                                }
-                            }
-                        }
-                        None => rsx! {
-                            div { class: "text-center py-16",
-                                div { class: "flex justify-center mb-6",
-                                    div { class: "animate-spin rounded-full h-16 w-16 border-4 border-teal-200 border-t-teal-500" }
-                                }
-                                h3 { class: "text-xl font-semibold text-gray-900 mb-3", "Starting transcription..." }
-                                p { class: "text-gray-600 text-lg", "Preparing to transcribe: {file_for_ui}" }
-                            }
-                        },
                     }
                 }
             }
@@ -287,7 +145,7 @@ async fn fetch_transcription(url: &str) -> Result<TranscriptionResponse, String>
 
     let window = web_sys::window().ok_or("No window object")?;
 
-    let mut opts = RequestInit::new();
+    let opts = RequestInit::new();
     opts.set_method("GET");
 
     let request = web_sys::Request::new_with_str_and_init(url, &opts)

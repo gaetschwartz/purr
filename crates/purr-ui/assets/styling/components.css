@@ -1,0 +1,91 @@
+/* Component-specific styles for Purr UI */
+
+/* Upload Zone */
+.upload-zone {
+  @apply transition-all duration-300 ease-in-out transform hover:scale-105;
+}
+
+.upload-zone--dragging {
+  @apply border-teal-500 bg-teal-50/50;
+}
+
+.upload-zone--idle {
+  @apply border-gray-300 hover:border-teal-400 hover:bg-gray-50/50;
+}
+
+/* Button variants */
+.btn-primary {
+  @apply bg-teal-500 text-white hover:bg-teal-600 focus:ring-teal-500 shadow-md hover:shadow-lg;
+}
+
+.btn-secondary {
+  @apply bg-gray-100 text-gray-700 hover:bg-gray-200 focus:ring-gray-500;
+}
+
+.btn-danger {
+  @apply bg-red-500 text-white hover:bg-red-600 focus:ring-red-500 shadow-md hover:shadow-lg;
+}
+
+.btn-ghost {
+  @apply text-gray-600 hover:text-teal-600 hover:bg-teal-50 focus:ring-teal-500;
+}
+
+/* Loading animations */
+.loading-spinner {
+  @apply animate-spin rounded-full border-4 border-teal-200 border-t-teal-500;
+}
+
+.pulsing-indicator {
+  @apply animate-pulse rounded-full bg-gradient-to-r from-teal-400 to-teal-600 shadow-lg;
+}
+
+/* Card variants */
+.card-default {
+  @apply bg-white/90 backdrop-blur-sm border-gray-200;
+}
+
+.card-success {
+  @apply bg-gradient-to-r from-green-50 to-emerald-50 border-green-200;
+}
+
+.card-error {
+  @apply bg-red-50 border-red-200;
+}
+
+.card-info {
+  @apply bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200;
+}
+
+/* Status badges */
+.status-badge {
+  @apply inline-flex items-center px-4 py-2 rounded-full text-sm font-medium;
+}
+
+.status-processing {
+  @apply bg-teal-100 text-teal-800;
+}
+
+.status-success {
+  @apply bg-green-100 text-green-800;
+}
+
+.status-error {
+  @apply bg-red-100 text-red-800;
+}
+
+.status-warning {
+  @apply bg-yellow-100 text-yellow-800;
+}
+
+.status-info {
+  @apply bg-blue-100 text-blue-800;
+}
+
+/* Progress bar */
+.progress-bar {
+  @apply bg-gray-200 rounded-full h-2;
+}
+
+.progress-fill {
+  @apply bg-teal-500 h-2 rounded-full transition-all duration-300;
+}
