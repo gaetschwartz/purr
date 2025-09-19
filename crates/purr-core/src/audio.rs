@@ -444,7 +444,7 @@ impl AudioProcessor {
                         ffmpeg::channel_layout::ChannelLayout::MONO,
                         16000,
                     )
-                    .map_err(|e| WhisperError::from(e))?,
+                    .map_err(WhisperError::from)?,
                 );
 
                 // Update our tracking variables
@@ -600,7 +600,7 @@ impl AudioProcessor {
                         ffmpeg::channel_layout::ChannelLayout::MONO,
                         16000,
                     )
-                    .map_err(|e| WhisperError::from(e))?,
+                    .map_err(WhisperError::from)?,
                 );
 
                 // Update our tracking variables
