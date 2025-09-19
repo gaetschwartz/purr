@@ -31,7 +31,7 @@ const APP_NAME: &str = env!("CARGO_PKG_NAME");
 shadow!(build);
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() -> miette::Result<()> {
     // Initialize tracing subscriber
     if let Err(e) = main_impl().await {
         error!("Application error: {}", e);
@@ -41,7 +41,7 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn main_impl() -> anyhow::Result<()> {
+async fn main_impl() -> miette::Result<()> {
     let cli = Cli::parse();
 
     // Setup logging
@@ -50,9 +50,18 @@ async fn main_impl() -> anyhow::Result<()> {
             .with_env_filter(
                 EnvFilter::builder()
                     .with_default_directive(Level::DEBUG.into())
-                    .from_env()?
-                    .add_directive("purr_core=trace".parse()?)
-                    .add_directive(cfmt!("{APP_NAME}=trace").parse()?),
+                    .from_env()
+                    .map_err(purr_core::WhisperError::from)?
+                    .add_directive(
+                        "purr_core=trace"
+                            .parse()
+                            .map_err(purr_core::WhisperError::from)?,
+                    )
+                    .add_directive(
+                        cfmt!("{APP_NAME}=trace")
+                            .parse()
+                            .map_err(purr_core::WhisperError::from)?,
+                    ),
             )
             .with_writer(std::io::stderr)
             .init();
@@ -61,7 +70,8 @@ async fn main_impl() -> anyhow::Result<()> {
             .with_env_filter(
                 EnvFilter::builder()
                     .with_default_directive(Level::INFO.into())
-                    .from_env()?,
+                    .from_env()
+                    .map_err(purr_core::WhisperError::from)?,
             )
             .compact()
             .without_time()
@@ -273,7 +283,7 @@ enum OutputFormat {
 async fn handle_streaming_output(
     mut stream: purr_core::StreamingTranscriptionResult,
     cli: &Cli,
-) -> anyhow::Result<()> {
+) -> miette::Result<()> {
     use std::fs;
 
     let mut all_chunks = Vec::new();
@@ -295,7 +305,9 @@ async fn handle_streaming_output(
                     chunk.text.clone()
                 }
             }
-            OutputFormat::Json => serde_json::to_string(&chunk)?,
+            OutputFormat::Json => {
+                serde_json::to_string(&chunk).map_err(purr_core::WhisperError::from)?
+            }
             OutputFormat::Srt => {
                 format!(
                     "{}\n{} --> {}\n{}\n",
@@ -333,25 +345,25 @@ async fn handle_streaming_output(
         } else {
             // IMMEDIATE real-time output to stdout
             if matches!(cli.output, OutputFormat::Json) {
-                write!(stdout, "{}", chunk_text)?;
+                write!(stdout, "{}", chunk_text).map_err(purr_core::WhisperError::from)?;
             } else {
-                write!(stdout, "{}", chunk_text)?;
+                write!(stdout, "{}", chunk_text).map_err(purr_core::WhisperError::from)?;
                 if !chunk.text.is_empty() && !chunk.text.ends_with('\n') {
                     if matches!(cli.output, OutputFormat::Srt) {
-                        writeln!(stdout)?;
+                        writeln!(stdout).map_err(purr_core::WhisperError::from)?;
                     } else {
-                        write!(stdout, " ")?;
+                        write!(stdout, " ").map_err(purr_core::WhisperError::from)?;
                     }
                 }
                 // CRITICAL: Flush immediately to show real-time output
-                stdout.flush()?;
+                stdout.flush().map_err(purr_core::WhisperError::from)?;
             }
         }
     }
 
     // Write to file if specified
     if let Some(output_file) = &cli.output_file {
-        fs::write(output_file, &output_buffer)?;
+        fs::write(output_file, &output_buffer).map_err(purr_core::WhisperError::from)?;
         if cli.verbose {
             info!(
                 "\n{} Streaming output written to: {}",
@@ -373,7 +385,7 @@ async fn handle_streaming_output(
 /// Prompt user to download base model when none is found
 async fn prompt_for_model_download(
     model: Option<WhisperModel>,
-) -> anyhow::Result<Option<WhisperModel>> {
+) -> miette::Result<Option<WhisperModel>> {
     if let Some(model) = model {
         println!();
         println!(
@@ -404,10 +416,14 @@ async fn prompt_for_model_download(
     println!();
 
     print!("Would you like to download the base model now? [Y/n]: ");
-    io::stdout().flush()?;
+    io::stdout()
+        .flush()
+        .map_err(purr_core::WhisperError::from)?;
 
     let mut input = String::new();
-    io::stdin().read_line(&mut input)?;
+    io::stdin()
+        .read_line(&mut input)
+        .map_err(purr_core::WhisperError::from)?;
     let input = input.trim().to_lowercase();
 
     // Default to 'yes' if user just presses enter
@@ -446,7 +462,7 @@ async fn prompt_for_model_download(
 }
 
 /// Handle subcommands
-async fn handle_command(command: Commands, verbose: bool) -> anyhow::Result<()> {
+async fn handle_command(command: Commands, verbose: bool) -> miette::Result<()> {
     match command {
         Commands::Models { command } => handle_model_command(command, verbose).await,
         Commands::Sys {} => handle_sys_command(verbose).await,
@@ -454,13 +470,13 @@ async fn handle_command(command: Commands, verbose: bool) -> anyhow::Result<()> 
 }
 
 /// Handle model management subcommands
-async fn handle_model_command(command: ModelCommands, verbose: bool) -> anyhow::Result<()> {
+async fn handle_model_command(command: ModelCommands, verbose: bool) -> miette::Result<()> {
     let model_manager = ModelManager::new()?;
 
     match command {
         ModelCommands::Download { model, force } => {
             let whisper_model = WhisperModel::from_str(&model).map_err(|e| {
-                anyhow::anyhow!(
+                miette::miette!(
                     "Unknown model: {}. Use 'models list' to see available models. Error: {}",
                     model,
                     e
@@ -600,7 +616,7 @@ async fn handle_model_command(command: ModelCommands, verbose: bool) -> anyhow::
 
         ModelCommands::Delete { model } => {
             let whisper_model = WhisperModel::from_str(&model).map_err(|e| {
-                anyhow::anyhow!(
+                miette::miette!(
                     "Unknown model: {}. Use 'models list' to see available models. Error: {}",
                     model,
                     e
@@ -627,7 +643,7 @@ async fn handle_model_command(command: ModelCommands, verbose: bool) -> anyhow::
 
         ModelCommands::Info { model } => {
             let whisper_model = WhisperModel::from_str(&model).map_err(|e| {
-                anyhow::anyhow!(
+                miette::miette!(
                     "Unknown model: {}. Use 'models list' to see available models. Error: {}",
                     model,
                     e
@@ -665,7 +681,7 @@ async fn handle_model_command(command: ModelCommands, verbose: bool) -> anyhow::
 }
 
 /// Handle system subcommands
-async fn handle_sys_command(verbose: bool) -> anyhow::Result<()> {
+async fn handle_sys_command(verbose: bool) -> miette::Result<()> {
     let sys = SystemInfo::get();
 
     fn feature_status(feature: FeatureStatus) -> String {
@@ -903,7 +919,7 @@ fn print_model_groups() {
     }
 }
 
-async fn setup_config(cli: &Cli) -> anyhow::Result<TranscriptionConfig> {
+async fn setup_config(cli: &Cli) -> miette::Result<TranscriptionConfig> {
     // Build transcription config
     let mut config = TranscriptionConfig::new()
         .with_gpu(!cli.no_gpu)
@@ -915,7 +931,7 @@ async fn setup_config(cli: &Cli) -> anyhow::Result<TranscriptionConfig> {
         if model_path.is_absolute() {
             // If absolute path, use it directly
             if !model_path.exists() {
-                return Err(anyhow::anyhow!(
+                return Err(miette::miette!(
                     "Model file not found at: {}",
                     model_path.display()
                 ));
@@ -923,7 +939,9 @@ async fn setup_config(cli: &Cli) -> anyhow::Result<TranscriptionConfig> {
             config = config.with_model_path(model_path);
         } else {
             // Otherwise, resolve relative to current directory
-            let model_path = std::env::current_dir()?.join(model_path);
+            let model_path = std::env::current_dir()
+                .map_err(purr_core::WhisperError::from)?
+                .join(model_path);
             if model_path.exists() {
                 config = config.with_model_path(model_path);
             } else {
@@ -936,7 +954,7 @@ async fn setup_config(cli: &Cli) -> anyhow::Result<TranscriptionConfig> {
                     if let Some(model) = prompt_for_model_download(Some(model)).await? {
                         model_manager.assign_model_path(&mut config, model);
                     } else {
-                        return Err(anyhow::anyhow!(
+                        return Err(miette::miette!(
                             "No model specified and no downloaded models found."
                         ));
                     }
@@ -953,7 +971,7 @@ async fn setup_config(cli: &Cli) -> anyhow::Result<TranscriptionConfig> {
                 // If user agrees, download the base model
                 model_manager.assign_model_path(&mut config, model);
             } else {
-                return Err(anyhow::anyhow!(
+                return Err(miette::miette!(
                     "No model specified and no downloaded models found."
                 ));
             }
@@ -974,7 +992,7 @@ async fn setup_config(cli: &Cli) -> anyhow::Result<TranscriptionConfig> {
     Ok(config)
 }
 
-fn handle_output(result: purr_core::SyncTranscriptionResult, cli: &Cli) -> anyhow::Result<()> {
+fn handle_output(result: purr_core::SyncTranscriptionResult, cli: &Cli) -> miette::Result<()> {
     // Prepare output content
     let output_content = match cli.output {
         OutputFormat::Text => {
@@ -994,7 +1012,9 @@ fn handle_output(result: purr_core::SyncTranscriptionResult, cli: &Cli) -> anyho
                 result.text.clone()
             }
         }
-        OutputFormat::Json => serde_json::to_string_pretty(&result)?,
+        OutputFormat::Json => {
+            serde_json::to_string_pretty(&result).map_err(purr_core::WhisperError::from)?
+        }
         OutputFormat::Srt => result
             .segments
             .iter()
@@ -1016,7 +1036,7 @@ fn handle_output(result: purr_core::SyncTranscriptionResult, cli: &Cli) -> anyho
     // Write output to file or stdout
     if let Some(output_file) = &cli.output_file {
         use std::fs;
-        fs::write(output_file, &output_content)?;
+        fs::write(output_file, &output_content).map_err(purr_core::WhisperError::from)?;
         if cli.verbose {
             println!(
                 "{} Output written to: {}",

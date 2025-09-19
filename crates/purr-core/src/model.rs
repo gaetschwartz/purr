@@ -1,6 +1,6 @@
 //! Model downloading and management functionality
 
-use crate::error::{Result, WhisperError};
+use crate::error::{ConfigurationError, Result, WhisperError};
 use crate::math::ByteSpeed;
 use core::str;
 use directories::ProjectDirs;
@@ -285,10 +285,9 @@ impl FromStr for WhisperModel {
             "large-v3-turbo" => Ok(WhisperModel::LargeV3Turbo),
             "large-v3-turbo-q5_0" => Ok(WhisperModel::LargeV3TurboQ5_0),
             "large-v3-turbo-q8_0" => Ok(WhisperModel::LargeV3TurboQ8_0),
-            _ => Err(WhisperError::Configuration(format!(
-                "Unknown Whisper model: {}",
-                s
-            ))),
+            _ => Err(WhisperError::from(ConfigurationError::UnknownModel {
+                model_name: s.to_string(),
+            })),
         }
     }
 }
@@ -301,9 +300,8 @@ pub struct ModelManager {
 impl ModelManager {
     /// Create a new model manager
     pub fn new() -> Result<Self> {
-        let project_dirs = ProjectDirs::from("dev.gaetans", "", "purr").ok_or_else(|| {
-            WhisperError::Configuration("Failed to get XDG directories".to_string())
-        })?;
+        let project_dirs = ProjectDirs::from("dev.gaetans", "", "purr")
+            .ok_or_else(|| WhisperError::from(ConfigurationError::XdgDirectories))?;
 
         let models_dir = project_dirs.data_dir().join("models");
 
@@ -317,9 +315,9 @@ impl ModelManager {
 
     /// Ensure the models directory exists
     pub async fn ensure_models_dir(&self) -> Result<()> {
-        fs::create_dir_all(&self.models_dir).await.map_err(|e| {
-            WhisperError::AudioProcessing(format!("Failed to create models directory: {}", e))
-        })?;
+        fs::create_dir_all(&self.models_dir)
+            .await
+            .map_err(WhisperError::from)?;
         Ok(())
     }
 
@@ -394,14 +392,13 @@ impl ModelManager {
         let url = model.get_url();
         let response = reqwest::get(&url)
             .await
-            .map_err(|e| WhisperError::Configuration(format!("Failed to download model: {}", e)))?;
+            .map_err(|e| WhisperError::from(ConfigurationError::DownloadFailed { source: e }))?;
 
         if !response.status().is_success() {
-            return Err(WhisperError::Configuration(format!(
-                "Failed to download model {}: HTTP {}",
-                model.as_str(),
-                response.status()
-            )));
+            return Err(WhisperError::from(ConfigurationError::DownloadHttpError {
+                model_name: model.as_str().to_string(),
+                status_code: response.status().as_u16(),
+            }));
         }
 
         // Get content length for progress reporting
@@ -409,9 +406,9 @@ impl ModelManager {
 
         // Create temporary file first, then rename
         let temp_path = model_path.with_extension("tmp");
-        let mut file = fs::File::create(&temp_path).await.map_err(|e| {
-            WhisperError::AudioProcessing(format!("Failed to create temporary file: {}", e))
-        })?;
+        let mut file = fs::File::create(&temp_path)
+            .await
+            .map_err(WhisperError::from)?;
 
         let mut stream = response.bytes_stream();
         let mut downloaded = 0u64;
@@ -420,27 +417,23 @@ impl ModelManager {
 
         while let Some(chunk) = stream.next().await {
             let chunk = chunk.map_err(|e| {
-                WhisperError::Configuration(format!("Failed to read download chunk: {}", e))
+                WhisperError::from(ConfigurationError::DownloadStreamError { source: e })
             })?;
 
-            file.write_all(&chunk).await.map_err(|e| {
-                WhisperError::AudioProcessing(format!("Failed to write to file: {}", e))
-            })?;
+            file.write_all(&chunk).await.map_err(WhisperError::from)?;
 
             downloaded += chunk.len() as u64;
             progress_callback(downloaded, total_size);
         }
 
-        file.flush()
-            .await
-            .map_err(|e| WhisperError::AudioProcessing(format!("Failed to flush file: {}", e)))?;
+        file.flush().await.map_err(WhisperError::from)?;
 
         drop(file);
 
         // Rename temporary file to final name
-        fs::rename(&temp_path, &model_path).await.map_err(|e| {
-            WhisperError::AudioProcessing(format!("Failed to rename downloaded file: {}", e))
-        })?;
+        fs::rename(&temp_path, &model_path)
+            .await
+            .map_err(WhisperError::from)?;
 
         debug!(
             "Successfully downloaded model {} to {:?}",
@@ -472,9 +465,9 @@ impl ModelManager {
         let model_path = self.get_model_path(model);
 
         if model_path.exists() {
-            fs::remove_file(&model_path).await.map_err(|e| {
-                WhisperError::AudioProcessing(format!("Failed to delete model file: {}", e))
-            })?;
+            fs::remove_file(&model_path)
+                .await
+                .map_err(WhisperError::from)?;
             info!("Deleted model {} from {:?}", model.as_str(), model_path);
         }
 
@@ -507,9 +500,7 @@ impl ModelManager {
             }
         }
 
-        Err(WhisperError::Configuration(
-            "No Whisper model found".to_string(),
-        ))
+        Err(WhisperError::from(ConfigurationError::NoModelFound))
     }
 }
 
@@ -525,8 +516,18 @@ mod tests {
 
     #[test]
     fn test_model_parsing() {
-        assert_eq!(WhisperModel::from_str("base"), Ok(WhisperModel::Base));
-        assert_eq!(WhisperModel::from_str("base.en"), Ok(WhisperModel::BaseEn));
+        // Test successful parsing
+        match WhisperModel::from_str("base") {
+            Ok(WhisperModel::Base) => {}
+            other => panic!("Expected Ok(WhisperModel::Base), got: {:?}", other),
+        }
+
+        match WhisperModel::from_str("base.en") {
+            Ok(WhisperModel::BaseEn) => {}
+            other => panic!("Expected Ok(WhisperModel::BaseEn), got: {:?}", other),
+        }
+
+        // Test error case
         let invalid = WhisperModel::from_str("invalid_model");
         assert!(invalid.is_err(), "Expected an error but got: {:?}", invalid);
     }

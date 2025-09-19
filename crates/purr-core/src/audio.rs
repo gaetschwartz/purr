@@ -1,6 +1,6 @@
 //! Audio processing functionality using FFmpeg
 
-use crate::error::{Result, WhisperError};
+use crate::error::{AudioProcessingError, Result, WhisperError};
 use ffmpeg_next as ffmpeg;
 use futures::Stream;
 use std::path::Path;
@@ -84,8 +84,7 @@ pub struct AudioProcessor {}
 impl AudioProcessor {
     /// Create a new audio processor
     pub fn new() -> Result<Self> {
-        ffmpeg::init()
-            .map_err(|e| WhisperError::FFmpeg(format!("Failed to initialize FFmpeg: {}", e)))?;
+        ffmpeg::init().map_err(WhisperError::from)?;
 
         // Set FFmpeg log level to quiet to suppress output
         unsafe {
@@ -105,7 +104,7 @@ impl AudioProcessor {
             processor.load_audio_sync(&path)
         })
         .await
-        .map_err(|e| WhisperError::AudioProcessing(format!("Task join error: {}", e)))?
+        .map_err(|e| WhisperError::from(AudioProcessingError::TaskJoin { source: e }))?
     }
 
     /// Stream audio file as chunks for real-time processing
@@ -137,34 +136,30 @@ impl AudioProcessor {
     fn load_audio_sync(&mut self, path: &Path) -> Result<AudioData> {
         // Validate file exists
         if !path.exists() {
-            return Err(WhisperError::AudioProcessing(format!(
-                "Audio file not found: {}",
-                path.display()
-            )));
+            return Err(WhisperError::from(AudioProcessingError::ProcessingFailed {
+                reason: format!("Audio file not found: {}", path.display()),
+            }));
         }
 
         // Open input file
-        let mut ictx = ffmpeg::format::input(&path)
-            .map_err(|e| WhisperError::FFmpeg(format!("Failed to open audio file: {}", e)))?;
+        let mut ictx = ffmpeg::format::input(&path).map_err(WhisperError::from)?;
 
         // Find the audio stream
         let input = ictx
             .streams()
             .best(ffmpeg::media::Type::Audio)
-            .ok_or_else(|| WhisperError::AudioProcessing("No audio stream found".to_string()))?;
+            .ok_or_else(|| WhisperError::from(AudioProcessingError::NoAudioStream))?;
 
         let stream_index = input.index();
 
         // Get decoder
         let context_decoder = ffmpeg::codec::context::Context::from_parameters(input.parameters())
-            .map_err(|e| {
-                WhisperError::FFmpeg(format!("Failed to create decoder context: {}", e))
-            })?;
+            .map_err(WhisperError::from)?;
 
         let mut decoder = context_decoder
             .decoder()
             .audio()
-            .map_err(|e| WhisperError::FFmpeg(format!("Failed to get audio decoder: {}", e)))?;
+            .map_err(WhisperError::from)?;
 
         let mut samples = Vec::new();
         let mut frame = ffmpeg::frame::Audio::empty();
@@ -200,12 +195,7 @@ impl AudioProcessor {
                         warn!("Skipping invalid chunk at stream index {}", stream_index,);
                         continue;
                     }
-                    Err(e) => {
-                        return Err(WhisperError::FFmpeg(format!(
-                            "Failed to send packet to decoder: {}",
-                            e
-                        )))
-                    }
+                    Err(e) => return Err(WhisperError::from(e)),
                 }
             }
         }
@@ -232,10 +222,9 @@ impl AudioProcessor {
 
         // Check if we got any audio data
         if samples.is_empty() {
-            return Err(WhisperError::AudioProcessing(
-                "No audio data could be extracted from file - file may be corrupted or unsupported"
-                    .to_string(),
-            ));
+            return Err(WhisperError::from(AudioProcessingError::ProcessingFailed {
+                reason: "No audio data could be extracted from file - file may be corrupted or unsupported".to_string()
+            }));
         }
 
         let duration = samples.len() as f32 / 16000.0;
@@ -255,34 +244,35 @@ impl AudioProcessor {
     ) -> Result<()> {
         // Validate file exists
         if !path.exists() {
-            let error =
-                WhisperError::AudioProcessing(format!("Audio file not found: {}", path.display()));
-            let _ = tx.send(Err(error.clone()));
+            let error_msg = format!("Audio file not found: {}", path.display());
+            let error = WhisperError::from(AudioProcessingError::ProcessingFailed {
+                reason: error_msg.clone(),
+            });
+            let _ = tx.send(Err(WhisperError::from(
+                AudioProcessingError::ProcessingFailed { reason: error_msg },
+            )));
             return Err(error);
         }
 
         // Open input file
-        let mut ictx = ffmpeg::format::input(&path)
-            .map_err(|e| WhisperError::FFmpeg(format!("Failed to open audio file: {}", e)))?;
+        let mut ictx = ffmpeg::format::input(&path).map_err(WhisperError::from)?;
 
         // Find the audio stream
         let input = ictx
             .streams()
             .best(ffmpeg::media::Type::Audio)
-            .ok_or_else(|| WhisperError::AudioProcessing("No audio stream found".to_string()))?;
+            .ok_or_else(|| WhisperError::from(AudioProcessingError::NoAudioStream))?;
 
         let stream_index = input.index();
 
         // Get decoder
         let context_decoder = ffmpeg::codec::context::Context::from_parameters(input.parameters())
-            .map_err(|e| {
-                WhisperError::FFmpeg(format!("Failed to create decoder context: {}", e))
-            })?;
+            .map_err(WhisperError::from)?;
 
         let mut decoder = context_decoder
             .decoder()
             .audio()
-            .map_err(|e| WhisperError::FFmpeg(format!("Failed to get audio decoder: {}", e)))?;
+            .map_err(WhisperError::from)?;
 
         let mut chunk_samples = Vec::new();
         let mut frame = ffmpeg::frame::Audio::empty();
@@ -345,11 +335,8 @@ impl AudioProcessor {
                         continue;
                     }
                     Err(e) => {
-                        let error = WhisperError::FFmpeg(format!(
-                            "Failed to send packet to decoder: {}",
-                            e
-                        ));
-                        let _ = tx.send(Err(error.clone()));
+                        let error = WhisperError::from(e);
+                        let _ = tx.send(Err(WhisperError::from(e)));
                         return Err(error);
                     }
                 }
@@ -388,11 +375,16 @@ impl AudioProcessor {
             let _ = tx.send(Ok(final_chunk));
         } else if chunk_index == 0 {
             // No chunks were sent, send error
-            let error = WhisperError::AudioProcessing(
-                "No audio data could be extracted from file - file may be corrupted or unsupported"
-                    .to_string(),
-            );
-            let _ = tx.send(Err(error.clone()));
+            let error_msg =
+                "No audio data could be extracted from file - file may be corrupted or unsupported";
+            let error = WhisperError::from(AudioProcessingError::ProcessingFailed {
+                reason: error_msg.to_string(),
+            });
+            let _ = tx.send(Err(WhisperError::from(
+                AudioProcessingError::ProcessingFailed {
+                    reason: error_msg.to_string(),
+                },
+            )));
             return Err(error);
         }
 
@@ -452,9 +444,7 @@ impl AudioProcessor {
                         ffmpeg::channel_layout::ChannelLayout::MONO,
                         16000,
                     )
-                    .map_err(|e| {
-                        WhisperError::FFmpeg(format!("Failed to create resampler: {}", e))
-                    })?,
+                    .map_err(|e| WhisperError::from(e))?,
                 );
 
                 // Update our tracking variables
@@ -546,10 +536,7 @@ impl AudioProcessor {
                 }
                 _ => {
                     // This shouldn't happen since we checked needs_resampling above
-                    return Err(WhisperError::AudioProcessing(format!(
-                        "Unexpected audio format in direct conversion path: {:?}",
-                        current_format
-                    )));
+                    return Err(WhisperError::from(AudioProcessingError::FormatConversion));
                 }
             }
         }
@@ -613,9 +600,7 @@ impl AudioProcessor {
                         ffmpeg::channel_layout::ChannelLayout::MONO,
                         16000,
                     )
-                    .map_err(|e| {
-                        WhisperError::FFmpeg(format!("Failed to create resampler: {}", e))
-                    })?,
+                    .map_err(|e| WhisperError::from(e))?,
                 );
 
                 // Update our tracking variables
@@ -707,10 +692,7 @@ impl AudioProcessor {
                 }
                 _ => {
                     // This shouldn't happen since we checked needs_resampling above
-                    return Err(WhisperError::AudioProcessing(format!(
-                        "Unexpected audio format in direct conversion path: {:?}",
-                        current_format
-                    )));
+                    return Err(WhisperError::from(AudioProcessingError::FormatConversion));
                 }
             }
         }

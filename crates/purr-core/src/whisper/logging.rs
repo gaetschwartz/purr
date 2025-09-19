@@ -27,6 +27,9 @@ pub fn install_logging_hooks() {
     install_ggml_logging_hook();
 }
 
+pub const WHISPER_LOG_TARGET: &str = "purr-core::logging::trampoline::whisper";
+pub const GGML_LOG_TARGET: &str = "purr-core::logging::trampoline::ggml";
+
 macro_rules! generic_error {
     ($($expr:tt)*) => {
         tracing::error!($($expr)*);
@@ -86,19 +89,19 @@ fn whisper_logging_trampoline_safe(level: GGMLLogLevel, text: Cow<str>) {
     match level {
         GGMLLogLevel::None => {
             // no clue what to do here, trace it?
-            generic_trace!("{}", text.trim());
+            generic_trace!(target: WHISPER_LOG_TARGET, "{}", text.trim());
         }
         GGMLLogLevel::Info => {
-            generic_info!("{}", text.trim());
+            generic_info!(target: WHISPER_LOG_TARGET, "{}", text.trim());
         }
         GGMLLogLevel::Warn => {
-            generic_warn!("{}", text.trim());
+            generic_warn!(target: WHISPER_LOG_TARGET, "{}", text.trim());
         }
         GGMLLogLevel::Error => {
-            generic_error!("{}", text.trim());
+            generic_error!(target: WHISPER_LOG_TARGET, "{}", text.trim());
         }
         GGMLLogLevel::Debug => {
-            generic_debug!("{}", text.trim());
+            generic_debug!(target: WHISPER_LOG_TARGET, "{}", text.trim());
         }
         GGMLLogLevel::Cont => {
             // this means continue previous log
@@ -106,10 +109,10 @@ fn whisper_logging_trampoline_safe(level: GGMLLogLevel, text: Cow<str>) {
             // plus as far as i can tell it's not actually *used* anywhere
             // whisper splits at 1024 chars and doesn't actually change the kind
             // so technically this is unused
-            generic_trace!("{}", text.trim());
+            generic_trace!(target: WHISPER_LOG_TARGET, "{}", text.trim());
         }
         GGMLLogLevel::Unknown(level) => {
-            generic_warn!(
+            generic_warn!(target: WHISPER_LOG_TARGET,
                 "whisper_logging_trampoline: unknown log level {}: message: {}",
                 level,
                 text.trim()
@@ -147,19 +150,19 @@ fn ggml_logging_trampoline_safe(level: GGMLLogLevel, text: Cow<str>) {
     match level {
         GGMLLogLevel::None => {
             // no clue what to do here, trace it?
-            generic_trace!("{}", text.trim());
+            generic_trace!(target: GGML_LOG_TARGET, "{}", text.trim());
         }
         GGMLLogLevel::Info => {
-            generic_info!("{}", text.trim());
+            generic_info!(target: GGML_LOG_TARGET, "{}", text.trim());
         }
         GGMLLogLevel::Warn => {
-            generic_warn!("{}", text.trim());
+            generic_warn!(target: GGML_LOG_TARGET, "{}", text.trim());
         }
         GGMLLogLevel::Error => {
-            generic_error!("{}", text.trim());
+            generic_error!(target: GGML_LOG_TARGET, "{}", text.trim());
         }
         GGMLLogLevel::Debug => {
-            generic_debug!("{}", text.trim());
+            generic_debug!(target: GGML_LOG_TARGET, "{}", text.trim());
         }
         GGMLLogLevel::Cont => {
             // this means continue previous log
@@ -167,10 +170,10 @@ fn ggml_logging_trampoline_safe(level: GGMLLogLevel, text: Cow<str>) {
             // plus as far as i can tell it's not actually *used* anywhere
             // ggml splits at 128 chars and doesn't actually change the kind of log
             // so technically this is unused
-            generic_trace!("{}", text.trim());
+            generic_trace!(target: GGML_LOG_TARGET, "{}", text.trim());
         }
         GGMLLogLevel::Unknown(level) => {
-            generic_warn!(
+            generic_warn!(target: GGML_LOG_TARGET,
                 "ggml_logging_trampoline: unknown log level {}: message: {}",
                 level,
                 text.trim()

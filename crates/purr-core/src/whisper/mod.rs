@@ -182,8 +182,8 @@ pub(crate) async fn load_model(
     let model_path_str = model_path.to_string_lossy().to_string();
     task::spawn_blocking(move || WhisperContext::new_with_params(&model_path_str, params))
         .await
-        .map_err(|e| WhisperError::Unknown(format!("Task join error: {}", e)))?
-        .map_err(|e| WhisperError::Whisper(e.to_string()))
+        .map_err(WhisperError::from)?
+        .map_err(WhisperError::from)
 }
 
 pub trait WhisperTranscriber {

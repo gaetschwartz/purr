@@ -28,10 +28,10 @@ owo-colors = "4.2.2"
 tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
 tracing-core = "0.1.34"
 num_cpus = "1.17.0"
-anyhow = "1.0.99"
 konst = { version = "0.4.1", features = ["alloc"] }
 const-str = { version = "0.7.0", features = ["proc"] }
 shadow-rs = { version = "1.3.0", default-features = false }
+miette = { version = "7.6.0", features = ["fancy"] }
 
 [dev-dependencies]
 tempfile = "3.21"

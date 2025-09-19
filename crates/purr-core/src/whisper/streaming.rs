@@ -1,4 +1,5 @@
 use crate::{
+    error::TranscriptionError,
     whisper::{
         load_model, StreamingChunk, TranscriptionResult, TranscriptionStats, WhisperTranscriber,
     },
@@ -62,7 +63,7 @@ impl StreamWhisperTranscriber {
     ) -> crate::Result<()> {
         // Create a state for processing all chunks
         let mut state = self.context.create_state().map_err(|e| {
-            crate::WhisperError::Transcription(format!("Failed to create state: {}", e))
+            crate::WhisperError::from(TranscriptionError::StateCreation { source: e })
         })?;
 
         // Statistics tracking

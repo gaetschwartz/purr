@@ -1,6 +1,9 @@
 //! Integration tests for purr-core
 
-use purr_core::{whisper::{TranscriptionSegment, TranscriptionStats}, *};
+use purr_core::{
+    whisper::{TranscriptionSegment, TranscriptionStats},
+    *,
+};
 use rstest::rstest;
 use std::path::Path;
 
@@ -27,7 +30,7 @@ async fn test_missing_audio_file() {
 
     assert!(result.is_err());
     match result.unwrap_err() {
-        WhisperError::AudioProcessing(_) | WhisperError::Configuration(_) => {}
+        WhisperError::AudioProcessing { .. } | WhisperError::Configuration { .. } => {}
         e => panic!(
             "Expected AudioProcessing or Configuration error, got: {}",
             e
@@ -201,7 +204,7 @@ async fn test_transcription_error_handling(#[case] invalid_path: &str) {
 
     let error = result.unwrap_err();
     match error {
-        WhisperError::AudioProcessing(_) | WhisperError::Io(_) => {
+        WhisperError::AudioProcessing { .. } | WhisperError::Io { .. } => {
             println!(
                 "✓ Correctly handled invalid file: {} -> {}",
                 invalid_path, error

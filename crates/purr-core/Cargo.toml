@@ -20,6 +20,7 @@ serde_json = "1.0"
 
 # Logging
 tracing = "0.1.41"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # XDG directory support
 directories = "6.0"
@@ -29,6 +30,7 @@ reqwest = { version = "0.12", features = ["stream"] }
 futures-util = "0.3"
 strum = { version = "0.27.2", features = ["derive"] }
 tokio-stream = "0.1.17"
+miette = { version = "7.6.0", features = ["fancy"] }
 
 [dev-dependencies]
 tempfile = "3.21"

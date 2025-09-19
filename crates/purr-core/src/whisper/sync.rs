@@ -3,7 +3,7 @@
 use crate::{
     audio::AudioData,
     config::TranscriptionConfig,
-    error::{Result, WhisperError},
+    error::{Result, TranscriptionError, WhisperError},
     whisper::{
         load_model, SyncTranscriptionResult, TranscriptionSegment, TranscriptionStats,
         WhisperTranscriber,
@@ -74,12 +74,12 @@ impl SyncWhisperTranscriber {
         let mut state = self
             .context
             .create_state()
-            .map_err(|e| WhisperError::Transcription(format!("Failed to create state: {}", e)))?;
+            .map_err(|e| WhisperError::from(TranscriptionError::StateCreation { source: e }))?;
 
         // Run transcription using state.full()
         state
             .full(params, &audio_data.samples)
-            .map_err(|e| WhisperError::Transcription(format!("Transcription failed: {}", e)))?;
+            .map_err(|e| WhisperError::from(TranscriptionError::Failed { source: e }))?;
 
         let processing_time = start_time.elapsed().as_secs_f64();
 
