@@ -1,0 +1,16 @@
+{
+  "name": "purr-e2e-tests",
+  "version": "1.0.0",
+  "description": "End-to-end tests for Purr transcription app",
+  "main": "index.js",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:debug": "playwright test --debug",
+    "test:ui": "playwright test --ui",
+    "report": "playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.55.0"
+  }
+}

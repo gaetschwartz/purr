@@ -1,0 +1,23 @@
+[application]
+name = "purr-ui"
+# The main entry point of the application
+default_platform = "web"
+
+[web.app]
+# The title of the web application
+title = "Purr - Audio Transcription"
+
+[web.watcher]
+# Include rust source files
+watch_path = ["src", "Cargo.toml", "Dioxus.toml"]
+
+[web.resource]
+# Base application resources
+base_path = "."
+
+[web.resource.dev]
+# Development resource paths
+
+[bundler]
+# Bundle optimizations for production
+optimize = true

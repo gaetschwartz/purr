@@ -1,15 +1,11 @@
 use crate::{
-    server::fs::{upload_file, UploadStatus},
-    utils::BytesExt,
+    client::default_client,
     Route,
 };
-use bytes::Bytes;
 use dioxus::{
     html::{FileEngine, HasFileData},
     prelude::*,
 };
-use futures::{channel::mpsc, SinkExt, StreamExt};
-use miette::miette;
 use std::sync::Arc;
 use tracing::{error, info};
 
@@ -105,15 +101,15 @@ pub fn DragDropZone() -> Element {
     };
 
     let border_class = if is_dragging() {
-        "border-4 border-dashed border-teal-500 bg-teal-50"
+        "border-2 border-dashed border-teal-500 bg-teal-50/50"
     } else {
-        "border-4 border-dashed border-gray-300 hover:border-gray-400"
+        "border-2 border-dashed border-gray-300 hover:border-teal-400 hover:bg-gray-50/50"
     };
 
     rsx! {
-      div { class: "flex items-center justify-center w-full h-full",
+      div { class: "flex items-center justify-center w-full h-full min-h-screen bg-gradient-to-br from-gray-50 to-gray-100",
         div {
-          class: "flex flex-col items-center justify-center w-full h-full {border_class} rounded-lg cursor-pointer transition-colors duration-200",
+          class: "flex flex-col items-center justify-center w-full max-w-lg mx-auto h-96 {border_class} rounded-xl cursor-pointer transition-all duration-300 ease-in-out transform hover:scale-105 bg-white shadow-lg",
           ondragover: handle_drag_over,
           ondragleave: handle_drag_leave,
           ondrop: handle_drop,
@@ -126,45 +122,55 @@ pub fn DragDropZone() -> Element {
             name: "audio-file",
             multiple: false,
             // Accept audio types - includes both MIME types and file extensions
-            accept: "audio/mpeg, audio/wav, audio/x-wav, audio/wave, audio/aac, audio/flac, audio/ogg, audio/webm, audio/mp4, audio/x-m4a, .mp3, .wav, .aac, .flac, .ogg, .webm, .m4a",
+            accept: "audio/mpeg, audio/wav, audio/x-wav, audio/wave, audio/aac, audio/flac, audio/ogg, audio/webm, audio/mp4, audio/x-m4a, .mp3, .wav, .aac, .flac, .ogg, .webm, .m4a, .mp4",
             onchange: handle_file_input,
           }
 
           // Click handler that triggers the file input
           label {
             r#for: "file-input",
-            class: "flex flex-col items-center justify-center w-full h-full cursor-pointer",
+            class: "flex flex-col items-center justify-center w-full h-full cursor-pointer p-8",
 
             if is_uploading() {
-              div { class: "flex flex-col items-center",
-                div { class: "animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600 mb-4" }
-                p { class: "text-gray-600", "Uploading file..." }
+              div { class: "flex flex-col items-center text-center",
+                div { class: "animate-spin rounded-full h-12 w-12 border-b-2 border-teal-500 mb-6" }
+                h3 { class: "text-lg font-medium text-gray-900 mb-2", "Uploading file..." }
                 if upload_progress() > 0 {
-                  p { class: "text-sm text-gray-500",
-                    "{upload_progress()} bytes uploaded"
+                  div { class: "w-full max-w-xs mx-auto",
+                    div { class: "bg-gray-200 rounded-full h-2 mb-2",
+                      div {
+                        class: "bg-teal-500 h-2 rounded-full transition-all duration-300",
+                        style: "width: {(upload_progress() as f32 / 1_000_000.0 * 100.0).min(100.0)}%"
+                      }
+                    }
+                    p { class: "text-sm text-gray-600",
+                      "{upload_progress() / 1000} KB uploaded"
+                    }
                   }
                 }
               }
             } else if let Some(file_name) = uploaded_file() {
-              div { class: "flex flex-col items-center",
-                svg {
-                  class: "w-16 h-16 max-w-16 max-h-16 mb-4 text-green-500",
-                  fill: "currentColor",
-                  view_box: "0 0 20 20",
-                  path {
-                    fill_rule: "evenodd",
-                    d: "M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z",
-                    clip_rule: "evenodd",
+              div { class: "flex flex-col items-center text-center",
+                div { class: "w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-4",
+                  svg {
+                    class: "w-8 h-8 text-green-600",
+                    fill: "currentColor",
+                    view_box: "0 0 20 20",
+                    path {
+                      fill_rule: "evenodd",
+                      d: "M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z",
+                      clip_rule: "evenodd",
+                    }
                   }
                 }
-                p { class: "text-green-600 font-medium",
+                h3 { class: "text-lg font-medium text-green-700 mb-2",
                   "File uploaded successfully!"
                 }
-                p { class: "text-gray-500 text-sm break-all break-words max-w-full",
+                p { class: "text-gray-600 text-sm break-all break-words max-w-full mb-4",
                   "{file_name}"
                 }
                 button {
-                  class: "mt-2 px-4 py-2 bg-teal-500 text-white rounded hover:bg-teal-600 transition-colors",
+                  class: "px-6 py-2 bg-teal-500 text-white rounded-lg hover:bg-teal-600 transition-colors shadow-md hover:shadow-lg",
                   onclick: move |evt| {
                       evt.prevent_default();
                       evt.stop_propagation();
@@ -174,24 +180,27 @@ pub fn DragDropZone() -> Element {
                 }
               }
             } else {
-              div { class: "flex flex-col items-center",
-                svg {
-                  class: "w-8 h-8 mb-4 text-gray-400",
-                  fill: "none",
-                  stroke: "currentColor",
-                  view_box: "0 0 48 48",
-                  path {
-                    stroke_linecap: "round",
-                    stroke_linejoin: "round",
-                    stroke_width: "2",
-                    d: "M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02",
+              div { class: "flex flex-col items-center text-center",
+                div { class: "w-16 h-16 bg-teal-100 rounded-full flex items-center justify-center mb-6",
+                  svg {
+                    class: "w-8 h-8 text-teal-600",
+                    fill: "none",
+                    stroke: "currentColor",
+                    view_box: "0 0 24 24",
+                    path {
+                      stroke_linecap: "round",
+                      stroke_linejoin: "round",
+                      stroke_width: "1.5",
+                      d: "M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10",
+                    }
                   }
                 }
-                p { class: "mb-2 text-sm text-gray-500",
-                  span { class: "font-semibold", "Click to upload" }
+                h2 { class: "text-xl font-semibold text-gray-900 mb-2", "Upload Audio File" }
+                p { class: "text-gray-600 mb-1",
+                  span { class: "font-medium", "Click to upload" }
                   " or drag and drop"
                 }
-                p { class: "text-xs text-gray-500", "Any file type supported" }
+                p { class: "text-sm text-gray-500", "Audio files supported (MP3, WAV, AAC, FLAC, OGG, M4A)" }
               }
             }
           }
@@ -200,13 +209,16 @@ pub fn DragDropZone() -> Element {
     }
 }
 
-/// Handle file upload using streaming WebSocket upload
+/// Handle file upload using HTTP API
+#[cfg(feature = "web")]
 async fn handle_file_upload_stream(
     file_engine: Arc<dyn FileEngine>,
     file_name: String,
     mut upload_progress: Signal<usize>,
 ) -> miette::Result<String> {
-    info!("Starting streaming file upload: {}", file_name);
+    use miette::miette;
+
+    info!("Starting file upload: {}", file_name);
 
     // Read file content as bytes using Dioxus FileEngine
     let file_bytes = file_engine
@@ -214,67 +226,33 @@ async fn handle_file_upload_stream(
         .await
         .ok_or_else(|| miette!("Failed to read file: {}", file_name))?;
 
-    // Create a stream from the file bytes
-    let (mut tx, rx) = mpsc::channel::<Result<Bytes, String>>(100);
+    let client = default_client();
 
-    // Send file data in chunks
-    let chunk_size = 8192; // 8KB chunks
+    // Simulate progress updates
     let total_size = file_bytes.len();
+    upload_progress.set(total_size / 2);
 
-    spawn(async move {
-        let file_bytes = Bytes::from(file_bytes);
-        for (i, chunk) in file_bytes.chunks(chunk_size).enumerate() {
-            if tx.send(Ok(chunk)).await.is_err() {
-                error!("Failed to send chunk {}", i);
-                break;
-            }
-
-            // Small delay to prevent overwhelming the connection
-            gloo_timers::future::TimeoutFuture::new(10).await;
-        }
-
-        // Close the sender to indicate end of stream
-        tx.close().await.unwrap();
-    });
-
-    // Convert the receiver to a BoxedStream
-    let byte_stream = rx.map(|result| result.map_err(ServerFnError::new)).boxed();
-
-    // Call the upload server function
-    match upload_file(byte_stream.into()).await {
-        Ok(mut status_stream) => {
-            let mut final_file_id = None;
-
-            // Process status updates
-            while let Some(status_result) = status_stream.next().await {
-                match status_result {
-                    Ok(UploadStatus::InProgress { bytes_received }) => {
-                        info!("Upload progress: {} / {} bytes", bytes_received, total_size);
-                        upload_progress.set(bytes_received);
-                    }
-                    Ok(UploadStatus::Completed {
-                        total_bytes,
-                        file_id,
-                    }) => {
-                        info!(
-                            "Upload completed: {} bytes, file ID: {}",
-                            total_bytes, file_id
-                        );
-                        final_file_id = Some(file_id);
-                        break;
-                    }
-                    Err(e) => {
-                        error!("Upload error: {}", e);
-                        return Err(miette!("Upload failed: {}", e));
-                    }
-                }
-            }
-
-            final_file_id.ok_or_else(|| miette!("Upload completed but no file ID received"))
+    // Upload file via HTTP
+    match client.upload_file(file_name.clone(), file_bytes).await {
+        Ok(file_id) => {
+            upload_progress.set(total_size);
+            info!("Upload completed, file ID: {}", file_id);
+            Ok(file_id)
         }
         Err(e) => {
-            error!("Failed to start upload: {}", e);
-            Err(miette!("Failed to start upload: {}", e))
+            error!("Upload failed: {}", e);
+            Err(miette!("Upload failed: {}", e))
         }
     }
+}
+
+/// Placeholder for non-web builds
+#[cfg(not(feature = "web"))]
+async fn handle_file_upload_stream(
+    _file_engine: Arc<dyn FileEngine>,
+    _file_name: String,
+    _upload_progress: Signal<usize>,
+) -> miette::Result<String> {
+    use miette::miette;
+    Err(miette!("File upload not supported in non-web builds"))
 }

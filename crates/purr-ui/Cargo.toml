@@ -6,35 +6,91 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[lib]
+name = "purr_ui"
+path = "src/lib.rs"
+
+[[bin]]
+name = "purr-ui"
+path = "src/main.rs"
+
+[[bin]]
+name = "purr-server"
+path = "src/bin/server.rs"
+required-features = ["server"]
+
 [dependencies]
+# Server-only dependencies (not compiled for WASM)
 purr-core = { path = "../purr-core", optional = true }
-dioxus = { version = "0.7.0-rc.0", features = ["router", "fullstack"] }
-dioxus-fullstack = { version = "0.7.0-rc.0", features = ["axum"] }
-rfd = { version = "0.15.4", features = ["tokio"] }
+tokio = { version = "1.47.1", features = ["full"], optional = true }
+tracing-subscriber = { version = "0.3", optional = true }
+
+# Shared dependencies (work on both WASM and native)
+dioxus = { version = "0.7.0-rc.0", features = ["router"] }
+dioxus-fullstack = { version = "0.7.0-rc.0", features = ["axum"], optional = true }
 futures = { version = "0.3.31", default-features = false, features = [
   "async-await",
   "alloc",
   "std",
 ] }
 serde = { version = "1.0.225", features = ["derive"] }
-tokio = { version = "1.47.1", features = ["full"], optional = true }
+serde_json = { version = "1.0", optional = true }
 bytes = "1.10.1"
-uuid = { version = "1.11.0", features = ["v4"] }
+uuid = { version = "1.11.0", features = ["v4", "js"] }
 tracing = "0.1.41"
-gloo-timers = { version = "0.3.0", features = ["futures"] }
-gloo-file = "0.3.0"
-web-sys = "0.3"
-js-sys = "0.3"
-wasm-bindgen-futures = "0.4"
 miette = { version = "7.6.0", features = ["fancy"] }
-cached = "0.56.0"
+
+# Web-only dependencies (only for WASM builds)
+gloo-timers = { version = "0.3.0", features = ["futures"], optional = true }
+gloo-file = { version = "0.3.0", optional = true }
+web-sys = { version = "0.3", features = ["Window", "Request", "RequestInit", "Response", "FormData", "Blob", "BlobPropertyBag", "console"], optional = true }
+js-sys = { version = "0.3", optional = true }
+wasm-bindgen = { version = "0.2", features = ["serde-serialize"], optional = true }
+wasm-bindgen-futures = { version = "0.4", optional = true }
+serde-wasm-bindgen = { version = "0.6", optional = true }
+getrandom = { version = "0.2", features = ["js"], optional = true }
+
+# Desktop-only dependencies
+rfd = { version = "0.15.4", features = ["tokio"], optional = true }
+cached = { version = "0.56.0", optional = true }
+
+# Server-only dependencies for HTTP API
+axum = { version = "0.8", features = ["multipart"], optional = true }
+tower-http = { version = "0.6", features = ["cors"], optional = true }
 
 [features]
-default = ["desktop"]
-server = ["dioxus/server", "tokio", "purr-core"]
-# The feature that are only required for the web = ["dioxus/web"] build target should be optional and only enabled in the web = ["dioxus/web"] feature
-web = ["dioxus/web"]
-# The feature that are only required for the desktop = ["dioxus/desktop"] build target should be optional and only enabled in the desktop = ["dioxus/desktop"] feature
-desktop = ["dioxus/desktop"]
-# The feature that are only required for the mobile = ["dioxus/mobile"] build target should be optional and only enabled in the mobile = ["dioxus/mobile"] feature
+default = ["web"]
+
+# Server feature includes all native dependencies and server functionality
+server = [
+  "dioxus/server",
+  "dioxus-fullstack",
+  "tokio",
+  "purr-core",
+  "tracing-subscriber",
+  "rfd",
+  "cached",
+  "axum",
+  "tower-http",
+  "serde_json"
+]
+
+# Web feature includes only WASM-compatible dependencies
+web = [
+  "dioxus/web",
+  "gloo-timers",
+  "gloo-file",
+  "web-sys",
+  "js-sys",
+  "wasm-bindgen",
+  "wasm-bindgen-futures",
+  "serde-wasm-bindgen",
+  "getrandom",
+  "serde_json"
+]
+
+# Desktop feature includes desktop-specific functionality
+desktop = ["dioxus/desktop", "rfd", "cached"]
+
+# Mobile feature
 mobile = ["dioxus/mobile"]
