@@ -20,66 +20,67 @@ pub enum WhisperModel {
     Tiny,
     /// Tiny English-only model (39 MB)
     TinyEn,
-    /// Tiny quantized Q5_1 (31 MB)
+    /// Tiny quantized `Q5_1` (31 MB)
     TinyQ5_1,
-    /// Tiny English-only quantized Q5_1 (31 MB)
+    /// Tiny English-only quantized `Q5_1` (31 MB)
     TinyEnQ5_1,
-    /// Tiny quantized Q8_0 (42 MB)
+    /// Tiny quantized `Q8_0` (42 MB)
     TinyQ8_0,
     /// Base model (142 MB, good balance)
     Base,
     /// Base English-only model (142 MB)
     BaseEn,
-    /// Base quantized Q5_1 (103 MB)
+    /// Base quantized `Q5_1` (103 MB)
     BaseQ5_1,
-    /// Base English-only quantized Q5_1 (103 MB)
+    /// Base English-only quantized `Q5_1` (103 MB)
     BaseEnQ5_1,
-    /// Base quantized Q8_0 (149 MB)
+    /// Base quantized `Q8_0` (149 MB)
     BaseQ8_0,
     /// Small model (466 MB)
     Small,
     /// Small English-only model (466 MB)
     SmallEn,
-    /// Small English-only TinyDiarize model
+    /// Small English-only `TinyDiarize` model
     SmallEnTdrz,
-    /// Small quantized Q5_1 (340 MB)
+    /// Small quantized `Q5_1` (340 MB)
     SmallQ5_1,
-    /// Small English-only quantized Q5_1 (340 MB)
+    /// Small English-only quantized `Q5_1` (340 MB)
     SmallEnQ5_1,
-    /// Small quantized Q8_0 (488 MB)
+    /// Small quantized `Q8_0` (488 MB)
     SmallQ8_0,
     /// Medium model (1.5 GB)
     Medium,
     /// Medium English-only model (1.5 GB)
     MediumEn,
-    /// Medium quantized Q5_0 (1.1 GB)
+    /// Medium quantized `Q5_0` (1.1 GB)
     MediumQ5_0,
-    /// Medium English-only quantized Q5_0 (1.1 GB)
+    /// Medium English-only quantized `Q5_0` (1.1 GB)
     MediumEnQ5_0,
-    /// Medium quantized Q8_0 (1.6 GB)
+    /// Medium quantized `Q8_0` (1.6 GB)
     MediumQ8_0,
     /// Large v1 model (3.0 GB)
     LargeV1,
     /// Large v2 model (3.0 GB)
     LargeV2,
-    /// Large v2 quantized Q5_0 (2.3 GB)
+    /// Large v2 quantized `Q5_0` (2.3 GB)
     LargeV2Q5_0,
-    /// Large v2 quantized Q8_0 (3.2 GB)
+    /// Large v2 quantized `Q8_0` (3.2 GB)
     LargeV2Q8_0,
     /// Large v3 model (3.0 GB, most accurate)
     LargeV3,
-    /// Large v3 quantized Q5_0 (2.3 GB)
+    /// Large v3 quantized `Q5_0` (2.3 GB)
     LargeV3Q5_0,
     /// Large v3 Turbo model (1.5 GB, faster)
     LargeV3Turbo,
-    /// Large v3 Turbo quantized Q5_0 (1.2 GB)
+    /// Large v3 Turbo quantized `Q5_0` (1.2 GB)
     LargeV3TurboQ5_0,
-    /// Large v3 Turbo quantized Q8_0 (1.6 GB)
+    /// Large v3 Turbo quantized `Q8_0` (1.6 GB)
     LargeV3TurboQ8_0,
 }
 
 impl WhisperModel {
     /// Get the model identifier string used in filenames and URLs
+    #[must_use]
     pub const fn as_str(&self) -> &'static str {
         match self {
             WhisperModel::Tiny => "tiny",
@@ -116,6 +117,7 @@ impl WhisperModel {
     }
 
     /// Get the model description
+    #[must_use]
     pub const fn description(&self) -> &'static str {
         match self {
             WhisperModel::Tiny => "Tiny model (39 MB, fastest, lowest accuracy)",
@@ -154,6 +156,7 @@ impl WhisperModel {
     }
 
     /// Get all available models
+    #[must_use]
     pub const fn all_models() -> &'static [WhisperModel] {
         &[
             WhisperModel::Tiny,
@@ -189,6 +192,7 @@ impl WhisperModel {
         ]
     }
 
+    #[must_use]
     pub const fn size(&self) -> u64 {
         match self {
             WhisperModel::Tiny => 39 * 1024 * 1024,        // 39 MB
@@ -228,6 +232,7 @@ impl WhisperModel {
         }
     }
 
+    #[must_use]
     pub fn estimated_download_time(&self, speed: ByteSpeed) -> Duration {
         // Calculate time in seconds
         self.size() as usize / speed
@@ -245,6 +250,7 @@ impl WhisperModel {
     }
 
     /// Get the filename for this model
+    #[must_use]
     pub fn filename(&self) -> String {
         format!("ggml-{}.bin", self.as_str())
     }
@@ -309,6 +315,7 @@ impl ModelManager {
     }
 
     /// Get the models directory path
+    #[must_use]
     pub fn models_dir(&self) -> &Path {
         &self.models_dir
     }
@@ -328,6 +335,7 @@ impl ModelManager {
     }
 
     /// Get the full path to a model file
+    #[must_use]
     pub fn get_model_path(&self, model: WhisperModel) -> PathBuf {
         self.models_dir.join(model.filename())
     }

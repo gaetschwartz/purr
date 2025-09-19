@@ -29,6 +29,7 @@ pub struct SystemInfo {
 
 impl SystemInfo {
     /// Check system capabilities and available GPU devices
+    #[must_use]
     pub fn get() -> SystemInfo {
         let devices = list_devices();
 
@@ -114,6 +115,7 @@ pub struct SystemCapabilities {
 }
 
 impl SystemCapabilities {
+    #[must_use]
     pub fn get() -> Self {
         unsafe {
             Self {
@@ -127,6 +129,7 @@ impl SystemCapabilities {
 }
 
 /// List available GPU devices
+#[must_use]
 pub fn list_devices() -> Vec<Device> {
     #[allow(unused_mut)]
     let mut devices = Vec::new();
@@ -140,7 +143,7 @@ pub fn list_devices() -> Vec<Device> {
         let mut props: whisper_rs::whisper_rs_sys::ggml_backend_dev_props =
             unsafe { std::mem::zeroed() };
         unsafe {
-            whisper_rs::whisper_rs_sys::ggml_backend_dev_get_props(device, &mut props);
+            whisper_rs::whisper_rs_sys::ggml_backend_dev_get_props(device, &raw mut props);
         }
         let tpe = match props.type_ {
             whisper_rs::whisper_rs_sys::ggml_backend_dev_type_GGML_BACKEND_DEVICE_TYPE_CPU => {

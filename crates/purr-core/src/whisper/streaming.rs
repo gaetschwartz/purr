@@ -136,8 +136,8 @@ impl StreamWhisperTranscriber {
                             // Send the chunk result
                             let streaming_chunk = StreamingChunk {
                                 text: chunk_text,
-                                start: audio_chunk.start_time as f64,
-                                end: (audio_chunk.start_time + audio_chunk.duration) as f64,
+                                start: f64::from(audio_chunk.start_time),
+                                end: f64::from(audio_chunk.start_time + audio_chunk.duration),
                                 is_final: audio_chunk.is_final,
                                 chunk_index: audio_chunk.index,
                                 final_stats,

@@ -83,6 +83,7 @@ impl Default for OutputFormat {
 
 impl TranscriptionConfig {
     /// Create a new configuration with default values
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
@@ -100,30 +101,35 @@ impl TranscriptionConfig {
     }
 
     /// Enable or disable GPU acceleration
+    #[must_use]
     pub fn with_gpu(mut self, use_gpu: bool) -> Self {
         self.use_gpu = use_gpu;
         self
     }
 
     /// Set the number of threads
+    #[must_use]
     pub fn with_threads(mut self, threads: usize) -> Self {
         self.num_threads = Some(threads);
         self
     }
 
     /// Set the sample rate
+    #[must_use]
     pub fn with_sample_rate(mut self, rate: u32) -> Self {
         self.sample_rate = rate;
         self
     }
 
     /// Enable or disable verbose output
+    #[must_use]
     pub fn with_verbose(mut self, verbose: bool) -> Self {
         self.verbose = verbose;
         self
     }
 
     /// Enable or disable translation to English
+    #[must_use]
     pub fn with_translate(mut self, translate: bool) -> Self {
         self.translate = translate;
         self

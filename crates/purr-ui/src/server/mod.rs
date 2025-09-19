@@ -1,2 +1,2 @@
-mod fs;
-mod whisper;
+pub mod fs;
+pub mod whisper;

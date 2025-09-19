@@ -21,7 +21,7 @@ pub struct TranscriptionStats {
     /// Audio duration in seconds
     pub audio_duration: f32,
 
-    /// Real-time factor (audio_duration / processing_time)
+    /// Real-time factor (`audio_duration` / `processing_time`)
     pub real_time_factor: f32,
 
     /// Number of segments produced
@@ -38,6 +38,7 @@ pub struct TranscriptionStats {
 }
 
 impl TranscriptionStats {
+    #[must_use]
     pub fn new(
         processing_time: f64,
         audio_duration: f32,
@@ -45,7 +46,7 @@ impl TranscriptionStats {
         word_count: usize,
     ) -> Self {
         let real_time_factor = if processing_time > 0.0 {
-            audio_duration as f64 / processing_time
+            f64::from(audio_duration) / processing_time
         } else {
             0.0
         } as f32;

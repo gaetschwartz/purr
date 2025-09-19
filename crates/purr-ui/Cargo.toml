@@ -19,6 +19,14 @@ futures = { version = "0.3.31", default-features = false, features = [
 serde = { version = "1.0.225", features = ["derive"] }
 tokio = { version = "1.47.1", features = ["full"], optional = true }
 bytes = "1.10.1"
+uuid = { version = "1.11.0", features = ["v4"] }
+tracing = "0.1.41"
+gloo-timers = { version = "0.3.0", features = ["futures"] }
+gloo-file = "0.3.0"
+web-sys = "0.3"
+js-sys = "0.3"
+wasm-bindgen-futures = "0.4"
+miette = { version = "7.6.0", features = ["fancy"] }
 
 [features]
 default = ["desktop"]

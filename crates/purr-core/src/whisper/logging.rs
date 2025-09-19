@@ -63,7 +63,7 @@ macro_rules! generic_trace {
 static WHISPER_LOG_TRAMPOLINE_INSTALL: Once = Once::new();
 pub(crate) fn install_whisper_logging_hook() {
     WHISPER_LOG_TRAMPOLINE_INSTALL.call_once(|| unsafe {
-        whisper_rs_sys::whisper_log_set(Some(whisper_logging_trampoline), std::ptr::null_mut())
+        whisper_rs_sys::whisper_log_set(Some(whisper_logging_trampoline), std::ptr::null_mut());
     });
 }
 
@@ -81,7 +81,7 @@ unsafe extern "C" fn whisper_logging_trampoline(
     // from_ptr's requirements.
     let log_str = unsafe { CStr::from_ptr(text) }.to_string_lossy();
 
-    whisper_logging_trampoline_safe(level, log_str)
+    whisper_logging_trampoline_safe(level, log_str);
 }
 
 // this code essentially compiles down to a noop if neither feature is enabled
@@ -124,7 +124,7 @@ fn whisper_logging_trampoline_safe(level: GGMLLogLevel, text: Cow<str>) {
 static GGML_LOG_TRAMPOLINE_INSTALL: Once = Once::new();
 pub(crate) fn install_ggml_logging_hook() {
     GGML_LOG_TRAMPOLINE_INSTALL.call_once(|| unsafe {
-        whisper_rs_sys::ggml_log_set(Some(ggml_logging_trampoline), std::ptr::null_mut())
+        whisper_rs_sys::ggml_log_set(Some(ggml_logging_trampoline), std::ptr::null_mut());
     });
 }
 
@@ -142,7 +142,7 @@ unsafe extern "C" fn ggml_logging_trampoline(
     // from_ptr's requirements.
     let log_str = unsafe { CStr::from_ptr(text) }.to_string_lossy();
 
-    ggml_logging_trampoline_safe(level, log_str)
+    ggml_logging_trampoline_safe(level, log_str);
 }
 
 // this code essentially compiles down to a noop if neither feature is enabled

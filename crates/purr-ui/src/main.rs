@@ -8,6 +8,8 @@ use views::{Home, Navbar, Transcription};
 mod components;
 /// Server functions module
 mod server;
+/// Utilities module
+mod utils;
 /// Define a views module that contains the UI for all Layouts and Routes for our app.
 mod views;
 
@@ -28,8 +30,8 @@ enum Route {
         Home {},
         // The route attribute can include dynamic parameters that implement [`std::str::FromStr`] and [`std::fmt::Display`] with the `:` syntax.
         // In this case, file_path will match any string like `/transcription/audio.mp3`.
-        #[route("/transcription/:file_path")]
-        Transcription { file_path: String },
+        #[route("/transcription/:file")]
+        Transcription { file: String },
 }
 
 // We can import assets in dioxus with the `asset!` macro. This macro takes a path to an asset relative to the crate root.

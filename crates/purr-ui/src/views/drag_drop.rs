@@ -1,11 +1,24 @@
-use crate::Route;
-use dioxus::{html::HasFileData, prelude::*};
+use crate::{
+    server::fs::{upload_file, UploadStatus},
+    utils::BytesExt,
+    Route,
+};
+use bytes::Bytes;
+use dioxus::{
+    html::{FileEngine, HasFileData},
+    prelude::*,
+};
+use futures::{channel::mpsc, SinkExt, StreamExt};
+use miette::miette;
+use std::sync::Arc;
+use tracing::{error, info};
 
 #[component]
 pub fn DragDropZone() -> Element {
     let mut is_dragging = use_signal(|| false);
     let mut uploaded_file = use_signal(|| None::<String>);
     let mut is_uploading = use_signal(|| false);
+    let mut upload_progress = use_signal(|| 0usize);
     let navigator = use_navigator();
 
     let handle_drag_over = move |evt: Event<DragData>| {
@@ -25,20 +38,34 @@ pub fn DragDropZone() -> Element {
         let Some(engine) = drag_data.files() else {
             return;
         };
-        let Some(file) = engine.files().into_iter().next() else {
+        let Some(file_name) = engine.files().into_iter().next() else {
             return;
         };
-        uploaded_file.set(Some(file));
 
-        // Start upload simulation
+        // Get the file engine for upload
+        let Some(file_engine) = drag_data.files() else {
+            return;
+        };
+
+        // Start file upload
         is_uploading.set(true);
+        uploaded_file.set(Some(file_name.clone()));
+        upload_progress.set(0);
 
-        // Spawn a task to simulate file processing
-        let file_path = uploaded_file().unwrap_or_default();
+        let navigator = navigator;
         spawn(async move {
-            // Reset upload state and navigate to transcription page
-            is_uploading.set(false);
-            navigator.push(Route::Transcription { file_path });
+            match handle_file_upload_stream(file_engine, file_name, upload_progress).await {
+                Ok(file_id) => {
+                    is_uploading.set(false);
+                    navigator.push(Route::Transcription { file: file_id });
+                }
+                Err(e) => {
+                    error!("File upload failed: {}", e);
+                    is_uploading.set(false);
+                    uploaded_file.set(None);
+                    upload_progress.set(0);
+                }
+            }
         });
     };
 
@@ -49,15 +76,31 @@ pub fn DragDropZone() -> Element {
         let Some(file_name) = engine.files().into_iter().next() else {
             return;
         };
-        uploaded_file.set(Some(file_name));
-        is_uploading.set(true);
 
-        // Simulate file processing
-        let file_path = uploaded_file().unwrap_or_default();
+        // Get the file engine for upload
+        let Some(file_engine) = evt.files() else {
+            return;
+        };
+
+        // Start file upload
+        is_uploading.set(true);
+        uploaded_file.set(Some(file_name.clone()));
+        upload_progress.set(0);
+
+        let navigator = navigator;
         spawn(async move {
-            // Reset upload state and navigate to transcription page
-            is_uploading.set(false);
-            navigator.push(Route::Transcription { file_path });
+            match handle_file_upload_stream(file_engine, file_name, upload_progress).await {
+                Ok(file_id) => {
+                    is_uploading.set(false);
+                    navigator.push(Route::Transcription { file: file_id });
+                }
+                Err(e) => {
+                    error!("File upload failed: {}", e);
+                    is_uploading.set(false);
+                    uploaded_file.set(None);
+                    upload_progress.set(0);
+                }
+            }
         });
     };
 
@@ -96,6 +139,11 @@ pub fn DragDropZone() -> Element {
               div { class: "flex flex-col items-center",
                 div { class: "animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600 mb-4" }
                 p { class: "text-gray-600", "Uploading file..." }
+                if upload_progress() > 0 {
+                  p { class: "text-sm text-gray-500",
+                    "{upload_progress()} bytes uploaded"
+                  }
+                }
               }
             } else if let Some(file_name) = uploaded_file() {
               div { class: "flex flex-col items-center",
@@ -149,5 +197,84 @@ pub fn DragDropZone() -> Element {
           }
         }
       }
+    }
+}
+
+/// Handle file upload using streaming WebSocket upload
+async fn handle_file_upload_stream(
+    file_engine: Arc<dyn FileEngine>,
+    file_name: String,
+    mut upload_progress: Signal<usize>,
+) -> miette::Result<String> {
+    info!("Starting streaming file upload: {}", file_name);
+
+    // Read file content as bytes using Dioxus FileEngine
+    let file_bytes = file_engine
+        .read_file(&file_name)
+        .await
+        .ok_or_else(|| miette!("Failed to read file: {}", file_name))?;
+
+    // Create a stream from the file bytes
+    let (mut tx, rx) = mpsc::channel::<Result<Bytes, String>>(100);
+
+    // Send file data in chunks
+    let chunk_size = 8192; // 8KB chunks
+    let total_size = file_bytes.len();
+
+    spawn(async move {
+        let file_bytes = Bytes::from(file_bytes);
+        for (i, chunk) in file_bytes.chunks(chunk_size).enumerate() {
+            if tx.send(Ok(chunk)).await.is_err() {
+                error!("Failed to send chunk {}", i);
+                break;
+            }
+
+            // Small delay to prevent overwhelming the connection
+            gloo_timers::future::TimeoutFuture::new(10).await;
+        }
+
+        // Close the sender to indicate end of stream
+        tx.close().await.unwrap();
+    });
+
+    // Convert the receiver to a BoxedStream
+    let byte_stream = rx.map(|result| result.map_err(ServerFnError::new)).boxed();
+
+    // Call the upload server function
+    match upload_file(byte_stream.into()).await {
+        Ok(mut status_stream) => {
+            let mut final_file_id = None;
+
+            // Process status updates
+            while let Some(status_result) = status_stream.next().await {
+                match status_result {
+                    Ok(UploadStatus::InProgress { bytes_received }) => {
+                        info!("Upload progress: {} / {} bytes", bytes_received, total_size);
+                        upload_progress.set(bytes_received);
+                    }
+                    Ok(UploadStatus::Completed {
+                        total_bytes,
+                        file_id,
+                    }) => {
+                        info!(
+                            "Upload completed: {} bytes, file ID: {}",
+                            total_bytes, file_id
+                        );
+                        final_file_id = Some(file_id);
+                        break;
+                    }
+                    Err(e) => {
+                        error!("Upload error: {}", e);
+                        return Err(miette!("Upload failed: {}", e));
+                    }
+                }
+            }
+
+            final_file_id.ok_or_else(|| miette!("Upload completed but no file ID received"))
+        }
+        Err(e) => {
+            error!("Failed to start upload: {}", e);
+            Err(miette!("Failed to start upload: {}", e))
+        }
     }
 }

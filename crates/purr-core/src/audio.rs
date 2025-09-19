@@ -1,4 +1,4 @@
-//! Audio processing functionality using FFmpeg
+//! Audio processing functionality using `FFmpeg`
 
 use crate::error::{AudioProcessingError, Result, WhisperError};
 use ffmpeg_next as ffmpeg;
@@ -46,6 +46,7 @@ impl AudioChunk {
     pub const TARGET_SAMPLES: usize = (Self::TARGET_DURATION * 16000.0) as usize;
 
     /// Create a new audio chunk
+    #[must_use]
     pub fn new(samples: Vec<f32>, index: usize, start_time: f32, is_final: bool) -> Self {
         let duration = samples.len() as f32 / 16000.0;
         Self {
@@ -78,7 +79,7 @@ impl Stream for AudioStream {
     }
 }
 
-/// Audio processor using FFmpeg
+/// Audio processor using `FFmpeg`
 pub struct AudioProcessor {}
 
 impl AudioProcessor {
@@ -216,7 +217,7 @@ impl AudioProcessor {
                 }
             }
             Err(e) => {
-                eprintln!("Warning: Failed to flush decoder, but continuing: {}", e);
+                eprintln!("Warning: Failed to flush decoder, but continuing: {e}");
             }
         }
 
@@ -411,7 +412,7 @@ impl AudioProcessor {
             match frame.channels() {
                 1 => ffmpeg::channel_layout::ChannelLayout::MONO,
                 2 => ffmpeg::channel_layout::ChannelLayout::STEREO,
-                _ => ffmpeg::channel_layout::ChannelLayout::default(frame.channels() as i32),
+                _ => ffmpeg::channel_layout::ChannelLayout::default(i32::from(frame.channels())),
             }
         } else {
             frame.channel_layout()
@@ -461,7 +462,7 @@ impl AudioProcessor {
                     }
                     Err(e) => {
                         // Input format changed - skip this frame and continue
-                        eprintln!("Warning: Skipping frame due to resampling error: {}", e);
+                        eprintln!("Warning: Skipping frame due to resampling error: {e}");
 
                         // Force recreation of resampler for next frame
                         *resampler = None;
@@ -480,7 +481,7 @@ impl AudioProcessor {
             let sample_count = resampled.samples();
 
             unsafe {
-                let ptr = data.as_ptr() as *const f32;
+                let ptr = data.as_ptr().cast::<f32>();
                 let slice = std::slice::from_raw_parts(ptr, sample_count);
                 samples.extend_from_slice(slice);
             }
@@ -493,13 +494,13 @@ impl AudioProcessor {
                 ffmpeg::format::Sample::I16(_) => {
                     // Convert s16 to f32 with potential downsampling
                     unsafe {
-                        let ptr = data.as_ptr() as *const i16;
+                        let ptr = data.as_ptr().cast::<i16>();
                         let slice = std::slice::from_raw_parts(ptr, sample_count);
 
                         if current_rate == 16000 {
                             // Direct conversion for 16kHz
                             for &sample in slice {
-                                samples.push(sample as f32 / 32768.0);
+                                samples.push(f32::from(sample) / 32768.0);
                             }
                         } else {
                             // Simple downsampling for other rates
@@ -507,7 +508,7 @@ impl AudioProcessor {
                             let mut pos = 0.0;
                             while (pos as usize) < slice.len() {
                                 let idx = pos as usize;
-                                samples.push(slice[idx] as f32 / 32768.0);
+                                samples.push(f32::from(slice[idx]) / 32768.0);
                                 pos += step;
                             }
                         }
@@ -516,7 +517,7 @@ impl AudioProcessor {
                 ffmpeg::format::Sample::F32(_) => {
                     // F32 conversion with potential downsampling
                     unsafe {
-                        let ptr = data.as_ptr() as *const f32;
+                        let ptr = data.as_ptr().cast::<f32>();
                         let slice = std::slice::from_raw_parts(ptr, sample_count);
 
                         if current_rate == 16000 {
@@ -567,7 +568,7 @@ impl AudioProcessor {
             match frame.channels() {
                 1 => ffmpeg::channel_layout::ChannelLayout::MONO,
                 2 => ffmpeg::channel_layout::ChannelLayout::STEREO,
-                _ => ffmpeg::channel_layout::ChannelLayout::default(frame.channels() as i32),
+                _ => ffmpeg::channel_layout::ChannelLayout::default(i32::from(frame.channels())),
             }
         } else {
             frame.channel_layout()
@@ -636,7 +637,7 @@ impl AudioProcessor {
             let sample_count = resampled.samples();
 
             unsafe {
-                let ptr = data.as_ptr() as *const f32;
+                let ptr = data.as_ptr().cast::<f32>();
                 let slice = std::slice::from_raw_parts(ptr, sample_count);
                 output_samples.extend_from_slice(slice);
             }
@@ -649,13 +650,13 @@ impl AudioProcessor {
                 ffmpeg::format::Sample::I16(_) => {
                     // Convert s16 to f32 with potential downsampling
                     unsafe {
-                        let ptr = data.as_ptr() as *const i16;
+                        let ptr = data.as_ptr().cast::<i16>();
                         let slice = std::slice::from_raw_parts(ptr, sample_count);
 
                         if current_rate == 16000 {
                             // Direct conversion for 16kHz
                             for &sample in slice {
-                                output_samples.push(sample as f32 / 32768.0);
+                                output_samples.push(f32::from(sample) / 32768.0);
                             }
                         } else {
                             // Simple downsampling for other rates
@@ -663,7 +664,7 @@ impl AudioProcessor {
                             let mut pos = 0.0;
                             while (pos as usize) < slice.len() {
                                 let idx = pos as usize;
-                                output_samples.push(slice[idx] as f32 / 32768.0);
+                                output_samples.push(f32::from(slice[idx]) / 32768.0);
                                 pos += step;
                             }
                         }
@@ -672,7 +673,7 @@ impl AudioProcessor {
                 ffmpeg::format::Sample::F32(_) => {
                     // F32 conversion with potential downsampling
                     unsafe {
-                        let ptr = data.as_ptr() as *const f32;
+                        let ptr = data.as_ptr().cast::<f32>();
                         let slice = std::slice::from_raw_parts(ptr, sample_count);
 
                         if current_rate == 16000 {

@@ -1,6 +1,6 @@
 //! Whisper UI Core Library
 //!
-//! This library provides audio transcription functionality using whisper.cpp and FFmpeg.
+//! This library provides audio transcription functionality using whisper.cpp and `FFmpeg`.
 
 pub mod audio;
 pub mod config;

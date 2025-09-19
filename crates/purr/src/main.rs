@@ -94,7 +94,7 @@ async fn main_impl() -> miette::Result<()> {
 
     // Handle transcription (original behavior)
     let Some(audio_file) = cli.audio_file.clone() else {
-        println!("{}\n", ASCII_ART);
+        println!("{ASCII_ART}\n");
         error!("No audio file specified. Please provide an audio file to transcribe.",);
         std::process::exit(1);
     };
@@ -116,7 +116,7 @@ async fn main_impl() -> miette::Result<()> {
             println!("GPU acceleration: {}", "disabled".red());
         }
         if let Some(lang) = &config.language {
-            println!("Language: {}", lang);
+            println!("Language: {lang}");
         }
         println!();
     }
@@ -345,9 +345,9 @@ async fn handle_streaming_output(
         } else {
             // IMMEDIATE real-time output to stdout
             if matches!(cli.output, OutputFormat::Json) {
-                write!(stdout, "{}", chunk_text).map_err(purr_core::WhisperError::from)?;
+                write!(stdout, "{chunk_text}").map_err(purr_core::WhisperError::from)?;
             } else {
-                write!(stdout, "{}", chunk_text).map_err(purr_core::WhisperError::from)?;
+                write!(stdout, "{chunk_text}").map_err(purr_core::WhisperError::from)?;
                 if !chunk.text.is_empty() && !chunk.text.ends_with('\n') {
                     if matches!(cli.output, OutputFormat::Srt) {
                         writeln!(stdout).map_err(purr_core::WhisperError::from)?;
@@ -543,7 +543,7 @@ async fn handle_model_command(command: ModelCommands, verbose: bool) -> miette::
                         "/s".cyan()
                     )
                 } else {
-                    "".to_string()
+                    String::new()
                 }
             );
         }
@@ -719,7 +719,7 @@ async fn handle_sys_command(verbose: bool) -> miette::Result<()> {
                 format_args!("Device {}", device.id.bold()).green(),
                 device.name.bold(),
                 if device.description.is_empty() {
-                    "".to_string()
+                    String::new()
                 } else {
                     format_args!("{}", device.description).to_string()
                 },
@@ -780,7 +780,7 @@ fn format_srt_time(seconds: f64) -> String {
     let secs = (seconds % 60.0) as u32;
     let millis = ((seconds % 1.0) * 1000.0) as u32;
 
-    format!("{:02}:{:02}:{:02},{:03}", hours, minutes, secs, millis)
+    format!("{hours:02}:{minutes:02}:{secs:02},{millis:03}")
 }
 
 /// Print grouped model information with quantized variants
@@ -1045,7 +1045,7 @@ fn handle_output(result: purr_core::SyncTranscriptionResult, cli: &Cli) -> miett
             );
         }
     } else {
-        print!("{}", output_content);
+        print!("{output_content}");
     }
 
     // Print statistics
@@ -1063,7 +1063,7 @@ fn handle_output(result: purr_core::SyncTranscriptionResult, cli: &Cli) -> miett
         println!("Words: {}", result.stats.word_count);
         println!("Words per minute: {:.1}", result.stats.words_per_minute);
         if let Some(lang) = &result.language {
-            println!("Detected language: {}", lang);
+            println!("Detected language: {lang}");
         }
     }
 
@@ -1079,7 +1079,7 @@ struct ModelGroup {
     quantized: Vec<WhisperModel>,
 }
 
-const ASCII_ART: &str = r#"
+const ASCII_ART: &str = r"
              *     ,MMM8&&&.            *
                   MMMM88&&&&&    .
                  MMMM88&&&&&&&
@@ -1100,7 +1100,7 @@ const ASCII_ART: &str = r#"
   |  |  |  | ) ) |  |  |  |  |  |  |  |  |  |
   |  |  |  |(_(  |  |  |  |  |  |  |  |  |  |
   |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |"#;
+  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |";
 
 pub const HEADER: Style = AnsiColor::Green.on_default().effects(Effects::BOLD);
 pub const USAGE: Style = AnsiColor::Green.on_default().effects(Effects::BOLD);

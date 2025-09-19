@@ -2,8 +2,8 @@ use std::time::Duration;
 
 pub trait RoundToUnit {
     /// Round a number to the nearest units of a given base.
-    /// round_to_base(112, 10) = 100
-    /// round_to_base(543, 10) = 500
+    /// `round_to_base(112`, 10) = 100
+    /// `round_to_base(543`, 10) = 500
     fn round_to_unit(self, base: Self) -> Self;
 }
 
@@ -83,6 +83,7 @@ impl ByteSpeed {
         (1 << 40, "TiB"),
         (1 << 50, "PiB"),
     ];
+    #[must_use]
     pub const fn throughput(qty: usize, duration: Duration) -> Self {
         if qty == 0 || duration.is_zero() {
             return ByteSpeed::BPS; // Avoid division by zero
@@ -91,6 +92,7 @@ impl ByteSpeed {
         Self::mul_f64(speed, ByteSpeed::BPS)
     }
 
+    #[must_use]
     pub const fn mul(value: usize, speed: ByteSpeed) -> Self {
         ByteSpeed {
             dividend: (value * speed.dividend.0, speed.dividend.1),
@@ -98,6 +100,7 @@ impl ByteSpeed {
         }
     }
 
+    #[must_use]
     pub const fn mul_f64(value: f64, speed: ByteSpeed) -> Self {
         ByteSpeed {
             dividend: ((speed.dividend.0 as f64 * value) as usize, speed.dividend.1),
@@ -105,6 +108,7 @@ impl ByteSpeed {
         }
     }
 
+    #[must_use]
     pub const fn reduce(self) -> Self {
         let dividend = self.dividend.0;
         let mut unit_index = 0;
@@ -209,18 +213,22 @@ pub struct Scaling {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DurationRange(pub Duration, pub Duration);
 impl DurationRange {
+    #[must_use]
     pub const fn new(min: Duration, max: Duration) -> Self {
         Self(min, max)
     }
 
+    #[must_use]
     pub fn contains(&self, duration: Duration) -> bool {
         duration >= self.0 && duration <= self.1
     }
 
+    #[must_use]
     pub const fn len(&self) -> Duration {
         self.1.abs_diff(self.0)
     }
 
+    #[must_use]
     pub const fn unit_range(value: Duration, unit: Duration) -> Self {
         let (vs, vn) = (value.as_secs(), value.subsec_nanos());
         let (us, un) = (unit.as_secs(), unit.subsec_nanos());
