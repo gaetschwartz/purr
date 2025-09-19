@@ -13,3 +13,9 @@ pub use home::Home;
 
 mod navbar;
 pub use navbar::Navbar;
+
+mod drag_drop;
+pub use drag_drop::DragDropZone;
+
+mod transcription;
+pub use transcription::Transcription;
