@@ -27,6 +27,7 @@ web-sys = "0.3"
 js-sys = "0.3"
 wasm-bindgen-futures = "0.4"
 miette = { version = "7.6.0", features = ["fancy"] }
+cached = "0.56.0"
 
 [features]
 default = ["desktop"]

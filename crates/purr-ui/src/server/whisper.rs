@@ -1,10 +1,12 @@
 use dioxus::prelude::*;
 use dioxus_fullstack::{codec::JsonEncoding, BoxedStream, Websocket};
+use futures::SinkExt as _;
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "server")]
 use {
-    std::{env, path::PathBuf},
+    purr_core::{transcribe_file_stream, AudioProcessor, TranscriptionConfig},
+    std::{env, path::PathBuf, sync::LazyLock},
     tokio,
     tracing::{error, info},
 };
@@ -45,9 +47,9 @@ pub enum TranscriptionStatus {
 }
 
 /// Helper function to get file path from file_id
-#[cfg(feature = "server")]
 fn get_file_path(file_id: &str) -> PathBuf {
-    env::temp_dir().join("purr-uploads").join(file_id)
+    static UPLOAD_PATH: LazyLock<PathBuf> = LazyLock::new(|| env::temp_dir().join("purr-uploads"));
+    UPLOAD_PATH.join(file_id)
 }
 
 /// Start transcription with streaming status updates
@@ -55,118 +57,173 @@ fn get_file_path(file_id: &str) -> PathBuf {
 pub async fn start_transcription(
     input: BoxedStream<TranscriptionRequest, ServerFnError>,
 ) -> ServerFnResult<BoxedStream<TranscriptionStatus, ServerFnError>> {
-    use futures::{channel::mpsc, SinkExt as _, StreamExt as _};
-    let mut input = input;
-
-    // Create a channel for status updates
-    let (mut tx, rx) = mpsc::channel(10);
-
+    let (tx, rx) = futures::channel::mpsc::channel(10);
     tokio::spawn(async move {
-        let start_time = std::time::Instant::now();
-
-        // Get the transcription request from the input stream
-        let request = match input.next().await {
-            Some(Ok(req)) => req,
-            Some(Err(e)) => {
-                let _ = tx.send(Err(e)).await;
-                return;
-            }
-            None => {
-                let _ = tx
-                    .send(Ok(TranscriptionStatus::Error {
-                        message: "No transcription request received".to_string(),
-                    }))
-                    .await;
-                return;
-            }
-        };
-
-        // Send starting status
-        if tx.send(Ok(TranscriptionStatus::Starting)).await.is_err() {
-            return; // Receiver dropped
-        }
-
-        info!("Starting transcription for file: {}", request.file_id);
-
-        // Get file path and validate file exists
-        let file_path = get_file_path(&request.file_id);
-
-        if !file_path.exists() {
-            error!("File not found: {:?}", file_path);
+        let mut tx = tx;
+        if let Err(e) = audio_transcription_task(input, &mut tx).await {
+            error!("Transcription task error: {}", e);
             let _ = tx
                 .send(Ok(TranscriptionStatus::Error {
-                    message: format!("File not found: {}", request.file_id),
+                    message: e.to_string(),
                 }))
                 .await;
-            return;
         }
-
-        // Send processing audio status
-        if tx
-            .send(Ok(TranscriptionStatus::ProcessingAudio))
-            .await
-            .is_err()
-        {
-            return;
-        }
-
-        info!("Processing audio file: {:?}", file_path);
-
-        // Simulate audio processing time
-        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
-
-        // Simulate transcription chunks - in real implementation, this would be
-        // replaced with actual whisper transcription that yields chunks
-        let mock_transcription_chunks = [
-            ("Hello, this is a test transcription.", 0.0, 2.5),
-            ("The audio quality seems good.", 2.5, 5.0),
-            ("Transcription is working as expected.", 5.0, 8.2),
-            ("This is the final chunk of text.", 8.2, 10.5),
-        ];
-
-        let mut word_count = 0;
-
-        for (chunk_index, (text, start_time, end_time)) in
-            mock_transcription_chunks.iter().enumerate()
-        {
-            // Count words in this chunk
-            word_count += text.split_whitespace().count();
-
-            // Send in-progress status with chunk
-            if tx
-                .send(Ok(TranscriptionStatus::InProgress {
-                    chunk_index,
-                    text: text.to_string(),
-                    start_time: *start_time,
-                    end_time: *end_time,
-                }))
-                .await
-                .is_err()
-            {
-                return; // Receiver dropped
-            }
-
-            // Simulate processing time between chunks
-            tokio::time::sleep(tokio::time::Duration::from_millis(800)).await;
-        }
-
-        let processing_time = start_time.elapsed().as_secs_f64();
-        let audio_duration = 10.5; // Mock audio duration
-
-        info!(
-            "Transcription completed for file: {} in {:.2}s",
-            request.file_id, processing_time
-        );
-
-        // Send completion status
-        let _ = tx
-            .send(Ok(TranscriptionStatus::Completed {
-                processing_time,
-                audio_duration,
-                word_count,
-            }))
-            .await;
     });
 
     Ok(rx.into())
+}
+
+async fn audio_transcription_task(
+    mut input: BoxedStream<TranscriptionRequest, ServerFnError>,
+    tx: &mut futures::channel::mpsc::Sender<Result<TranscriptionStatus, ServerFnError>>,
+) -> miette::Result<()> {
+    use futures::{SinkExt as _, StreamExt as _};
+    let start_time = std::time::Instant::now();
+
+    // Get the transcription request from the input stream
+    let request = match input.next().await {
+        Some(Ok(req)) => req,
+        Some(Err(e)) => {
+            return Err(miette::miette!(
+                "Failed to receive transcription request: {}",
+                e
+            ));
+        }
+        None => {
+            return Err(miette::miette!("No transcription request received"));
+        }
+    };
+
+    // Send starting status
+    if tx.send(Ok(TranscriptionStatus::Starting)).await.is_err() {
+        return Ok(()); // Receiver dropped
+    }
+
+    info!("Starting transcription for file: {}", request.file_id);
+
+    // Get file path and validate file exists
+    let file_path = get_file_path(&request.file_id);
+
+    if !file_path.exists() {
+        error!("File not found: {:?}", file_path);
+        return Err(miette::miette!("File not found: {:?}", file_path));
+    }
+
+    // Send processing audio status
+    if tx
+        .send(Ok(TranscriptionStatus::ProcessingAudio))
+        .await
+        .is_err()
+    {
+        return Ok(()); // Receiver dropped
+    }
+
+    info!("Processing audio file: {:?}", file_path);
+
+    // First, get the actual audio duration
+    let mut audio_processor = match AudioProcessor::new() {
+        Ok(processor) => processor,
+        Err(e) => {
+            error!("Failed to create audio processor: {}", e);
+            return Err(miette::miette!("Failed to create audio processor: {}", e));
+        }
+    };
+
+    let audio_data = match audio_processor.load_audio(&file_path).await {
+        Ok(data) => data,
+        Err(e) => {
+            error!("Failed to load audio file: {}", e);
+            return Err(miette::miette!("Failed to load audio file: {}", e));
+        }
+    };
+
+    let audio_duration = audio_data.duration;
+
+    // Create transcription configuration from request
+    let mut config = TranscriptionConfig::new().with_translate(request.translate);
+
+    if let Some(language) = &request.language {
+        config = config.with_language(language.clone());
+    }
+
+    // Start actual transcription streaming
+    let streaming_result = match transcribe_file_stream(&file_path, Some(config)).await {
+        Ok(result) => result,
+        Err(e) => {
+            error!("Failed to start transcription: {}", e);
+
+            return Err(miette::miette!("Failed to start transcription: {}", e));
+        }
+    };
+
+    let mut word_count = 0;
+    let mut stream = streaming_result;
+
+    // Process streaming chunks from purr-core
+    while let Some(chunk_result) = stream.next().await {
+        match chunk_result {
+            Ok(streaming_chunk) => {
+                // Count words in this chunk
+                let chunk_word_count = streaming_chunk.text.split_whitespace().count();
+                word_count += chunk_word_count;
+
+                // Send in-progress status with real chunk data
+                if tx
+                    .send(Ok(TranscriptionStatus::InProgress {
+                        chunk_index: streaming_chunk.chunk_index,
+                        text: streaming_chunk.text,
+                        start_time: streaming_chunk.start,
+                        end_time: streaming_chunk.end,
+                    }))
+                    .await
+                    .is_err()
+                {
+                    return Ok(()); // Receiver dropped
+                }
+
+                // If this chunk contains final statistics, we're done
+                if let Some(final_stats) = streaming_chunk.final_stats {
+                    let processing_time = start_time.elapsed().as_secs_f64();
+
+                    info!(
+                        "Transcription completed for file: {} in {:.2}s",
+                        request.file_id, processing_time
+                    );
+
+                    // Send completion status with real statistics
+                    let _ = tx
+                        .send(Ok(TranscriptionStatus::Completed {
+                            processing_time,
+                            audio_duration,
+                            word_count: final_stats.word_count,
+                        }))
+                        .await;
+                    return Ok(());
+                }
+            }
+            Err(e) => {
+                error!("Transcription chunk error: {}", e);
+                return Err(miette::miette!("Transcription chunk error: {}", e));
+            }
+        }
+    }
+
+    // If we exit the loop without getting final stats, send completion with our counts
+    let processing_time = start_time.elapsed().as_secs_f64();
+
+    info!(
+        "Transcription completed for file: {} in {:.2}s",
+        request.file_id, processing_time
+    );
+
+    // Send completion status with real data
+    let _ = tx
+        .send(Ok(TranscriptionStatus::Completed {
+            processing_time,
+            audio_duration,
+            word_count,
+        }))
+        .await;
+
+    Ok(())
 }
