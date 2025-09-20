@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use bytes::Bytes;
 
 pub trait BytesExt {

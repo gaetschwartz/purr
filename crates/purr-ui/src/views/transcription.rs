@@ -84,7 +84,16 @@ fn start_transcription_process(
 
     spawn(async move {
         // Get platform implementation
-        let platform = &*platform::PLATFORM;
+        let platform = match platform::get_platform().await {
+            Ok(p) => p,
+            Err(e) => {
+                error!("Failed to get platform: {}", e);
+                status_signal.set(Some(TranscriptionStatus::InitFailed {
+                    message: e.to_string(),
+                }));
+                return;
+            }
+        };
 
         // Create transcription request
         // Note: In a real implementation, we'd need to retrieve the file data

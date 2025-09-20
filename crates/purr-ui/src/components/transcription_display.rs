@@ -116,6 +116,20 @@ pub fn TranscriptionDisplay(props: TranscriptionDisplayProps) -> Element {
             }
         },
 
+        Some(TranscriptionStatus::InitFailed { message }) => rsx! {
+            div { class: "text-center py-16",
+                ErrorIcon {}
+                h3 { class: "text-xl font-semibold text-red-800 mb-4", "Initialization Failed" }
+
+                Card {
+                    variant: CardVariant::Error,
+                    class: "mb-8 max-w-md mx-auto",
+
+                    p { class: "text-red-700 text-sm", "{message}" }
+                }
+            }
+        },
+
         None => rsx! {
             div { class: "text-center py-16",
                 LoadingSpinner {}

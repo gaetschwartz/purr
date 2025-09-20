@@ -161,7 +161,13 @@ async fn handle_file_upload_stream(
     upload_progress.set(total_size / 2);
 
     // Use platform abstraction for file processing
-    let platform = &*platform::PLATFORM;
+    let platform = match platform::get_platform().await {
+        Ok(p) => p,
+        Err(e) => {
+            error!("Failed to get platform: {}", e);
+            return Err(miette!("Failed to get platform: {}", e));
+        }
+    };
 
     match platform
         .process_file(Bytes::from(file_bytes), file_name.as_ref())

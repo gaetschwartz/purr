@@ -19,7 +19,7 @@ path = "src/main.rs"
 # Desktop-only dependencies
 purr-core = { path = "../purr-core", optional = true }
 purr-common = { path = "../purr-common" }
-tokio = { version = "1.47.1", features = ["full"], optional = true }
+tokio = { version = "1.47.1", default-features = false }
 tracing-subscriber = { version = "0.3", optional = true }
 
 # Shared dependencies (work on both WASM and native)
@@ -33,7 +33,7 @@ async-trait = "0.1"
 serde = { version = "1.0.225", features = ["derive"] }
 serde_json = { version = "1.0", optional = true }
 bytes = "1.10.1"
-uuid = { version = "1.11.0", features = ["v4", "js", "v3"] }
+uuid = { version = "1.5.0", features = ["v4", "js", "v3"] }
 tracing = "0.1.41"
 miette = { version = "7.6.0", features = ["fancy"] }
 thiserror = "2.0.9"
@@ -63,6 +63,7 @@ getrandom = { version = "0.2", features = ["js"], optional = true }
 rfd = { version = "0.15.4", features = ["tokio"], optional = true }
 cached = { version = "0.56.0", optional = true }
 const-str = { version = "0.7.0", features = ["all"] }
+purr-web = { path = "../purr-web", optional = true }
 
 [features]
 default = ["desktop"]
@@ -79,12 +80,13 @@ web = [
   "serde-wasm-bindgen",
   "getrandom",
   "serde_json",
+  "purr-web",
 ]
 
 # Desktop feature includes desktop-specific functionality and transcription
 desktop = [
   "dioxus/desktop",
-  "tokio",
+  "tokio/full",
   "purr-core",
   "tracing-subscriber",
   "rfd",

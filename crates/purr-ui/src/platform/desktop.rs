@@ -2,14 +2,21 @@
 /// This implementation uses direct file system access and native whisper transcription
 use super::{Platform, PlatformError, TranscriptionRequest, TranscriptionStatus};
 use bytes::Bytes;
-use futures::{Stream, StreamExt};
-use purr_common::platform::FileId;
-use std::path::{Path, PathBuf};
-use std::pin::Pin;
-use tracing::{error, info};
+use futures::{channel::mpsc, SinkExt, Stream, StreamExt};
+use purr_common::platform::{FileId, ModelInfo, ModelMetadata, ModelOperationProgress};
+use purr_core::model::{ModelManager, WhisperModel};
+use std::{
+    path::{Path, PathBuf},
+    pin::Pin,
+    str::FromStr,
+    sync::Arc,
+};
+use tokio::sync::Mutex;
+use tracing::{error, info, warn};
 
 pub(super) struct PlatformImpl {
     temp_dir: PathBuf,
+    model_manager: Arc<Mutex<ModelManager>>,
 }
 
 impl PlatformImpl {
@@ -17,12 +24,29 @@ impl PlatformImpl {
         let temp_dir = std::env::temp_dir().join("purr-temp");
         // Ensure temp directory exists
         let _ = std::fs::create_dir_all(&temp_dir);
-        Self { temp_dir }
+
+        // Initialize model manager (will create XDG-compliant directories)
+        let model_manager = ModelManager::new()
+            .map(|mm| Arc::new(Mutex::new(mm)))
+            .unwrap_or_else(|err| {
+                warn!("Failed to initialize model manager: {}", err);
+                // Create a fallback model manager with temp directory
+                Arc::new(Mutex::new(ModelManager::default()))
+            });
+
+        Self {
+            temp_dir,
+            model_manager,
+        }
     }
 }
 
 #[async_trait::async_trait]
 impl Platform for PlatformImpl {
+    async fn new() -> Result<Self, PlatformError> {
+        Ok(Self::new())
+    }
+
     async fn process_file(
         &self,
         file_data: Bytes,
@@ -151,5 +175,241 @@ impl Platform for PlatformImpl {
             info!("Cleaned up temporary file: {}", file_id);
         }
         Ok(())
+    }
+
+    // ========================================
+    // Model Management Implementation
+    // ========================================
+
+    async fn list_installed_models(&self) -> Result<Vec<ModelInfo>, PlatformError> {
+        let manager = self.model_manager.lock().await;
+        let downloaded_models = manager
+            .list_downloaded_models()
+            .await
+            .map_err(PlatformError::model_management)?;
+
+        let mut model_infos = Vec::new();
+        for model in downloaded_models {
+            let model_path = manager.get_model_path(model);
+            let metadata = self.create_model_metadata(&model);
+
+            let mut model_info = ModelInfo::new(
+                model.as_str().to_string(),
+                model.as_str().to_string(),
+                model.description().to_string(),
+                model.size(),
+                true,
+                metadata,
+            );
+            model_info.mark_installed(model_path);
+            model_infos.push(model_info);
+        }
+
+        Ok(model_infos)
+    }
+
+    async fn list_available_models(&self) -> Result<Vec<ModelInfo>, PlatformError> {
+        let mut model_infos = Vec::new();
+        let manager = self.model_manager.lock().await;
+
+        for &model in WhisperModel::all_models() {
+            let is_installed = manager.is_model_downloaded(model).await;
+            let model_path = if is_installed {
+                Some(manager.get_model_path(model))
+            } else {
+                None
+            };
+
+            let metadata = self.create_model_metadata(&model);
+
+            let mut model_info = ModelInfo::new(
+                model.as_str().to_string(),
+                model.as_str().to_string(),
+                model.description().to_string(),
+                model.size(),
+                is_installed,
+                metadata,
+            );
+
+            if let Some(path) = model_path {
+                model_info.mark_installed(path);
+            }
+
+            model_infos.push(model_info);
+        }
+
+        Ok(model_infos)
+    }
+
+    async fn fetch_model(
+        &self,
+        model_id: &str,
+    ) -> Result<
+        Pin<Box<dyn Stream<Item = Result<ModelOperationProgress, PlatformError>> + Send>>,
+        PlatformError,
+    > {
+        let model = WhisperModel::from_str(model_id)
+            .map_err(|_| PlatformError::model_not_found(model_id.to_string()))?;
+
+        let manager = Arc::clone(&self.model_manager);
+        let model_id = model_id.to_string();
+
+        let (mut tx, rx) = mpsc::channel(10);
+
+        tokio::spawn(async move {
+            let _ = tx
+                .send(Ok(ModelOperationProgress::Starting {
+                    model_id: model_id.clone(),
+                }))
+                .await;
+
+            let manager = manager.lock().await;
+
+            // Check if already installed
+            if manager.is_model_downloaded(model).await {
+                let model_path = manager.get_model_path(model);
+                let _ = tx
+                    .send(Ok(ModelOperationProgress::Completed {
+                        model_id: model_id.clone(),
+                        local_path: model_path,
+                    }))
+                    .await;
+                return;
+            }
+
+            // Download with progress
+            match manager
+                .download_model_with_progress(model, |downloaded, total| {
+                    let progress = ModelOperationProgress::Downloading {
+                        model_id: model_id.clone(),
+                        bytes_downloaded: downloaded,
+                        total_bytes: total,
+                        speed_bps: None, // Could calculate from time intervals
+                    };
+                    // Send progress (ignore errors as channel might be closed)
+                    let _ = tx.try_send(Ok(progress));
+                })
+                .await
+            {
+                Ok(model_path) => {
+                    let _ = tx
+                        .send(Ok(ModelOperationProgress::Completed {
+                            model_id: model_id.clone(),
+                            local_path: model_path,
+                        }))
+                        .await;
+                }
+                Err(e) => {
+                    let _ = tx
+                        .send(Ok(ModelOperationProgress::Failed {
+                            model_id: model_id.clone(),
+                            error: e.to_string(),
+                        }))
+                        .await;
+                }
+            }
+        });
+
+        Ok(Box::pin(rx))
+    }
+
+    async fn get_model_info(&self, model_id: &str) -> Result<ModelInfo, PlatformError> {
+        let model = WhisperModel::from_str(model_id)
+            .map_err(|_| PlatformError::model_not_found(model_id.to_string()))?;
+
+        let manager = self.model_manager.lock().await;
+        let is_installed = manager.is_model_downloaded(model).await;
+        let model_path = if is_installed {
+            Some(manager.get_model_path(model))
+        } else {
+            None
+        };
+
+        let metadata = self.create_model_metadata(&model);
+
+        let mut model_info = ModelInfo::new(
+            model.as_str().to_string(),
+            model.as_str().to_string(),
+            model.description().to_string(),
+            model.size(),
+            is_installed,
+            metadata,
+        );
+
+        if let Some(path) = model_path {
+            model_info.mark_installed(path);
+        }
+
+        Ok(model_info)
+    }
+
+    async fn remove_model(&self, model_id: &str) -> Result<(), PlatformError> {
+        let model = WhisperModel::from_str(model_id)
+            .map_err(|_| PlatformError::model_not_found(model_id.to_string()))?;
+
+        let manager = self.model_manager.lock().await;
+        manager
+            .delete_model(model)
+            .await
+            .map_err(PlatformError::model_management)?;
+
+        Ok(())
+    }
+
+    async fn is_model_installed(&self, model_id: &str) -> Result<bool, PlatformError> {
+        let model = WhisperModel::from_str(model_id)
+            .map_err(|_| PlatformError::model_not_found(model_id.to_string()))?;
+
+        let manager = self.model_manager.lock().await;
+        Ok(manager.is_model_downloaded(model).await)
+    }
+
+    async fn get_model_path(&self, model_id: &str) -> Result<String, PlatformError> {
+        let model = WhisperModel::from_str(model_id)
+            .map_err(|_| PlatformError::model_not_found(model_id.to_string()))?;
+
+        let manager = self.model_manager.lock().await;
+        if !manager.is_model_downloaded(model).await {
+            return Err(PlatformError::model_not_found(model_id.to_string()));
+        }
+
+        let model_path = manager.get_model_path(model);
+        Ok(model_path.to_string_lossy().to_string())
+    }
+}
+
+impl PlatformImpl {
+    /// Helper method to create model metadata for WhisperModel
+    fn create_model_metadata(&self, model: &WhisperModel) -> ModelMetadata {
+        ModelMetadata::new(
+            "ggml".to_string(),
+            "whisper".to_string(),
+            if model.as_str().contains(".en") {
+                "en-only".to_string()
+            } else {
+                "multilingual".to_string()
+            },
+            "v1".to_string(),
+        )
+        .with_download_url(Self::get_model_download_url(model))
+        .with_quantization(if model.as_str().contains("q5_1") {
+            "q5_1".to_string()
+        } else if model.as_str().contains("q8_0") {
+            "q8_0".to_string()
+        } else if model.as_str().contains("q5_0") {
+            "q5_0".to_string()
+        } else {
+            "fp16".to_string()
+        })
+    }
+
+    /// Helper method to get download URL for a model (since get_url is private)
+    fn get_model_download_url(model: &WhisperModel) -> String {
+        let base_url = if model.as_str().contains("tdrz") {
+            "https://huggingface.co/akashmjn/tinydiarize-whisper.cpp/resolve/main"
+        } else {
+            "https://huggingface.co/ggerganov/whisper.cpp/resolve/main"
+        };
+        format!("{}/ggml-{}.bin", base_url, model.as_str())
     }
 }

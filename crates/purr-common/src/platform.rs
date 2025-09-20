@@ -4,7 +4,17 @@ use bytes::Bytes;
 use futures::Stream;
 use miette::Diagnostic;
 use serde::{Deserialize, Serialize};
-use std::{borrow::Cow, ops::Deref, path::Path, pin::Pin, str::FromStr};
+use std::{
+    borrow::Cow,
+    collections::HashMap,
+    ops::Deref,
+    path::{Path, PathBuf},
+    pin::Pin,
+    str::FromStr,
+};
+// Note: tokio::sync primitives are used in platform implementations
+#[allow(unused_imports)]
+use tokio::sync::{Mutex, RwLock};
 
 /// Platform-specific error types
 #[derive(Debug, thiserror::Error, Diagnostic)]
@@ -47,6 +57,29 @@ pub enum PlatformError {
     #[error("Unsupported operation: {operation}")]
     #[diagnostic(code(platform::unsupported))]
     Unsupported { operation: Cow<'static, str> },
+
+    #[error("Model management error: {source}")]
+    #[diagnostic(code(platform::model_management))]
+    ModelManagement {
+        #[source]
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+
+    #[error("Model not found: {model_id}")]
+    #[diagnostic(code(platform::model_not_found))]
+    ModelNotFound { model_id: String },
+
+    #[error("Model download failed: {model_id} - {reason}")]
+    #[diagnostic(code(platform::model_download_failed))]
+    ModelDownloadFailed { model_id: String, reason: String },
+
+    #[error("Model installation failed: {model_id} - {reason}")]
+    #[diagnostic(code(platform::model_installation_failed))]
+    ModelInstallationFailed { model_id: String, reason: String },
+
+    #[error("Invalid model metadata: {reason}")]
+    #[diagnostic(code(platform::invalid_model_metadata))]
+    InvalidModelMetadata { reason: String },
 
     #[error(transparent)]
     #[diagnostic(transparent)]
@@ -108,6 +141,58 @@ impl PlatformError {
     pub fn unsupported_platform() -> Self {
         PlatformError::Other(UnsupportedPlatformError)
     }
+
+    /// Create a new PlatformError::ModelManagement
+    pub fn model_management<E>(err: E) -> Self
+    where
+        E: Into<Box<dyn std::error::Error + Send + Sync>>,
+    {
+        PlatformError::ModelManagement { source: err.into() }
+    }
+
+    /// Create a new PlatformError::ModelNotFound
+    pub fn model_not_found<S>(model_id: S) -> Self
+    where
+        S: Into<String>,
+    {
+        PlatformError::ModelNotFound {
+            model_id: model_id.into(),
+        }
+    }
+
+    /// Create a new PlatformError::ModelDownloadFailed
+    pub fn model_download_failed<S1, S2>(model_id: S1, reason: S2) -> Self
+    where
+        S1: Into<String>,
+        S2: Into<String>,
+    {
+        PlatformError::ModelDownloadFailed {
+            model_id: model_id.into(),
+            reason: reason.into(),
+        }
+    }
+
+    /// Create a new PlatformError::ModelInstallationFailed
+    pub fn model_installation_failed<S1, S2>(model_id: S1, reason: S2) -> Self
+    where
+        S1: Into<String>,
+        S2: Into<String>,
+    {
+        PlatformError::ModelInstallationFailed {
+            model_id: model_id.into(),
+            reason: reason.into(),
+        }
+    }
+
+    /// Create a new PlatformError::InvalidModelMetadata
+    pub fn invalid_model_metadata<S>(reason: S) -> Self
+    where
+        S: Into<String>,
+    {
+        PlatformError::InvalidModelMetadata {
+            reason: reason.into(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, thiserror::Error, Diagnostic, PartialEq)]
@@ -164,6 +249,8 @@ pub enum TranscriptionStatus {
     },
     /// Error occurred
     Error { message: String },
+    /// Failed to init the transcription engine
+    InitFailed { message: String },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -213,10 +300,189 @@ impl FromStr for FileId {
     }
 }
 
+/// Model information containing metadata about available models
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ModelInfo {
+    /// Unique identifier for the model
+    pub id: String,
+    /// Human-readable name of the model
+    pub name: String,
+    /// Description of the model's capabilities and characteristics
+    pub description: String,
+    /// Size of the model in bytes
+    pub size_bytes: u64,
+    /// Whether the model is currently installed/available locally
+    pub is_installed: bool,
+    /// Additional metadata specific to the model
+    pub metadata: ModelMetadata,
+}
+
+impl ModelInfo {
+    /// Create a new ModelInfo instance
+    pub fn new(
+        id: String,
+        name: String,
+        description: String,
+        size_bytes: u64,
+        is_installed: bool,
+        metadata: ModelMetadata,
+    ) -> Self {
+        Self {
+            id,
+            name,
+            description,
+            size_bytes,
+            is_installed,
+            metadata,
+        }
+    }
+
+    /// Get the model file path if installed
+    pub fn local_path(&self) -> Option<&PathBuf> {
+        if self.is_installed {
+            self.metadata.local_path.as_ref()
+        } else {
+            None
+        }
+    }
+
+    /// Mark model as installed with local path
+    pub fn mark_installed(&mut self, local_path: PathBuf) {
+        self.is_installed = true;
+        self.metadata.local_path = Some(local_path);
+    }
+
+    /// Mark model as not installed
+    pub fn mark_uninstalled(&mut self) {
+        self.is_installed = false;
+        self.metadata.local_path = None;
+    }
+}
+
+/// Platform-specific metadata for models
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ModelMetadata {
+    /// Download URL for the model (if available)
+    pub download_url: Option<String>,
+    /// Local file path where the model is stored (if installed)
+    pub local_path: Option<PathBuf>,
+    /// Model format (e.g., "ggml", "onnx", "webgpu")
+    pub format: String,
+    /// Model architecture type (e.g., "whisper", "transformer")
+    pub architecture: String,
+    /// Language support (e.g., "multilingual", "en-only")
+    pub language_support: String,
+    /// Quantization level (e.g., "q5_1", "q8_0", "fp16")
+    pub quantization: Option<String>,
+    /// Model version or revision
+    pub version: String,
+    /// Platform-specific attributes
+    pub platform_specific: HashMap<String, String>,
+}
+
+impl ModelMetadata {
+    /// Create new ModelMetadata instance
+    pub fn new(
+        format: String,
+        architecture: String,
+        language_support: String,
+        version: String,
+    ) -> Self {
+        Self {
+            download_url: None,
+            local_path: None,
+            format,
+            architecture,
+            language_support,
+            quantization: None,
+            version,
+            platform_specific: HashMap::new(),
+        }
+    }
+
+    /// Builder pattern for setting download URL
+    pub fn with_download_url(mut self, url: String) -> Self {
+        self.download_url = Some(url);
+        self
+    }
+
+    /// Builder pattern for setting quantization
+    pub fn with_quantization(mut self, quantization: String) -> Self {
+        self.quantization = Some(quantization);
+        self
+    }
+
+    /// Builder pattern for adding platform-specific attributes
+    pub fn with_platform_attribute(mut self, key: String, value: String) -> Self {
+        self.platform_specific.insert(key, value);
+        self
+    }
+}
+
+/// Progress information for model operations
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum ModelOperationProgress {
+    /// Operation starting
+    Starting { model_id: String },
+    /// Download in progress
+    Downloading {
+        model_id: String,
+        bytes_downloaded: u64,
+        total_bytes: Option<u64>,
+        speed_bps: Option<u64>,
+    },
+    /// Installing/processing model
+    Installing { model_id: String },
+    /// Operation completed successfully
+    Completed {
+        model_id: String,
+        local_path: PathBuf,
+    },
+    /// Operation failed
+    Failed { model_id: String, error: String },
+}
+
 /// Platform trait defining the interface for platform-specific implementations
+///
+/// This trait provides a unified interface for both web and desktop platforms,
+/// handling file processing, transcription, and model management operations.
+///
+/// # Platform Differences
+///
+/// ## Desktop Platform
+/// - Uses local file system for model storage
+/// - Can download models directly from internet
+/// - Models stored in XDG-compliant directories
+/// - Full featured model management with persistent storage
+///
+/// ## Web Platform
+/// - Uses browser storage APIs (IndexedDB, OPFS) for model caching
+/// - Models may be fetched on-demand or preloaded
+/// - Limited by browser storage quotas
+/// - May use WebGPU-optimized model formats
+///
+/// # Thread Safety
+///
+/// All implementations must be thread-safe and use tokio::sync primitives
+/// for coordination between async operations. The trait requires Send + Sync.
 #[async_trait::async_trait]
 pub trait Platform: Send + Sync + 'static {
+    async fn new() -> Result<Self, PlatformError>
+    where
+        Self: Sized;
+
+    // ========================================
+    // File Processing Operations
+    // ========================================
+
     /// Process a file for transcription (handles temporary storage if needed)
+    ///
+    /// # Arguments
+    /// * `file_data` - Raw file bytes
+    /// * `file_path` - Original file path/name for context
+    ///
+    /// # Returns
+    /// A unique FileId that can be used for subsequent operations
     async fn process_file(
         &self,
         file_data: Bytes,
@@ -224,6 +490,13 @@ pub trait Platform: Send + Sync + 'static {
     ) -> Result<FileId, PlatformError>;
 
     /// Start transcription of processed file
+    ///
+    /// # Arguments
+    /// * `file_id` - ID returned from process_file
+    /// * `request` - Transcription parameters
+    ///
+    /// # Returns
+    /// A stream of transcription status updates
     async fn transcribe(
         &self,
         file_id: FileId,
@@ -234,5 +507,99 @@ pub trait Platform: Send + Sync + 'static {
     >;
 
     /// Clean up temporary files if any
+    ///
+    /// # Arguments
+    /// * `file_id` - ID of file to clean up
     async fn cleanup(&self, file_id: &str) -> Result<(), PlatformError>;
+
+    // ========================================
+    // Model Management Operations
+    // ========================================
+
+    /// List all models currently installed on the platform
+    ///
+    /// # Returns
+    /// Vector of ModelInfo for installed models, thread-safe access
+    ///
+    /// # Platform Differences
+    /// - **Desktop**: Scans local model directory, uses file system metadata
+    /// - **Web**: Queries browser storage (IndexedDB/OPFS), checks cached models
+    async fn list_installed_models(&self) -> Result<Vec<ModelInfo>, PlatformError>;
+
+    /// List all models available for download/installation
+    ///
+    /// # Returns
+    /// Vector of ModelInfo for available models, may include remote models
+    ///
+    /// # Platform Differences
+    /// - **Desktop**: Returns full model catalog, can download any model
+    /// - **Web**: May return filtered list based on browser capabilities,
+    ///           WebGPU-optimized models preferred
+    async fn list_available_models(&self) -> Result<Vec<ModelInfo>, PlatformError>;
+
+    /// Fetch and install a model by ID with progress tracking
+    ///
+    /// # Arguments
+    /// * `model_id` - Unique identifier of the model to fetch
+    ///
+    /// # Returns
+    /// Stream of progress updates during download and installation
+    ///
+    /// # Implementation Requirements
+    /// - MUST use tokio::sync primitives for thread safety
+    /// - MUST support concurrent downloads with proper synchronization
+    /// - MUST handle partial downloads and resume capability
+    /// - MUST validate model integrity after download
+    ///
+    /// # Platform Differences
+    /// - **Desktop**: Downloads to local file system, uses reqwest for HTTP
+    /// - **Web**: Uses fetch API, stores in browser storage, handles CORS
+    async fn fetch_model(
+        &self,
+        model_id: &str,
+    ) -> Result<
+        Pin<Box<dyn Stream<Item = Result<ModelOperationProgress, PlatformError>> + Send>>,
+        PlatformError,
+    >;
+
+    /// Get detailed information about a specific model
+    ///
+    /// # Arguments
+    /// * `model_id` - Unique identifier of the model
+    ///
+    /// # Returns
+    /// ModelInfo with current installation status and metadata
+    async fn get_model_info(&self, model_id: &str) -> Result<ModelInfo, PlatformError>;
+
+    /// Remove an installed model from the platform
+    ///
+    /// # Arguments
+    /// * `model_id` - Unique identifier of the model to remove
+    ///
+    /// # Platform Differences
+    /// - **Desktop**: Deletes model file from file system
+    /// - **Web**: Removes from browser storage, clears cache entries
+    async fn remove_model(&self, model_id: &str) -> Result<(), PlatformError>;
+
+    /// Check if a specific model is currently installed
+    ///
+    /// # Arguments
+    /// * `model_id` - Unique identifier of the model to check
+    ///
+    /// # Returns
+    /// True if model is installed and ready for use
+    async fn is_model_installed(&self, model_id: &str) -> Result<bool, PlatformError>;
+
+    /// Get the local path or identifier for an installed model
+    ///
+    /// # Arguments
+    /// * `model_id` - Unique identifier of the model
+    ///
+    /// # Returns
+    /// Platform-specific path or identifier for accessing the model
+    ///
+    /// # Platform Differences
+    /// - **Desktop**: Returns file system path to model file
+    /// - **Web**: Returns storage key or blob URL for browser access
+    async fn get_model_path(&self, model_id: &str) -> Result<String, PlatformError>;
 }

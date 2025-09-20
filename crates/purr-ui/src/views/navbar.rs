@@ -4,7 +4,7 @@ use crate::{
 };
 use dioxus::prelude::*;
 
-const NAVBAR_CSS: Asset = asset!("/assets/styling/navbar.css");
+// const NAVBAR_CSS: Asset = asset!("/assets/styling/navbar.css");
 
 /// The Navbar component that will be rendered on all pages of our app since every page is under the layout.
 ///
@@ -23,9 +23,7 @@ pub fn Navbar() -> Element {
                         Link {
                             to: Route::Home {},
                             class: "flex items-center space-x-2 text-xl font-bold text-gray-900 hover:text-teal-600 transition-colors",
-                            Icon {
-                                icon_type: IconType::Logo,
-                            }
+                            Icon { icon_type: IconType::Logo }
                             span { "Purr" }
                         }
                     }

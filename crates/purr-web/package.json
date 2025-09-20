@@ -1,0 +1,37 @@
+{
+  "name": "purr-web-worker",
+  "version": "1.0.0",
+  "description": "Real WebGPU transcription worker for Purr using @huggingface/transformers",
+  "type": "module",
+  "main": "src/worker.js",
+  "scripts": {
+    "build": "rollup -c",
+    "dev": "rollup -c -w",
+    "serve": "serve dist"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "^3.0.0"
+  },
+  "devDependencies": {
+    "@rollup/plugin-node-resolve": "^15.2.3",
+    "@rollup/plugin-commonjs": "^25.0.7",
+    "@rollup/plugin-terser": "^0.4.4",
+    "rollup": "^4.9.6",
+    "serve": "^14.2.1"
+  },
+  "browserslist": [
+    "last 2 Chrome versions",
+    "last 2 Firefox versions",
+    "last 2 Safari versions"
+  ],
+  "keywords": [
+    "webgpu",
+    "whisper",
+    "transcription",
+    "transformers",
+    "rust",
+    "wasm"
+  ],
+  "author": "Purr Team",
+  "license": "MIT"
+}
