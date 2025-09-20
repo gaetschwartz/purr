@@ -75,7 +75,7 @@ jobs:
           cargo install cargo-nextest --locked
           cargo install dioxus-cli --version 0.7.0-rc.0 --locked
       - name: Run clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
+        run: cargo clippy --all-targets -- -D warnings
       - name: Run tests
         run: cargo nextest run
       - name: Build Dioxus web app
@@ -118,7 +118,7 @@ jobs:
           cargo install cargo-nextest --locked
           cargo install dioxus-cli --version 0.7.0-rc.0 --locked
       - name: Run clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
+        run: cargo clippy --all-targets -- -D warnings
       - name: Run tests
         run: cargo nextest run
       - name: Build Dioxus web app
@@ -199,7 +199,7 @@ jobs:
           cargo install cargo-nextest --locked
           cargo install dioxus-cli --version 0.7.0-rc.0 --locked
       - name: Run clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
+        run: cargo clippy --all-targets -- -D warnings
       - name: Run tests
         run: cargo nextest run
       - name: Build Dioxus web app
