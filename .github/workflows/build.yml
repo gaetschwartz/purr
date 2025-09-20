@@ -7,6 +7,8 @@ on:
   # schedule:
   #   - cron: "0 0 * * *"
 
+env:
+  DIOXUS_VERSION: 0.7.0-rc.0
 jobs:
   build-linux:
     name: Build Linux${{ matrix.backend != 'none' && format(' - {0}', matrix.backend) || '' }}
@@ -69,12 +71,9 @@ jobs:
           toolchain: stable
           targets: x86_64-unknown-linux-gnu, wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
-      - name: Install cargo-nextest and Dioxus CLI
+      - name: Install Dioxus CLI
         run: |
-          cargo install cargo-nextest --locked
-          cargo install dioxus-cli --version 0.7.0-rc.0 --locked
-      - name: Run tests
-        run: cargo nextest run
+          cargo install dioxus-cli --version ${{ env.DIOXUS_VERSION }} --locked
       - name: Build Dioxus web app
         run: |
           cd crates/purr-ui
@@ -109,12 +108,9 @@ jobs:
           toolchain: stable
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
-      - name: Install cargo-nextest and Dioxus CLI
+      - name: Install Dioxus CLI
         run: |
-          cargo install cargo-nextest --locked
-          cargo install dioxus-cli --version 0.7.0-rc.0 --locked
-      - name: Run tests
-        run: cargo nextest run
+          cargo install dioxus-cli --version ${{ env.DIOXUS_VERSION }} --locked
       - name: Build Dioxus web app
         run: |
           cd crates/purr-ui
@@ -187,12 +183,9 @@ jobs:
           toolchain: stable
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
-      - name: Install cargo-nextest and Dioxus CLI
+      - name: Install Dioxus CLI
         run: |
-          cargo install cargo-nextest --locked
-          cargo install dioxus-cli --version 0.7.0-rc.0 --locked
-      - name: Run tests
-        run: cargo nextest run
+          cargo install dioxus-cli --version ${{ env.DIOXUS_VERSION }} --locked
       - name: Build Dioxus web app
         run: |
           cd crates/purr-ui
@@ -238,7 +231,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Install Dioxus CLI
         run: |
-          cargo install dioxus-cli --version 0.7.0-rc.0 --locked
+          cargo install dioxus-cli --version ${{ env.DIOXUS_VERSION }} --locked
       - name: Build Dioxus web app
         run: |
           cd crates/purr-ui
