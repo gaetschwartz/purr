@@ -5,7 +5,7 @@ use std::sync::{Arc, LazyLock};
 
 /// Re-export the appropriate platform implementation
 #[cfg(feature = "desktop")]
-#[path = "default.rs"]
+#[path = "desktop.rs"]
 mod platform_impl;
 
 #[cfg(all(feature = "web", target_arch = "wasm32", not(feature = "desktop")))]
