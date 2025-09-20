@@ -95,7 +95,7 @@ fn test_config_defaults() {
 /// Test transcription with different configurations on a known sample
 #[tokio::test]
 async fn test_transcription_configurations() {
-    let sample_path = "../samples/jfk.wav";
+    let sample_path = "../../samples/jfk.wav";
 
     // Test with different configurations
     let configs = vec![
@@ -142,7 +142,7 @@ async fn test_transcription_configurations() {
 /// Test transcription output formats
 #[tokio::test]
 async fn test_transcription_output_formats() {
-    let sample_path = "../samples/jfk.wav";
+    let sample_path = "../../samples/jfk.wav";
 
     // Skip if sample doesn't exist
     if !Path::new(sample_path).exists() {

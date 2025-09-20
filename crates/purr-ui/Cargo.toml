@@ -96,3 +96,10 @@ desktop = [
 
 # Mobile feature
 mobile = ["dioxus/mobile"]
+
+
+[dev-dependencies]
+rstest = "0.26"
+pretty_assertions = "1.4.1"
+tempfile = "3.21"
+wasm-bindgen-test = "0.3"

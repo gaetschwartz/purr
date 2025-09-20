@@ -37,6 +37,7 @@ miette = { version = "7.6.0", features = ["fancy"] }
 tempfile = "3.21"
 assert_cmd = "2.0"
 rstest = "0.26"
+pretty_assertions = "1.4.1"
 
 [features]
 cuda = ["purr-core/cuda"]

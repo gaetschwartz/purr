@@ -58,6 +58,8 @@ web-sys = { version = "0.3", features = [
   "GpuAdapter",
   "GpuDevice",
   "GpuBuffer",
+  "GpuBufferDescriptor",
+  "gpu_buffer_usage",
   "GpuCommandEncoder",
   "GpuQueue",
   # OPFS support
@@ -99,5 +101,11 @@ features = ["js"]
 # Removed console_error_panic_hook - let Dioxus handle panic management
 [features]
 default = []
+
+[dev-dependencies]
+rstest = "0.26"
+pretty_assertions = "1.4.1"
+tempfile = "3.21"
+wasm-bindgen-test = "0.3"
 
 # Profiles are handled at workspace level

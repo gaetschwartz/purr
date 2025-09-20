@@ -1,0 +1,80 @@
+# Tarpaulin configuration for code coverage
+
+[tool.tarpaulin.html]
+output_dir = "target/coverage/"
+
+[tool.tarpaulin.xml]
+output_dir = "target/coverage/"
+
+[tool.tarpaulin.json]
+output_dir = "target/coverage/"
+
+[tool.tarpaulin.lcov]
+output_dir = "target/coverage/"
+
+# Global tarpaulin settings
+timeout = 300
+verbose = true
+workspace = true
+all-features = false
+skip-clean = true
+force-clean = false
+count = true
+line = true
+branch = true
+
+# Exclude patterns
+exclude = [
+    "purr-test-utils/*",
+    "*/tests/*",
+    "*/benches/*",
+    "target/*"
+]
+
+# Include only source code
+include-tests = false
+
+# Ignore files
+ignore = [
+    "*.js",
+    "*.ts",
+    "*.html",
+    "*.css",
+    "*.md",
+    "*/target/*",
+    "*/tests/*",
+    "*/benches/*"
+]
+
+# Coverage thresholds
+fail-under = 70.0
+
+# Engine configuration
+engine = "llvm"
+
+# Post test commands to run
+post-test-delay = 0
+
+# Feature flags for different configurations
+[features]
+default = []
+web = ["purr-ui/web", "purr-web"]
+desktop = ["purr-ui/desktop", "purr-core"]
+benchmarks = ["purr-test-utils/benchmarks"]
+
+# Target-specific configurations
+[target.x86_64-unknown-linux-gnu]
+engine = "llvm"
+
+[target.x86_64-pc-windows-msvc]
+engine = "llvm"
+
+[target.x86_64-apple-darwin]
+engine = "llvm"
+
+[target.aarch64-apple-darwin]
+engine = "llvm"
+
+# WASM is not supported by tarpaulin
+[target.wasm32-unknown-unknown]
+skip = true

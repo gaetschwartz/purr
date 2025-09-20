@@ -38,6 +38,10 @@ mod storage;
 mod worker;
 mod transcription;
 
+// Test utilities (only available in test builds)
+#[cfg(test)]
+pub mod webgpu_test_utils;
+
 // NOTE: Removed panic hooks - let Dioxus handle panic management
 // Dioxus provides its own panic handling and WASM initialization
 
