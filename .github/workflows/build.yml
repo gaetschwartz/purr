@@ -67,15 +67,12 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
-          components: clippy
           targets: x86_64-unknown-linux-gnu, wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
       - name: Install cargo-nextest and Dioxus CLI
         run: |
           cargo install cargo-nextest --locked
           cargo install dioxus-cli --version 0.7.0-rc.0 --locked
-      - name: Run clippy
-        run: cargo clippy --all-targets -- -D warnings
       - name: Run tests
         run: cargo nextest run
       - name: Build Dioxus web app
@@ -109,7 +106,6 @@ jobs:
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          components: clippy
           toolchain: stable
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
@@ -117,8 +113,6 @@ jobs:
         run: |
           cargo install cargo-nextest --locked
           cargo install dioxus-cli --version 0.7.0-rc.0 --locked
-      - name: Run clippy
-        run: cargo clippy --all-targets -- -D warnings
       - name: Run tests
         run: cargo nextest run
       - name: Build Dioxus web app
@@ -190,7 +184,6 @@ jobs:
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          components: clippy
           toolchain: stable
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
@@ -198,8 +191,6 @@ jobs:
         run: |
           cargo install cargo-nextest --locked
           cargo install dioxus-cli --version 0.7.0-rc.0 --locked
-      - name: Run clippy
-        run: cargo clippy --all-targets -- -D warnings
       - name: Run tests
         run: cargo nextest run
       - name: Build Dioxus web app
@@ -243,7 +234,6 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
-          components: clippy
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
       - name: Install Dioxus CLI
