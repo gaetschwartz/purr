@@ -1,0 +1,13 @@
+[package]
+name = "purr-common"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+async-trait = "0.1.89"
+bytes = { version = "1.10.1", features = ["serde"] }
+const-str = { version = "0.7.0", features = ["all"] }
+futures = "0.3.31"
+miette = "7.6.0"
+serde = { version = "1.0.225", features = ["derive"] }
+thiserror = "2.0.16"

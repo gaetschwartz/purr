@@ -18,6 +18,7 @@ path = "src/main.rs"
 [dependencies]
 # Desktop-only dependencies
 purr-core = { path = "../purr-core", optional = true }
+purr-common = { path = "../purr-common" }
 tokio = { version = "1.47.1", features = ["full"], optional = true }
 tracing-subscriber = { version = "0.3", optional = true }
 
@@ -40,9 +41,20 @@ thiserror = "2.0.9"
 # Web-only dependencies (only for WASM builds)
 gloo-timers = { version = "0.3.0", features = ["futures"], optional = true }
 gloo-file = { version = "0.3.0", optional = true }
-web-sys = { version = "0.3", features = ["Window", "Request", "RequestInit", "Response", "FormData", "Blob", "BlobPropertyBag", "console"], optional = true }
+web-sys = { version = "0.3", features = [
+  "Window",
+  "Request",
+  "RequestInit",
+  "Response",
+  "FormData",
+  "Blob",
+  "BlobPropertyBag",
+  "console",
+], optional = true }
 js-sys = { version = "0.3", optional = true }
-wasm-bindgen = { version = "0.2", features = ["serde-serialize"], optional = true }
+wasm-bindgen = { version = "0.2", features = [
+  "serde-serialize",
+], optional = true }
 wasm-bindgen-futures = { version = "0.4", optional = true }
 serde-wasm-bindgen = { version = "0.6", optional = true }
 getrandom = { version = "0.2", features = ["js"], optional = true }
@@ -53,7 +65,7 @@ cached = { version = "0.56.0", optional = true }
 const-str = { version = "0.7.0", features = ["all"] }
 
 [features]
-default = ["web"]
+default = ["desktop"]
 
 # Web feature includes only WASM-compatible dependencies
 web = [
@@ -66,7 +78,7 @@ web = [
   "wasm-bindgen-futures",
   "serde-wasm-bindgen",
   "getrandom",
-  "serde_json"
+  "serde_json",
 ]
 
 # Desktop feature includes desktop-specific functionality and transcription
@@ -77,7 +89,7 @@ desktop = [
   "tracing-subscriber",
   "rfd",
   "cached",
-  "serde_json"
+  "serde_json",
 ]
 
 # Mobile feature

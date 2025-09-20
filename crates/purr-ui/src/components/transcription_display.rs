@@ -1,6 +1,6 @@
 use super::{Card, CardVariant, Icon, IconType, StatusBadge, StatusType};
-use crate::platform::TranscriptionStatus;
 use dioxus::prelude::*;
+use purr_common::platform::TranscriptionStatus;
 
 /// Props for the TranscriptionDisplay component
 #[derive(Props, Clone, PartialEq)]
@@ -20,7 +20,9 @@ pub fn TranscriptionDisplay(props: TranscriptionDisplayProps) -> Element {
         Some(TranscriptionStatus::Starting) => rsx! {
             div { class: "text-center py-16",
                 LoadingSpinner {}
-                h3 { class: "text-xl font-semibold text-gray-900 mb-3", "Initializing transcription..." }
+                h3 { class: "text-xl font-semibold text-gray-900 mb-3",
+                    "Initializing transcription..."
+                }
                 p { class: "text-gray-600 text-lg", "Setting up transcription for: {props.file_name}" }
             }
         },
@@ -41,7 +43,7 @@ pub fn TranscriptionDisplay(props: TranscriptionDisplayProps) -> Element {
                 StatusBadge {
                     text: format!("Processing chunk {}", chunk_index + 1),
                     status: StatusType::Processing,
-                    class: "mb-8"
+                    class: "mb-8",
                 }
 
                 // Show live transcription results
@@ -53,11 +55,13 @@ pub fn TranscriptionDisplay(props: TranscriptionDisplayProps) -> Element {
                         h4 { class: "text-lg font-semibold text-blue-900 mb-4 flex items-center",
                             Icon {
                                 icon_type: IconType::LiveTranscription,
-                                class: "w-5 h-5 mr-2 text-blue-600"
+                                class: "w-5 h-5 mr-2 text-blue-600",
                             }
                             "Live Transcription"
                         }
-                        p { class: "text-gray-800 whitespace-pre-wrap leading-relaxed text-lg", "{props.text}" }
+                        p { class: "text-gray-800 whitespace-pre-wrap leading-relaxed text-lg",
+                            "{props.text}"
+                        }
                     }
                 }
             }
@@ -87,11 +91,13 @@ pub fn TranscriptionDisplay(props: TranscriptionDisplayProps) -> Element {
                     h4 { class: "text-xl font-bold text-green-900 mb-6 flex items-center",
                         Icon {
                             icon_type: IconType::Check,
-                            class: "w-6 h-6 mr-3 text-green-600"
+                            class: "w-6 h-6 mr-3 text-green-600",
                         }
                         "Final Transcription"
                     }
-                    p { class: "text-gray-800 whitespace-pre-wrap leading-relaxed text-lg", "{props.text}" }
+                    p { class: "text-gray-800 whitespace-pre-wrap leading-relaxed text-lg",
+                        "{props.text}"
+                    }
                 }
             }
         },
@@ -148,7 +154,7 @@ fn SuccessIcon() -> Element {
             div { class: "w-20 h-20 bg-green-100 rounded-full flex items-center justify-center",
                 Icon {
                     icon_type: IconType::Check,
-                    class: "w-10 h-10 text-green-600"
+                    class: "w-10 h-10 text-green-600",
                 }
             }
         }
@@ -163,7 +169,7 @@ fn ErrorIcon() -> Element {
             div { class: "w-20 h-20 bg-red-100 rounded-full flex items-center justify-center",
                 Icon {
                     icon_type: IconType::Error,
-                    class: "w-10 h-10 text-red-600"
+                    class: "w-10 h-10 text-red-600",
                 }
             }
         }
@@ -185,19 +191,16 @@ fn TranscriptionStats(props: TranscriptionStatsProps) -> Element {
         div { class: "grid grid-cols-2 md:grid-cols-4 gap-6 max-w-2xl mx-auto mb-10",
             StatCard {
                 label: "Processing Time",
-                value: format!("{:.1}s", props.processing_time)
+                value: format!("{:.1}s", props.processing_time),
             }
             StatCard {
                 label: "Audio Duration",
-                value: format!("{:.1}s", props.audio_duration)
+                value: format!("{:.1}s", props.audio_duration),
             }
-            StatCard {
-                label: "Word Count",
-                value: format!("{}", props.word_count)
-            }
+            StatCard { label: "Word Count", value: format!("{}", props.word_count) }
             StatCard {
                 label: "Speed",
-                value: format!("{:.1}x", props.audio_duration / props.processing_time as f32)
+                value: format!("{:.1}x", props.audio_duration / props.processing_time as f32),
             }
         }
     }

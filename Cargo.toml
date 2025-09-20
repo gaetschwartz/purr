@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/purr", "crates/purr-core", 'crates/purr-ui']
+members = ["crates/purr", "crates/purr-common", "crates/purr-core", 'crates/purr-ui']
 resolver = "2"
 
 [workspace.dependencies]
