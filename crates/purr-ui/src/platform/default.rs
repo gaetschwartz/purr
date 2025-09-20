@@ -3,7 +3,8 @@
 use super::{Platform, PlatformError, TranscriptionRequest, TranscriptionStatus};
 use bytes::Bytes;
 use futures::{Stream, StreamExt};
-use std::path::PathBuf;
+use purr_common::platform::FileId;
+use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use tracing::{error, info};
 
@@ -25,17 +26,22 @@ impl Platform for PlatformImpl {
     async fn process_file(
         &self,
         file_data: Bytes,
-        file_name: String,
-    ) -> Result<String, PlatformError> {
+        file_path: &Path,
+    ) -> Result<FileId, PlatformError> {
         use std::fs::File;
         use std::io::Write;
         use uuid::Uuid;
 
         // Generate unique file ID
-        let file_id = Uuid::new_v4().to_string();
+        let file_id =
+            Uuid::new_v3(&Uuid::NAMESPACE_URL, file_path.to_string_lossy().as_bytes()).into();
         let file_path = self.temp_dir.join(&file_id);
 
-        info!("Processing file {} with ID: {}", file_name, file_id);
+        info!(
+            "Processing file {} with ID: {}",
+            file_path.display(),
+            file_id
+        );
 
         // Write file data to temp location
         let mut file = File::create(&file_path).map_err(PlatformError::io)?;
@@ -48,7 +54,7 @@ impl Platform for PlatformImpl {
 
     async fn transcribe(
         &self,
-        file_id: String,
+        file_id: FileId,
         request: TranscriptionRequest,
     ) -> Result<
         Pin<Box<dyn Stream<Item = Result<TranscriptionStatus, PlatformError>> + Send>>,

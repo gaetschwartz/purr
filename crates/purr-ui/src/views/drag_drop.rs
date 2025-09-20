@@ -7,6 +7,7 @@ use dioxus::{
     html::{FileEngine, HasFileData},
     prelude::*,
 };
+use purr_common::platform::FileId;
 use std::sync::Arc;
 use tracing::{error, info};
 
@@ -144,7 +145,7 @@ async fn handle_file_upload_stream(
     file_engine: Arc<dyn FileEngine>,
     file_name: String,
     mut upload_progress: Signal<usize>,
-) -> miette::Result<String> {
+) -> miette::Result<FileId> {
     use miette::miette;
 
     info!("Starting file processing: {}", file_name);
@@ -163,7 +164,7 @@ async fn handle_file_upload_stream(
     let platform = &*platform::PLATFORM;
 
     match platform
-        .process_file(Bytes::from(file_bytes), file_name.clone())
+        .process_file(Bytes::from(file_bytes), file_name.as_ref())
         .await
     {
         Ok(file_id) => {

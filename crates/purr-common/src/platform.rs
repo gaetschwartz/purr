@@ -4,7 +4,7 @@ use bytes::Bytes;
 use futures::Stream;
 use miette::Diagnostic;
 use serde::{Deserialize, Serialize};
-use std::{borrow::Cow, pin::Pin};
+use std::{borrow::Cow, ops::Deref, path::Path, pin::Pin, str::FromStr};
 
 /// Platform-specific error types
 #[derive(Debug, thiserror::Error, Diagnostic)]
@@ -166,20 +166,67 @@ pub enum TranscriptionStatus {
     Error { message: String },
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct FileId(String);
+
+impl FileId {
+    /// Create a new FileId
+    pub fn new(id: String) -> Self {
+        FileId(id)
+    }
+}
+
+impl Deref for FileId {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl AsRef<Path> for FileId {
+    fn as_ref(&self) -> &Path {
+        Path::new(&self.0)
+    }
+}
+
+impl std::fmt::Display for FileId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl<S> From<S> for FileId
+where
+    S: Into<String>,
+{
+    fn from(s: S) -> Self {
+        FileId::new(s.into())
+    }
+}
+
+impl FromStr for FileId {
+    type Err = std::convert::Infallible;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(FileId::new(s.to_string()))
+    }
+}
+
 /// Platform trait defining the interface for platform-specific implementations
 #[async_trait::async_trait]
-pub trait Platform: Send + Sync {
+pub trait Platform: Send + Sync + 'static {
     /// Process a file for transcription (handles temporary storage if needed)
     async fn process_file(
         &self,
         file_data: Bytes,
-        file_name: String,
-    ) -> Result<String, PlatformError>;
+        file_path: &Path,
+    ) -> Result<FileId, PlatformError>;
 
     /// Start transcription of processed file
     async fn transcribe(
         &self,
-        file_id: String,
+        file_id: FileId,
         request: TranscriptionRequest,
     ) -> Result<
         Pin<Box<dyn Stream<Item = Result<TranscriptionStatus, PlatformError>> + Send>>,

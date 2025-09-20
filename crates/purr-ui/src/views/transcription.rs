@@ -5,12 +5,13 @@ use crate::{
 use bytes::Bytes;
 use dioxus::prelude::*;
 use futures::StreamExt;
+use purr_common::platform::FileId;
 use tracing::{error, info};
 
 /// The Transcription page component that displays the transcription functionality
 /// for an uploaded audio file
 #[component]
-pub fn Transcription(file: String) -> Element {
+pub fn Transcription(file: FileId) -> Element {
     let navigator = use_navigator();
     let transcription_status = use_signal(|| None::<TranscriptionStatus>);
     let transcription_text = use_signal(String::new);
@@ -75,7 +76,7 @@ pub fn Transcription(file: String) -> Element {
 
 /// Start transcription process using platform abstraction
 fn start_transcription_process(
-    file_id: String,
+    file_id: FileId,
     mut status_signal: Signal<Option<TranscriptionStatus>>,
     mut text_signal: Signal<String>,
 ) {

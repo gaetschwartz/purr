@@ -13,6 +13,7 @@ mod utils;
 /// Define a views module that contains the UI for all Layouts and Routes for our app.
 mod views;
 
+use purr_common::platform::FileId;
 use views::{Home, Navbar, Transcription};
 
 /// The Route enum is used to define the structure of internal routes in our app. All route enums need to derive
@@ -33,7 +34,7 @@ enum Route {
         // The route attribute can include dynamic parameters that implement [`std::str::FromStr`] and [`std::fmt::Display`] with the `:` syntax.
         // In this case, file_path will match any string like `/transcription/audio.mp3`.
         #[route("/transcription/:file")]
-        Transcription { file: String },
+        Transcription { file: FileId },
 }
 
 // We can import assets in dioxus with the `asset!` macro. This macro takes a path to an asset relative to the crate root.
