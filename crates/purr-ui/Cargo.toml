@@ -14,31 +14,28 @@ path = "src/lib.rs"
 name = "purr-ui"
 path = "src/main.rs"
 
-[[bin]]
-name = "purr-server"
-path = "src/bin/server.rs"
-required-features = ["server"]
 
 [dependencies]
-# Server-only dependencies (not compiled for WASM)
+# Desktop-only dependencies
 purr-core = { path = "../purr-core", optional = true }
 tokio = { version = "1.47.1", features = ["full"], optional = true }
 tracing-subscriber = { version = "0.3", optional = true }
 
 # Shared dependencies (work on both WASM and native)
 dioxus = { version = "0.7.0-rc.0", features = ["router"] }
-dioxus-fullstack = { version = "0.7.0-rc.0", features = ["axum"], optional = true }
 futures = { version = "0.3.31", default-features = false, features = [
   "async-await",
   "alloc",
   "std",
 ] }
+async-trait = "0.1"
 serde = { version = "1.0.225", features = ["derive"] }
 serde_json = { version = "1.0", optional = true }
 bytes = "1.10.1"
 uuid = { version = "1.11.0", features = ["v4", "js"] }
 tracing = "0.1.41"
 miette = { version = "7.6.0", features = ["fancy"] }
+thiserror = "2.0.9"
 
 # Web-only dependencies (only for WASM builds)
 gloo-timers = { version = "0.3.0", features = ["futures"], optional = true }
@@ -53,27 +50,10 @@ getrandom = { version = "0.2", features = ["js"], optional = true }
 # Desktop-only dependencies
 rfd = { version = "0.15.4", features = ["tokio"], optional = true }
 cached = { version = "0.56.0", optional = true }
-
-# Server-only dependencies for HTTP API
-axum = { version = "0.8", features = ["multipart"], optional = true }
-tower-http = { version = "0.6", features = ["cors"], optional = true }
+const-str = { version = "0.7.0", features = ["all"] }
 
 [features]
 default = ["web"]
-
-# Server feature includes all native dependencies and server functionality
-server = [
-  "dioxus/server",
-  "dioxus-fullstack",
-  "tokio",
-  "purr-core",
-  "tracing-subscriber",
-  "rfd",
-  "cached",
-  "axum",
-  "tower-http",
-  "serde_json"
-]
 
 # Web feature includes only WASM-compatible dependencies
 web = [
@@ -89,8 +69,16 @@ web = [
   "serde_json"
 ]
 
-# Desktop feature includes desktop-specific functionality
-desktop = ["dioxus/desktop", "rfd", "cached"]
+# Desktop feature includes desktop-specific functionality and transcription
+desktop = [
+  "dioxus/desktop",
+  "tokio",
+  "purr-core",
+  "tracing-subscriber",
+  "rfd",
+  "cached",
+  "serde_json"
+]
 
 # Mobile feature
 mobile = ["dioxus/mobile"]

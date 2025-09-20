@@ -1,4 +1,7 @@
-use crate::{components::{Icon, IconType}, Route};
+use crate::{
+    components::{Icon, IconType},
+    Route,
+};
 use dioxus::prelude::*;
 
 const NAVBAR_CSS: Asset = asset!("/assets/styling/navbar.css");

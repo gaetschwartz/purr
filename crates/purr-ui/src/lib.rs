@@ -1,16 +1,13 @@
 /// Library exports for purr-ui
 /// This allows both the WASM frontend and native server to use the same components
-
 use dioxus::prelude::*;
 
 /// Client API module for HTTP/WebSocket communication
 mod client;
 /// Define a components module that contains all shared components for our app.
 mod components;
-/// Server functions module (only compiled for server builds)
-/// Currently disabled - using simple HTTP API instead
-// #[cfg(feature = "server")]
-// pub mod server;
+/// Platform abstraction layer for client-only architecture
+pub mod platform;
 /// Utilities module
 mod utils;
 /// Define a views module that contains the UI for all Layouts and Routes for our app.

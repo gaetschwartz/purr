@@ -1,5 +1,5 @@
+use super::{Button, ButtonVariant, Icon, IconType, ProgressBar};
 use dioxus::prelude::*;
-use super::{Icon, IconType, Button, ButtonVariant, ProgressBar};
 
 /// Upload state for the upload zone
 #[derive(Clone, PartialEq)]
@@ -38,7 +38,7 @@ pub fn UploadZone(props: UploadZoneProps) -> Element {
     rsx! {
         div {
             class: "flex items-center justify-center w-full h-full min-h-screen bg-gradient-to-br from-gray-50 to-gray-100",
-            
+
             div {
                 class: "flex flex-col items-center justify-center w-full max-w-lg mx-auto h-96 {border_class} rounded-xl cursor-pointer transition-all duration-300 ease-in-out transform hover:scale-105 bg-white shadow-lg",
                 ondragover: move |evt| props.ondragover.call(evt),
@@ -126,4 +126,3 @@ pub fn UploadZone(props: UploadZoneProps) -> Element {
         }
     }
 }
-

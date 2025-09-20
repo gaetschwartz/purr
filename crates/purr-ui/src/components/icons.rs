@@ -27,27 +27,24 @@ pub fn Icon(props: IconProps) -> Element {
     let (svg_content, default_classes) = match props.icon_type {
         IconType::Upload => (
             include_str!("../../assets/icons/upload.svg"),
-            "w-8 h-8 text-teal-600"
+            "w-8 h-8 text-teal-600",
         ),
         IconType::Check => (
             include_str!("../../assets/icons/check.svg"),
-            "w-8 h-8 text-green-600"
+            "w-8 h-8 text-green-600",
         ),
-        IconType::BackArrow => (
-            include_str!("../../assets/icons/back-arrow.svg"),
-            "w-4 h-4"
-        ),
+        IconType::BackArrow => (include_str!("../../assets/icons/back-arrow.svg"), "w-4 h-4"),
         IconType::Error => (
             include_str!("../../assets/icons/error.svg"),
-            "w-10 h-10 text-red-600"
+            "w-10 h-10 text-red-600",
         ),
         IconType::Logo => (
             include_str!("../../assets/icons/logo.svg"),
-            "w-8 h-8 text-teal-600"
+            "w-8 h-8 text-teal-600",
         ),
         IconType::LiveTranscription => (
             include_str!("../../assets/icons/live-transcription.svg"),
-            "w-5 h-5 text-blue-600"
+            "w-5 h-5 text-blue-600",
         ),
     };
 

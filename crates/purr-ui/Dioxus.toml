@@ -1,7 +1,11 @@
 [application]
 name = "purr-ui"
 # The main entry point of the application
-default_platform = "web"
+default_platform = "desktop"
+
+[bundle]
+identifier = "dev.gaetans.purr"
+version = "0.1.0"
 
 [web.app]
 # The title of the web application

@@ -1,8 +1,8 @@
 use crate::{
-    client::default_client,
-    components::{UploadZone, UploadState},
-    Route,
+    components::{UploadState, UploadZone},
+    platform, Route,
 };
+use bytes::Bytes;
 use dioxus::{
     html::{FileEngine, HasFileData},
     prelude::*,
@@ -22,9 +22,15 @@ pub fn DragDropZone() -> Element {
     let upload_state = if is_uploading() {
         if let Some(file_name) = uploaded_file() {
             let progress = (upload_progress() as f32 / 1_000_000.0 * 100.0).min(100.0);
-            UploadState::Uploading { progress, file_name }
+            UploadState::Uploading {
+                progress,
+                file_name,
+            }
         } else {
-            UploadState::Uploading { progress: 0.0, file_name: "Unknown".to_string() }
+            UploadState::Uploading {
+                progress: 0.0,
+                file_name: "Unknown".to_string(),
+            }
         }
     } else if let Some(file_name) = uploaded_file() {
         UploadState::Success { file_name }
@@ -133,8 +139,7 @@ pub fn DragDropZone() -> Element {
     }
 }
 
-/// Handle file upload using HTTP API
-#[cfg(feature = "web")]
+/// Handle file upload using the platform abstraction
 async fn handle_file_upload_stream(
     file_engine: Arc<dyn FileEngine>,
     file_name: String,
@@ -142,7 +147,7 @@ async fn handle_file_upload_stream(
 ) -> miette::Result<String> {
     use miette::miette;
 
-    info!("Starting file upload: {}", file_name);
+    info!("Starting file processing: {}", file_name);
 
     // Read file content as bytes using Dioxus FileEngine
     let file_bytes = file_engine
@@ -150,33 +155,25 @@ async fn handle_file_upload_stream(
         .await
         .ok_or_else(|| miette!("Failed to read file: {}", file_name))?;
 
-    let client = default_client();
-
-    // Simulate progress updates
+    // Update progress
     let total_size = file_bytes.len();
     upload_progress.set(total_size / 2);
 
-    // Upload file via HTTP
-    match client.upload_file(file_name.clone(), file_bytes).await {
+    // Use platform abstraction for file processing
+    let platform = &*platform::PLATFORM;
+
+    match platform
+        .process_file(Bytes::from(file_bytes), file_name.clone())
+        .await
+    {
         Ok(file_id) => {
             upload_progress.set(total_size);
-            info!("Upload completed, file ID: {}", file_id);
+            info!("File processing completed, file ID: {}", file_id);
             Ok(file_id)
         }
         Err(e) => {
-            error!("Upload failed: {}", e);
-            Err(miette!("Upload failed: {}", e))
+            error!("File processing failed: {}", e);
+            Err(miette!("File processing failed: {}", e))
         }
     }
-}
-
-/// Placeholder for non-web builds
-#[cfg(not(feature = "web"))]
-async fn handle_file_upload_stream(
-    _file_engine: Arc<dyn FileEngine>,
-    _file_name: String,
-    _upload_progress: Signal<usize>,
-) -> miette::Result<String> {
-    use miette::miette;
-    Err(miette!("File upload not supported in non-web builds"))
 }

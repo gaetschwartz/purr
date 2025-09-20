@@ -1,6 +1,6 @@
+use super::{Card, CardVariant, Icon, IconType, StatusBadge, StatusType};
+use crate::platform::TranscriptionStatus;
 use dioxus::prelude::*;
-use crate::client::TranscriptionStatus;
-use super::{Icon, IconType, Card, CardVariant, StatusBadge, StatusType};
 
 /// Props for the TranscriptionDisplay component
 #[derive(Props, Clone, PartialEq)]
@@ -24,7 +24,7 @@ pub fn TranscriptionDisplay(props: TranscriptionDisplayProps) -> Element {
                 p { class: "text-gray-600 text-lg", "Setting up transcription for: {props.file_name}" }
             }
         },
-        
+
         Some(TranscriptionStatus::ProcessingAudio) => rsx! {
             div { class: "text-center py-16",
                 LoadingSpinner {}
@@ -32,12 +32,12 @@ pub fn TranscriptionDisplay(props: TranscriptionDisplayProps) -> Element {
                 p { class: "text-gray-600 text-lg", "Preparing audio for transcription" }
             }
         },
-        
+
         Some(TranscriptionStatus::InProgress { chunk_index, .. }) => rsx! {
             div { class: "text-center py-16",
                 PulsingIndicator {}
                 h3 { class: "text-xl font-semibold text-gray-900 mb-3", "Transcribing audio..." }
-                
+
                 StatusBadge {
                     text: format!("Processing chunk {}", chunk_index + 1),
                     status: StatusType::Processing,
@@ -49,7 +49,7 @@ pub fn TranscriptionDisplay(props: TranscriptionDisplayProps) -> Element {
                     Card {
                         variant: CardVariant::Info,
                         class: "mt-8 text-left shadow-sm",
-                        
+
                         h4 { class: "text-lg font-semibold text-blue-900 mb-4 flex items-center",
                             Icon {
                                 icon_type: IconType::LiveTranscription,
@@ -62,7 +62,7 @@ pub fn TranscriptionDisplay(props: TranscriptionDisplayProps) -> Element {
                 }
             }
         },
-        
+
         Some(TranscriptionStatus::Completed {
             processing_time,
             audio_duration,
@@ -83,7 +83,7 @@ pub fn TranscriptionDisplay(props: TranscriptionDisplayProps) -> Element {
                 Card {
                     variant: CardVariant::Success,
                     class: "mt-8 text-left shadow-lg",
-                    
+
                     h4 { class: "text-xl font-bold text-green-900 mb-6 flex items-center",
                         Icon {
                             icon_type: IconType::Check,
@@ -95,21 +95,21 @@ pub fn TranscriptionDisplay(props: TranscriptionDisplayProps) -> Element {
                 }
             }
         },
-        
+
         Some(TranscriptionStatus::Error { message }) => rsx! {
             div { class: "text-center py-16",
                 ErrorIcon {}
                 h3 { class: "text-xl font-semibold text-red-800 mb-4", "Transcription Failed" }
-                
+
                 Card {
                     variant: CardVariant::Error,
                     class: "mb-8 max-w-md mx-auto",
-                    
+
                     p { class: "text-red-700 text-sm", "{message}" }
                 }
             }
         },
-        
+
         None => rsx! {
             div { class: "text-center py-16",
                 LoadingSpinner {}

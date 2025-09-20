@@ -1,9 +1,11 @@
 use crate::{
-    client::{default_client, TranscriptionStatus},
     components::{Button, ButtonVariant, Card, IconType, TranscriptionDisplay},
+    platform::{self, TranscriptionRequest, TranscriptionStatus},
 };
+use bytes::Bytes;
 use dioxus::prelude::*;
-use tracing::info;
+use futures::StreamExt;
+use tracing::{error, info};
 
 /// The Transcription page component that displays the transcription functionality
 /// for an uploaded audio file
@@ -20,17 +22,7 @@ pub fn Transcription(file: String) -> Element {
         let file_id = file.clone();
         if !is_transcribing() {
             is_transcribing.set(true);
-            #[cfg(feature = "web")]
-            {
-                start_transcription_process(file_id, transcription_status, transcription_text);
-            }
-            #[cfg(not(feature = "web"))]
-            {
-                transcription_status.set(Some(TranscriptionStatus::Error {
-                    message: "Transcription not supported in non-web builds".to_string(),
-                }));
-                is_transcribing.set(false);
-            }
+            start_transcription_process(file_id, transcription_status, transcription_text);
         }
     });
 
@@ -47,7 +39,7 @@ pub fn Transcription(file: String) -> Element {
                         Button {
                             variant: ButtonVariant::Ghost,
                             icon: Some(IconType::BackArrow),
-                            onclick: move |evt| handle_back(evt),
+                            onclick: handle_back,
                             "Back"
                         }
                         h1 { class: "text-2xl font-bold text-gray-900", "Audio Transcription" }
@@ -70,7 +62,7 @@ pub fn Transcription(file: String) -> Element {
                         div { class: "mt-8 text-center",
                             Button {
                                 variant: ButtonVariant::Primary,
-                                onclick: move |evt| handle_back(evt),
+                                onclick: handle_back,
                                 "Try Another File"
                             }
                         }
@@ -81,92 +73,75 @@ pub fn Transcription(file: String) -> Element {
     }
 }
 
-/// Start transcription process using real backend API
-#[cfg(feature = "web")]
+/// Start transcription process using platform abstraction
 fn start_transcription_process(
     file_id: String,
     mut status_signal: Signal<Option<TranscriptionStatus>>,
     mut text_signal: Signal<String>,
 ) {
-    info!("Starting REAL transcription for file ID: {}", file_id);
+    info!("Starting transcription for file ID: {}", file_id);
 
-    let _client = default_client();
-
-    // Start real transcription via HTTP API - using spawn to handle the async process
     spawn(async move {
-        use gloo_timers::future::TimeoutFuture;
+        // Get platform implementation
+        let platform = &*platform::PLATFORM;
 
-        status_signal.set(Some(TranscriptionStatus::Starting));
-        TimeoutFuture::new(500).await;
+        // Create transcription request
+        // Note: In a real implementation, we'd need to retrieve the file data
+        // For now, we'll use empty bytes as placeholder
+        let request = TranscriptionRequest {
+            file_data: Bytes::new(),
+            language: None,
+            translate: false,
+        };
 
-        status_signal.set(Some(TranscriptionStatus::ProcessingAudio));
+        // Start transcription with streaming updates
+        match platform.transcribe(file_id.clone(), request).await {
+            Ok(mut stream) => {
+                let mut full_text = String::new();
 
-        // Call the real backend API for transcription
-        let transcription_url = format!("http://localhost:8080/api/transcribe?file_id={}", file_id);
+                // Process streaming updates
+                while let Some(result) = stream.next().await {
+                    match result {
+                        Ok(status) => {
+                            // Update status signal
+                            status_signal.set(Some(status.clone()));
 
-        match fetch_transcription(&transcription_url).await {
-            Ok(response) => {
-                // Set the full transcription text
-                text_signal.set(response.text.clone());
+                            // Accumulate text for in-progress updates
+                            if let TranscriptionStatus::InProgress { text, .. } = &status {
+                                full_text.push_str(text);
+                                full_text.push(' ');
+                                text_signal.set(full_text.clone());
+                            }
 
-                // Mark as completed with real stats
-                status_signal.set(Some(TranscriptionStatus::Completed {
-                    processing_time: response.processing_time,
-                    audio_duration: (response.processing_time * 1.2) as f32, // Estimate audio duration
-                    word_count: response.word_count,
-                }));
-
-                info!("Real transcription completed for file ID: {}", file_id);
+                            // Check if completed or errored
+                            match status {
+                                TranscriptionStatus::Completed { .. } => {
+                                    info!("Transcription completed for file ID: {}", file_id);
+                                    break;
+                                }
+                                TranscriptionStatus::Error { message } => {
+                                    error!("Transcription error: {}", message);
+                                    break;
+                                }
+                                _ => {}
+                            }
+                        }
+                        Err(e) => {
+                            error!("Stream error: {}", e);
+                            status_signal.set(Some(TranscriptionStatus::Error {
+                                message: format!("Stream error: {}", e),
+                            }));
+                            break;
+                        }
+                    }
+                }
             }
             Err(e) => {
-                info!("Transcription failed for file ID {}: {}", file_id, e);
+                error!("Failed to start transcription: {}", e);
                 status_signal.set(Some(TranscriptionStatus::Error {
-                    message: format!("Transcription failed: {}", e),
+                    message: format!("Failed to start transcription: {}", e),
                 }));
             }
         }
     });
-}
-
-/// Response structure for transcription API
-#[cfg(feature = "web")]
-#[derive(serde::Serialize, serde::Deserialize)]
-struct TranscriptionResponse {
-    text: String,
-    processing_time: f64,
-    word_count: usize,
-}
-
-/// Fetch transcription from backend API
-#[cfg(feature = "web")]
-async fn fetch_transcription(url: &str) -> Result<TranscriptionResponse, String> {
-    use web_sys::RequestInit;
-    use wasm_bindgen::JsCast;
-
-    let window = web_sys::window().ok_or("No window object")?;
-
-    let opts = RequestInit::new();
-    opts.set_method("GET");
-
-    let request = web_sys::Request::new_with_str_and_init(url, &opts)
-        .map_err(|_| "Failed to create request")?;
-
-    let resp_value = wasm_bindgen_futures::JsFuture::from(window.fetch_with_request(&request))
-        .await
-        .map_err(|_| "Network request failed")?;
-
-    let resp: web_sys::Response = resp_value.dyn_into().map_err(|_| "Invalid response")?;
-
-    if !resp.ok() {
-        return Err(format!("HTTP {}: {}", resp.status(), resp.status_text()));
-    }
-
-    let json = wasm_bindgen_futures::JsFuture::from(resp.json().map_err(|_| "Failed to parse JSON")?)
-        .await
-        .map_err(|_| "Failed to read response body")?;
-
-    let response: TranscriptionResponse = serde_wasm_bindgen::from_value(json)
-        .map_err(|_| "Failed to deserialize response")?;
-
-    Ok(response)
 }
