@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 # Whisper.cpp bindings
-whisper-rs = { version = "0.15.0", features = ["tracing_backend", "raw-api"] }
+whisper-rs = { version = "0.15.0", default-features = false, features = ["tracing_backend", "raw-api"] }
 ffmpeg-next = { version = "8.0", features = ["codec", "format"] }
 
 # FFmpeg bindings for audio processing

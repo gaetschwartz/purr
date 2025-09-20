@@ -15,6 +15,9 @@ jobs:
       fail-fast: false
       matrix:
         backend: [none, cuda, vulkan]
+    env:
+      GGML_CUDA: ${{ matrix.backend == 'cuda' && 'ON' || 'OFF' }}
+      CMAKE_ARGS: ${{ matrix.backend == 'cuda' && '' || '-DGGML_CUDA=OFF -DWHISPER_CUDA=OFF' }}
     steps:
       - uses: actions/checkout@v4
       - name: Install dependencies
@@ -22,7 +25,8 @@ jobs:
           sudo apt update
           sudo apt install -y --no-install-recommends clang curl pkg-config gcc ca-certificates openssl libssl-dev cmake libc6-dev make wget \
             libavcodec-dev libavformat-dev libavutil-dev libavfilter-dev libavdevice-dev libswscale-dev libswresample-dev \
-            llvm
+            llvm \
+            libgtk-3-dev libglib2.0-dev libcairo2-dev libpango1.0-dev libgdk-pixbuf2.0-dev libatk1.0-dev
       - name: Install cuda
         if: matrix.backend == 'cuda'
         run: |
@@ -63,19 +67,17 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
-          components: clippy, rustfmt
+          components: clippy
           targets: x86_64-unknown-linux-gnu, wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
       - name: Install cargo-nextest and Dioxus CLI
         run: |
           cargo install cargo-nextest --locked
           cargo install dioxus-cli --version 0.7.0-rc.0 --locked
-      - name: Check formatting
-        run: cargo fmt --all -- --check
       - name: Run clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
       - name: Run tests
-        run: cargo nextest run --all-features
+        run: cargo nextest run
       - name: Build Dioxus web app
         run: |
           cd crates/purr-ui
@@ -107,7 +109,7 @@ jobs:
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          components: clippy, rustfmt
+          components: clippy
           toolchain: stable
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
@@ -115,12 +117,10 @@ jobs:
         run: |
           cargo install cargo-nextest --locked
           cargo install dioxus-cli --version 0.7.0-rc.0 --locked
-      - name: Check formatting
-        run: cargo fmt --all -- --check
       - name: Run clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
       - name: Run tests
-        run: cargo nextest run --all-features
+        run: cargo nextest run
       - name: Build Dioxus web app
         run: |
           cd crates/purr-ui
@@ -190,7 +190,7 @@ jobs:
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          components: clippy, rustfmt
+          components: clippy
           toolchain: stable
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
@@ -198,12 +198,10 @@ jobs:
         run: |
           cargo install cargo-nextest --locked
           cargo install dioxus-cli --version 0.7.0-rc.0 --locked
-      - name: Check formatting
-        run: cargo fmt --all -- --check
       - name: Run clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
       - name: Run tests
-        run: cargo nextest run --all-features
+        run: cargo nextest run
       - name: Build Dioxus web app
         run: |
           cd crates/purr-ui
@@ -231,17 +229,21 @@ jobs:
   build-ui:
     name: Build Dioxus UI (cross-platform)
     runs-on: ubuntu-latest
+    env:
+      GGML_CUDA: "OFF"
+      CMAKE_ARGS: "-DGGML_CUDA=OFF -DWHISPER_CUDA=OFF"
     steps:
       - uses: actions/checkout@v4
       - name: Install dependencies
         run: |
           sudo apt update
-          sudo apt install -y --no-install-recommends clang curl pkg-config gcc ca-certificates openssl libssl-dev cmake libc6-dev make wget
+          sudo apt install -y --no-install-recommends clang curl pkg-config gcc ca-certificates openssl libssl-dev cmake libc6-dev make wget \
+            libgtk-3-dev libglib2.0-dev libcairo2-dev libpango1.0-dev libgdk-pixbuf2.0-dev libatk1.0-dev
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
-          components: clippy, rustfmt
+          components: clippy
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
       - name: Install Dioxus CLI

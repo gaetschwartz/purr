@@ -6,10 +6,6 @@
 -P ubuntu-22.04=catthehacker/ubuntu:act-22.04
 -P ubuntu-20.04=catthehacker/ubuntu:act-20.04
 
-# Use larger images for Windows and macOS if available
--P windows-latest=catthehacker/ubuntu:act-latest
--P macos-latest=catthehacker/ubuntu:act-latest
-
 # Default artifact server port
 --artifact-server-port=34567
 
