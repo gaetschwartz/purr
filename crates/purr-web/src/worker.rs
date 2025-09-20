@@ -3,11 +3,12 @@
 
 use crate::error::{WebError, WebResult};
 use crate::model::WebModelManager;
+use crate::transcription::AudioMetadata;
 use purr_common::platform::{TranscriptionRequest, TranscriptionStatus};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::{mpsc, Mutex, RwLock};
+use tokio::sync::{mpsc, oneshot, Mutex, RwLock};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use tokio_stream::Stream;
 use uuid::Uuid;
@@ -62,6 +63,10 @@ enum WorkerMessage {
         session_id: String,
         request_id: String,
     },
+    ParseAudioMetadata {
+        data: Vec<u8>,
+        format: String,
+    },
 }
 
 /// Messages received from worker.js
@@ -79,6 +84,9 @@ enum WorkerResponse {
     WorkerError {
         session_id: String,
         error: String,
+    },
+    AudioMetadataResponse {
+        metadata: AudioMetadata,
     },
 }
 
@@ -113,6 +121,7 @@ pub struct TranscriptionWorker {
     model_manager: Arc<WebModelManager>,
     active_sessions: RwLock<HashMap<String, SessionData>>,
     worker_command_sender: Mutex<Option<mpsc::UnboundedSender<WorkerCommand>>>,
+    ready_callbacks: Arc<RwLock<HashMap<String, oneshot::Sender<()>>>>,
 }
 
 #[derive(Debug)]
@@ -134,6 +143,7 @@ impl TranscriptionWorker {
             model_manager,
             active_sessions: RwLock::new(HashMap::new()),
             worker_command_sender: Mutex::new(None),
+            ready_callbacks: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -223,9 +233,11 @@ impl TranscriptionWorker {
 
             // Spawn a local task to handle worker operations on the main thread
             let sessions = Arc::new(RwLock::new(HashMap::new()));
+            let ready_callbacks_for_spawn = self.ready_callbacks.clone();
             spawn_local(async move {
                 // Create web worker pointing to our worker.js
-                let worker = match Worker::new("/static/worker.js") {
+                // Use relative path from the web app's perspective
+                let worker = match Worker::new("./worker.js") {
                     Ok(w) => w,
                     Err(e) => {
                         tracing::error!("Failed to create worker: {:?}", e);
@@ -235,10 +247,12 @@ impl TranscriptionWorker {
 
                 // Set up message handler
                 let sessions_for_handler = sessions.clone();
+                let ready_callbacks_for_handler = ready_callbacks_for_spawn.clone();
                 let closure = Closure::wrap(Box::new(move |event: MessageEvent| {
                     let sessions = sessions_for_handler.clone();
+                    let ready_callbacks = ready_callbacks_for_handler.clone();
                     spawn_local(async move {
-                        Self::handle_worker_message(sessions, event).await;
+                        Self::handle_worker_message(sessions, ready_callbacks, event).await;
                     });
                 }) as Box<dyn FnMut(MessageEvent)>);
 
@@ -297,9 +311,20 @@ impl TranscriptionWorker {
 
     /// Wait for WorkerReady from worker.js
     async fn wait_for_worker_ready(&self, session_id: &str) -> WebResult<()> {
-        // In a real implementation, this would wait for the WorkerReady message
-        // For now, add a small delay to allow initialization
-        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+        let (ready_tx, ready_rx) = oneshot::channel();
+
+        // Store the ready callback for this session
+        {
+            let mut ready_callbacks = self.ready_callbacks.write().await;
+            ready_callbacks.insert(session_id.to_string(), ready_tx);
+        }
+
+        // Wait for actual WorkerReady message from worker.js with timeout
+        tokio::time::timeout(std::time::Duration::from_secs(10), ready_rx)
+            .await
+            .map_err(|_| WebError::WorkerInitialization("Worker ready timeout".to_string()))?
+            .map_err(|_| WebError::WorkerInitialization("Worker ready channel closed".to_string()))?;
+
         tracing::info!("Worker ready for session: {}", session_id);
         Ok(())
     }
@@ -307,6 +332,7 @@ impl TranscriptionWorker {
     /// Handle messages from worker.js
     async fn handle_worker_message(
         sessions: Arc<RwLock<HashMap<String, SessionData>>>,
+        ready_callbacks: Arc<RwLock<HashMap<String, oneshot::Sender<()>>>>,
         event: MessageEvent,
     ) {
         if let Some(response_text) = event.data().as_string() {
@@ -314,6 +340,12 @@ impl TranscriptionWorker {
                 match response {
                     WorkerResponse::WorkerReady { session_id } => {
                         tracing::info!("Worker ready for session: {}", session_id);
+
+                        // Signal the waiting thread that worker is ready
+                        let mut callbacks = ready_callbacks.write().await;
+                        if let Some(callback) = callbacks.remove(&session_id) {
+                            let _ = callback.send(());
+                        }
                     }
                     WorkerResponse::TranscriptionProgress {
                         session_id,
@@ -338,6 +370,10 @@ impl TranscriptionWorker {
                                 });
                             }
                         }
+                    }
+                    WorkerResponse::AudioMetadataResponse { metadata } => {
+                        // This is handled here for future extensibility
+                        tracing::info!("Received audio metadata response: {:?}", metadata);
                     }
                 }
             }

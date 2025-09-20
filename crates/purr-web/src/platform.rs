@@ -4,6 +4,7 @@ use crate::error::{WebError, WebResult};
 use crate::model::WebModelManager;
 use crate::storage::WebStorage;
 use crate::worker::{TranscriptionConfig, TranscriptionWorker};
+use crate::transcription::{start_transcription_process, validate_audio_file, AudioProcessingConfig};
 use async_trait::async_trait;
 use bytes::Bytes;
 use futures::Stream;
@@ -233,52 +234,53 @@ impl Platform for PlatformImpl {
             .ok_or_else(|| PlatformError::file_processing("File not found".to_string()))?;
 
         // Create transcription configuration
-        let config = TranscriptionConfig {
+        let _config = TranscriptionConfig {
             model_name: "whisper-base".to_string(), // Default model
             language: request.language.clone(),
             translate: request.translate,
             ..Default::default()
         };
 
-        // Create or get worker session
-        let session_id = {
-            let _guard = self.config_mutex.lock().await;
-            let sessions = self.sessions.read().await;
+        // Note: Session management is now handled by start_transcription_process
 
-            // Try to reuse existing session with same config
-            let existing_session = sessions.values().next().cloned();
-
-            if let Some(session_id) = existing_session {
-                session_id
-            } else {
-                // Create new session
-                drop(sessions);
-                let session_id = self
-                    .worker
-                    .create_session(config)
-                    .await
-                    .map_err(Self::convert_error)?;
-
-                let mut sessions = self.sessions.write().await;
-                sessions.insert(file_id.to_string(), session_id.clone());
-                session_id
-            }
-        };
-
-        // Start transcription with real audio data conversion
-        let transcription_request = TranscriptionRequest {
-            file_data,
-            language: request.language,
-            translate: request.translate,
-        };
-
-        let stream = self
-            .worker
-            .transcribe(&session_id, transcription_request)
-            .await
+        // Validate audio file before processing
+        validate_audio_file(&file_data, 100 * 1024 * 1024) // 100MB limit
             .map_err(Self::convert_error)?;
 
-        // Convert TranscriptionStatus stream to Result stream
+        // Use enhanced transcription process with real audio handling
+        let transcription_config = TranscriptionConfig {
+            model_name: "whisper-base".to_string(),
+            language: request.language.clone(),
+            translate: request.translate,
+            ..Default::default()
+        };
+
+        // Configure audio processing with optimized settings
+        let audio_config = AudioProcessingConfig {
+            target_sample_rate: 16000.0, // Whisper's optimal sample rate
+            target_channels: 1,           // Mono for better transcription
+            enable_agc: true,            // Automatic gain control
+            enable_noise_reduction: false, // Disabled for now to avoid artifacts
+            max_file_size: 100 * 1024 * 1024, // 100MB limit
+            ..Default::default()
+        };
+
+        tracing::info!(
+            "Starting enhanced transcription for {} byte file with model: {}",
+            file_data.len(),
+            transcription_config.model_name
+        );
+
+        // Start comprehensive transcription process
+        let stream = start_transcription_process(
+            file_data,
+            transcription_config,
+            Some(audio_config),
+        )
+        .await
+        .map_err(Self::convert_error)?;
+
+        // Convert to Result stream for platform compatibility
         let converted_stream = stream.map(Ok);
 
         Ok(Box::pin(converted_stream))

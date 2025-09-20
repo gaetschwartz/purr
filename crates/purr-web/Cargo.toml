@@ -70,6 +70,16 @@ web-sys = { version = "0.3", features = [
   "WritableStream",
   "TransformStream",
   "ReadableStreamDefaultReader",
+  # Web Audio API support
+  "AudioContext",
+  "AudioBuffer",
+  "AudioWorkletNode",
+  "OfflineAudioContext",
+  "AudioContextState",
+  "AudioNode",
+  "AudioParam",
+  "AudioProcessingEvent",
+  "BaseAudioContext",
 ] }
 js-sys = "0.3"
 gloo-timers = { version = "0.3", features = ["futures"] }

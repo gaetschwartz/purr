@@ -24,6 +24,10 @@ pub use model::{WebModelManager, ModelInfo, DownloadProgress, ModelStorageStats}
 pub use platform::PlatformImpl;
 pub use storage::{WebStorage, FileMetadata};
 pub use worker::{TranscriptionWorker, TranscriptionConfig};
+pub use transcription::{
+    start_transcription_process, validate_audio_file, get_supported_formats,
+    AudioTranscriptionProcessor, AudioProcessingConfig, AudioMetadata, AudioProcessingProgress,
+};
 pub use error::{WebError, WebResult};
 
 // Module declarations
@@ -32,6 +36,7 @@ mod model;
 pub mod platform;
 mod storage;
 mod worker;
+mod transcription;
 
 // NOTE: Removed panic hooks - let Dioxus handle panic management
 // Dioxus provides its own panic handling and WASM initialization

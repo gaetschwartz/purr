@@ -50,6 +50,21 @@ pub enum WebError {
 
     #[error("Session not found: {0}")]
     SessionNotFound(String),
+
+    #[error("Audio processing error: {0}")]
+    AudioProcessing(String),
+
+    #[error("WebGPU error: {0}")]
+    WebGpu(String),
+
+    #[error("Audio format not supported: {0}")]
+    UnsupportedAudioFormat(String),
+
+    #[error("Audio file too large: {0}")]
+    AudioFileTooLarge(String),
+
+    #[error("Web Audio API error: {0}")]
+    WebAudioApi(String),
 }
 
 impl WebError {
@@ -75,6 +90,21 @@ impl WebError {
             }
             WebError::Network { message } => {
                 PlatformError::io(Box::new(WebError::Network { message }))
+            }
+            WebError::AudioProcessing(message) => {
+                PlatformError::audio_processing(Box::new(WebError::AudioProcessing(message)))
+            }
+            WebError::UnsupportedAudioFormat(message) => {
+                PlatformError::audio_processing(Box::new(WebError::UnsupportedAudioFormat(message)))
+            }
+            WebError::AudioFileTooLarge(message) => {
+                PlatformError::audio_processing(Box::new(WebError::AudioFileTooLarge(message)))
+            }
+            WebError::WebAudioApi(message) => {
+                PlatformError::audio_processing(Box::new(WebError::WebAudioApi(message)))
+            }
+            WebError::WebGpu(message) => {
+                PlatformError::initialization(Box::new(WebError::WebGpu(message)))
             }
             _ => PlatformError::io(Box::new(self)),
         }
