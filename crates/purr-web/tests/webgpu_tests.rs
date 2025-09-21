@@ -89,8 +89,8 @@ mod webgpu_device_tests {
         let webgpu_error = WebError::WebGpu("Test WebGPU error".to_string());
 
         match &webgpu_error {
-            WebError::WebGpu(msg) => {
-                assert_eq!(msg, "Test WebGPU error");
+            WebError::WebGpu { source, .. } => {
+                assert_eq!(source.to_string(), "Test WebGPU error");
                 console::log_1(&"✓ WebGPU error handling works correctly".into());
             }
             _ => panic!("Expected WebGPU error variant"),

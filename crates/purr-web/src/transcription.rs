@@ -847,7 +847,10 @@ pub async fn start_transcription_process(
                     tracing::info!("Audio processing completed: {} samples", processed_samples);
                 }
                 AudioProcessingProgress::Failed { error } => {
-                    let _ = tx_clone.send(TranscriptionStatus::Error { message: error });
+                    let _ = tx_clone.send(TranscriptionStatus::Error {
+                        context: "Transcription error".to_string(),
+                        error_message: error
+                    });
                 }
                 _ => {}
             }

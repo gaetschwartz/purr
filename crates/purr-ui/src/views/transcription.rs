@@ -89,7 +89,9 @@ fn start_transcription_process(
             Err(e) => {
                 error!("Failed to get platform: {}", e);
                 status_signal.set(Some(TranscriptionStatus::InitFailed {
-                    message: e.to_string(),
+                    component: "platform".to_string(),
+                    reason: e.to_string(),
+                    error_details: None,
                 }));
                 return;
             }
@@ -129,8 +131,8 @@ fn start_transcription_process(
                                     info!("Transcription completed for file ID: {}", file_id);
                                     break;
                                 }
-                                TranscriptionStatus::Error { message } => {
-                                    error!("Transcription error: {}", message);
+                                TranscriptionStatus::Error { context, error_message } => {
+                                    error!("Transcription error: {}: {}", context, error_message);
                                     break;
                                 }
                                 _ => {}
@@ -139,7 +141,8 @@ fn start_transcription_process(
                         Err(e) => {
                             error!("Stream error: {}", e);
                             status_signal.set(Some(TranscriptionStatus::Error {
-                                message: format!("Stream error: {}", e),
+                                context: "stream".to_string(),
+                                error_message: format!("Stream error: {}", e),
                             }));
                             break;
                         }
@@ -149,7 +152,8 @@ fn start_transcription_process(
             Err(e) => {
                 error!("Failed to start transcription: {}", e);
                 status_signal.set(Some(TranscriptionStatus::Error {
-                    message: format!("Failed to start transcription: {}", e),
+                    context: "transcription_start".to_string(),
+                    error_message: format!("Failed to start transcription: {}", e),
                 }));
             }
         }

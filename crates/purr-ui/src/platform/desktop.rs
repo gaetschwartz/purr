@@ -303,7 +303,8 @@ impl Platform for PlatformImpl {
                     let _ = tx
                         .send(Ok(ModelOperationProgress::Failed {
                             model_id: model_id.clone(),
-                            error: e.to_string(),
+                            operation: "model_loading".to_string(),
+                            error_message: e.to_string(),
                         }))
                         .await;
                 }

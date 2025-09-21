@@ -198,7 +198,7 @@ impl TranscriptionWorker {
             let mut sessions = self.active_sessions.write().await;
             let session = sessions
                 .get_mut(session_id)
-                .ok_or_else(|| WebError::SessionNotFound(session_id.to_string()))?;
+                .ok_or_else(|| WebError::session_not_found(session_id))?;
             session
                 .active_requests
                 .insert(request_id.clone(), tx.clone());
@@ -369,7 +369,8 @@ impl TranscriptionWorker {
                         if let Some(session) = sessions_guard.get(&session_id) {
                             for sender in session.active_requests.values() {
                                 let _ = sender.send(TranscriptionStatus::Error {
-                                    message: error.clone(),
+                                    context: "Worker error".to_string(),
+                                    error_message: error.clone(),
                                 });
                             }
                         }
@@ -413,7 +414,10 @@ impl TranscriptionWorker {
                 word_count,
             },
             TranscriptionProgressStatus::Error { message } => {
-                TranscriptionStatus::Error { message }
+                TranscriptionStatus::Error {
+                    context: "Progress error".to_string(),
+                    error_message: message
+                }
             }
         }
     }

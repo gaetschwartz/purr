@@ -442,7 +442,8 @@ mod worker_error_handling_tests {
             let webgpu_error = WebError::WebGpu(error_msg.to_string());
 
             match webgpu_error {
-                WebError::WebGpu(msg) => {
+                WebError::WebGpu { source, .. } => {
+                    let msg = source.to_string();
                     assert_eq!(msg, error_msg);
                     assert!(msg.contains("WebGPU"));
                 }

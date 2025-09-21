@@ -291,9 +291,7 @@ impl FromStr for WhisperModel {
             "large-v3-turbo" => Ok(WhisperModel::LargeV3Turbo),
             "large-v3-turbo-q5_0" => Ok(WhisperModel::LargeV3TurboQ5_0),
             "large-v3-turbo-q8_0" => Ok(WhisperModel::LargeV3TurboQ8_0),
-            _ => Err(WhisperError::from(ConfigurationError::UnknownModel {
-                model_name: s.to_string(),
-            })),
+            _ => Err(WhisperError::from(ConfigurationError::unknown_model(s))),
         }
     }
 }

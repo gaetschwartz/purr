@@ -600,7 +600,8 @@ mod pipeline_integration_tests {
             let pipeline_error = WebError::WebGpu(format!("Pipeline error: {}", error_msg));
 
             match pipeline_error {
-                WebError::WebGpu(msg) => {
+                WebError::WebGpu { source, .. } => {
+                    let msg = source.to_string();
                     assert!(msg.contains("Pipeline error"));
                     assert!(msg.contains(error_msg));
                 }

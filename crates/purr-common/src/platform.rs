@@ -69,17 +69,46 @@ pub enum PlatformError {
     #[diagnostic(code(platform::model_not_found))]
     ModelNotFound { model_id: String },
 
-    #[error("Model download failed: {model_id} - {reason}")]
+    #[error("Model download failed: {model_id} from {url}")]
     #[diagnostic(code(platform::model_download_failed))]
-    ModelDownloadFailed { model_id: String, reason: String },
+    ModelDownloadFailed {
+        model_id: String,
+        url: String,
+        #[source]
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
 
-    #[error("Model installation failed: {model_id} - {reason}")]
+    #[error("Model installation failed: {model_id} at {path}")]
     #[diagnostic(code(platform::model_installation_failed))]
-    ModelInstallationFailed { model_id: String, reason: String },
+    ModelInstallationFailed {
+        model_id: String,
+        path: PathBuf,
+        #[source]
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
 
-    #[error("Invalid model metadata: {reason}")]
+    #[error("Invalid model metadata for {model_id}: {field} is {issue}")]
     #[diagnostic(code(platform::invalid_model_metadata))]
-    InvalidModelMetadata { reason: String },
+    InvalidModelMetadata {
+        model_id: String,
+        field: String,
+        issue: String,
+    },
+
+    #[error("Model verification failed: {model_id} checksum mismatch")]
+    #[diagnostic(code(platform::model_verification_failed))]
+    ModelVerificationFailed {
+        model_id: String,
+        expected_checksum: String,
+        actual_checksum: String,
+    },
+
+    #[error("Storage quota exceeded: {requested} bytes requested, {available} available")]
+    #[diagnostic(code(platform::storage_quota_exceeded))]
+    StorageQuotaExceeded {
+        requested: u64,
+        available: u64,
+    },
 
     #[error(transparent)]
     #[diagnostic(transparent)]
@@ -161,36 +190,70 @@ impl PlatformError {
     }
 
     /// Create a new PlatformError::ModelDownloadFailed
-    pub fn model_download_failed<S1, S2>(model_id: S1, reason: S2) -> Self
+    pub fn model_download_failed<S1, S2, E>(model_id: S1, url: S2, source: E) -> Self
     where
         S1: Into<String>,
         S2: Into<String>,
+        E: Into<Box<dyn std::error::Error + Send + Sync>>,
     {
         PlatformError::ModelDownloadFailed {
             model_id: model_id.into(),
-            reason: reason.into(),
+            url: url.into(),
+            source: source.into(),
         }
     }
 
     /// Create a new PlatformError::ModelInstallationFailed
-    pub fn model_installation_failed<S1, S2>(model_id: S1, reason: S2) -> Self
+    pub fn model_installation_failed<S, P, E>(model_id: S, path: P, source: E) -> Self
     where
-        S1: Into<String>,
-        S2: Into<String>,
+        S: Into<String>,
+        P: Into<PathBuf>,
+        E: Into<Box<dyn std::error::Error + Send + Sync>>,
     {
         PlatformError::ModelInstallationFailed {
             model_id: model_id.into(),
-            reason: reason.into(),
+            path: path.into(),
+            source: source.into(),
         }
     }
 
     /// Create a new PlatformError::InvalidModelMetadata
-    pub fn invalid_model_metadata<S>(reason: S) -> Self
+    pub fn invalid_model_metadata<S1, S2, S3>(model_id: S1, field: S2, issue: S3) -> Self
     where
-        S: Into<String>,
+        S1: Into<String>,
+        S2: Into<String>,
+        S3: Into<String>,
     {
         PlatformError::InvalidModelMetadata {
-            reason: reason.into(),
+            model_id: model_id.into(),
+            field: field.into(),
+            issue: issue.into(),
+        }
+    }
+
+    /// Create a new PlatformError::ModelVerificationFailed
+    pub fn model_verification_failed<S1, S2, S3>(
+        model_id: S1,
+        expected_checksum: S2,
+        actual_checksum: S3,
+    ) -> Self
+    where
+        S1: Into<String>,
+        S2: Into<String>,
+        S3: Into<String>,
+    {
+        PlatformError::ModelVerificationFailed {
+            model_id: model_id.into(),
+            expected_checksum: expected_checksum.into(),
+            actual_checksum: actual_checksum.into(),
+        }
+    }
+
+    /// Create a new PlatformError::StorageQuotaExceeded
+    pub fn storage_quota_exceeded(requested: u64, available: u64) -> Self {
+        PlatformError::StorageQuotaExceeded {
+            requested,
+            available,
         }
     }
 }
@@ -213,7 +276,10 @@ impl std::fmt::Display for UnsupportedPlatformError {
 pub enum ProcessingStatus {
     InProgress { bytes_processed: usize },
     Completed { total_bytes: usize, file_id: String },
-    Error { message: String },
+    Error {
+        operation: String,
+        error_message: String,
+    },
 }
 
 /// Transcription request parameters
@@ -248,9 +314,16 @@ pub enum TranscriptionStatus {
         word_count: usize,
     },
     /// Error occurred
-    Error { message: String },
+    Error {
+        context: String,
+        error_message: String,
+    },
     /// Failed to init the transcription engine
-    InitFailed { message: String },
+    InitFailed {
+        component: String,
+        reason: String,
+        error_details: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -439,7 +512,11 @@ pub enum ModelOperationProgress {
         local_path: PathBuf,
     },
     /// Operation failed
-    Failed { model_id: String, error: String },
+    Failed {
+        model_id: String,
+        operation: String,
+        error_message: String,
+    },
 }
 
 /// Platform trait defining the interface for platform-specific implementations

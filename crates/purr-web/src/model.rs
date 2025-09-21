@@ -95,7 +95,7 @@ impl WebModelManager {
             let models = self.models.read().await;
             models
                 .get(model_id)
-                .ok_or_else(|| WebError::ModelNotFound(model_id.to_string()))?
+                .ok_or_else(|| WebError::model_not_found(model_id, "memory"))?
                 .clone()
         };
 
@@ -132,26 +132,26 @@ impl WebModelManager {
         opts.set_method("GET");
 
         let request = Request::new_with_str_and_init(&url, &opts)
-            .map_err(|e| WebError::NetworkError(format!("Request creation failed: {:?}", e)))?;
+            .map_err(|e| WebError::network_error(0, format!("Request creation failed: {:?}", e), "unknown"))?;
 
         let window = web_sys::window()
-            .ok_or_else(|| WebError::NetworkError("No window object".to_string()))?;
+            .ok_or_else(|| WebError::network_error(0, "No window object", "unknown"))?;
 
         // Execute fetch
         let resp_value = JsFuture::from(window.fetch_with_request(&request))
             .await
-            .map_err(|e| WebError::NetworkError(format!("Fetch failed: {:?}", e)))?;
+            .map_err(|e| WebError::network_error(0, format!("Fetch failed: {:?}", e), "unknown"))?;
 
         let resp: Response = resp_value
             .dyn_into()
-            .map_err(|e| WebError::NetworkError(format!("Invalid response: {:?}", e)))?;
+            .map_err(|e| WebError::network_error(0, format!("Invalid response: {:?}", e), "unknown"))?;
 
         if !resp.ok() {
-            return Err(WebError::NetworkError(format!(
-                "HTTP {}: {}",
+            return Err(WebError::network_error(
                 resp.status(),
-                resp.status_text()
-            )));
+                resp.status_text(),
+                "unknown"
+            ));
         }
 
         // Get content length
@@ -169,12 +169,12 @@ impl WebModelManager {
             let reader = body
                 .get_reader()
                 .dyn_into::<web_sys::ReadableStreamDefaultReader>()
-                .map_err(|e| WebError::NetworkError(format!("Reader cast failed: {:?}", e)))?;
+                .map_err(|e| WebError::network_error(0, format!("Reader cast failed: {:?}", e), "unknown"))?;
             loop {
                 let read_promise = reader.read();
                 let result = JsFuture::from(read_promise)
                     .await
-                    .map_err(|e| WebError::NetworkError(format!("Stream read failed: {:?}", e)))?;
+                    .map_err(|e| WebError::network_error(0, format!("Stream read failed: {:?}", e), "unknown"))?;
 
                 let chunk_obj = js_sys::Object::from(result);
                 let done = js_sys::Reflect::get(&chunk_obj, &"done".into())

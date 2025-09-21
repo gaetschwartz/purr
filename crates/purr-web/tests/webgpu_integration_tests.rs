@@ -207,12 +207,12 @@ mod platform_integration_tests {
                                             console::log_1(&format!("Completed in {:.2}s, duration: {:.2}s, words: {}", processing_time, audio_duration, word_count).into());
                                             break;
                                         }
-                                        TranscriptionStatus::Error { message } => {
-                                            console::log_1(&format!("Error: {}", message).into());
+                                        TranscriptionStatus::Error { error_message, .. } => {
+                                            console::log_1(&format!("Error: {}", error_message).into());
                                             break;
                                         }
-                                        TranscriptionStatus::InitFailed { message } => {
-                                            console::log_1(&format!("Init failed: {}", message).into());
+                                        TranscriptionStatus::InitFailed { reason, .. } => {
+                                            console::log_1(&format!("Init failed: {}", reason).into());
                                             break;
                                         }
                                     }
@@ -370,12 +370,12 @@ mod worker_integration_tests {
                             console::log_1(&format!("Transcription completed in {:.2}s, duration: {:.2}s, words: {}", processing_time, audio_duration, word_count).into());
                             break;
                         }
-                        TranscriptionStatus::Error { message } => {
-                            console::log_1(&format!("Transcription error: {}", message).into());
+                        TranscriptionStatus::Error { error_message, .. } => {
+                            console::log_1(&format!("Transcription error: {}", error_message).into());
                             break;
                         }
-                        TranscriptionStatus::InitFailed { message } => {
-                            console::log_1(&format!("Init failed: {}", message).into());
+                        TranscriptionStatus::InitFailed { reason, .. } => {
+                            console::log_1(&format!("Init failed: {}", reason).into());
                             break;
                         }
                     }
@@ -459,7 +459,8 @@ mod error_handling_integration_tests {
             let webgpu_error = WebError::WebGpu("Simulated WebGPU failure".to_string());
 
             match webgpu_error {
-                WebError::WebGpu(msg) => {
+                WebError::WebGpu { source, .. } => {
+                    let msg = source.to_string();
                     console::log_1(&format!("✓ WebGPU error handled gracefully: {}", msg).into());
                 }
                 _ => panic!("Expected WebGPU error"),

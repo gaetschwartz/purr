@@ -224,9 +224,10 @@ impl AudioProcessor {
 
         // Check if we got any audio data
         if samples.is_empty() {
-            return Err(WhisperError::from(AudioProcessingError::ProcessingFailed {
-                reason: "No audio data could be extracted from file - file may be corrupted or unsupported".to_string()
-            }));
+            return Err(WhisperError::from(AudioProcessingError::processing_failed(
+                "audio extraction",
+                std::io::Error::new(std::io::ErrorKind::InvalidData, "No audio data could be extracted from file - file may be corrupted or unsupported")
+            )));
         }
 
         let duration = samples.len() as f32 / 16000.0;
@@ -247,11 +248,15 @@ impl AudioProcessor {
         // Validate file exists
         if !path.exists() {
             let error_msg = format!("Audio file not found: {}", path.display());
-            let error = WhisperError::from(AudioProcessingError::ProcessingFailed {
-                reason: error_msg.clone(),
-            });
+            let error = WhisperError::from(AudioProcessingError::processing_failed(
+                "file validation",
+                std::io::Error::new(std::io::ErrorKind::NotFound, error_msg.clone())
+            ));
             let _ = tx.send(Err(WhisperError::from(
-                AudioProcessingError::ProcessingFailed { reason: error_msg },
+                AudioProcessingError::processing_failed(
+                    "file validation",
+                    std::io::Error::new(std::io::ErrorKind::NotFound, error_msg)
+                ),
             )));
             return Err(error);
         }
@@ -379,13 +384,15 @@ impl AudioProcessor {
             // No chunks were sent, send error
             let error_msg =
                 "No audio data could be extracted from file - file may be corrupted or unsupported";
-            let error = WhisperError::from(AudioProcessingError::ProcessingFailed {
-                reason: error_msg.to_string(),
-            });
+            let error = WhisperError::from(AudioProcessingError::processing_failed(
+                "audio extraction",
+                std::io::Error::new(std::io::ErrorKind::InvalidData, error_msg)
+            ));
             let _ = tx.send(Err(WhisperError::from(
-                AudioProcessingError::ProcessingFailed {
-                    reason: error_msg.to_string(),
-                },
+                AudioProcessingError::processing_failed(
+                    "audio extraction",
+                    std::io::Error::new(std::io::ErrorKind::InvalidData, error_msg)
+                ),
             )));
             return Err(error);
         }
@@ -841,9 +848,10 @@ mod tests {
         let mut stream = AudioStream::new(rx);
 
         // Send an error
-        let test_error = WhisperError::from(AudioProcessingError::ProcessingFailed {
-            reason: "Test error".to_string(),
-        });
+        let test_error = WhisperError::from(AudioProcessingError::processing_failed(
+            "test operation",
+            std::io::Error::new(std::io::ErrorKind::Other, "Test error")
+        ));
         tx.send(Err(test_error)).unwrap();
         drop(tx);
 
@@ -869,9 +877,9 @@ mod tests {
                 // Expected ReadFailed error for nonexistent file
             }
             WhisperError::AudioProcessing {
-                source: AudioProcessingError::ProcessingFailed { reason },
+                source: AudioProcessingError::ProcessingFailed { operation, .. },
             } => {
-                assert!(reason.contains("not found"));
+                assert!(operation.contains("not found"));
             }
             _ => panic!(
                 "Expected ReadFailed or ProcessingFailed error with 'not found', got: {:?}",
