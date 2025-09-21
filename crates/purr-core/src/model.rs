@@ -540,18 +540,7 @@ mod tests {
         assert!(invalid.is_err(), "Expected an error but got: {:?}", invalid);
     }
 
-    #[test]
-    fn test_model_filename() {
-        assert_eq!(WhisperModel::Base.filename(), "ggml-base.bin");
-        assert_eq!(
-            WhisperModel::LargeV3Turbo.filename(),
-            "ggml-large-v3-turbo.bin"
-        );
-    }
-
-    #[test]
-    fn test_model_description() {
-        assert!(WhisperModel::Base.description().contains("142 MB"));
-        assert!(WhisperModel::Tiny.description().contains("fastest"));
-    }
+    // Removed trivial tests:
+    // - test_model_filename: just tests getter methods return hardcoded values
+    // - test_model_description: just tests string content of hardcoded descriptions
 }

@@ -21,56 +21,27 @@ pub struct TranscriptionStats {
     /// Audio duration in seconds
     pub audio_duration: f32,
 
-    /// Real-time factor (`audio_duration` / `processing_time`)
-    pub real_time_factor: f32,
-
     /// Number of segments produced
     pub segment_count: usize,
 
-    /// Average segment length in seconds
-    pub avg_segment_length: f32,
-
-    /// Total number of words (estimated)
+    /// Total number of words
     pub word_count: usize,
-
-    /// Words per minute (estimated)
-    pub words_per_minute: f32,
 }
 
 impl TranscriptionStats {
-    #[must_use]
-    pub fn new(
-        processing_time: f64,
-        audio_duration: f32,
-        segment_count: usize,
-        word_count: usize,
-    ) -> Self {
-        let real_time_factor = if processing_time > 0.0 {
-            f64::from(audio_duration) / processing_time
+    pub fn real_time_factor(&self) -> f32 {
+        if self.processing_time > 0.0 {
+            self.audio_duration / self.processing_time as f32
         } else {
             0.0
-        } as f32;
+        }
+    }
 
-        let avg_segment_length = if segment_count > 0 {
-            audio_duration / segment_count as f32
+    pub fn words_per_minute(&self) -> f32 {
+        if self.audio_duration > 0.0 {
+            (self.word_count as f32 * 60.0) / self.audio_duration
         } else {
             0.0
-        };
-
-        let words_per_minute = if audio_duration > 0.0 {
-            (word_count as f32 * 60.0) / audio_duration
-        } else {
-            0.0
-        };
-
-        Self {
-            processing_time,
-            audio_duration,
-            real_time_factor,
-            segment_count,
-            avg_segment_length,
-            word_count,
-            words_per_minute,
         }
     }
 }

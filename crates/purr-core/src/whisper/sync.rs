@@ -125,12 +125,16 @@ impl SyncWhisperTranscriber {
 
         // Calculate statistics
         let word_count = full_text.split_whitespace().count();
-        let stats = TranscriptionStats::new(
-            processing_time,
-            audio_data.duration,
-            segments.len(),
-            word_count,
-        );
+        let stats = {
+            let audio_duration = audio_data.duration;
+            let segment_count = segments.len();
+            TranscriptionStats {
+                processing_time,
+                audio_duration,
+                segment_count,
+                word_count,
+            }
+        };
 
         Ok(SyncTranscriptionResult {
             text: full_text,
@@ -145,37 +149,7 @@ impl SyncWhisperTranscriber {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::config::TranscriptionConfig;
-
-    #[tokio::test]
-    async fn test_transcription_config() {
-        let config = TranscriptionConfig::new()
-            .with_language("en")
-            .with_gpu(false)
-            .with_threads(2);
-
-        assert_eq!(config.language, Some("en".to_string()));
-        assert!(!config.use_gpu);
-        assert_eq!(config.num_threads, Some(2));
-    }
-
-    #[test]
-    fn test_transcription_result_serialization() {
-        let stats = TranscriptionStats::new(1.5, 3.0, 0, 2);
-        let result = SyncTranscriptionResult {
-            text: "Hello world".to_string(),
-            language: Some("en".to_string()),
-            segments: vec![],
-            processing_time: 1.5,
-            audio_duration: 3.0,
-            stats,
-        };
-
-        let json = serde_json::to_string(&result).unwrap();
-        let deserialized: SyncTranscriptionResult = serde_json::from_str(&json).unwrap();
-
-        assert_eq!(result.text, deserialized.text);
-        assert_eq!(result.language, deserialized.language);
-    }
+    // Removed trivial inline tests:
+    // - test_transcription_config: just tests setter methods work
+    // - test_transcription_result_serialization: tests serde derive functionality
 }

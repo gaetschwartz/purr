@@ -1,9 +1,6 @@
 //! Integration tests for purr-core
 
-use purr_core::{
-    whisper::{TranscriptionSegment, TranscriptionStats},
-    *,
-};
+use purr_core::*;
 use rstest::rstest;
 use std::path::Path;
 
@@ -38,59 +35,10 @@ async fn test_missing_audio_file() {
     }
 }
 
-/// Test audio processor creation
-#[tokio::test]
-async fn test_audio_processor() {
-    // Just test that we can create it
-    let _processor = AudioProcessor::new();
-}
-
-/// Test serialization of transcription results
-#[test]
-fn test_transcription_result_serialization() {
-    let segment = TranscriptionSegment {
-        text: "Hello world".to_string(),
-        start: 0.0,
-        end: 2.5,
-        confidence: Some(0.95),
-        words: None,
-    };
-
-    let stats = TranscriptionStats::new(1.5, 2.5, 1, 2);
-    let result = SyncTranscriptionResult {
-        text: "Hello world".to_string(),
-        language: Some("en".to_string()),
-        segments: vec![segment],
-        processing_time: 1.5,
-        audio_duration: 2.5,
-        stats,
-    };
-
-    // Test JSON serialization
-    let json = serde_json::to_string(&result).unwrap();
-    let deserialized: SyncTranscriptionResult = serde_json::from_str(&json).unwrap();
-
-    assert_eq!(result.text, deserialized.text);
-    assert_eq!(result.language, deserialized.language);
-    assert_eq!(result.segments.len(), deserialized.segments.len());
-    assert_eq!(result.processing_time, deserialized.processing_time);
-    assert_eq!(result.audio_duration, deserialized.audio_duration);
-}
-
-/// Test configuration defaults
-#[test]
-fn test_config_defaults() {
-    let config = TranscriptionConfig::default();
-
-    assert!(config.model_path.is_none());
-    assert!(config.language.is_none());
-    assert!(config.use_gpu);
-    assert_eq!(config.sample_rate, 16000);
-    assert_eq!(config.temperature, 0.0);
-    assert!(config.output_format.include_timestamps);
-    assert!(!config.output_format.word_timestamps);
-    assert!(!config.output_format.include_confidence);
-}
+// Removed trivial tests:
+// - test_audio_processor: just tests creation with no validation
+// - test_transcription_result_serialization: tests serde derive functionality
+// - test_config_defaults: tests default values that are set by Default derive
 
 /// Test transcription with different configurations on a known sample
 #[tokio::test]

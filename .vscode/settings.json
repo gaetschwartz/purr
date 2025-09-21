@@ -1,7 +1,5 @@
 {
   "chat.agent.maxRequests": 64,
   "rust-analyzer.check.command": "clippy",
-  "rust-analyzer.cargo.features": [
-    "purr-ui/desktop"
-  ],
+  "rust-analyzer.cargo.features": [],
 }

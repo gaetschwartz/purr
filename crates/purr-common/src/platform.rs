@@ -87,7 +87,7 @@ pub enum PlatformError {
 }
 
 impl PlatformError {
-    /// Create a new PlatformError::FileProcessing
+    /// Create a new `PlatformError::FileProcessing`
     pub fn file_processing<E>(err: E) -> Self
     where
         E: Into<Box<dyn std::error::Error + Send + Sync>>,
@@ -95,7 +95,7 @@ impl PlatformError {
         PlatformError::FileProcessing { source: err.into() }
     }
 
-    /// Create a new PlatformError::Transcription
+    /// Create a new `PlatformError::Transcription`
     pub fn transcription<E>(err: E) -> Self
     where
         E: Into<Box<dyn std::error::Error + Send + Sync>>,
@@ -103,7 +103,7 @@ impl PlatformError {
         PlatformError::Transcription { source: err.into() }
     }
 
-    /// Create a new PlatformError::AudioProcessing
+    /// Create a new `PlatformError::AudioProcessing`
     pub fn audio_processing<E>(err: E) -> Self
     where
         E: Into<Box<dyn std::error::Error + Send + Sync>>,
@@ -111,7 +111,7 @@ impl PlatformError {
         PlatformError::AudioProcessing { source: err.into() }
     }
 
-    /// Create a new PlatformError::Initialization
+    /// Create a new `PlatformError::Initialization`
     pub fn initialization<E>(err: E) -> Self
     where
         E: Into<Box<dyn std::error::Error + Send + Sync>>,
@@ -119,7 +119,7 @@ impl PlatformError {
         PlatformError::Initialization { source: err.into() }
     }
 
-    /// Create a new PlatformError::Io
+    /// Create a new `PlatformError::Io`
     pub fn io<E>(err: E) -> Self
     where
         E: Into<Box<dyn std::error::Error + Send + Sync>>,
@@ -127,7 +127,7 @@ impl PlatformError {
         PlatformError::Io { source: err.into() }
     }
 
-    /// Create a new PlatformError::Unsupported
+    /// Create a new `PlatformError::Unsupported`
     pub fn unsupported<S>(operation: S) -> Self
     where
         S: Into<Cow<'static, str>>,
@@ -137,7 +137,7 @@ impl PlatformError {
         }
     }
 
-    /// Create a new PlatformError::UnsupportedPlatform
+    /// Create a new `PlatformError::Unsupported`Platform
     pub fn unsupported_platform() -> Self {
         PlatformError::Other(UnsupportedPlatformError)
     }

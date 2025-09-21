@@ -71,3 +71,5 @@ pub async fn transcribe_file_stream<P: AsRef<std::path::Path>>(
     // Start streaming transcription (consumes both transcriber and stream)
     transcriber.transcribe(audio_stream).await
 }
+
+pub const PKG_NAME: &str = env!("CARGO_PKG_NAME");

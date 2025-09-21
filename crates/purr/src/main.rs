@@ -9,20 +9,25 @@ use clap::builder::{
 use clap::{Parser, Subcommand};
 use const_str::format as cfmt;
 use indicatif::{HumanBytes, HumanDuration, ProgressBar, ProgressStyle};
+use miette::IntoDiagnostic as _;
 use owo_colors::OwoColorize as _;
 use purr_core::{
-    dev::FeatureStatus, install_logging_hooks, list_devices, transcribe_file_stream,
-    transcribe_file_sync, ModelManager, TranscriptionConfig, WhisperModel,
+    dev::{FeatureStatus, WhisperGpuBackend},
+    install_logging_hooks, list_devices, transcribe_file_stream, transcribe_file_sync,
+    ModelManager, TranscriptionConfig, WhisperModel,
 };
 use purr_core::{
     math::{ByteSpeed, RoundToUnit as _},
     SystemInfo,
 };
 use shadow_rs::shadow;
-use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process;
 use std::str::FromStr as _;
+use std::{
+    borrow::Cow,
+    io::{self, Write},
+};
 use tracing::{debug, error, info, warn, Level};
 use tracing_subscriber::EnvFilter;
 
@@ -51,27 +56,24 @@ async fn main_impl() -> miette::Result<()> {
                 EnvFilter::builder()
                     .with_default_directive(Level::DEBUG.into())
                     .from_env()
-                    .map_err(purr_core::WhisperError::from)?
+                    .into_diagnostic()?
                     .add_directive(
-                        "purr_core=trace"
+                        cfmt!("{PURR_CORE}=trace", PURR_CORE = purr_core::PKG_NAME)
                             .parse()
-                            .map_err(purr_core::WhisperError::from)?,
+                            .into_diagnostic()?,
                     )
-                    .add_directive(
-                        cfmt!("{APP_NAME}=trace")
-                            .parse()
-                            .map_err(purr_core::WhisperError::from)?,
-                    ),
+                    .add_directive(cfmt!("{APP_NAME}=trace").parse().into_diagnostic()?),
             )
+            .with_timer(tracing_subscriber::fmt::time::Uptime::default())
             .with_writer(std::io::stderr)
             .init();
     } else {
         tracing_subscriber::fmt()
             .with_env_filter(
                 EnvFilter::builder()
-                    .with_default_directive(Level::INFO.into())
+                    .with_default_directive(Level::WARN.into())
                     .from_env()
-                    .map_err(purr_core::WhisperError::from)?,
+                    .into_diagnostic()?,
             )
             .compact()
             .without_time()
@@ -297,28 +299,50 @@ async fn handle_streaming_output(
         all_chunks.push(chunk.clone());
 
         // Format the chunk for real-time output
-        let chunk_text = match cli.output {
+        let chunk_text: Cow<'_, str> = match cli.output {
             OutputFormat::Text => {
                 if cli.timestamps {
-                    format!("[{:.2}s -> {:.2}s] {}", chunk.start, chunk.end, chunk.text)
+                    format!("[{:.2}s -> {:.2}s] {}", chunk.start, chunk.end, chunk.text).into()
                 } else {
-                    chunk.text.clone()
+                    Cow::Borrowed(&chunk.text)
                 }
             }
-            OutputFormat::Json => {
-                serde_json::to_string(&chunk).map_err(purr_core::WhisperError::from)?
-            }
-            OutputFormat::Srt => {
-                format!(
-                    "{}\n{} --> {}\n{}\n",
-                    chunk.chunk_index + 1,
-                    format_srt_time(chunk.start),
-                    format_srt_time(chunk.end),
-                    chunk.text
-                )
-            }
-            OutputFormat::Txt => chunk.text.clone(),
+            OutputFormat::Json => serde_json::to_string(&chunk).into_diagnostic()?.into(),
+            OutputFormat::Srt => format!(
+                "{}\n{} --> {}\n{}\n",
+                chunk.chunk_index + 1,
+                format_srt_time(chunk.start),
+                format_srt_time(chunk.end),
+                chunk.text
+            )
+            .into(),
+            OutputFormat::Txt => Cow::Borrowed(&chunk.text),
         };
+
+        // Print to stdout or accumulate for file output
+        if cli.output_file.is_some() {
+            output_buffer.push_str(&chunk_text);
+            if !matches!(cli.output, OutputFormat::Txt) {
+                output_buffer.push('\n');
+            }
+        } else {
+            match cli.output {
+                OutputFormat::Json => {
+                    writeln!(stdout, "{chunk_text}").into_diagnostic()?;
+                }
+                _ => {
+                    write!(stdout, "{chunk_text}").into_diagnostic()?;
+                    if !chunk.text.is_empty() && !chunk.text.ends_with('\n') {
+                        if matches!(cli.output, OutputFormat::Srt) {
+                            writeln!(stdout).into_diagnostic()?;
+                        } else {
+                            write!(stdout, " ").into_diagnostic()?;
+                        }
+                    }
+                    stdout.flush().into_diagnostic()?;
+                }
+            }
+        }
 
         // Check for final statistics
         if let Some(ref stats) = chunk.final_stats {
@@ -328,42 +352,17 @@ async fn handle_streaming_output(
                 println!("{}", "Streaming Transcription Statistics:".green().bold());
                 println!("Audio duration: {:.2}s", stats.audio_duration);
                 println!("Processing time: {:.2}s", stats.processing_time);
-                println!("Real-time factor: {:.2}x", stats.real_time_factor);
+                println!("Real-time factor: {:.2}x", stats.real_time_factor());
                 println!("Segments: {}", stats.segment_count);
-                println!("Average segment length: {:.2}s", stats.avg_segment_length);
                 println!("Words: {}", stats.word_count);
-                println!("Words per minute: {:.1}", stats.words_per_minute);
-            }
-        }
-
-        // Print to stdout or accumulate for file output
-        if cli.output_file.is_some() {
-            output_buffer.push_str(&chunk_text);
-            if !matches!(cli.output, OutputFormat::Txt) {
-                output_buffer.push('\n');
-            }
-        } else {
-            // IMMEDIATE real-time output to stdout
-            if matches!(cli.output, OutputFormat::Json) {
-                write!(stdout, "{chunk_text}").map_err(purr_core::WhisperError::from)?;
-            } else {
-                write!(stdout, "{chunk_text}").map_err(purr_core::WhisperError::from)?;
-                if !chunk.text.is_empty() && !chunk.text.ends_with('\n') {
-                    if matches!(cli.output, OutputFormat::Srt) {
-                        writeln!(stdout).map_err(purr_core::WhisperError::from)?;
-                    } else {
-                        write!(stdout, " ").map_err(purr_core::WhisperError::from)?;
-                    }
-                }
-                // CRITICAL: Flush immediately to show real-time output
-                stdout.flush().map_err(purr_core::WhisperError::from)?;
+                println!("Words per minute: {:.1}", stats.words_per_minute());
             }
         }
     }
 
     // Write to file if specified
     if let Some(output_file) = &cli.output_file {
-        fs::write(output_file, &output_buffer).map_err(purr_core::WhisperError::from)?;
+        fs::write(output_file, &output_buffer).into_diagnostic()?;
         if cli.verbose {
             info!(
                 "\n{} Streaming output written to: {}",
@@ -422,14 +421,10 @@ async fn prompt_for_model_download(
     println!();
 
     print!("Would you like to download the base model now? [Y/n]: ");
-    io::stdout()
-        .flush()
-        .map_err(purr_core::WhisperError::from)?;
+    io::stdout().flush().into_diagnostic()?;
 
     let mut input = String::new();
-    io::stdin()
-        .read_line(&mut input)
-        .map_err(purr_core::WhisperError::from)?;
+    io::stdin().read_line(&mut input).into_diagnostic()?;
     let input = input.trim().to_lowercase();
 
     // Default to 'yes' if user just presses enter
@@ -687,24 +682,32 @@ async fn handle_model_command(command: ModelCommands, verbose: bool) -> miette::
 }
 
 /// Handle system subcommands
-async fn handle_sys_command(verbose: bool) -> miette::Result<()> {
+async fn handle_sys_command(_verbose: bool) -> miette::Result<()> {
     let sys = SystemInfo::get();
 
-    fn feature_status(feature: FeatureStatus) -> String {
+    fn feature_status(feature: &FeatureStatus) -> String {
         match feature {
-            FeatureStatus::Disabled => "Disabled".red().bold().to_string(),
-            FeatureStatus::EnabledButNotAvailable => {
-                "Enabled (but not available)".yellow().bold().to_string()
-            }
-            FeatureStatus::Available(_) => "Available".green().bold().to_string(),
+            FeatureStatus::Disabled => "Disabled".yellow().to_string(),
+            FeatureStatus::EnabledButNotAvailable => "Enabled but not available".red().to_string(),
+            FeatureStatus::Available(_) => "Enabled".green().to_string(),
         }
     }
 
-    println!("Vulkan support: {}", feature_status(sys.vulkan_available));
-    println!("CUDA support: {}", feature_status(sys.cuda_available));
-    if cfg!(target_os = "macos") {
-        println!("CoreML support: {}", feature_status(sys.coreml_available));
-        println!("Metal support: {}", feature_status(sys.metal_available));
+    println!("{}", "Backends:".blue().bold());
+    println!();
+    let mut gpu_backends = WhisperGpuBackend::ALL
+        .iter()
+        .map(|b| (b.pretty_name(), &sys.backends[b]))
+        .collect::<Vec<_>>();
+    gpu_backends.sort_by(|a, b| a.1.cmp(b.1));
+    let longest = gpu_backends
+        .iter()
+        .map(|(name, _)| name.len())
+        .max()
+        .unwrap_or(0);
+
+    for (name, status) in gpu_backends {
+        println!("  * {:longest$} - {}", name, feature_status(status));
     }
 
     println!("{}", "Devices:".blue().bold());
@@ -727,7 +730,7 @@ async fn handle_sys_command(verbose: bool) -> miette::Result<()> {
                 if device.description.is_empty() {
                     String::new()
                 } else {
-                    format_args!("{}", device.description).to_string()
+                    device.description
                 },
                 match device.tpe {
                     purr_core::dev::DeviceType::Cpu =>
@@ -736,21 +739,21 @@ async fn handle_sys_command(verbose: bool) -> miette::Result<()> {
                         format_args!("({})", "GPU".blue()).dimmed().to_string(),
                     purr_core::dev::DeviceType::Accel =>
                         format_args!("({})", "Accel".yellow()).dimmed().to_string(),
+                    purr_core::dev::DeviceType::Unknown =>
+                        format_args!("({})", "Unknown").dimmed().to_string(),
                 },
             );
             if device.vram_total != 0 {
-                if verbose {
+                if device.vram_free != 0 && device.vram_free <= device.vram_total {
                     println!(
-                        "    VRAM: {} / {} ({} free)",
-                        format_file_size(device.vram_total as u64 - device.vram_free as u64)
-                            .yellow(),
-                        format_file_size(device.vram_total as u64).yellow(),
-                        format_file_size(device.vram_free as u64).green()
+                        "    VRAM available: {}/{}",
+                        format_file_size(device.vram_free as u64).green(),
+                        format_file_size(device.vram_total as u64).green(),
                     );
                 } else {
                     println!(
-                        "    VRAM: {}",
-                        format_file_size(device.vram_total as u64).yellow()
+                        "    VRAM total: {}",
+                        format_file_size(device.vram_total as u64).green()
                     );
                 }
             }
@@ -945,9 +948,7 @@ async fn setup_config(cli: &Cli) -> miette::Result<TranscriptionConfig> {
             config = config.with_model_path(model_path);
         } else {
             // Otherwise, resolve relative to current directory
-            let model_path = std::env::current_dir()
-                .map_err(purr_core::WhisperError::from)?
-                .join(model_path);
+            let model_path = std::env::current_dir().into_diagnostic()?.join(model_path);
             if model_path.exists() {
                 config = config.with_model_path(model_path);
             } else {
@@ -988,12 +989,15 @@ async fn setup_config(cli: &Cli) -> miette::Result<TranscriptionConfig> {
         config = config.with_language(language);
     }
 
-    config = config.with_translate(cli.translate);
-    config = config.with_threads(cli.threads.unwrap_or_else(num_cpus::get));
-    config.temperature = cli.temperature;
-    config.output_format.include_timestamps = cli.timestamps;
-    config.output_format.word_timestamps = cli.word_timestamps;
-    config = config.with_verbose(cli.verbose);
+    config = config
+        .with_translate(cli.translate)
+        .with_threads(cli.threads.unwrap_or_else(num_cpus::get))
+        .with_temperature(cli.temperature)
+        .with_verbose(cli.verbose)
+        .apply_output_format(|f| {
+            f.with_timestamps(cli.timestamps)
+                .with_word_timestamps(cli.word_timestamps)
+        });
 
     Ok(config)
 }
@@ -1018,9 +1022,7 @@ fn handle_output(result: purr_core::SyncTranscriptionResult, cli: &Cli) -> miett
                 result.text.clone()
             }
         }
-        OutputFormat::Json => {
-            serde_json::to_string_pretty(&result).map_err(purr_core::WhisperError::from)?
-        }
+        OutputFormat::Json => serde_json::to_string_pretty(&result).into_diagnostic()?,
         OutputFormat::Srt => result
             .segments
             .iter()
@@ -1042,7 +1044,7 @@ fn handle_output(result: purr_core::SyncTranscriptionResult, cli: &Cli) -> miett
     // Write output to file or stdout
     if let Some(output_file) = &cli.output_file {
         use std::fs;
-        fs::write(output_file, &output_content).map_err(purr_core::WhisperError::from)?;
+        fs::write(output_file, &output_content).into_diagnostic()?;
         if cli.verbose {
             println!(
                 "{} Output written to: {}",
@@ -1060,14 +1062,10 @@ fn handle_output(result: purr_core::SyncTranscriptionResult, cli: &Cli) -> miett
         println!("{}", "Transcription Statistics:".green().bold());
         println!("Audio duration: {:.2}s", result.stats.audio_duration);
         println!("Processing time: {:.2}s", result.stats.processing_time);
-        println!("Real-time factor: {:.2}x", result.stats.real_time_factor);
+        println!("Real-time factor: {:.2}x", result.stats.real_time_factor());
         println!("Segments: {}", result.stats.segment_count);
-        println!(
-            "Average segment length: {:.2}s",
-            result.stats.avg_segment_length
-        );
         println!("Words: {}", result.stats.word_count);
-        println!("Words per minute: {:.1}", result.stats.words_per_minute);
+        println!("Words per minute: {:.1}", result.stats.words_per_minute());
         if let Some(lang) = &result.language {
             println!("Detected language: {lang}");
         }

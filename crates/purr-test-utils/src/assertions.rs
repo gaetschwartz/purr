@@ -4,12 +4,7 @@
 #[macro_export]
 macro_rules! assert_async_timeout {
     ($timeout_ms:expr, $fut:expr) => {
-        match tokio::time::timeout(
-            std::time::Duration::from_millis($timeout_ms),
-            $fut,
-        )
-        .await
-        {
+        match tokio::time::timeout(std::time::Duration::from_millis($timeout_ms), $fut).await {
             Ok(result) => result,
             Err(_) => panic!("Operation timed out after {}ms", $timeout_ms),
         }
@@ -17,7 +12,7 @@ macro_rules! assert_async_timeout {
 }
 
 /// Assert that a WebGPU operation succeeds
-#[cfg(feature = "web")]
+#[cfg(target_arch = "wasm32")]
 #[macro_export]
 macro_rules! assert_webgpu_ok {
     ($result:expr) => {
@@ -59,11 +54,19 @@ macro_rules! assert_audio_valid {
 #[macro_export]
 macro_rules! assert_transcription_valid {
     ($transcription:expr) => {
-        assert!(!$transcription.text.trim().is_empty(), "Transcription text should not be empty");
-        assert!($transcription.confidence >= 0.0 && $transcription.confidence <= 1.0,
-               "Confidence should be between 0.0 and 1.0, got: {}", $transcription.confidence);
-        assert!($transcription.duration > std::time::Duration::ZERO,
-               "Duration should be positive");
+        assert!(
+            !$transcription.text.trim().is_empty(),
+            "Transcription text should not be empty"
+        );
+        assert!(
+            $transcription.confidence >= 0.0 && $transcription.confidence <= 1.0,
+            "Confidence should be between 0.0 and 1.0, got: {}",
+            $transcription.confidence
+        );
+        assert!(
+            $transcription.duration > std::time::Duration::ZERO,
+            "Duration should be positive"
+        );
     };
 }
 
@@ -88,9 +91,9 @@ macro_rules! assert_file_size_range {
 #[macro_export]
 macro_rules! assert_memory_usage {
     ($max_mb:expr, $closure:expr) => {
-        let start_memory = crate::get_memory_usage();
+        let start_memory = $crate::get_memory_usage();
         $closure;
-        let end_memory = crate::get_memory_usage();
+        let end_memory = $crate::get_memory_usage();
         let used_mb = (end_memory - start_memory) / 1024 / 1024;
         assert!(
             used_mb <= $max_mb,
@@ -169,7 +172,6 @@ pub fn get_memory_usage() -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use tokio::time::{sleep, Duration};
 
     #[tokio::test]

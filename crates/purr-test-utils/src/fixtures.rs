@@ -61,11 +61,11 @@ impl AudioFixtures {
         // Format chunk
         wav_data.extend_from_slice(b"fmt ");
         wav_data.extend_from_slice(&16u32.to_le_bytes()); // Chunk size
-        wav_data.extend_from_slice(&1u16.to_le_bytes());  // Audio format (PCM)
-        wav_data.extend_from_slice(&1u16.to_le_bytes());  // Channels
+        wav_data.extend_from_slice(&1u16.to_le_bytes()); // Audio format (PCM)
+        wav_data.extend_from_slice(&1u16.to_le_bytes()); // Channels
         wav_data.extend_from_slice(&sample_rate.to_le_bytes());
         wav_data.extend_from_slice(&(sample_rate * 4).to_le_bytes()); // Byte rate
-        wav_data.extend_from_slice(&4u16.to_le_bytes());  // Block align
+        wav_data.extend_from_slice(&4u16.to_le_bytes()); // Block align
         wav_data.extend_from_slice(&32u16.to_le_bytes()); // Bits per sample
 
         // Data chunk
@@ -160,10 +160,10 @@ impl ConfigFixtures {
 }
 
 /// WebGPU test fixtures
-#[cfg(feature = "web")]
+#[cfg(target_arch = "wasm32")]
 pub struct WebGpuFixtures;
 
-#[cfg(feature = "web")]
+#[cfg(target_arch = "wasm32")]
 impl WebGpuFixtures {
     /// Create mock WebGPU adapter for testing
     pub fn mock_adapter() -> MockGpuAdapter {
@@ -212,20 +212,14 @@ impl NetworkFixtures {
                 "content-type": "application/octet-stream"
             }),
         );
-        response.insert(
-            "status".to_string(),
-            serde_json::json!(200),
-        );
+        response.insert("status".to_string(), serde_json::json!(200));
         response
     }
 
     /// Create mock error responses
     pub fn mock_error_response(status: u16, message: &str) -> HashMap<String, Value> {
         let mut response = HashMap::new();
-        response.insert(
-            "status".to_string(),
-            serde_json::json!(status),
-        );
+        response.insert("status".to_string(), serde_json::json!(status));
         response.insert(
             "error".to_string(),
             serde_json::json!({
@@ -265,20 +259,20 @@ impl PerformanceFixtures {
     }
 }
 
-#[cfg(feature = "web")]
+#[cfg(target_arch = "wasm32")]
 pub struct MockGpuAdapter;
 
-#[cfg(feature = "web")]
+#[cfg(target_arch = "wasm32")]
 impl MockGpuAdapter {
     pub fn new() -> Self {
         Self
     }
 }
 
-#[cfg(feature = "web")]
+#[cfg(target_arch = "wasm32")]
 pub struct MockGpuDevice;
 
-#[cfg(feature = "web")]
+#[cfg(target_arch = "wasm32")]
 impl MockGpuDevice {
     pub fn new() -> Self {
         Self
@@ -295,7 +289,7 @@ mod tests {
         let audio = fixtures.generate_sine_wave(1.0, 440.0, 16000);
 
         assert_eq!(audio.len(), 16000);
-        assert!(audio.iter().all(|&sample| sample >= -1.0 && sample <= 1.0));
+        assert!(audio.iter().all(|&sample| (-1.0..=1.0).contains(&sample)));
     }
 
     #[test]
@@ -309,6 +303,8 @@ mod tests {
     fn test_performance_fixtures() {
         let scenarios = PerformanceFixtures::stress_test_scenarios();
         assert!(!scenarios.is_empty());
-        assert!(scenarios.iter().all(|(name, size)| !name.is_empty() && *size > 0));
+        assert!(scenarios
+            .iter()
+            .all(|(name, size)| !name.is_empty() && *size > 0));
     }
 }

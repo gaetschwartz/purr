@@ -12,7 +12,7 @@ pub mod fixtures;
 pub mod generators;
 pub mod mocks;
 
-#[cfg(feature = "web")]
+#[cfg(target_arch = "wasm32")]
 pub mod webgpu;
 
 #[cfg(feature = "benchmarks")]
@@ -52,19 +52,18 @@ pub fn init_test_tracing() {
 }
 
 /// Async test runner with timeout
-pub async fn run_with_timeout<F, T>(
-    timeout_ms: u64,
-    test_fn: F,
-) -> TestResult<T>
+pub async fn run_with_timeout<F, T>(timeout_ms: u64, test_fn: F) -> TestResult<T>
 where
     F: std::future::Future<Output = TestResult<T>>,
 {
-    tokio::time::timeout(
-        std::time::Duration::from_millis(timeout_ms),
-        test_fn,
-    )
-    .await
-    .map_err(|_| Box::new(std::io::Error::new(std::io::ErrorKind::TimedOut, "Test timed out")) as Box<dyn std::error::Error + Send + Sync>)?
+    tokio::time::timeout(std::time::Duration::from_millis(timeout_ms), test_fn)
+        .await
+        .map_err(|_| {
+            Box::new(std::io::Error::new(
+                std::io::ErrorKind::TimedOut,
+                "Test timed out",
+            )) as Box<dyn std::error::Error + Send + Sync>
+        })?
 }
 
 #[cfg(test)]
@@ -82,7 +81,8 @@ mod tests {
         let result = run_with_timeout(100, async {
             tokio::time::sleep(std::time::Duration::from_millis(10)).await;
             Ok(42)
-        }).await;
+        })
+        .await;
 
         std::assert_eq!(result.unwrap(), 42);
     }

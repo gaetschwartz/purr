@@ -3,6 +3,8 @@ models/
 whisper.cpp/
 node_modules/
 dist/
+.local/
+local/
 
 # Claude Flow generated files
 .claude/

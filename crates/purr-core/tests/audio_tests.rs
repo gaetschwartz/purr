@@ -12,7 +12,6 @@ use purr_core::{
     error::{AudioProcessingError, WhisperError},
 };
 use futures::StreamExt;
-use rstest::rstest;
 use tempfile::NamedTempFile;
 use tokio::fs;
 
@@ -187,12 +186,6 @@ pub mod utils {
 // ============================================================================
 
 #[tokio::test]
-async fn test_audio_processor_creation() {
-    let result = AudioProcessor::new();
-    assert!(result.is_ok(), "AudioProcessor should be creatable");
-}
-
-#[tokio::test]
 async fn test_audio_processor_load_nonexistent_file() {
     let mut processor = AudioProcessor::new().unwrap();
     let result = processor.load_audio("nonexistent_file.wav").await;
@@ -283,119 +276,34 @@ async fn test_audio_processor_stream_valid_file() {
 }
 
 // ============================================================================
-// AudioData Tests
+// AudioData Tests - Removed trivial tests
 // ============================================================================
-
-#[test]
-fn test_audio_data_creation() {
-    let audio_data = fixtures::create_test_audio_data(2.5, 16000);
-
-    assert_eq!(audio_data.sample_rate, 16000);
-    assert_eq!(audio_data.duration, 2.5);
-    assert_eq!(audio_data.samples.len(), 40000); // 2.5 * 16000
-}
-
-#[test]
-fn test_audio_data_clone() {
-    let original = fixtures::create_test_audio_data(1.0, 16000);
-    let cloned = original.clone();
-
-    assert!(utils::compare_audio_data(&original, &cloned, 0.0001));
-}
+// Removed:
+// - test_audio_data_creation: trivial validation of test fixture
+// - test_audio_data_clone: tests Clone derive functionality
 
 // ============================================================================
-// AudioChunk Tests
+// AudioChunk Tests - Removed trivial tests
 // ============================================================================
-
-#[test]
-fn test_audio_chunk_creation() {
-    let chunk = fixtures::create_test_audio_chunk(0, 0.0, false);
-
-    assert_eq!(chunk.sample_rate, 16000);
-    assert_eq!(chunk.index, 0);
-    assert_eq!(chunk.start_time, 0.0);
-    assert!(!chunk.is_final);
-    assert!(utils::validate_audio_chunk(&chunk));
-}
-
-#[test]
-fn test_audio_chunk_constants() {
-    assert_eq!(AudioChunk::TARGET_DURATION, 10.0);
-    assert_eq!(AudioChunk::TARGET_SAMPLES, 160000); // 10.0 * 16000
-}
-
-#[test]
-fn test_audio_chunk_duration_calculation() {
-    let samples = vec![0.0f32; 8000]; // 0.5 seconds at 16kHz
-    let chunk = AudioChunk::new(samples, 0, 0.0, false);
-
-    assert!((chunk.duration - 0.5).abs() < 0.001);
-}
-
-#[rstest]
-#[case(0, 0.0, false)]
-#[case(1, 10.0, false)]
-#[case(2, 20.0, true)]
-fn test_audio_chunk_with_different_properties(
-    #[case] index: usize,
-    #[case] start_time: f32,
-    #[case] is_final: bool,
-) {
-    let chunk = fixtures::create_test_audio_chunk(index, start_time, is_final);
-
-    assert_eq!(chunk.index, index);
-    assert_eq!(chunk.start_time, start_time);
-    assert_eq!(chunk.is_final, is_final);
-}
+// Removed trivial tests:
+// - test_audio_chunk_creation: tests basic struct creation
+// - test_audio_chunk_constants: tests constant values
+// - test_audio_chunk_duration_calculation: trivial math validation
+// - test_audio_chunk_with_different_properties: tests field assignment
 
 // ============================================================================
-// Sample Rate Handling Tests
+// Sample Rate Handling Tests - Removed trivial tests
 // ============================================================================
-
-#[tokio::test]
-async fn test_sample_rate_conversion_16khz() {
-    // This test would require a real audio file with known sample rate
-    // For now, test that our target sample rate is correctly set
-    let audio_data = fixtures::create_test_audio_data(1.0, 16000);
-    assert_eq!(audio_data.sample_rate, 16000);
-}
-
-#[test]
-fn test_sample_rate_constants() {
-    // Whisper expects 16kHz sample rate
-    const WHISPER_SAMPLE_RATE: u32 = 16000;
-    assert_eq!(WHISPER_SAMPLE_RATE, 16000);
-}
+// Removed:
+// - test_sample_rate_conversion_16khz: just validates test fixture
+// - test_sample_rate_constants: tests constant values
 
 // ============================================================================
-// Buffer Management Tests
+// Buffer Management Tests - Removed trivial tests
 // ============================================================================
-
-#[test]
-fn test_audio_buffer_management() {
-    let mut samples = Vec::with_capacity(100);
-    samples.extend_from_slice(&[1.0, 2.0, 3.0, 4.0, 5.0]);
-
-    assert_eq!(samples.len(), 5);
-    assert_eq!(samples.capacity(), 100);
-
-    // Test buffer reuse
-    samples.clear();
-    assert_eq!(samples.len(), 0);
-    assert_eq!(samples.capacity(), 100);
-}
-
-#[test]
-fn test_audio_chunk_buffer_reuse() {
-    let chunk1 = fixtures::create_test_audio_chunk(0, 0.0, false);
-    let samples_len = chunk1.samples.len();
-
-    // Simulate processing and creating new chunk
-    let chunk2 = AudioChunk::new(vec![1.0; samples_len], 1, 10.0, false);
-
-    assert_eq!(chunk2.samples.len(), samples_len);
-    assert_eq!(chunk2.index, 1);
-}
+// Removed:
+// - test_audio_buffer_management: tests basic Vec operations (std library's responsibility)
+// - test_audio_chunk_buffer_reuse: tests basic struct creation
 
 // ============================================================================
 // Error Condition Tests
@@ -443,96 +351,23 @@ async fn test_error_corrupted_audio_file() {
 }
 
 // ============================================================================
-// Edge Cases Tests
+// Edge Cases Tests - Removed trivial tests
 // ============================================================================
-
-#[test]
-fn test_zero_duration_audio() {
-    let audio_data = AudioData {
-        samples: vec![],
-        sample_rate: 16000,
-        duration: 0.0,
-    };
-
-    assert_eq!(audio_data.duration, 0.0);
-    assert!(audio_data.samples.is_empty());
-}
-
-#[test]
-fn test_very_short_audio() {
-    let samples = vec![0.1]; // One sample
-    let duration = 1.0 / 16000.0; // Duration of one sample at 16kHz
-
-    let audio_data = AudioData {
-        samples,
-        sample_rate: 16000,
-        duration,
-    };
-
-    assert_eq!(audio_data.samples.len(), 1);
-    assert!(audio_data.duration > 0.0);
-}
-
-#[test]
-fn test_large_audio_buffer() {
-    // Test with 1 minute of audio (960,000 samples)
-    let duration = 60.0;
-    let sample_rate = 16000;
-    let num_samples = (duration * sample_rate as f32) as usize;
-
-    let audio_data = fixtures::create_test_audio_data(duration, sample_rate);
-
-    assert_eq!(audio_data.samples.len(), num_samples);
-    assert_eq!(audio_data.duration, duration);
-}
+// Removed:
+// - test_zero_duration_audio: trivial struct validation
+// - test_very_short_audio: trivial struct validation
+// - test_large_audio_buffer: just validates test fixture creation
 
 // ============================================================================
-// Audio Format Tests
+// Audio Format Tests - Removed trivial tests
 // ============================================================================
-
-#[test]
-fn test_audio_sample_format_f32() {
-    let samples = vec![-1.0f32, -0.5, 0.0, 0.5, 1.0];
-
-    // Verify all samples are in valid range for f32 audio
-    for &sample in &samples {
-        assert!(sample >= -1.0 && sample <= 1.0, "Sample {} out of range", sample);
-    }
-}
-
-#[test]
-fn test_audio_sample_normalization() {
-    let samples = vec![32767i16, 0, -32768]; // i16 range
-
-    // Convert to f32 normalized range
-    let normalized: Vec<f32> = samples.iter()
-        .map(|&s| s as f32 / 32768.0)
-        .collect();
-
-    assert!((normalized[0] - 0.99997).abs() < 0.001); // Close to 1.0
-    assert_eq!(normalized[1], 0.0);
-    assert_eq!(normalized[2], -1.0);
-}
+// Removed:
+// - test_audio_sample_format_f32: trivial range validation
+// - test_audio_sample_normalization: trivial arithmetic validation
 
 // ============================================================================
-// Utility Function Tests
+// Utility Function Tests - Kept only meaningful ones
 // ============================================================================
-
-#[test]
-fn test_utils_compare_audio_data() {
-    let audio1 = fixtures::create_test_audio_data(1.0, 16000);
-    let audio2 = fixtures::create_test_audio_data(1.0, 16000);
-
-    assert!(utils::compare_audio_data(&audio1, &audio2, 0.001));
-}
-
-#[test]
-fn test_utils_compare_audio_data_different() {
-    let audio1 = fixtures::create_test_audio_data(1.0, 16000);
-    let audio2 = fixtures::create_test_audio_data(2.0, 16000);
-
-    assert!(!utils::compare_audio_data(&audio1, &audio2, 0.001));
-}
 
 #[test]
 fn test_utils_calculate_rms() {
@@ -546,15 +381,6 @@ fn test_utils_calculate_rms() {
 fn test_utils_calculate_rms_empty() {
     let rms = utils::calculate_rms(&[]);
     assert_eq!(rms, 0.0);
-}
-
-#[test]
-fn test_utils_is_silence() {
-    let silent_samples = vec![0.0, 0.001, -0.001, 0.0005];
-    let loud_samples = vec![0.0, 0.5, 0.0, -0.3];
-
-    assert!(utils::is_silence(&silent_samples, 0.01));
-    assert!(!utils::is_silence(&loud_samples, 0.01));
 }
 
 #[test]
@@ -573,22 +399,16 @@ fn test_utils_validate_audio_chunk() {
     assert!(!utils::validate_audio_chunk(&invalid_chunk));
 }
 
+// Removed trivial utility tests:
+// - test_utils_compare_audio_data: just tests test fixtures are equal
+// - test_utils_compare_audio_data_different: just tests test fixtures are different
+// - test_utils_is_silence: trivial validation logic
+
 // ============================================================================
-// Integration Tests with Mocked Whisper
+// Integration Tests with Mocked Whisper - Removed mock-only test
 // ============================================================================
-
-#[test]
-fn test_mock_whisper_response() {
-    let mock_response = mocks::MockWhisperResponse::new_simple("Hello world", 2.0);
-
-    assert_eq!(mock_response.text, "Hello world");
-    assert_eq!(mock_response.segments.len(), 1);
-    assert_eq!(mock_response.segments[0].start, 0.0);
-    assert_eq!(mock_response.segments[0].end, 2.0);
-}
-
-// Note: Full Whisper integration tests would require actual models
-// and are better suited for integration_tests.rs or slow_tests.rs
+// Removed:
+// - test_mock_whisper_response: only tests mock functionality, not real behavior
 
 // ============================================================================
 // Performance Tests

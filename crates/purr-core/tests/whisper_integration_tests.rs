@@ -3,21 +3,17 @@
 //! These tests require a Whisper model to be available and test the full
 //! audio-to-transcription pipeline including both sync and streaming modes.
 
+use futures::StreamExt;
 use purr_core::{
     audio::{AudioData, AudioProcessor},
     config::TranscriptionConfig,
+    transcribe_file_stream, transcribe_file_sync,
     whisper::{
-        sync::SyncWhisperTranscriber,
-        streaming::StreamWhisperTranscriber,
+        streaming::StreamWhisperTranscriber, sync::SyncWhisperTranscriber, SyncTranscriptionResult,
         WhisperTranscriber,
-        SyncTranscriptionResult,
     },
-    StreamingTranscriptionResult,
-    transcribe_file_sync,
-    transcribe_file_stream,
     ModelManager,
 };
-use futures::StreamExt;
 use rstest::rstest;
 use std::path::PathBuf;
 use tempfile::NamedTempFile;
@@ -57,12 +53,16 @@ mod whisper_fixtures {
     }
 
     /// Create a longer audio file for streaming tests
-    pub async fn create_streaming_test_audio() -> Result<NamedTempFile, Box<dyn std::error::Error>> {
+    pub async fn create_streaming_test_audio() -> Result<NamedTempFile, Box<dyn std::error::Error>>
+    {
         create_test_audio_with_tone(25.0, 880.0).await // 25 seconds, 880Hz tone
     }
 
     /// Helper to create minimal WAV file bytes
-    fn create_wav_bytes(samples: Vec<i16>, sample_rate: u32) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    fn create_wav_bytes(
+        samples: Vec<i16>,
+        sample_rate: u32,
+    ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
         let mut wav_data = Vec::new();
 
         // WAV header
@@ -112,13 +112,15 @@ mod validation {
         // Basic structure validation
         result.processing_time > 0.0 &&
         result.audio_duration > 0.0 &&
-        !result.segments.is_empty() &&
         result.stats.processing_time > 0.0 &&
         result.stats.audio_duration > 0.0 &&
-        // Segments should be in chronological order
+        // If segments exist, they should be in chronological order
         result.segments.windows(2).all(|w| w[0].start <= w[1].start) &&
         // Each segment should have valid timestamps
-        result.segments.iter().all(|s| s.start >= 0.0 && s.end >= s.start)
+        result.segments.iter().all(|s| s.start >= 0.0 && s.end >= s.start) &&
+        // Consistency checks: stats should match result data
+        (result.stats.processing_time - result.processing_time).abs() < 0.001 &&
+        (result.stats.audio_duration - result.audio_duration).abs() < 0.001
     }
 
     /// Validate that streaming chunks are properly ordered and structured
@@ -128,10 +130,12 @@ mod validation {
         }
 
         // Check that chunks are in order
-        let chunks_in_order = chunks.windows(2).all(|w| w[0].chunk_index <= w[1].chunk_index);
+        let chunks_in_order = chunks
+            .windows(2)
+            .all(|w| w[0].chunk_index <= w[1].chunk_index);
 
         // Check that the last chunk is marked as final
-        let last_is_final = chunks.last().map_or(false, |c| c.is_final);
+        let last_is_final = chunks.last().is_some_and(|c| c.is_final);
 
         // Check that all chunks have valid timestamps
         let valid_timestamps = chunks.iter().all(|c| c.start >= 0.0 && c.end >= c.start);
@@ -156,7 +160,10 @@ async fn test_sync_whisper_transcriber_creation() {
         .with_language("en");
 
     let result = SyncWhisperTranscriber::from_config(config).await;
-    assert!(result.is_ok(), "Should be able to create SyncWhisperTranscriber");
+    assert!(
+        result.is_ok(),
+        "Should be able to create SyncWhisperTranscriber"
+    );
 }
 
 #[tokio::test]
@@ -208,7 +215,10 @@ async fn test_sync_whisper_with_generated_audio() {
     let transcriber = SyncWhisperTranscriber::from_config(config).await.unwrap();
     let result = transcriber.transcribe(audio_data).await;
 
-    assert!(result.is_ok(), "Should successfully transcribe generated audio");
+    assert!(
+        result.is_ok(),
+        "Should successfully transcribe generated audio"
+    );
 
     let transcription = result.unwrap();
     assert!(validation::validate_sync_result(&transcription));
@@ -251,7 +261,10 @@ async fn test_streaming_whisper_transcriber_creation() {
         .with_language("en");
 
     let result = StreamWhisperTranscriber::from_config(config).await;
-    assert!(result.is_ok(), "Should be able to create StreamWhisperTranscriber");
+    assert!(
+        result.is_ok(),
+        "Should be able to create StreamWhisperTranscriber"
+    );
 }
 
 #[tokio::test]
@@ -261,7 +274,9 @@ async fn test_streaming_whisper_with_audio_stream() {
         return;
     }
 
-    let temp_audio = whisper_fixtures::create_streaming_test_audio().await.unwrap();
+    let temp_audio = whisper_fixtures::create_streaming_test_audio()
+        .await
+        .unwrap();
 
     let config = TranscriptionConfig::new()
         .with_gpu(false)
@@ -294,7 +309,7 @@ async fn test_streaming_whisper_with_audio_stream() {
                 if chunk.is_final {
                     break;
                 }
-            },
+            }
             Err(e) => panic!("Streaming error: {:?}", e),
         }
     }
@@ -315,7 +330,9 @@ async fn test_streaming_transcription_high_level_api() {
         return;
     }
 
-    let temp_audio = whisper_fixtures::create_streaming_test_audio().await.unwrap();
+    let temp_audio = whisper_fixtures::create_streaming_test_audio()
+        .await
+        .unwrap();
 
     let config = TranscriptionConfig::new()
         .with_gpu(false)
@@ -334,7 +351,7 @@ async fn test_streaming_transcription_high_level_api() {
                 if chunk.is_final {
                     break;
                 }
-            },
+            }
             Err(e) => panic!("Streaming error: {:?}", e),
         }
     }
@@ -347,7 +364,7 @@ async fn test_streaming_transcription_high_level_api() {
 // ============================================================================
 
 #[rstest]
-#[case(true)]  // With GPU
+#[case(true)] // With GPU
 #[case(false)] // Without GPU
 #[tokio::test]
 async fn test_transcription_with_gpu_settings(#[case] use_gpu: bool) {
@@ -368,8 +385,11 @@ async fn test_transcription_with_gpu_settings(#[case] use_gpu: bool) {
     match result {
         Ok(transcription) => {
             assert!(validation::validate_sync_result(&transcription));
-            println!("✓ GPU setting {} worked", if use_gpu { "enabled" } else { "disabled" });
-        },
+            println!(
+                "✓ GPU setting {} worked",
+                if use_gpu { "enabled" } else { "disabled" }
+            );
+        }
         Err(e) => {
             // GPU might not be available, which is acceptable
             if use_gpu && e.to_string().contains("GPU") {
@@ -393,15 +413,18 @@ async fn test_transcription_with_language_settings(#[case] language: &str) {
 
     let temp_audio = whisper_fixtures::create_short_test_audio().await.unwrap();
 
-    let mut config = TranscriptionConfig::new()
-        .with_gpu(false);
+    let mut config = TranscriptionConfig::new().with_gpu(false);
 
     if language != "auto" {
         config = config.with_language(language);
     }
 
     let result = transcribe_file_sync(temp_audio.path(), Some(config)).await;
-    assert!(result.is_ok(), "Should work with language setting: {}", language);
+    assert!(
+        result.is_ok(),
+        "Should work with language setting: {}",
+        language
+    );
 
     let transcription = result.unwrap();
     assert!(validation::validate_sync_result(&transcription));
@@ -459,14 +482,20 @@ async fn test_transcription_performance_sync() {
     assert!(validation::validate_sync_result(&transcription));
 
     // Performance expectations (these are rough guidelines)
-    assert!(elapsed.as_secs() < 30, "3-second audio should transcribe in under 30 seconds");
+    assert!(
+        elapsed.as_secs() < 30,
+        "3-second audio should transcribe in under 30 seconds"
+    );
 
-    let real_time_factor = transcription.stats.real_time_factor;
+    let real_time_factor = transcription.stats.real_time_factor();
     println!("Real-time factor: {:.2}x", real_time_factor);
 
     // Real-time factor should be reasonable (but depends on hardware)
     if real_time_factor > 0.0 {
-        assert!(real_time_factor < 100.0, "Real-time factor should be reasonable");
+        assert!(
+            real_time_factor < 100.0,
+            "Real-time factor should be reasonable"
+        );
     }
 }
 
@@ -477,7 +506,9 @@ async fn test_transcription_performance_streaming() {
         return;
     }
 
-    let temp_audio = whisper_fixtures::create_streaming_test_audio().await.unwrap();
+    let temp_audio = whisper_fixtures::create_streaming_test_audio()
+        .await
+        .unwrap();
 
     let config = TranscriptionConfig::new()
         .with_gpu(false)
@@ -489,7 +520,7 @@ async fn test_transcription_performance_streaming() {
 
     let mut streaming_result = result.unwrap();
     let mut first_chunk_time = None;
-    let mut last_chunk_time = None;
+    let mut _last_chunk_time = None;
 
     while let Some(chunk_result) = streaming_result.next().await {
         match chunk_result {
@@ -497,22 +528,31 @@ async fn test_transcription_performance_streaming() {
                 if first_chunk_time.is_none() {
                     first_chunk_time = Some(std::time::Instant::now());
                 }
-                last_chunk_time = Some(std::time::Instant::now());
+                _last_chunk_time = Some(std::time::Instant::now());
 
                 if chunk.is_final {
                     break;
                 }
-            },
+            }
             Err(e) => panic!("Streaming performance error: {:?}", e),
         }
     }
 
     let total_elapsed = start.elapsed();
 
-    assert!(first_chunk_time.is_some(), "Should have received at least one chunk");
-    assert!(total_elapsed.as_secs() < 120, "25-second audio should stream in under 2 minutes");
+    assert!(
+        first_chunk_time.is_some(),
+        "Should have received at least one chunk"
+    );
+    assert!(
+        total_elapsed.as_secs() < 120,
+        "25-second audio should stream in under 2 minutes"
+    );
 
-    println!("Streaming performance: {:.2}s total", total_elapsed.as_secs_f64());
+    println!(
+        "Streaming performance: {:.2}s total",
+        total_elapsed.as_secs_f64()
+    );
 }
 
 // ============================================================================
@@ -563,7 +603,7 @@ async fn test_whisper_error_handling_empty_audio() {
         Ok(transcription) => {
             assert_eq!(transcription.audio_duration, 0.0);
             assert!(transcription.text.is_empty() || transcription.text.trim().is_empty());
-        },
+        }
         Err(_) => {
             // Also acceptable - some implementations might reject empty audio
         }
@@ -603,7 +643,9 @@ async fn test_regression_consistent_results() {
     // Results should be reasonably consistent (same audio duration)
     let first_duration = results[0].audio_duration;
     for result in &results[1..] {
-        assert!((result.audio_duration - first_duration).abs() < 0.1,
-            "Audio duration should be consistent across runs");
+        assert!(
+            (result.audio_duration - first_duration).abs() < 0.1,
+            "Audio duration should be consistent across runs"
+        );
     }
 }

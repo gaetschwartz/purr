@@ -134,4 +134,50 @@ impl TranscriptionConfig {
         self.translate = translate;
         self
     }
+
+    /// Set the temperature for sampling
+    #[must_use]
+    pub fn with_temperature(mut self, temperature: f32) -> Self {
+        self.temperature = temperature;
+        self
+    }
+
+    /// Edit output format options
+    #[must_use]
+    pub fn apply_output_format<F>(mut self, f: F) -> Self
+    where
+        F: FnOnce(OutputFormat) -> OutputFormat,
+    {
+        self.output_format = f(self.output_format);
+        self
+    }
+}
+
+impl OutputFormat {
+    /// Create a new output format configuration with default values
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Enable or disable timestamps in the output
+    #[must_use]
+    pub fn with_timestamps(mut self, include: bool) -> Self {
+        self.include_timestamps = include;
+        self
+    }
+
+    /// Enable or disable word-level timestamps
+    #[must_use]
+    pub fn with_word_timestamps(mut self, include: bool) -> Self {
+        self.word_timestamps = include;
+        self
+    }
+
+    /// Enable or disable confidence scores in the output
+    #[must_use]
+    pub fn with_confidence(mut self, include: bool) -> Self {
+        self.include_confidence = include;
+        self
+    }
 }

@@ -1,5 +1,12 @@
 [workspace]
-members = ["crates/purr", "crates/purr-common", "crates/purr-core", 'crates/purr-ui', "crates/purr-web", "crates/purr-test-utils"]
+members = [
+  "crates/purr",
+  "crates/purr-common",
+  "crates/purr-core",
+  'crates/purr-ui',
+  "crates/purr-web",
+  "crates/purr-test-utils",
+]
 resolver = "2"
 
 [workspace.dependencies]
@@ -15,9 +22,6 @@ opt-level = 1
 [profile.server-dev]
 inherits = "dev"
 
-[profile.android-dev]
-inherits = "dev"
-
 # Test profiles
 [profile.test]
 inherits = "dev"
@@ -26,7 +30,6 @@ debug = true
 debug-assertions = true
 overflow-checks = true
 lto = false
-panic = 'unwind'
 incremental = true
 codegen-units = 256
 

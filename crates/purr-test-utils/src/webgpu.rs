@@ -1,20 +1,20 @@
 //! WebGPU testing utilities and helpers
 
-#[cfg(feature = "web")]
-use wasm_bindgen::prelude::*;
-#[cfg(feature = "web")]
-use web_sys::*;
 use std::collections::HashMap;
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::prelude::*;
+#[cfg(target_arch = "wasm32")]
+use web_sys::*;
 
 /// WebGPU test environment setup
-#[cfg(feature = "web")]
+#[cfg(target_arch = "wasm32")]
 pub struct WebGpuTestEnv {
     pub adapter: Option<GpuAdapter>,
     pub device: Option<GpuDevice>,
     pub queue: Option<GpuQueue>,
 }
 
-#[cfg(feature = "web")]
+#[cfg(target_arch = "wasm32")]
 impl WebGpuTestEnv {
     /// Create a new WebGPU test environment
     pub async fn new() -> Result<Self, JsValue> {
@@ -23,17 +23,16 @@ impl WebGpuTestEnv {
         let gpu = navigator.gpu().ok_or("WebGPU not supported")?;
 
         // Request adapter
-        let adapter = wasm_bindgen_futures::JsFuture::from(
-            gpu.request_adapter()
-        ).await?;
+        let adapter = wasm_bindgen_futures::JsFuture::from(gpu.request_adapter()).await?;
 
         let adapter: GpuAdapter = adapter.into();
 
         // Request device
         let device_descriptor = GpuDeviceDescriptor::new();
         let device = wasm_bindgen_futures::JsFuture::from(
-            adapter.request_device_with_descriptor(&device_descriptor)
-        ).await?;
+            adapter.request_device_with_descriptor(&device_descriptor),
+        )
+        .await?;
 
         let device: GpuDevice = device.into();
         let queue = device.queue();
@@ -131,9 +130,9 @@ impl WebGpuTestEnv {
         queue.submit(&commands);
 
         // Read result
-        let _map_result = wasm_bindgen_futures::JsFuture::from(
-            output_buffer.map_async(GpuMapMode::READ())
-        ).await?;
+        let _map_result =
+            wasm_bindgen_futures::JsFuture::from(output_buffer.map_async(GpuMapMode::READ()))
+                .await?;
 
         let array_buffer = output_buffer.get_mapped_range(0, buffer_size);
         let uint8_array = js_sys::Uint8Array::new(&array_buffer);
@@ -160,17 +159,17 @@ impl MockWebGpu {
         // Add some default operations
         operations.insert(
             "multiply".to_string(),
-            Box::new(|data: &[f32]| data.iter().map(|&x| x * 2.0).collect())
+            Box::new(|data: &[f32]| data.iter().map(|&x| x * 2.0).collect()),
         );
 
         operations.insert(
             "add".to_string(),
-            Box::new(|data: &[f32]| data.iter().map(|&x| x + 1.0).collect())
+            Box::new(|data: &[f32]| data.iter().map(|&x| x + 1.0).collect()),
         );
 
         operations.insert(
             "square".to_string(),
-            Box::new(|data: &[f32]| data.iter().map(|&x| x * x).collect())
+            Box::new(|data: &[f32]| data.iter().map(|&x| x * x).collect()),
         );
 
         Self { operations }
@@ -282,7 +281,11 @@ impl WebGpuPerformanceTester {
         }
     }
 
-    pub async fn benchmark_operation<F, Fut>(&mut self, name: &str, operation: F) -> Result<std::time::Duration, String>
+    pub async fn benchmark_operation<F, Fut>(
+        &mut self,
+        name: &str,
+        operation: F,
+    ) -> Result<std::time::Duration, String>
     where
         F: FnOnce() -> Fut,
         Fut: std::future::Future<Output = Result<(), String>>,
@@ -347,6 +350,8 @@ mod tests {
     fn test_audio_webgpu_tester() {
         let audio_data = AudioWebGpuTester::generate_test_audio(1000, 440.0, 44100.0);
         assert_eq!(audio_data.len(), 1000);
-        assert!(audio_data.iter().all(|&sample| sample >= -1.0 && sample <= 1.0));
+        assert!(audio_data
+            .iter()
+            .all(|&sample| sample >= -1.0 && sample <= 1.0));
     }
 }

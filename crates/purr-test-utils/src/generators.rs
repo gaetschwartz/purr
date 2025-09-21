@@ -1,8 +1,7 @@
 //! Property-based test data generators for Purr components
 
-use proptest::prelude::*;
-use proptest::strategy::ValueTree;
 use fake::{Dummy, Fake, Faker};
+use proptest::prelude::*;
 use rand::seq::SliceRandom;
 use std::time::Duration;
 
@@ -108,7 +107,7 @@ pub fn webgpu_workgroup_size() -> impl Strategy<Value = (u32, u32, u32)> {
 }
 
 /// Generate GPU buffer usage flags
-#[cfg(feature = "web")]
+#[cfg(target_arch = "wasm32")]
 pub fn gpu_buffer_usage() -> impl Strategy<Value = Vec<String>> {
     prop::collection::vec(
         prop_oneof![
@@ -176,7 +175,8 @@ impl Dummy<Faker> for TranscriptionResult {
             let start = current_time;
             let end = current_time + word_duration;
             timestamps.push((start, end, word.to_string()));
-            current_time = end + Duration::from_millis(rng.gen_range(10..=100)); // pause
+            current_time = end + Duration::from_millis(rng.gen_range(10..=100));
+            // pause
         }
 
         TranscriptionResult {
@@ -189,7 +189,7 @@ impl Dummy<Faker> for TranscriptionResult {
 }
 
 /// Generator for WebGPU compute operations
-#[cfg(feature = "web")]
+#[cfg(target_arch = "wasm32")]
 #[derive(Debug, Clone)]
 pub struct ComputeOperation {
     pub shader_source: String,
@@ -198,7 +198,7 @@ pub struct ComputeOperation {
     pub buffer_size: usize,
 }
 
-#[cfg(feature = "web")]
+#[cfg(target_arch = "wasm32")]
 impl Dummy<Faker> for ComputeOperation {
     fn dummy_with_rng<R: fake::Rng + ?Sized>(_: &Faker, rng: &mut R) -> Self {
         let operations = [
@@ -214,7 +214,11 @@ impl Dummy<Faker> for ComputeOperation {
         let workgroup_size = (workgroup_x, 1, 1);
 
         let buffer_size = rng.gen_range(64..=4096) * 4; // Multiple of 4 bytes
-        let dispatch_size = ((buffer_size / 4 + workgroup_x as usize - 1) / workgroup_x as usize, 1, 1);
+        let dispatch_size = (
+            (buffer_size / 4 + workgroup_x as usize - 1) / workgroup_x as usize,
+            1,
+            1,
+        );
 
         let shader_source = format!(
             r#"
@@ -236,7 +240,11 @@ impl Dummy<Faker> for ComputeOperation {
         ComputeOperation {
             shader_source,
             workgroup_size,
-            dispatch_size: (dispatch_size.0 as u32, dispatch_size.1 as u32, dispatch_size.2 as u32),
+            dispatch_size: (
+                dispatch_size.0 as u32,
+                dispatch_size.1 as u32,
+                dispatch_size.2 as u32,
+            ),
             buffer_size,
         }
     }
@@ -244,12 +252,11 @@ impl Dummy<Faker> for ComputeOperation {
 
 /// Property test strategy for generating valid file paths
 pub fn file_path() -> impl Strategy<Value = String> {
-    prop::collection::vec("[a-zA-Z0-9_-]{1,20}", 1..=5)
-        .prop_map(|segments| {
-            let mut path = segments.join("/");
-            path.push_str(".wav");
-            path
-        })
+    prop::collection::vec("[a-zA-Z0-9_-]{1,20}", 1..=5).prop_map(|segments| {
+        let mut path = segments.join("/");
+        path.push_str(".wav");
+        path
+    })
 }
 
 /// Property test strategy for generating URL-like strings
@@ -259,12 +266,11 @@ pub fn url_string() -> impl Strategy<Value = String> {
         "[a-zA-Z0-9-]{3,20}",
         "[a-zA-Z]{2,4}",
         prop::option::of("[a-zA-Z0-9/_-]{0,50}"),
-    ).prop_map(|(scheme, domain, tld, path)| {
-        match path {
+    )
+        .prop_map(|(scheme, domain, tld, path)| match path {
             Some(p) if !p.is_empty() => format!("{}://{}.{}/{}", scheme, domain, tld, p),
             _ => format!("{}://{}.{}", scheme, domain, tld),
-        }
-    })
+        })
 }
 
 /// Generate error messages for testing error handling
@@ -283,6 +289,7 @@ pub fn error_message() -> impl Strategy<Value = String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::strategy::ValueTree;
     use proptest::test_runner::TestRunner;
 
     #[test]
@@ -299,7 +306,7 @@ mod tests {
         let mut runner = TestRunner::default();
         for _ in 0..100 {
             let score = confidence_score().new_tree(&mut runner).unwrap().current();
-            assert!(score >= 0.0 && score <= 1.0);
+            assert!((0.0..=1.0).contains(&score));
         }
     }
 
@@ -309,7 +316,7 @@ mod tests {
         assert!(!audio.samples.is_empty());
         assert!([8000, 16000, 44100, 48000].contains(&audio.sample_rate));
         assert!(audio.channels >= 1 && audio.channels <= 2);
-        assert!(audio.samples.iter().all(|&s| s >= -1.0 && s <= 1.0));
+        assert!(audio.samples.iter().all(|&s| (-1.0..=1.0).contains(&s)));
     }
 
     #[test]

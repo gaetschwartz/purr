@@ -6,7 +6,7 @@ use std::time::Duration;
 use tokio::sync::mpsc;
 use bytes::Bytes;
 
-/// Mock audio processor for testing transcription without actual audio processing
+// Mock audio processor for testing transcription without actual audio processing
 mock! {
     pub AudioProcessor {
         async fn process_audio(&self, audio_data: &[f32], sample_rate: u32) -> Result<Vec<f32>, String>;
@@ -16,7 +16,7 @@ mock! {
     }
 }
 
-/// Mock transcription engine for testing without actual model inference
+// Mock transcription engine for testing without actual model inference
 mock! {
     pub TranscriptionEngine {
         async fn transcribe(&self, audio_data: &[f32], options: TranscriptionOptions) -> Result<TranscriptionResult, String>;
@@ -26,7 +26,7 @@ mock! {
     }
 }
 
-/// Mock file system operations for testing without actual file I/O
+// Mock file system operations for testing without actual file I/O
 mock! {
     pub FileSystem {
         async fn read_file(&self, path: &Path) -> Result<Bytes, std::io::Error>;
@@ -38,7 +38,7 @@ mock! {
     }
 }
 
-/// Mock network client for testing downloads and API calls
+// Mock network client for testing downloads and API calls
 mock! {
     pub NetworkClient {
         async fn download_file(&self, url: &str, destination: &Path) -> Result<(), NetworkError>;
@@ -49,7 +49,7 @@ mock! {
 }
 
 /// Mock WebGPU device for testing GPU operations without actual hardware
-#[cfg(feature = "web")]
+#[cfg(target_arch = "wasm32")]
 mock! {
     pub WebGpuDevice {
         async fn create_buffer(&self, size: u64, usage: u32) -> Result<MockBuffer, WebGpuError>;
@@ -60,7 +60,7 @@ mock! {
     }
 }
 
-#[cfg(feature = "web")]
+#[cfg(target_arch = "wasm32")]
 mock! {
     pub Buffer {
         fn size(&self) -> u64;
@@ -70,21 +70,21 @@ mock! {
     }
 }
 
-#[cfg(feature = "web")]
+#[cfg(target_arch = "wasm32")]
 mock! {
     pub ComputePipeline {
         fn workgroup_size(&self) -> (u32, u32, u32);
     }
 }
 
-#[cfg(feature = "web")]
+#[cfg(target_arch = "wasm32")]
 mock! {
     pub BindGroup {
         fn id(&self) -> u32;
     }
 }
 
-#[cfg(feature = "web")]
+#[cfg(target_arch = "wasm32")]
 mock! {
     pub Queue {
         fn write_buffer(&self, buffer: &MockBuffer, offset: u64, data: &[u8]);
@@ -92,14 +92,14 @@ mock! {
     }
 }
 
-#[cfg(feature = "web")]
+#[cfg(target_arch = "wasm32")]
 mock! {
     pub Command {
         fn dispatch(&self, x: u32, y: u32, z: u32);
     }
 }
 
-/// Mock configuration manager for testing configuration scenarios
+// Mock configuration manager for testing configuration scenarios
 mock! {
     pub ConfigManager {
         fn load_config(&self, path: &Path) -> Result<Configuration, ConfigError>;
@@ -109,7 +109,7 @@ mock! {
     }
 }
 
-/// Mock progress reporter for testing progress tracking
+// Mock progress reporter for testing progress tracking
 mock! {
     pub ProgressReporter {
         fn report_progress(&self, current: u64, total: u64, message: String);
@@ -119,7 +119,7 @@ mock! {
     }
 }
 
-/// Mock metrics collector for testing performance monitoring
+// Mock metrics collector for testing performance monitoring
 mock! {
     pub MetricsCollector {
         fn start_timer(&self, name: String) -> TimerHandle;
@@ -179,7 +179,7 @@ pub struct ResponseHeaders {
     pub last_modified: Option<String>,
 }
 
-#[cfg(feature = "web")]
+#[cfg(target_arch = "wasm32")]
 #[derive(Debug)]
 pub enum WebGpuError {
     DeviceLost,
@@ -224,7 +224,6 @@ pub struct MetricsSnapshot {
 }
 
 /// Factory functions for creating commonly used mocks
-
 pub fn create_mock_audio_processor() -> MockAudioProcessor {
     let mut mock = MockAudioProcessor::new();
 

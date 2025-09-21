@@ -175,3 +175,28 @@ release:
     @just ci
     cargo build --release --workspace
     @echo "Release build completed successfully!"
+
+fetch-model model *ARGS:
+    #!/usr/bin/env bash
+    MODEL="ggml-{{model}}"
+    MODEL_URL="https://huggingface.co/ggerganov/whisper.cpp/resolve/main/${MODEL}.bin"
+    DEST_DIR="./.local/models"
+    mkdir -p $DEST_DIR
+    # check if '-f' flag is passed to force re-download
+    FORCE_DOWNLOAD=false
+    for arg in "{{ARGS}}"; do
+        if [ "$arg" == "-f" ] || [ "$arg" == "--force" ]; then
+            FORCE_DOWNLOAD=true
+        fi
+    done
+    if [ ! -f "$DEST_DIR/${MODEL}.bin" ] || [ "$FORCE_DOWNLOAD" = true ]; then
+        echo "Downloading model ${MODEL}..."
+        TMP_DIR=$(mktemp -d)
+        # use wget to download the model, fail if the download fails
+        wget -q --show-progress -O "$TMP_DIR/${MODEL}.bin" $MODEL_URL || { echo "Download failed!"; rm -rf $TMP_DIR; exit 1; }
+        mv "$TMP_DIR/${MODEL}.bin" "$DEST_DIR/${MODEL}.bin"
+        rm -rf $TMP_DIR
+        echo "Model ${MODEL} downloaded to $DEST_DIR"
+    else
+        echo "Model ${MODEL} already exists in $DEST_DIR, use -f to force re-download"
+    fi

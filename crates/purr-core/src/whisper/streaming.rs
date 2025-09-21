@@ -123,12 +123,12 @@ impl StreamWhisperTranscriber {
                             // Calculate final statistics if this is the last chunk
                             let final_stats = if audio_chunk.is_final {
                                 let processing_time = start_time.elapsed().as_secs_f64();
-                                Some(TranscriptionStats::new(
+                                Some(TranscriptionStats {
                                     processing_time,
-                                    total_audio_duration,
-                                    total_segments,
-                                    total_word_count,
-                                ))
+                                    audio_duration: total_audio_duration,
+                                    segment_count: total_segments,
+                                    word_count: total_word_count,
+                                })
                             } else {
                                 None
                             };

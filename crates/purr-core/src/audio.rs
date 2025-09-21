@@ -800,18 +800,22 @@ mod tests {
     #[test]
     fn test_audio_chunk_duration_calculation() {
         let test_cases = vec![
-            (16000, 1.0),    // 1 second
-            (8000, 0.5),     // 0.5 seconds
-            (32000, 2.0),    // 2 seconds
-            (1600, 0.1),     // 0.1 seconds
+            (16000, 1.0), // 1 second
+            (8000, 0.5),  // 0.5 seconds
+            (32000, 2.0), // 2 seconds
+            (1600, 0.1),  // 0.1 seconds
         ];
 
         for (sample_count, expected_duration) in test_cases {
             let samples = vec![0.0; sample_count];
             let chunk = AudioChunk::new(samples, 0, 0.0, false);
-            assert!((chunk.duration - expected_duration).abs() < 0.001,
+            assert!(
+                (chunk.duration - expected_duration).abs() < 0.001,
                 "Expected {} seconds for {} samples, got {}",
-                expected_duration, sample_count, chunk.duration);
+                expected_duration,
+                sample_count,
+                chunk.duration
+            );
         }
     }
 
@@ -837,8 +841,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_audio_stream_receiving() {
-        use tokio::sync::mpsc;
         use futures::StreamExt;
+        use tokio::sync::mpsc;
 
         let (tx, rx) = mpsc::unbounded_channel();
         let mut stream = AudioStream::new(rx);
@@ -864,8 +868,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_audio_stream_error_handling() {
-        use tokio::sync::mpsc;
         use futures::StreamExt;
+        use tokio::sync::mpsc;
 
         let (tx, rx) = mpsc::unbounded_channel();
         let mut stream = AudioStream::new(rx);
@@ -894,11 +898,14 @@ mod tests {
         let error = result.unwrap_err();
         match error {
             WhisperError::AudioProcessing {
-                source: AudioProcessingError::ProcessingFailed { reason }
+                source: AudioProcessingError::ProcessingFailed { reason },
             } => {
                 assert!(reason.contains("not found"));
             }
-            _ => panic!("Expected ProcessingFailed error with 'not found', got: {:?}", error),
+            _ => panic!(
+                "Expected ProcessingFailed error with 'not found', got: {:?}",
+                error
+            ),
         }
     }
 
@@ -906,7 +913,9 @@ mod tests {
     async fn test_load_audio_invalid_file() {
         // Create a temporary file with invalid content
         let temp_file = NamedTempFile::new().unwrap();
-        fs::write(temp_file.path(), b"this is not audio data").await.unwrap();
+        fs::write(temp_file.path(), b"this is not audio data")
+            .await
+            .unwrap();
 
         let mut processor = AudioProcessor::new().unwrap();
         let result = processor.load_audio(temp_file.path()).await;
@@ -947,9 +956,12 @@ mod tests {
             Ok(mut stream) => {
                 // Try to get the first chunk - this should fail
                 if let Some(chunk_result) = stream.next().await {
-                    assert!(chunk_result.is_err(), "Should get an error for nonexistent file");
+                    assert!(
+                        chunk_result.is_err(),
+                        "Should get an error for nonexistent file"
+                    );
                 }
-            },
+            }
             Err(_) => {
                 // Also acceptable - immediate failure
             }
@@ -971,7 +983,10 @@ mod tests {
         fs::write(temp_file.path(), wav_data).await.unwrap();
 
         let result = AudioProcessor::stream(temp_file.path()).await;
-        assert!(result.is_ok(), "Should successfully create stream for valid file");
+        assert!(
+            result.is_ok(),
+            "Should successfully create stream for valid file"
+        );
 
         let mut stream = result.unwrap();
         let mut chunk_count = 0;
@@ -993,12 +1008,15 @@ mod tests {
                     if chunk.is_final {
                         break;
                     }
-                },
+                }
                 Err(e) => panic!("Stream error: {:?}", e),
             }
         }
 
-        assert!(chunk_count > 1, "Should produce multiple chunks for 15-second audio");
+        assert!(
+            chunk_count > 1,
+            "Should produce multiple chunks for 15-second audio"
+        );
         assert!(last_was_final, "Last chunk should be marked as final");
     }
 
@@ -1008,18 +1026,19 @@ mod tests {
         let valid_samples = vec![-1.0, -0.5, 0.0, 0.5, 1.0];
 
         for &sample in &valid_samples {
-            assert!(sample >= -1.0 && sample <= 1.0,
-                "Sample {} should be in valid range [-1.0, 1.0]", sample);
+            assert!(
+                (-1.0..=1.0).contains(&sample),
+                "Sample {} should be in valid range [-1.0, 1.0]",
+                sample
+            );
         }
     }
 
     #[test]
     fn test_audio_sample_conversion_i16_to_f32() {
-        let i16_samples = vec![32767i16, 0, -32768, 16384, -16384];
+        let i16_samples = [32767i16, 0, -32768, 16384, -16384];
 
-        let f32_samples: Vec<f32> = i16_samples.iter()
-            .map(|&s| s as f32 / 32768.0)
-            .collect();
+        let f32_samples: Vec<f32> = i16_samples.iter().map(|&s| s as f32 / 32768.0).collect();
 
         // Verify conversion accuracy
         assert!((f32_samples[0] - 0.99997).abs() < 0.001); // Close to 1.0
@@ -1053,15 +1072,18 @@ mod tests {
     fn test_audio_chunk_boundary_calculations() {
         // Test that chunk boundaries are calculated correctly
         let test_cases = vec![
-            (0, 0.0),      // First chunk starts at 0
-            (1, 10.0),     // Second chunk starts at 10 seconds
-            (2, 20.0),     // Third chunk starts at 20 seconds
+            (0, 0.0),  // First chunk starts at 0
+            (1, 10.0), // Second chunk starts at 10 seconds
+            (2, 20.0), // Third chunk starts at 20 seconds
         ];
 
         for (index, expected_start) in test_cases {
             let start_time = index as f32 * AudioChunk::TARGET_DURATION;
-            assert_eq!(start_time, expected_start,
-                "Chunk {} should start at {} seconds", index, expected_start);
+            assert_eq!(
+                start_time, expected_start,
+                "Chunk {} should start at {} seconds",
+                index, expected_start
+            );
         }
     }
 
@@ -1112,10 +1134,10 @@ mod tests {
     fn test_audio_chunk_validation() {
         // Helper to validate audio chunk properties
         fn validate_chunk(chunk: &AudioChunk) -> bool {
-            chunk.sample_rate == 16000 &&
-            chunk.duration >= 0.0 &&
-            chunk.samples.len() <= AudioChunk::TARGET_SAMPLES &&
-            chunk.start_time >= 0.0
+            chunk.sample_rate == 16000
+                && chunk.duration >= 0.0
+                && chunk.samples.len() <= AudioChunk::TARGET_SAMPLES
+                && chunk.start_time >= 0.0
         }
 
         // Valid chunk

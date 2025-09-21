@@ -5,7 +5,10 @@ edition = "2021"
 
 [dependencies]
 # Whisper.cpp bindings
-whisper-rs = { version = "0.15.0", default-features = false, features = ["tracing_backend", "raw-api"] }
+whisper-rs = { version = "0.15.0", default-features = false, features = [
+  "tracing_backend",
+  "raw-api",
+] }
 ffmpeg-next = { version = "8.0", features = ["codec", "format"] }
 
 # FFmpeg bindings for audio processing
@@ -31,6 +34,7 @@ futures-util = "0.3"
 strum = { version = "0.27.2", features = ["derive"] }
 tokio-stream = "0.1.17"
 miette = { version = "7.6.0", features = ["fancy"] }
+serde_with = "3.14.1"
 
 [dev-dependencies]
 tempfile = "3.21"
@@ -38,7 +42,10 @@ rstest = "0.26"
 pretty_assertions = "1.4.1"
 
 [features]
-cuda = ["whisper-rs/cuda"]
-vulkan = ["whisper-rs/vulkan"]
-metal = ["whisper-rs/metal"]
-coreml = ["whisper-rs/coreml"]
+cuda = []
+vulkan = []
+no-metal = []
+coreml = []
+
+[build-dependencies]
+build-target = "0.8.0"
