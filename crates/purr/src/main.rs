@@ -379,6 +379,12 @@ async fn handle_streaming_output(
         debug!("Processed {} chunks", all_chunks.len());
     }
 
+    // If no chunks were produced, consider this a failure
+    if all_chunks.is_empty() {
+        error!("No audio content was transcribed. The file may not be a valid audio file.");
+        process::exit(1);
+    }
+
     Ok(())
 }
 
