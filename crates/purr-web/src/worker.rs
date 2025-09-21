@@ -301,12 +301,18 @@ impl TranscriptionWorker {
         let sender_guard = self.worker_command_sender.lock().await;
         let sender = sender_guard
             .as_ref()
-            .ok_or_else(|| WebError::WorkerInitialization("Worker not initialized".to_string()))?;
+            .ok_or_else(|| WebError::WorkerInitialization {
+                worker_type: "audio_processing".to_string(),
+                source: Box::new(std::io::Error::new(std::io::ErrorKind::Other, "Worker not initialized")),
+            })?;
 
         sender
             .send(WorkerCommand::SendMessage(message))
             .map_err(|e| {
-                WebError::WorkerInitialization(format!("Failed to send command: {:?}", e))
+                WebError::WorkerInitialization {
+                    worker_type: "audio_processing".to_string(),
+                    source: Box::new(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to send command: {:?}", e))),
+                }
             })?;
 
         Ok(())
@@ -325,8 +331,14 @@ impl TranscriptionWorker {
         // Wait for actual WorkerReady message from worker.js with timeout
         tokio::time::timeout(std::time::Duration::from_secs(10), ready_rx)
             .await
-            .map_err(|_| WebError::WorkerInitialization("Worker ready timeout".to_string()))?
-            .map_err(|_| WebError::WorkerInitialization("Worker ready channel closed".to_string()))?;
+            .map_err(|_| WebError::WorkerInitialization {
+                worker_type: "audio_processing".to_string(),
+                source: Box::new(std::io::Error::new(std::io::ErrorKind::Other, "Worker ready timeout")),
+            })?
+            .map_err(|_| WebError::WorkerInitialization {
+                worker_type: "audio_processing".to_string(),
+                source: Box::new(std::io::Error::new(std::io::ErrorKind::Other, "Worker ready channel closed")),
+            })?;
 
         tracing::info!("Worker ready for session: {}", session_id);
         Ok(())

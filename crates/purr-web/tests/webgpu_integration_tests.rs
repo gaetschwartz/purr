@@ -412,7 +412,11 @@ mod error_handling_integration_tests {
         ];
 
         for error_msg in webgpu_errors {
-            let webgpu_error = WebError::WebGpu(error_msg.to_string());
+            let webgpu_error = WebError::WebGpu {
+                operation: "test_operation".to_string(),
+                device_type: "webgpu".to_string(),
+                source: Box::new(std::io::Error::new(std::io::ErrorKind::Other, error_msg)),
+            };
             let platform_error = webgpu_error.into_platform_error();
 
             // Verify error propagation
@@ -456,7 +460,11 @@ mod error_handling_integration_tests {
             console::log_1(&"WebGPU available - testing graceful degradation".into());
 
             // Test graceful degradation when WebGPU operations fail
-            let webgpu_error = WebError::WebGpu("Simulated WebGPU failure".to_string());
+            let webgpu_error = WebError::WebGpu {
+                operation: "test_operation".to_string(),
+                device_type: "webgpu".to_string(),
+                source: Box::new(std::io::Error::new(std::io::ErrorKind::Other, "Simulated WebGPU failure")),
+            };
 
             match webgpu_error {
                 WebError::WebGpu { source, .. } => {

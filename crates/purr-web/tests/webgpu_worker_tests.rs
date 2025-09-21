@@ -439,7 +439,11 @@ mod worker_error_handling_tests {
         ];
 
         for error_msg in webgpu_errors {
-            let webgpu_error = WebError::WebGpu(error_msg.to_string());
+            let webgpu_error = WebError::WebGpu {
+                operation: "worker_test".to_string(),
+                device_type: "webgpu".to_string(),
+                source: Box::new(std::io::Error::new(std::io::ErrorKind::Other, error_msg)),
+            };
 
             match webgpu_error {
                 WebError::WebGpu { source, .. } => {

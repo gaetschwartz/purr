@@ -225,12 +225,20 @@ pub fn validate_device_limits(limits: &Object) -> WebResult<()> {
         match Reflect::get(limits, &JsValue::from_str(limit_name)) {
             Ok(limit_val) => {
                 if limit_val.is_undefined() {
-                    return Err(WebError::WebGpu(format!("Missing limit: {}", limit_name)));
+                    return Err(WebError::WebGpu {
+                        operation: "limit_validation".to_string(),
+                        device_type: "webgpu".to_string(),
+                        source: Box::new(std::io::Error::new(std::io::ErrorKind::Other, format!("Missing limit: {}", limit_name))),
+                    });
                 }
                 // In a real test, we'd validate the actual values
             }
             Err(_) => {
-                return Err(WebError::WebGpu(format!("Failed to get limit: {}", limit_name)));
+                return Err(WebError::WebGpu {
+                    operation: "limit_access".to_string(),
+                    device_type: "webgpu".to_string(),
+                    source: Box::new(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to get limit: {}", limit_name))),
+                });
             }
         }
     }
@@ -270,9 +278,11 @@ pub fn validate_audio_processing_results(
     expected_gain: f32,
 ) -> WebResult<()> {
     if input.len() != output.len() {
-        return Err(WebError::WebGpu(
-            "Input and output buffer sizes don't match".to_string()
-        ));
+        return Err(WebError::WebGpu {
+            operation: "buffer_validation".to_string(),
+            device_type: "webgpu".to_string(),
+            source: Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, "Input and output buffer sizes don't match")),
+        });
     }
 
     let mut total_error = 0.0f32;
@@ -283,10 +293,14 @@ pub fn validate_audio_processing_results(
         let error = (output_sample - expected).abs();
 
         if error > tolerance {
-            return Err(WebError::WebGpu(format!(
-                "Audio processing error at sample {}: expected {:.6}, got {:.6}, error {:.6}",
-                i, expected, output_sample, error
-            )));
+            return Err(WebError::WebGpu {
+                operation: "audio_processing".to_string(),
+                device_type: "webgpu".to_string(),
+                source: Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, format!(
+                    "Audio processing error at sample {}: expected {:.6}, got {:.6}, error {:.6}",
+                    i, expected, output_sample, error
+                ))),
+            });
         }
 
         total_error += error;
@@ -294,10 +308,14 @@ pub fn validate_audio_processing_results(
 
     let average_error = total_error / input.len() as f32;
     if average_error > tolerance / 10.0 {
-        return Err(WebError::WebGpu(format!(
-            "Average audio processing error too high: {:.6}",
-            average_error
-        )));
+        return Err(WebError::WebGpu {
+            operation: "audio_processing".to_string(),
+            device_type: "webgpu".to_string(),
+            source: Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, format!(
+                "Average audio processing error too high: {:.6}",
+                average_error
+            ))),
+        });
     }
 
     Ok(())
@@ -316,10 +334,14 @@ pub fn test_webgpu_features(features: &js_sys::Set, required_features: &[&str]) 
     }
 
     if !missing_features.is_empty() {
-        return Err(WebError::WebGpu(format!(
-            "Missing WebGPU features: {}",
-            missing_features.join(", ")
-        )));
+        return Err(WebError::WebGpu {
+            operation: "feature_validation".to_string(),
+            device_type: "webgpu".to_string(),
+            source: Box::new(std::io::Error::new(std::io::ErrorKind::Other, format!(
+                "Missing WebGPU features: {}",
+                missing_features.join(", ")
+            ))),
+        });
     }
 
     Ok(missing_features)

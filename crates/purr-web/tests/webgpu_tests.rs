@@ -86,7 +86,11 @@ mod webgpu_device_tests {
         console::log_1(&"Testing WebGPU error handling".into());
 
         // Test WebGPU error creation
-        let webgpu_error = WebError::WebGpu("Test WebGPU error".to_string());
+        let webgpu_error = WebError::WebGpu {
+            operation: "test_operation".to_string(),
+            device_type: "webgpu".to_string(),
+            source: Box::new(std::io::Error::new(std::io::ErrorKind::Other, "Test WebGPU error")),
+        };
 
         match &webgpu_error {
             WebError::WebGpu { source, .. } => {
@@ -307,7 +311,11 @@ mod webgpu_integration_tests {
         ];
 
         for error_msg in test_errors {
-            let webgpu_error = WebError::WebGpu(error_msg.to_string());
+            let webgpu_error = WebError::WebGpu {
+                operation: "test_operation".to_string(),
+                device_type: "webgpu".to_string(),
+                source: Box::new(std::io::Error::new(std::io::ErrorKind::Other, error_msg)),
+            };
             let platform_error = webgpu_error.into_platform_error();
 
             assert!(platform_error.to_string().contains(error_msg));

@@ -597,7 +597,11 @@ mod pipeline_integration_tests {
         ];
 
         for error_msg in error_scenarios {
-            let pipeline_error = WebError::WebGpu(format!("Pipeline error: {}", error_msg));
+            let pipeline_error = WebError::WebGpu {
+                operation: "pipeline_test".to_string(),
+                device_type: "webgpu".to_string(),
+                source: Box::new(std::io::Error::new(std::io::ErrorKind::Other, format!("Pipeline error: {}", error_msg))),
+            };
 
             match pipeline_error {
                 WebError::WebGpu { source, .. } => {
