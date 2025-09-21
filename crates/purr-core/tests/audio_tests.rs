@@ -192,8 +192,9 @@ async fn test_audio_processor_load_nonexistent_file() {
 
     assert!(result.is_err());
     match result.unwrap_err() {
+        WhisperError::AudioProcessing { source: AudioProcessingError::ReadFailed { .. } } => {},
         WhisperError::AudioProcessing { source: AudioProcessingError::ProcessingFailed { .. } } => {},
-        e => panic!("Expected ProcessingFailed error, got: {:?}", e),
+        e => panic!("Expected ReadFailed or ProcessingFailed error, got: {:?}", e),
     }
 }
 

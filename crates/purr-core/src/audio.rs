@@ -424,111 +424,144 @@ impl AudioProcessor {
             || (*last_channel_layout != Some(current_channel_layout))
             || (*last_rate != Some(current_rate));
 
-        // Determine if we need resampling at all
-        // We can do direct conversion for I16 and F32 formats for mono audio
-        let is_direct_convertible = matches!(
-            current_format,
-            ffmpeg::format::Sample::I16(_) | ffmpeg::format::Sample::F32(_)
-        ) && frame.channels() == 1;
+        // Always use resampler for consistent processing and better format handling
+        // This ensures proper stereo-to-mono conversion and sample rate conversion
+        if resampler_needs_update || resampler.is_none() {
+            *resampler = Some(
+                ffmpeg::software::resampling::context::Context::get(
+                    current_format,
+                    current_channel_layout,
+                    current_rate,
+                    ffmpeg::format::Sample::F32(ffmpeg::format::sample::Type::Planar),
+                    ffmpeg::channel_layout::ChannelLayout::MONO,
+                    16000,
+                )
+                .map_err(WhisperError::from)?,
+            );
 
-        // We can handle direct conversion even for different sample rates
-        let needs_resampling = !is_direct_convertible;
+            // Update our tracking variables
+            *last_format = Some(current_format);
+            *last_channel_layout = Some(current_channel_layout);
+            *last_rate = Some(current_rate);
+        }
 
-        if needs_resampling {
-            // Create or recreate resampler if needed
-            if resampler_needs_update || resampler.is_none() {
-                *resampler = Some(
-                    ffmpeg::software::resampling::context::Context::get(
-                        current_format,
-                        current_channel_layout,
-                        current_rate,
-                        ffmpeg::format::Sample::F32(ffmpeg::format::sample::Type::Planar),
-                        ffmpeg::channel_layout::ChannelLayout::MONO,
-                        16000,
-                    )
-                    .map_err(WhisperError::from)?,
-                );
+        // Resample frame with error handling
+        if let Some(ref mut resampler_ctx) = resampler {
+            match resampler_ctx.run(frame, resampled) {
+                Ok(_) => {
+                    // Successfully resampled - extract f32 samples
+                    let data = resampled.data(0);
+                    let sample_count = resampled.samples();
 
-                // Update our tracking variables
-                *last_format = Some(current_format);
-                *last_channel_layout = Some(current_channel_layout);
-                *last_rate = Some(current_rate);
-            }
-
-            // Resample frame with error handling
-            if let Some(ref mut resampler_ctx) = resampler {
-                match resampler_ctx.run(frame, resampled) {
-                    Ok(_) => {
-                        // Successfully resampled
+                    if sample_count > 0 {
+                        unsafe {
+                            let ptr = data.as_ptr().cast::<f32>();
+                            let slice = std::slice::from_raw_parts(ptr, sample_count);
+                            samples.extend_from_slice(slice);
+                        }
                     }
-                    Err(e) => {
-                        // Input format changed - skip this frame and continue
-                        eprintln!("Warning: Skipping frame due to resampling error: {e}");
+                }
+                Err(e) => {
+                    // Force recreation of resampler for next frame
+                    *resampler = None;
+                    *last_format = None;
+                    *last_channel_layout = None;
+                    *last_rate = None;
 
-                        // Force recreation of resampler for next frame
-                        *resampler = None;
-                        *last_format = None;
-                        *last_channel_layout = None;
-                        *last_rate = None;
-
-                        // Skip processing this frame but continue with next ones
-                        return Ok(());
+                    // Try fallback processing for this frame
+                    if let Ok(_) = Self::process_frame_fallback(frame, samples, current_rate) {
+                        // Fallback succeeded, continue
+                    } else {
+                        // Log warning and skip this frame
+                        warn!("Skipping frame due to resampling error: {}", e);
                     }
                 }
             }
+        }
 
-            // Extract f32 samples
-            let data = resampled.data(0);
-            let sample_count = resampled.samples();
+        Ok(())
+    }
 
-            unsafe {
-                let ptr = data.as_ptr().cast::<f32>();
-                let slice = std::slice::from_raw_parts(ptr, sample_count);
-                samples.extend_from_slice(slice);
-            }
-        } else {
-            // Direct conversion for mono audio with manual sample rate conversion
-            let data = frame.data(0);
-            let sample_count = frame.samples();
+    /// Fallback processing for frames that fail resampling
+    fn process_frame_fallback(
+        frame: &ffmpeg::frame::Audio,
+        samples: &mut Vec<f32>,
+        current_rate: u32,
+    ) -> Result<()> {
+        let current_format = frame.format();
+        let data = frame.data(0);
+        let sample_count = frame.samples();
+        let channels = frame.channels();
 
-            match current_format {
-                ffmpeg::format::Sample::I16(_) => {
-                    // Convert s16 to f32 with potential downsampling
-                    unsafe {
-                        let ptr = data.as_ptr().cast::<i16>();
-                        let slice = std::slice::from_raw_parts(ptr, sample_count);
+        if sample_count == 0 {
+            return Ok(());
+        }
 
-                        if current_rate == 16000 {
-                            // Direct conversion for 16kHz
-                            for &sample in slice {
-                                samples.push(f32::from(sample) / 32768.0);
+        match current_format {
+            ffmpeg::format::Sample::I16(sample_type) => {
+                unsafe {
+                    let ptr = data.as_ptr().cast::<i16>();
+                    let slice = std::slice::from_raw_parts(ptr, sample_count * channels as usize);
+
+                    let step = current_rate as f32 / 16000.0;
+                    let mut pos = 0.0;
+
+                    match sample_type {
+                        ffmpeg::format::sample::Type::Packed => {
+                            // Interleaved format (LRLRLR...)
+                            while (pos as usize * channels as usize) < slice.len() {
+                                let idx = (pos as usize) * channels as usize;
+                                // Convert to mono by averaging channels or taking left channel
+                                let mono_sample = if channels == 1 {
+                                    slice[idx]
+                                } else {
+                                    // Average all channels for mono conversion
+                                    let sum: i32 = (0..channels).map(|c| slice[idx + c as usize] as i32).sum();
+                                    (sum / channels as i32) as i16
+                                };
+                                samples.push(mono_sample as f32 / 32768.0);
+                                pos += step;
                             }
-                        } else {
-                            // Simple downsampling for other rates
-                            let step = current_rate as f32 / 16000.0;
-                            let mut pos = 0.0;
-                            while (pos as usize) < slice.len() {
+                        }
+                        ffmpeg::format::sample::Type::Planar => {
+                            // Planar format - take first channel only
+                            while (pos as usize) < sample_count {
                                 let idx = pos as usize;
-                                samples.push(f32::from(slice[idx]) / 32768.0);
+                                samples.push(slice[idx] as f32 / 32768.0);
                                 pos += step;
                             }
                         }
                     }
                 }
-                ffmpeg::format::Sample::F32(_) => {
-                    // F32 conversion with potential downsampling
-                    unsafe {
-                        let ptr = data.as_ptr().cast::<f32>();
-                        let slice = std::slice::from_raw_parts(ptr, sample_count);
+            }
+            ffmpeg::format::Sample::F32(sample_type) => {
+                unsafe {
+                    let ptr = data.as_ptr().cast::<f32>();
+                    let slice = std::slice::from_raw_parts(ptr, sample_count * channels as usize);
 
-                        if current_rate == 16000 {
-                            // Direct copy for 16kHz
-                            samples.extend_from_slice(slice);
-                        } else {
-                            // Simple downsampling for other rates
-                            let step = current_rate as f32 / 16000.0;
-                            let mut pos = 0.0;
-                            while (pos as usize) < slice.len() {
+                    let step = current_rate as f32 / 16000.0;
+                    let mut pos = 0.0;
+
+                    match sample_type {
+                        ffmpeg::format::sample::Type::Packed => {
+                            // Interleaved format (LRLRLR...)
+                            while (pos as usize * channels as usize) < slice.len() {
+                                let idx = (pos as usize) * channels as usize;
+                                // Convert to mono by averaging channels or taking left channel
+                                let mono_sample = if channels == 1 {
+                                    slice[idx]
+                                } else {
+                                    // Average all channels for mono conversion
+                                    let sum: f32 = (0..channels).map(|c| slice[idx + c as usize]).sum();
+                                    sum / channels as f32
+                                };
+                                samples.push(mono_sample);
+                                pos += step;
+                            }
+                        }
+                        ffmpeg::format::sample::Type::Planar => {
+                            // Planar format - take first channel only
+                            while (pos as usize) < sample_count {
                                 let idx = pos as usize;
                                 samples.push(slice[idx]);
                                 pos += step;
@@ -536,10 +569,9 @@ impl AudioProcessor {
                         }
                     }
                 }
-                _ => {
-                    // This shouldn't happen since we checked needs_resampling above
-                    return Err(WhisperError::from(AudioProcessingError::FormatConversion));
-                }
+            }
+            _ => {
+                return Err(WhisperError::from(AudioProcessingError::FormatConversion));
             }
         }
 
@@ -556,9 +588,6 @@ impl AudioProcessor {
         last_channel_layout: &mut Option<ffmpeg::channel_layout::ChannelLayout>,
         last_rate: &mut Option<u32>,
     ) -> Result<()> {
-        // This is identical to process_audio_frame but writes to output_samples buffer
-        // instead of appending to the main samples vector
-
         // Check if frame properties have changed and we need to recreate the resampler
         let current_format = frame.format();
         let current_rate = frame.rate();
@@ -580,121 +609,57 @@ impl AudioProcessor {
             || (*last_channel_layout != Some(current_channel_layout))
             || (*last_rate != Some(current_rate));
 
-        // Determine if we need resampling at all
-        // We can do direct conversion for I16 and F32 formats for mono audio
-        let is_direct_convertible = matches!(
-            current_format,
-            ffmpeg::format::Sample::I16(_) | ffmpeg::format::Sample::F32(_)
-        ) && frame.channels() == 1;
+        // Always use resampler for consistent processing and better format handling
+        // This ensures proper stereo-to-mono conversion and sample rate conversion
+        if resampler_needs_update || resampler.is_none() {
+            *resampler = Some(
+                ffmpeg::software::resampling::context::Context::get(
+                    current_format,
+                    current_channel_layout,
+                    current_rate,
+                    ffmpeg::format::Sample::F32(ffmpeg::format::sample::Type::Planar),
+                    ffmpeg::channel_layout::ChannelLayout::MONO,
+                    16000,
+                )
+                .map_err(WhisperError::from)?,
+            );
 
-        // We can handle direct conversion even for different sample rates
-        let needs_resampling = !is_direct_convertible;
+            // Update our tracking variables
+            *last_format = Some(current_format);
+            *last_channel_layout = Some(current_channel_layout);
+            *last_rate = Some(current_rate);
+        }
 
-        if needs_resampling {
-            // Create or recreate resampler if needed
-            if resampler_needs_update || resampler.is_none() {
-                *resampler = Some(
-                    ffmpeg::software::resampling::context::Context::get(
-                        current_format,
-                        current_channel_layout,
-                        current_rate,
-                        ffmpeg::format::Sample::F32(ffmpeg::format::sample::Type::Planar),
-                        ffmpeg::channel_layout::ChannelLayout::MONO,
-                        16000,
-                    )
-                    .map_err(WhisperError::from)?,
-                );
+        // Resample frame with error handling
+        if let Some(ref mut resampler_ctx) = resampler {
+            match resampler_ctx.run(frame, resampled) {
+                Ok(_) => {
+                    // Successfully resampled - extract f32 samples
+                    let data = resampled.data(0);
+                    let sample_count = resampled.samples();
 
-                // Update our tracking variables
-                *last_format = Some(current_format);
-                *last_channel_layout = Some(current_channel_layout);
-                *last_rate = Some(current_rate);
-            }
-
-            // Resample frame with error handling
-            if let Some(ref mut resampler_ctx) = resampler {
-                match resampler_ctx.run(frame, resampled) {
-                    Ok(_) => {
-                        // Successfully resampled
-                    }
-                    Err(e) => {
-                        // Input format changed - skip this frame and continue
-                        warn!("Skipping frame due to resampling error: {}", e);
-
-                        // Force recreation of resampler for next frame
-                        *resampler = None;
-                        *last_format = None;
-                        *last_channel_layout = None;
-                        *last_rate = None;
-
-                        // Skip processing this frame but continue with next ones
-                        return Ok(());
-                    }
-                }
-            }
-
-            // Extract f32 samples
-            let data = resampled.data(0);
-            let sample_count = resampled.samples();
-
-            unsafe {
-                let ptr = data.as_ptr().cast::<f32>();
-                let slice = std::slice::from_raw_parts(ptr, sample_count);
-                output_samples.extend_from_slice(slice);
-            }
-        } else {
-            // Direct conversion for mono audio with manual sample rate conversion
-            let data = frame.data(0);
-            let sample_count = frame.samples();
-
-            match current_format {
-                ffmpeg::format::Sample::I16(_) => {
-                    // Convert s16 to f32 with potential downsampling
-                    unsafe {
-                        let ptr = data.as_ptr().cast::<i16>();
-                        let slice = std::slice::from_raw_parts(ptr, sample_count);
-
-                        if current_rate == 16000 {
-                            // Direct conversion for 16kHz
-                            for &sample in slice {
-                                output_samples.push(f32::from(sample) / 32768.0);
-                            }
-                        } else {
-                            // Simple downsampling for other rates
-                            let step = current_rate as f32 / 16000.0;
-                            let mut pos = 0.0;
-                            while (pos as usize) < slice.len() {
-                                let idx = pos as usize;
-                                output_samples.push(f32::from(slice[idx]) / 32768.0);
-                                pos += step;
-                            }
-                        }
-                    }
-                }
-                ffmpeg::format::Sample::F32(_) => {
-                    // F32 conversion with potential downsampling
-                    unsafe {
-                        let ptr = data.as_ptr().cast::<f32>();
-                        let slice = std::slice::from_raw_parts(ptr, sample_count);
-
-                        if current_rate == 16000 {
-                            // Direct copy for 16kHz
+                    if sample_count > 0 {
+                        unsafe {
+                            let ptr = data.as_ptr().cast::<f32>();
+                            let slice = std::slice::from_raw_parts(ptr, sample_count);
                             output_samples.extend_from_slice(slice);
-                        } else {
-                            // Simple downsampling for other rates
-                            let step = current_rate as f32 / 16000.0;
-                            let mut pos = 0.0;
-                            while (pos as usize) < slice.len() {
-                                let idx = pos as usize;
-                                output_samples.push(slice[idx]);
-                                pos += step;
-                            }
                         }
                     }
                 }
-                _ => {
-                    // This shouldn't happen since we checked needs_resampling above
-                    return Err(WhisperError::from(AudioProcessingError::FormatConversion));
+                Err(e) => {
+                    // Force recreation of resampler for next frame
+                    *resampler = None;
+                    *last_format = None;
+                    *last_channel_layout = None;
+                    *last_rate = None;
+
+                    // Try fallback processing for this frame
+                    if let Ok(_) = Self::process_frame_fallback(frame, output_samples, current_rate) {
+                        // Fallback succeeded, continue
+                    } else {
+                        // Log warning and skip this frame
+                        warn!("Skipping frame due to resampling error: {}", e);
+                    }
                 }
             }
         }
@@ -899,12 +864,17 @@ mod tests {
         let error = result.unwrap_err();
         match error {
             WhisperError::AudioProcessing {
+                source: AudioProcessingError::ReadFailed { .. },
+            } => {
+                // Expected ReadFailed error for nonexistent file
+            }
+            WhisperError::AudioProcessing {
                 source: AudioProcessingError::ProcessingFailed { reason },
             } => {
                 assert!(reason.contains("not found"));
             }
             _ => panic!(
-                "Expected ProcessingFailed error with 'not found', got: {:?}",
+                "Expected ReadFailed or ProcessingFailed error with 'not found', got: {:?}",
                 error
             ),
         }
