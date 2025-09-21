@@ -134,7 +134,7 @@ impl WebModelManager {
         opts.set_method("GET");
 
         let request = Request::new_with_str_and_init(&url, &opts).map_err(|e| {
-            WebError::web_api_js("Request creation", e)
+            WebError::web_api("Request creation", e)
         })?;
 
         let window = web_sys::window()
@@ -143,10 +143,10 @@ impl WebModelManager {
         // Execute fetch
         let resp_value = JsFuture::from(window.fetch_with_request(&request))
             .await
-            .map_err(|e| WebError::web_api_js("Fetch", e))?;
+            .map_err(|e| WebError::web_api("Fetch", e))?;
 
         let resp: Response = resp_value.dyn_into().map_err(|e| {
-            WebError::web_api_js("Response cast", e)
+            WebError::web_api("Response cast", e)
         })?;
 
         if !resp.ok() {
@@ -173,12 +173,12 @@ impl WebModelManager {
                 .get_reader()
                 .dyn_into::<web_sys::ReadableStreamDefaultReader>()
                 .map_err(|e| {
-                    WebError::web_api_js("Reader cast", e.into())
+                    WebError::web_api("Reader cast", e.into())
                 })?;
             loop {
                 let read_promise = reader.read();
                 let result = JsFuture::from(read_promise).await.map_err(|e| {
-                    WebError::web_api_js("Stream read", e)
+                    WebError::web_api("Stream read", e)
                 })?;
 
                 let chunk_obj = js_sys::Object::from(result);

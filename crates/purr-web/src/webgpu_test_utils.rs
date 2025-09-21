@@ -5,7 +5,7 @@
 
 use crate::error::WebGpuError;
 #[cfg(test)]
-use crate::{WebError, WebResult};
+use crate::WebResult;
 #[cfg(test)]
 use js_sys::{Float32Array, Object, Promise, Reflect};
 #[cfg(test)]

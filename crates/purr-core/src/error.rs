@@ -22,22 +22,6 @@ impl UnknownModelError {
     }
 }
 
-/// Error for invalid audio parameters
-#[derive(Debug, thiserror::Error, miette::Diagnostic)]
-#[error("Invalid audio parameters: {details}")]
-#[diagnostic(code(whisper::audio::invalid_parameters))]
-pub struct InvalidParametersError {
-    pub details: String,
-}
-
-impl InvalidParametersError {
-    pub fn new(details: impl Into<String>) -> Self {
-        Self {
-            details: details.into(),
-        }
-    }
-}
-
 /// Error for unsupported audio formats
 #[derive(Debug, thiserror::Error, miette::Diagnostic)]
 #[error("Unsupported audio format: {format}")]
@@ -134,35 +118,6 @@ pub enum AudioProcessingError {
         source: Box<dyn std::error::Error + Send + Sync>,
     },
 
-    #[error("Audio decoding failed: {codec} format not supported")]
-    #[diagnostic(code(whisper::audio::decode_failed))]
-    DecodeFailed {
-        codec: String,
-        #[source]
-        source: Option<Box<dyn std::error::Error + Send + Sync>>,
-    },
-
-    #[error("Audio resampling failed from {source_rate}Hz to {target_rate}Hz")]
-    #[diagnostic(code(whisper::audio::resample_failed))]
-    ResampleFailed {
-        source_rate: u32,
-        target_rate: u32,
-        #[source]
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
-
-    #[error("Audio file too large: {file_size} bytes exceeds limit of {max_size} bytes")]
-    #[diagnostic(code(whisper::audio::file_too_large))]
-    FileTooLarge { file_size: u64, max_size: u64 },
-
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    InvalidParameters(InvalidParametersError),
-
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    UnsupportedFormat(UnsupportedFormatError),
-
     #[error("Failed to read audio file {file}: {source}")]
     #[diagnostic(code(whisper::audio::read_failed))]
     ReadFailed {
@@ -190,48 +145,6 @@ impl AudioProcessingError {
             operation: operation.into(),
             source: source.into(),
         }
-    }
-
-    /// Create a new decode failed error
-    pub fn decode_failed<E>(codec: impl Into<String>, source: Option<E>) -> Self
-    where
-        E: Into<Box<dyn std::error::Error + Send + Sync>>,
-    {
-        Self::DecodeFailed {
-            codec: codec.into(),
-            source: source.map(Into::into),
-        }
-    }
-
-    /// Create a new resample failed error
-    pub fn resample_failed<E>(source_rate: u32, target_rate: u32, source: E) -> Self
-    where
-        E: Into<Box<dyn std::error::Error + Send + Sync>>,
-    {
-        Self::ResampleFailed {
-            source_rate,
-            target_rate,
-            source: source.into(),
-        }
-    }
-
-    /// Create a new file too large error
-    #[must_use]
-    pub fn file_too_large(file_size: u64, max_size: u64) -> Self {
-        Self::FileTooLarge {
-            file_size,
-            max_size,
-        }
-    }
-
-    /// Create a new invalid parameters error
-    pub fn invalid_parameters(details: impl Into<String>) -> Self {
-        Self::InvalidParameters(InvalidParametersError::new(details))
-    }
-
-    /// Create a new unsupported format error
-    pub fn unsupported_format(format: impl Into<String>) -> Self {
-        Self::UnsupportedFormat(UnsupportedFormatError::new(format))
     }
 }
 

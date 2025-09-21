@@ -304,9 +304,7 @@ impl TranscriptionWorker {
 
         sender
             .send(WorkerCommand::SendMessage(message))
-            .map_err(|e| WorkerError::CommandSendFailed {
-                details: format!("{e:?}"),
-            })?;
+            .map_err(|_| WorkerError::CommandSendFailed)?;
 
         Ok(())
     }

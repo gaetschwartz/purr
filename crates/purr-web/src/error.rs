@@ -6,7 +6,9 @@ use wasm_bindgen::JsValue;
 /// Helper function to format JsValue errors into strings while preserving information
 pub(crate) fn format_js_error(js_error: JsValue) -> String {
     if js_error.is_string() {
-        js_error.as_string().unwrap_or_else(|| "Unknown JS error".to_string())
+        js_error
+            .as_string()
+            .unwrap_or_else(|| "Unknown JS error".to_string())
     } else if js_error.is_object() {
         // Try to get error message, name, and stack if available
         let obj = js_sys::Object::from(js_error);
@@ -67,13 +69,9 @@ pub enum WorkerError {
     #[diagnostic(code(purr::web::worker::not_initialized))]
     NotInitialized,
 
-    #[error("Worker command send failed: {details}")]
+    #[error("Worker command send failed")]
     #[diagnostic(code(purr::web::worker::command_send_failed))]
-    CommandSendFailed { details: String },
-
-    #[error("Worker command send failed: {js_error}")]
-    #[diagnostic(code(purr::web::worker::command_send_failed_js))]
-    CommandSendFailedJs { js_error: String },
+    CommandSendFailed,
 
     #[error("Worker ready timeout")]
     #[diagnostic(code(purr::web::worker::ready_timeout))]
@@ -82,171 +80,98 @@ pub enum WorkerError {
     #[error("Worker ready channel closed")]
     #[diagnostic(code(purr::web::worker::ready_channel_closed))]
     ReadyChannelClosed,
-
-    #[error("Worker message handling failed: {details}")]
-    #[diagnostic(code(purr::web::worker::message_handling_failed))]
-    MessageHandlingFailed { details: String },
-
-    #[error("Worker message handling failed: {js_error}")]
-    #[diagnostic(code(purr::web::worker::message_handling_failed_js))]
-    MessageHandlingFailedJs { js_error: String },
-}
-
-impl WorkerError {
-    /// Create a command send error with JsValue
-    pub fn command_send_failed_js(js_error: JsValue) -> Self {
-        Self::CommandSendFailedJs { js_error: format_js_error(js_error) }
-    }
-
-    /// Create a message handling error with JsValue
-    pub fn message_handling_failed_js(js_error: JsValue) -> Self {
-        Self::MessageHandlingFailedJs { js_error: format_js_error(js_error) }
-    }
 }
 
 /// Storage-specific errors for `IndexedDB` and other storage operations
 #[derive(Debug, thiserror::Error, miette::Diagnostic)]
 pub enum StorageError {
-    #[error("IndexedDB availability check failed")]
-    #[diagnostic(code(purr::web::storage::indexeddb_unavailable))]
-    IndexedDbUnavailable,
-
     #[error("IndexedDB availability check failed: {js_error:?}")]
-    #[diagnostic(code(purr::web::storage::indexeddb_unavailable_js))]
-    IndexedDbUnavailableJs { js_error: String },
-
+    #[diagnostic(code(purr::web::storage::indexeddb_unavailable))]
+    IndexedDbUnavailable { js_error: String },
 
     #[error("Database open failed: {js_error:?}")]
-    #[diagnostic(code(purr::web::storage::database_open_failed_js))]
-    DatabaseOpenFailedJs { js_error: String },
-
-    #[error("Database connection failed")]
-    #[diagnostic(code(purr::web::storage::database_connection_failed))]
-    DatabaseConnectionFailed,
+    #[diagnostic(code(purr::web::storage::database_open_failed))]
+    DatabaseOpenFailed { js_error: String },
 
     #[error("Database connection failed: {js_error:?}")]
-    #[diagnostic(code(purr::web::storage::database_connection_failed_js))]
-    DatabaseConnectionFailedJs { js_error: String },
-
+    #[diagnostic(code(purr::web::storage::database_connection_failed))]
+    DatabaseConnectionFailed { js_error: String },
 
     #[error("Database cast failed: {js_error:?}")]
-    #[diagnostic(code(purr::web::storage::database_cast_failed_js))]
-    DatabaseCastFailedJs { js_error: String },
-
-    #[error("Transaction creation failed")]
-    #[diagnostic(code(purr::web::storage::transaction_creation_failed))]
-    TransactionCreationFailed,
+    #[diagnostic(code(purr::web::storage::database_cast_failed))]
+    DatabaseCastFailed { js_error: String },
 
     #[error("Transaction creation failed: {js_error:?}")]
-    #[diagnostic(code(purr::web::storage::transaction_creation_failed_js))]
-    TransactionCreationFailedJs { js_error: String },
-
-    #[error("Object store access failed")]
-    #[diagnostic(code(purr::web::storage::object_store_access_failed))]
-    ObjectStoreAccessFailed,
+    #[diagnostic(code(purr::web::storage::transaction_creation_failed))]
+    TransactionCreationFailed { js_error: String },
 
     #[error("Object store access failed: {js_error:?}")]
-    #[diagnostic(code(purr::web::storage::object_store_access_failed_js))]
-    ObjectStoreAccessFailedJs { js_error: String },
-
+    #[diagnostic(code(purr::web::storage::object_store_access_failed))]
+    ObjectStoreAccessFailed { js_error: String },
 
     #[error("File store operation failed: {js_error:?}")]
-    #[diagnostic(code(purr::web::storage::file_store_failed_js))]
-    FileStoreFailedJs { js_error: String },
-
+    #[diagnostic(code(purr::web::storage::file_store_failed))]
+    FileStoreFailed { js_error: String },
 
     #[error("File storage operation failed: {js_error:?}")]
-    #[diagnostic(code(purr::web::storage::file_storage_operation_failed_js))]
-    FileStorageOperationFailedJs { js_error: String },
-
-    #[error("Metadata transaction creation failed")]
-    #[diagnostic(code(purr::web::storage::metadata_transaction_failed))]
-    MetadataTransactionFailed,
+    #[diagnostic(code(purr::web::storage::file_storage_operation_failed))]
+    FileStorageOperationFailed { js_error: String },
 
     #[error("Metadata transaction creation failed: {js_error:?}")]
-    #[diagnostic(code(purr::web::storage::metadata_transaction_failed_js))]
-    MetadataTransactionFailedJs { js_error: String },
-
-    #[error("Metadata store access failed")]
-    #[diagnostic(code(purr::web::storage::metadata_store_access_failed))]
-    MetadataStoreAccessFailed,
+    #[diagnostic(code(purr::web::storage::metadata_transaction_failed))]
+    MetadataTransactionFailed { js_error: String },
 
     #[error("Metadata store access failed: {js_error:?}")]
-    #[diagnostic(code(purr::web::storage::metadata_store_access_failed_js))]
-    MetadataStoreAccessFailedJs { js_error: String },
+    #[diagnostic(code(purr::web::storage::metadata_store_access_failed))]
+    MetadataStoreAccessFailed { js_error: String },
 
     #[error("Metadata serialization failed")]
     #[diagnostic(code(purr::web::storage::metadata_serialization_failed))]
     MetadataSerializationFailed,
 
-    #[error("Metadata store operation failed")]
-    #[diagnostic(code(purr::web::storage::metadata_store_failed))]
-    MetadataStoreFailed,
-
     #[error("Metadata store operation failed: {js_error:?}")]
-    #[diagnostic(code(purr::web::storage::metadata_store_failed_js))]
-    MetadataStoreFailedJs { js_error: String },
-
+    #[diagnostic(code(purr::web::storage::metadata_store_failed))]
+    MetadataStoreFailed { js_error: String },
 
     #[error("Metadata storage operation failed: {js_error:?}")]
-    #[diagnostic(code(purr::web::storage::metadata_storage_operation_failed_js))]
-    MetadataStorageOperationFailedJs { js_error: String },
-
+    #[diagnostic(code(purr::web::storage::metadata_storage_operation_failed))]
+    MetadataStorageOperationFailed { js_error: String },
 
     #[error("Get request failed: {js_error:?}")]
-    #[diagnostic(code(purr::web::storage::get_request_failed_js))]
-    GetRequestFailedJs { js_error: String },
-
-    #[error("Get operation failed")]
-    #[diagnostic(code(purr::web::storage::get_operation_failed))]
-    GetOperationFailed,
+    #[diagnostic(code(purr::web::storage::get_request_failed))]
+    GetRequestFailed { js_error: String },
 
     #[error("Get operation failed: {js_error:?}")]
-    #[diagnostic(code(purr::web::storage::get_operation_failed_js))]
-    GetOperationFailedJs { js_error: String },
+    #[diagnostic(code(purr::web::storage::get_operation_failed))]
+    GetOperationFailed { js_error: String },
 
     #[error("Data format invalid")]
     #[diagnostic(code(purr::web::storage::data_format_invalid))]
     DataFormatInvalid,
 
-
     #[error("Delete operation failed: {js_error:?}")]
-    #[diagnostic(code(purr::web::storage::delete_operation_failed_js))]
-    DeleteOperationFailedJs { js_error: String },
-
-    #[error("File deletion failed")]
-    #[diagnostic(code(purr::web::storage::file_deletion_failed))]
-    FileDeletionFailed,
+    #[diagnostic(code(purr::web::storage::delete_operation_failed))]
+    DeleteOperationFailed { js_error: String },
 
     #[error("File deletion failed: {js_error:?}")]
-    #[diagnostic(code(purr::web::storage::file_deletion_failed_js))]
-    FileDeletionFailedJs { js_error: String },
-
-    #[error("Metadata delete operation failed")]
-    #[diagnostic(code(purr::web::storage::metadata_delete_failed))]
-    MetadataDeleteFailed,
+    #[diagnostic(code(purr::web::storage::file_deletion_failed))]
+    FileDeletionFailed { js_error: String },
 
     #[error("Metadata delete operation failed: {js_error:?}")]
-    #[diagnostic(code(purr::web::storage::metadata_delete_failed_js))]
-    MetadataDeleteFailedJs { js_error: String },
-
-    #[error("Metadata deletion failed")]
-    #[diagnostic(code(purr::web::storage::metadata_deletion_failed))]
-    MetadataDeletionFailed,
+    #[diagnostic(code(purr::web::storage::metadata_delete_failed))]
+    MetadataDeleteFailed { js_error: String },
 
     #[error("Metadata deletion failed: {js_error:?}")]
-    #[diagnostic(code(purr::web::storage::metadata_deletion_failed_js))]
-    MetadataDeletionFailedJs { js_error: String },
-
+    #[diagnostic(code(purr::web::storage::metadata_deletion_failed))]
+    MetadataDeletionFailed { js_error: String },
 
     #[error("GetAll request failed: {js_error:?}")]
-    #[diagnostic(code(purr::web::storage::get_all_request_failed_js))]
-    GetAllRequestFailedJs { js_error: String },
-
+    #[diagnostic(code(purr::web::storage::get_all_request_failed))]
+    GetAllRequestFailed { js_error: String },
 
     #[error("GetAll operation failed: {js_error:?}")]
-    #[diagnostic(code(purr::web::storage::get_all_operation_failed_js))]
-    GetAllOperationFailedJs { js_error: String },
+    #[diagnostic(code(purr::web::storage::get_all_operation_failed))]
+    GetAllOperationFailed { js_error: String },
 
     #[error("Array format invalid")]
     #[diagnostic(code(purr::web::storage::array_format_invalid))]
@@ -255,43 +180,59 @@ pub enum StorageError {
 
 impl StorageError {
     /// Create a database open error with JsValue
-    pub fn database_open_failed_js(js_error: JsValue) -> Self {
-        Self::DatabaseOpenFailedJs { js_error: format_js_error(js_error) }
+    pub fn database_open_failed(js_error: JsValue) -> Self {
+        Self::DatabaseOpenFailed {
+            js_error: format_js_error(js_error),
+        }
     }
 
     /// Create a database connection error with JsValue
-    pub fn database_connection_failed_js(js_error: JsValue) -> Self {
-        Self::DatabaseConnectionFailedJs { js_error: format_js_error(js_error) }
+    pub fn database_connection_failed(js_error: JsValue) -> Self {
+        Self::DatabaseConnectionFailed {
+            js_error: format_js_error(js_error),
+        }
     }
 
     /// Create a transaction creation error with JsValue
-    pub fn transaction_creation_failed_js(js_error: JsValue) -> Self {
-        Self::TransactionCreationFailedJs { js_error: format_js_error(js_error) }
+    pub fn transaction_creation_failed(js_error: JsValue) -> Self {
+        Self::TransactionCreationFailed {
+            js_error: format_js_error(js_error),
+        }
     }
 
     /// Create an object store access error with JsValue
-    pub fn object_store_access_failed_js(js_error: JsValue) -> Self {
-        Self::ObjectStoreAccessFailedJs { js_error: format_js_error(js_error) }
+    pub fn object_store_access_failed(js_error: JsValue) -> Self {
+        Self::ObjectStoreAccessFailed {
+            js_error: format_js_error(js_error),
+        }
     }
 
     /// Create a file store error with JsValue
-    pub fn file_store_failed_js(js_error: JsValue) -> Self {
-        Self::FileStoreFailedJs { js_error: format_js_error(js_error) }
+    pub fn file_store_failed(js_error: JsValue) -> Self {
+        Self::FileStoreFailed {
+            js_error: format_js_error(js_error),
+        }
     }
 
     /// Create a metadata store error with JsValue
-    pub fn metadata_store_failed_js(js_error: JsValue) -> Self {
-        Self::MetadataStoreFailedJs { js_error: format_js_error(js_error) }
+    pub fn metadata_store_failed(js_error: JsValue) -> Self {
+        Self::MetadataStoreFailed {
+            js_error: format_js_error(js_error),
+        }
     }
 
     /// Create a get request error with JsValue
-    pub fn get_request_failed_js(js_error: JsValue) -> Self {
-        Self::GetRequestFailedJs { js_error: format_js_error(js_error) }
+    pub fn get_request_failed(js_error: JsValue) -> Self {
+        Self::GetRequestFailed {
+            js_error: format_js_error(js_error),
+        }
     }
 
     /// Create a get operation error with JsValue
-    pub fn get_operation_failed_js(js_error: JsValue) -> Self {
-        Self::GetOperationFailedJs { js_error: format_js_error(js_error) }
+    pub fn get_operation_failed(js_error: JsValue) -> Self {
+        Self::GetOperationFailed {
+            js_error: format_js_error(js_error),
+        }
     }
 }
 
@@ -390,11 +331,9 @@ pub enum AudioFormatError {
     #[diagnostic(code(purr::web::audio::unsupported_bit_depth))]
     UnsupportedBitDepth { bit_depth: u16 },
 
-
     #[error("Empty audio file")]
     #[diagnostic(code(purr::web::audio::empty_audio_file))]
     EmptyAudioFile,
-
 
     #[error("File too small to be valid audio")]
     #[diagnostic(code(purr::web::audio::file_too_small_for_valid_audio))]
@@ -416,10 +355,6 @@ pub enum WebGpuError {
     #[diagnostic(code(purr::web::webgpu::failed_to_get_limit))]
     FailedToGetLimit { limit_name: String },
 
-    #[error("Failed to get limit: {limit_name}, {js_error:?}")]
-    #[diagnostic(code(purr::web::webgpu::failed_to_get_limit_js))]
-    FailedToGetLimitJs { limit_name: String, js_error: String },
-
     #[error("Input and output buffer sizes don't match")]
     #[diagnostic(code(purr::web::webgpu::buffer_size_mismatch))]
     BufferSizeMismatch,
@@ -439,114 +374,22 @@ pub enum WebGpuError {
     #[error("WebGPU feature not supported: {feature}")]
     #[diagnostic(code(purr::web::webgpu::feature_not_supported))]
     FeatureNotSupported { feature: String },
-
-    #[error("WebGPU adapter request failed: {js_error:?}")]
-    #[diagnostic(code(purr::web::webgpu::adapter_request_failed))]
-    AdapterRequestFailed { js_error: String },
-
-    #[error("WebGPU device request failed: {js_error:?}")]
-    #[diagnostic(code(purr::web::webgpu::device_request_failed))]
-    DeviceRequestFailed { js_error: String },
-
-    #[error("WebGPU buffer creation failed: {js_error:?}")]
-    #[diagnostic(code(purr::web::webgpu::buffer_creation_failed))]
-    BufferCreationFailed { js_error: String },
-
-    #[error("WebGPU shader compilation failed: {js_error:?}")]
-    #[diagnostic(code(purr::web::webgpu::shader_compilation_failed))]
-    ShaderCompilationFailed { js_error: String },
-
-    #[error("WebGPU pipeline creation failed: {js_error:?}")]
-    #[diagnostic(code(purr::web::webgpu::pipeline_creation_failed))]
-    PipelineCreationFailed { js_error: String },
-
-    #[error("WebGPU command submission failed: {js_error:?}")]
-    #[diagnostic(code(purr::web::webgpu::command_submission_failed))]
-    CommandSubmissionFailed { js_error: String },
-}
-
-impl WebGpuError {
-    /// Create an adapter request error with JsValue
-    pub fn adapter_request_failed(js_error: JsValue) -> Self {
-        Self::AdapterRequestFailed { js_error: format_js_error(js_error) }
-    }
-
-    /// Create a device request error with JsValue
-    pub fn device_request_failed(js_error: JsValue) -> Self {
-        Self::DeviceRequestFailed { js_error: format_js_error(js_error) }
-    }
-
-    /// Create a buffer creation error with JsValue
-    pub fn buffer_creation_failed(js_error: JsValue) -> Self {
-        Self::BufferCreationFailed { js_error: format_js_error(js_error) }
-    }
-
-    /// Create a shader compilation error with JsValue
-    pub fn shader_compilation_failed(js_error: JsValue) -> Self {
-        Self::ShaderCompilationFailed { js_error: format_js_error(js_error) }
-    }
-
-    /// Create a pipeline creation error with JsValue
-    pub fn pipeline_creation_failed(js_error: JsValue) -> Self {
-        Self::PipelineCreationFailed { js_error: format_js_error(js_error) }
-    }
-
-    /// Create a command submission error with JsValue
-    pub fn command_submission_failed(js_error: JsValue) -> Self {
-        Self::CommandSubmissionFailed { js_error: format_js_error(js_error) }
-    }
-
-    /// Create a limit fetch error with JsValue
-    pub fn failed_to_get_limit_js(limit_name: impl Into<String>, js_error: JsValue) -> Self {
-        Self::FailedToGetLimitJs {
-            limit_name: limit_name.into(),
-            js_error: format_js_error(js_error),
-        }
-    }
 }
 
 /// Web-specific errors that can occur during platform operations
 #[derive(Debug, thiserror::Error, miette::Diagnostic)]
 pub enum WebError {
-    #[error("IndexedDB operation failed: {operation}")]
-    #[diagnostic(code(purr::web::indexeddb::operation_failed))]
-    IndexedDb {
-        operation: String,
-        #[source]
-        source: Option<serde_json::Error>,
-    },
-
     #[error("IndexedDB operation failed: {operation}, {js_error:?}")]
-    #[diagnostic(code(purr::web::indexeddb::operation_failed_js))]
-    IndexedDbJs {
-        operation: String,
-        js_error: String,
-    },
-
-    #[error("Web API error: {api} call failed")]
-    #[diagnostic(code(purr::web::api::call_failed))]
-    WebApi {
-        api: String,
-        #[source]
-        source: serde_json::Error,
-    },
+    #[diagnostic(code(purr::web::indexeddb::operation_failed))]
+    IndexedDb { operation: String, js_error: String },
 
     #[error("Web API error: {api} call failed, {js_error:?}")]
-    #[diagnostic(code(purr::web::api::call_failed_js))]
-    WebApiJs {
-        api: String,
-        js_error: String,
-    },
-
-
-
-
-
-
+    #[diagnostic(code(purr::web::api::call_failed))]
+    WebApi { api: String, js_error: String },
 
     #[error("JavaScript error: {context}, {js_error:?}")]
-    #[diagnostic(code(purr::web::javascript::execution_error_js))]
-    JavaScriptJs { context: String, js_error: String },
+    #[diagnostic(code(purr::web::javascript::execution_error))]
+    JavaScript { context: String, js_error: String },
 
     #[error("Model not found: {model_id} in {storage_type} storage")]
     #[diagnostic(code(purr::web::model::not_found))]
@@ -563,7 +406,6 @@ pub enum WebError {
         url: String,
     },
 
-
     #[error("Audio format not supported: {format} (supported: {supported_formats})")]
     #[diagnostic(code(purr::web::audio::unsupported_format))]
     UnsupportedAudioFormat {
@@ -575,13 +417,9 @@ pub enum WebError {
     #[diagnostic(code(purr::web::audio::file_too_large))]
     AudioFileTooLarge { file_size: u64, max_size: u64 },
 
-
     #[error("Web Audio API error: {operation} failed, {js_error:?}")]
-    #[diagnostic(code(purr::web::audio::api_failed_js))]
-    WebAudioApiJs {
-        operation: String,
-        js_error: String,
-    },
+    #[diagnostic(code(purr::web::audio::api_failed))]
+    WebAudioApi { operation: String, js_error: String },
 
     // === Transparent wrappers for specialized error enums ===
     #[error(transparent)]
@@ -633,32 +471,32 @@ impl WebError {
     }
 
     /// Create a new IndexedDB error with JsValue
-    pub fn indexeddb_js(operation: impl Into<String>, js_error: JsValue) -> Self {
-        Self::IndexedDbJs {
+    pub fn indexeddb(operation: impl Into<String>, js_error: JsValue) -> Self {
+        Self::IndexedDb {
             operation: operation.into(),
             js_error: format_js_error(js_error),
         }
     }
 
     /// Create a new Web API error with JsValue
-    pub fn web_api_js(api: impl Into<String>, js_error: JsValue) -> Self {
-        Self::WebApiJs {
+    pub fn web_api(api: impl Into<String>, js_error: JsValue) -> Self {
+        Self::WebApi {
             api: api.into(),
             js_error: format_js_error(js_error),
         }
     }
 
     /// Create a new Web Audio API error with JsValue
-    pub fn web_audio_api_js(operation: impl Into<String>, js_error: JsValue) -> Self {
-        Self::WebAudioApiJs {
+    pub fn web_audio_api(operation: impl Into<String>, js_error: JsValue) -> Self {
+        Self::WebAudioApi {
             operation: operation.into(),
             js_error: format_js_error(js_error),
         }
     }
 
     /// Create a new JavaScript error with JsValue
-    pub fn javascript_js(context: impl Into<String>, js_error: JsValue) -> Self {
-        Self::JavaScriptJs {
+    pub fn javascript(context: impl Into<String>, js_error: JsValue) -> Self {
+        Self::JavaScript {
             context: context.into(),
             js_error: format_js_error(js_error),
         }
@@ -675,7 +513,7 @@ impl WebError {
             format!("{value:?}")
         };
 
-        WebError::JavaScriptJs {
+        WebError::JavaScript {
             context: "JavaScript execution".to_string(),
             js_error: message,
         }
@@ -690,13 +528,13 @@ impl WebError {
                 PlatformError::audio_processing(Box::new(self))
             }
             WebError::AudioFileTooLarge { .. } => PlatformError::audio_processing(Box::new(self)),
-            WebError::WebAudioApiJs { .. } => PlatformError::audio_processing(Box::new(self)),
+            WebError::WebAudioApi { .. } => PlatformError::audio_processing(Box::new(self)),
             WebError::WebGpu { .. } => PlatformError::initialization(Box::new(self)),
             WebError::Worker { .. } => PlatformError::initialization(Box::new(self)),
             WebError::Storage { .. } => PlatformError::io(Box::new(self)),
-            WebError::IndexedDbJs { .. } => PlatformError::io(Box::new(self)),
-            WebError::WebApiJs { .. } => PlatformError::io(Box::new(self)),
-            WebError::JavaScriptJs { .. } => PlatformError::io(Box::new(self)),
+            WebError::IndexedDb { .. } => PlatformError::io(Box::new(self)),
+            WebError::WebApi { .. } => PlatformError::io(Box::new(self)),
+            WebError::JavaScript { .. } => PlatformError::io(Box::new(self)),
             _ => PlatformError::io(Box::new(self)),
         }
     }
@@ -719,9 +557,6 @@ impl From<WebError> for PlatformError {
         error.into_platform_error()
     }
 }
-
-
-
 
 // From implementations for specialized error enums
 impl From<WorkerError> for WebError {
