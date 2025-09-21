@@ -1,5 +1,7 @@
 //! Error types for the purr-core library
 
+use std::path::PathBuf;
+
 /// Configuration-related errors
 #[derive(Debug, thiserror::Error, miette::Diagnostic)]
 pub enum ConfigurationError {
@@ -68,6 +70,18 @@ pub enum AudioProcessingError {
     #[error("Audio processing failed: {reason}")]
     #[diagnostic(code(whisper::audio::processing_failed))]
     ProcessingFailed { reason: String },
+
+    #[error("Unsupported audio format: {format}")]
+    #[diagnostic(code(whisper::audio::unsupported_format))]
+    UnsupportedFormat { format: String },
+
+    #[error("Failed to read audio file {file}: {source}")]
+    #[diagnostic(code(whisper::audio::read_failed))]
+    ReadFailed {
+        file: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
 
     #[error("No audio stream found")]
     #[diagnostic(code(whisper::audio::no_stream))]

@@ -137,8 +137,9 @@ impl AudioProcessor {
     fn load_audio_sync(&mut self, path: &Path) -> Result<AudioData> {
         // Validate file exists
         if !path.exists() {
-            return Err(WhisperError::from(AudioProcessingError::ProcessingFailed {
-                reason: format!("Audio file not found: {}", path.display()),
+            return Err(WhisperError::from(AudioProcessingError::ReadFailed {
+                file: path.to_path_buf(),
+                source: std::io::Error::new(std::io::ErrorKind::NotFound, "File not found"),
             }));
         }
 

@@ -343,12 +343,16 @@ async fn test_streaming_transcription_high_level_api() {
 
     let mut streaming_result = result.unwrap();
     let mut chunk_count = 0;
+    let mut received_final = false;
 
     while let Some(chunk_result) = streaming_result.next().await {
         match chunk_result {
             Ok(chunk) => {
                 chunk_count += 1;
                 if chunk.is_final {
+                    received_final = true;
+                    // Verify we have final stats
+                    assert!(chunk.final_stats.is_some(), "Final chunk should have stats");
                     break;
                 }
             }
@@ -356,7 +360,10 @@ async fn test_streaming_transcription_high_level_api() {
         }
     }
 
-    assert!(chunk_count > 1, "Should produce multiple chunks");
+    // With the new implementation, streaming accumulates all audio and processes it once
+    // This results in a single chunk with the complete transcription
+    assert_eq!(chunk_count, 1, "Should produce single accumulated result");
+    assert!(received_final, "Should receive final chunk");
 }
 
 // ============================================================================
