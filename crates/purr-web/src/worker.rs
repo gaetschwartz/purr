@@ -118,6 +118,7 @@ enum TranscriptionProgressStatus {
 
 /// Transcription worker
 pub struct TranscriptionWorker {
+    #[allow(dead_code)]
     model_manager: Arc<WebModelManager>,
     active_sessions: RwLock<HashMap<String, SessionData>>,
     worker_command_sender: Mutex<Option<mpsc::UnboundedSender<WorkerCommand>>>,
@@ -127,11 +128,13 @@ pub struct TranscriptionWorker {
 #[derive(Debug)]
 enum WorkerCommand {
     SendMessage(WorkerMessage),
+    #[allow(dead_code)]
     InitializeWorker,
 }
 
 #[derive(Debug)]
 struct SessionData {
+    #[allow(dead_code)]
     config: TranscriptionConfig,
     active_requests: HashMap<String, mpsc::UnboundedSender<TranscriptionStatus>>,
 }

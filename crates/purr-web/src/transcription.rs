@@ -361,8 +361,8 @@ impl AudioTranscriptionProcessor {
         }
 
         let channels = match channel_mode {
-            0 | 1 | 2 => 2, // Stereo, Joint stereo, Dual channel
-            3 => 1,         // Single channel (Mono)
+            0..=2 => 2, // Stereo, Joint stereo, Dual channel
+            3 => 1,     // Single channel (Mono)
             _ => return Err(WebError::AudioProcessing("Invalid channel mode".to_string())),
         };
 
@@ -710,21 +710,11 @@ impl AudioTranscriptionProcessor {
     }
 
     fn find_mp4_atom(&self, data: &[u8], atom_name: &[u8; 4]) -> Option<usize> {
-        for i in 0..data.len().saturating_sub(8) {
-            if &data[i+4..i+8] == atom_name {
-                return Some(i);
-            }
-        }
-        None
+        (0..data.len().saturating_sub(8)).find(|&i| &data[i+4..i+8] == atom_name)
     }
 
     fn find_webm_element(&self, data: &[u8], element_id: &[u8]) -> Option<usize> {
-        for i in 0..data.len().saturating_sub(element_id.len()) {
-            if &data[i..i+element_id.len()] == element_id {
-                return Some(i);
-            }
-        }
-        None
+        (0..data.len().saturating_sub(element_id.len())).find(|&i| &data[i..i+element_id.len()] == element_id)
     }
 
     /// Convert audio data to target format for WASM
@@ -756,6 +746,7 @@ impl AudioTranscriptionProcessor {
     }
 
     /// Resample audio using linear interpolation
+    #[allow(dead_code)]
     fn resample_audio(&self, samples: &[f32], from_rate: f32, to_rate: f32) -> WebResult<Vec<f32>> {
         if (from_rate - to_rate).abs() < 1.0 {
             return Ok(samples.to_vec());

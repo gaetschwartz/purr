@@ -36,6 +36,7 @@ pub struct DownloadProgress {
 
 /// Model manager
 pub struct WebModelManager {
+    #[allow(dead_code)]
     storage: Option<Arc<WebStorage>>,
     models: Arc<RwLock<HashMap<String, ModelInfo>>>,
     downloads: Arc<RwLock<HashMap<String, bool>>>, // Track download status

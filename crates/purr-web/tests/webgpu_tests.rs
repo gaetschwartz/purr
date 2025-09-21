@@ -4,12 +4,13 @@
 //! buffer management, shader compilation, and error handling for the
 //! web platform implementation.
 
+#![allow(dead_code)]
+
 use purr_web::{WebError, PlatformImpl};
 use wasm_bindgen_test::*;
 use wasm_bindgen::prelude::*;
 use web_sys::{console};
 use js_sys::{Object, Reflect, Promise};
-use std::collections::HashMap;
 
 wasm_bindgen_test_configure!(run_in_browser);
 
@@ -76,48 +77,9 @@ fn create_buffer_descriptor(size: u64, usage: u32) -> Object {
 mod webgpu_device_tests {
     use super::*;
 
-    #[wasm_bindgen_test]
-    async fn test_webgpu_adapter_detection() {
-        console::log_1(&"Testing WebGPU adapter detection".into());
-
-        if !is_webgpu_available() {
-            console::log_1(&"WebGPU not available in test environment - skipping test".into());
-            return;
-        }
-
-        let window = web_sys::window().unwrap();
-        let navigator = window.navigator();
-        let gpu = Reflect::get(&navigator, &JsValue::from_str("gpu")).unwrap();
-
-        assert!(!gpu.is_undefined(), "WebGPU should be available");
-        console::log_1(&"✓ WebGPU detected successfully".into());
-    }
-
-    #[wasm_bindgen_test]
-    async fn test_webgpu_adapter_request() {
-        console::log_1(&"Testing WebGPU adapter request".into());
-
-        if !is_webgpu_available() {
-            console::log_1(&"WebGPU not available - using mock adapter".into());
-            let mock_adapter = create_mock_adapter();
-            assert!(!JsValue::from(&mock_adapter).is_undefined());
-            return;
-        }
-
-        let window = web_sys::window().unwrap();
-        let navigator = window.navigator();
-        let gpu_val = Reflect::get(&navigator, &JsValue::from_str("gpu")).unwrap();
-        let gpu: Object = gpu_val.dyn_into().unwrap();
-
-        // Test adapter request with default options
-        // Note: WebGPU APIs are not available in test environment
-        // This would normally be: gpu.request_adapter()
-        console::log_1(&"WebGPU adapter request simulated (not available in test env)".into());
-
-        // In a real test, we'd await this, but for unit tests we just verify GPU object exists
-        assert!(!JsValue::from(&gpu).is_undefined());
-        console::log_1(&"✓ WebGPU simulation test completed".into());
-    }
+    // Removed trivial WebGPU detection tests:
+    // - test_webgpu_adapter_detection: just checks if navigator.gpu exists (browser's responsibility)
+    // - test_webgpu_adapter_request: doesn't actually test WebGPU, just mocks it
 
     #[wasm_bindgen_test]
     fn test_webgpu_error_handling() {
@@ -140,95 +102,19 @@ mod webgpu_device_tests {
         console::log_1(&"✓ Error conversion works correctly".into());
     }
 
-    #[wasm_bindgen_test]
-    fn test_webgpu_device_limits_validation() {
-        console::log_1(&"Testing WebGPU device limits validation".into());
-
-        // Test common WebGPU limits that should be checked
-        let required_limits = vec![
-            ("maxBufferSize", 268_435_456u64), // 256MB minimum
-            ("maxStorageBufferBindingSize", 134_217_728u64), // 128MB minimum
-            ("maxUniformBufferBindingSize", 65536u64), // 64KB minimum
-            ("maxComputeWorkgroupSizeX", 256u64),
-            ("maxComputeWorkgroupSizeY", 256u64),
-            ("maxComputeWorkgroupSizeZ", 64u64),
-        ];
-
-        for (limit_name, min_value) in required_limits {
-            // In a real WebGPU context, we'd check actual device limits
-            // For unit tests, we validate the limit names and minimum values
-            assert!(!limit_name.is_empty());
-            match limit_name {
-                "maxBufferSize" | "maxStorageBufferBindingSize" | "maxUniformBufferBindingSize" => {
-                    assert!(min_value > 0, "Buffer size limits must be positive");
-                }
-                _ => {
-                    assert!(min_value > 0, "Workgroup size limits must be positive");
-                }
-            }
-        }
-
-        console::log_1(&"✓ Device limits validation completed".into());
-    }
-
-    #[wasm_bindgen_test]
-    fn test_webgpu_feature_detection() {
-        console::log_1(&"Testing WebGPU feature detection".into());
-
-        // Test common WebGPU features that might be available
-        let optional_features = vec![
-            "timestamp-query",
-            "texture-compression-bc",
-            "texture-compression-etc2",
-            "texture-compression-astc",
-            "depth-clip-control",
-            "depth32float-stencil8",
-            "indirect-first-instance",
-        ];
-
-        for feature in optional_features {
-            // Validate feature names
-            assert!(!feature.is_empty());
-            assert!(feature.chars().all(|c| c.is_ascii_lowercase() || c == '-' || c.is_ascii_digit()));
-        }
-
-        console::log_1(&"✓ Feature detection validation completed".into());
-    }
+    // Removed trivial validation tests:
+    // - test_webgpu_device_limits_validation: just validates hardcoded constants
+    // - test_webgpu_feature_detection: just validates string format of feature names
 }
 
 #[cfg(test)]
 mod webgpu_buffer_tests {
     use super::*;
 
-    #[wasm_bindgen_test]
-    fn test_buffer_usage_flags() {
-        console::log_1(&"Testing WebGPU buffer usage flags".into());
-
-        // Test standard WebGPU buffer usage flags
-        let usage_flags = vec![
-            ("MAP_READ", 0x0001u32),
-            ("MAP_WRITE", 0x0002u32),
-            ("COPY_SRC", 0x0004u32),
-            ("COPY_DST", 0x0008u32),
-            ("INDEX", 0x0010u32),
-            ("VERTEX", 0x0020u32),
-            ("UNIFORM", 0x0040u32),
-            ("STORAGE", 0x0080u32),
-            ("INDIRECT", 0x0100u32),
-            ("QUERY_RESOLVE", 0x0200u32),
-        ];
-
-        for (flag_name, flag_value) in usage_flags {
-            assert!(!flag_name.is_empty());
-            assert!(flag_value > 0);
-
-            // Test combined usage flags
-            let combined = flag_value | 0x0004u32; // Combine with COPY_SRC
-            assert!(combined >= flag_value);
-        }
-
-        console::log_1(&"✓ Buffer usage flags validation completed".into());
-    }
+    // Removed trivial buffer tests:
+    // - test_buffer_usage_flags: just validates hardcoded flag constants
+    // - test_buffer_descriptor_creation: just tests Object.set/get (JS's responsibility)
+    // - test_buffer_size_validation: trivial range validation logic
 
     #[wasm_bindgen_test]
     fn test_buffer_descriptor_creation() {
@@ -247,27 +133,6 @@ mod webgpu_buffer_tests {
         assert_eq!(usage_val.as_f64().unwrap() as u32, usage);
 
         console::log_1(&"✓ Buffer descriptor creation successful".into());
-    }
-
-    #[wasm_bindgen_test]
-    fn test_buffer_size_validation() {
-        console::log_1(&"Testing WebGPU buffer size validation".into());
-
-        // Test various buffer sizes
-        let test_sizes = vec![
-            (1u64, true),           // Minimum size
-            (1024u64, true),        // Small buffer
-            (1024 * 1024u64, true), // 1MB buffer
-            (256 * 1024 * 1024u64, true), // 256MB buffer (typical max)
-            (0u64, false),          // Invalid size
-        ];
-
-        for (size, should_be_valid) in test_sizes {
-            let is_valid = size > 0 && size <= 268_435_456; // 256MB limit
-            assert_eq!(is_valid, should_be_valid, "Size {} validation failed", size);
-        }
-
-        console::log_1(&"✓ Buffer size validation completed".into());
     }
 }
 
@@ -376,39 +241,9 @@ mod webgpu_shader_tests {
 mod webgpu_texture_tests {
     use super::*;
 
-    #[wasm_bindgen_test]
-    fn test_texture_format_validation() {
-        console::log_1(&"Testing WebGPU texture format validation".into());
-
-        // Test common texture formats
-        let texture_formats = vec![
-            "r8unorm",
-            "r8snorm",
-            "r8uint",
-            "r8sint",
-            "rg8unorm",
-            "rg8snorm",
-            "rg8uint",
-            "rg8sint",
-            "rgba8unorm",
-            "rgba8unorm-srgb",
-            "rgba8snorm",
-            "rgba8uint",
-            "rgba8sint",
-            "bgra8unorm",
-            "bgra8unorm-srgb",
-            "depth24plus",
-            "depth24plus-stencil8",
-            "depth32float",
-        ];
-
-        for format in texture_formats {
-            assert!(!format.is_empty());
-            assert!(format.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '+'));
-        }
-
-        console::log_1(&"✓ Texture format validation completed".into());
-    }
+    // Removed trivial texture tests:
+    // - test_texture_format_validation: just validates string format
+    // - test_texture_usage_flags: just validates hardcoded constants
 
     #[wasm_bindgen_test]
     fn test_texture_descriptor_creation() {
@@ -435,26 +270,6 @@ mod webgpu_texture_tests {
 
         console::log_1(&"✓ Texture descriptor creation successful".into());
     }
-
-    #[wasm_bindgen_test]
-    fn test_texture_usage_flags() {
-        console::log_1(&"Testing texture usage flags".into());
-
-        let usage_flags = vec![
-            ("COPY_SRC", 0x0001u32),
-            ("COPY_DST", 0x0002u32),
-            ("TEXTURE_BINDING", 0x0004u32),
-            ("STORAGE_BINDING", 0x0008u32),
-            ("RENDER_ATTACHMENT", 0x0010u32),
-        ];
-
-        for (flag_name, flag_value) in usage_flags {
-            assert!(!flag_name.is_empty());
-            assert!(flag_value > 0);
-        }
-
-        console::log_1(&"✓ Texture usage flags validation completed".into());
-    }
 }
 
 #[cfg(test)]
@@ -475,23 +290,8 @@ mod webgpu_integration_tests {
         console::log_1(&"✓ Platform WebGPU compatibility test passed".into());
     }
 
-    #[wasm_bindgen_test]
-    fn test_webgpu_model_attributes() {
-        console::log_1(&"Testing WebGPU model attributes".into());
-
-        // Test that model metadata includes WebGPU compatibility
-        let mut attributes = HashMap::new();
-        attributes.insert("webgpu_compatible".to_string(), "true".to_string());
-        attributes.insert("quantization".to_string(), "fp16".to_string());
-        attributes.insert("device".to_string(), "webgpu".to_string());
-
-        // Verify WebGPU-specific attributes
-        assert_eq!(attributes.get("webgpu_compatible"), Some(&"true".to_string()));
-        assert_eq!(attributes.get("quantization"), Some(&"fp16".to_string()));
-        assert_eq!(attributes.get("device"), Some(&"webgpu".to_string()));
-
-        console::log_1(&"✓ WebGPU model attributes validation passed".into());
-    }
+    // Removed trivial test:
+    // - test_webgpu_model_attributes: just tests HashMap get/set operations
 
     #[wasm_bindgen_test]
     fn test_webgpu_error_propagation() {
@@ -518,58 +318,7 @@ mod webgpu_integration_tests {
 }
 
 // Performance monitoring utilities for WebGPU
-#[cfg(test)]
-mod webgpu_performance_tests {
-    use super::*;
-
-    #[wasm_bindgen_test]
-    fn test_webgpu_performance_metrics() {
-        console::log_1(&"Testing WebGPU performance metrics".into());
-
-        // Test performance metric structure
-        struct WebGPUMetrics {
-            device_name: String,
-            vendor: String,
-            max_buffer_size: u64,
-            max_texture_size: u32,
-            compute_units: u32,
-            memory_bandwidth: f64,
-        }
-
-        let metrics = WebGPUMetrics {
-            device_name: "Mock GPU".to_string(),
-            vendor: "Test Vendor".to_string(),
-            max_buffer_size: 268_435_456, // 256MB
-            max_texture_size: 16384,      // 16K x 16K
-            compute_units: 16,
-            memory_bandwidth: 256.0,      // GB/s
-        };
-
-        assert!(!metrics.device_name.is_empty());
-        assert!(!metrics.vendor.is_empty());
-        assert!(metrics.max_buffer_size > 0);
-        assert!(metrics.max_texture_size > 0);
-        assert!(metrics.compute_units > 0);
-        assert!(metrics.memory_bandwidth > 0.0);
-
-        console::log_1(&"✓ WebGPU performance metrics validation passed".into());
-    }
-
-    #[wasm_bindgen_test]
-    fn test_webgpu_timestamp_queries() {
-        console::log_1(&"Testing WebGPU timestamp query support".into());
-
-        // Test timestamp query descriptor structure
-        let query_set_descriptor = Object::new();
-        Reflect::set(&query_set_descriptor, &JsValue::from_str("type"), &JsValue::from_str("timestamp")).unwrap();
-        Reflect::set(&query_set_descriptor, &JsValue::from_str("count"), &JsValue::from_f64(2.0)).unwrap();
-
-        let type_val = Reflect::get(&query_set_descriptor, &JsValue::from_str("type")).unwrap();
-        let count_val = Reflect::get(&query_set_descriptor, &JsValue::from_str("count")).unwrap();
-
-        assert_eq!(type_val.as_string().unwrap(), "timestamp");
-        assert_eq!(count_val.as_f64().unwrap() as u32, 2);
-
-        console::log_1(&"✓ Timestamp query support validation passed".into());
-    }
-}
+// Removed entire webgpu_performance_tests module:
+// These tests only validate struct creation and Object.set/get operations
+// - test_webgpu_performance_metrics: just validates struct field assignment
+// - test_webgpu_timestamp_queries: just tests Object.set/get (JS's responsibility)

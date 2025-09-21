@@ -17,7 +17,7 @@ use crate::{WebError, WebResult};
 #[wasm_bindgen]
 extern "C" {
     #[wasm_bindgen(js_name = "MockWebGPUAdapter")]
-    type MockWebGPUAdapter;
+    pub type MockWebGPUAdapter;
 
     #[wasm_bindgen(constructor)]
     fn new() -> MockWebGPUAdapter;
@@ -40,7 +40,7 @@ extern "C" {
 #[wasm_bindgen]
 extern "C" {
     #[wasm_bindgen(js_name = "MockWebGPUDevice")]
-    type MockWebGPUDevice;
+    pub type MockWebGPUDevice;
 
     #[wasm_bindgen(constructor)]
     fn new() -> MockWebGPUDevice;
@@ -78,6 +78,13 @@ pub struct WebGPUTestEnvironment {
     pub webgpu_available: bool,
     pub adapter: Option<MockWebGPUAdapter>,
     pub device: Option<MockWebGPUDevice>,
+}
+
+#[cfg(test)]
+impl Default for WebGPUTestEnvironment {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[cfg(test)]
@@ -346,6 +353,13 @@ pub fn create_test_texture_descriptor(width: u32, height: u32, format: &str) -> 
 pub struct WebGPUPerformanceTimer {
     start_time: f64,
     measurements: Vec<(String, f64)>,
+}
+
+#[cfg(test)]
+impl Default for WebGPUPerformanceTimer {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[cfg(test)]

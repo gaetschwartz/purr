@@ -3,6 +3,8 @@
 //! This module provides end-to-end integration tests for WebGPU functionality
 //! in the purr-web crate, including platform integration and real-world scenarios.
 
+#![allow(dead_code)]
+
 use purr_web::{
     PlatformImpl, WebError, TranscriptionWorker, TranscriptionConfig,
     WebModelManager, WebStorage, ModelInfo, AudioProcessingConfig,
@@ -20,6 +22,7 @@ use bytes::Bytes;
 wasm_bindgen_test_configure!(run_in_browser);
 
 // Test utilities for creating mock data
+#[allow(dead_code)]
 fn create_mock_model_info() -> ModelInfo {
     ModelInfo {
         id: "whisper-base-webgpu".to_string(),
@@ -32,6 +35,7 @@ fn create_mock_model_info() -> ModelInfo {
     }
 }
 
+#[allow(dead_code)]
 fn create_test_wav_audio() -> Vec<u8> {
     let mut wav_data = Vec::new();
 
@@ -61,6 +65,7 @@ fn create_test_wav_audio() -> Vec<u8> {
     wav_data
 }
 
+#[allow(dead_code)]
 async fn check_webgpu_availability() -> bool {
     let window = match web_sys::window() {
         Some(w) => w,
@@ -68,10 +73,7 @@ async fn check_webgpu_availability() -> bool {
     };
 
     let navigator = window.navigator();
-    match Reflect::get(&navigator, &JsValue::from_str("gpu")) {
-        Ok(gpu_val) if !gpu_val.is_undefined() => true,
-        _ => false,
-    }
+    matches!(Reflect::get(&navigator, &JsValue::from_str("gpu")), Ok(gpu_val) if !gpu_val.is_undefined())
 }
 
 #[cfg(test)]
@@ -264,7 +266,7 @@ mod worker_integration_tests {
         };
 
         // Initialize worker session
-        let session_id = "test-webgpu-session".to_string();
+        let _session_id = "test-webgpu-session".to_string();
         match worker.create_session(config.clone()).await {
             Ok(created_session_id) => {
                 console::log_1(&"✓ Worker session created successfully".into());

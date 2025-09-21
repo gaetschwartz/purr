@@ -3,6 +3,8 @@
 //! This module tests the WebGPU-based transcription worker functionality,
 //! including worker initialization, message handling, and transcription processing.
 
+#![allow(dead_code)]
+
 use purr_web::{WebError, TranscriptionConfig};
 use wasm_bindgen_test::*;
 use wasm_bindgen::prelude::*;
@@ -238,10 +240,10 @@ mod worker_initialization_tests {
         assert_eq!(resp_type.as_string().unwrap(), "Initialized");
 
         let webgpu_available = Reflect::get(&obj, &JsValue::from_str("webgpu_available")).unwrap();
-        assert_eq!(webgpu_available.as_bool().unwrap(), true);
+        assert!(webgpu_available.as_bool().unwrap());
 
         let model_loaded = Reflect::get(&obj, &JsValue::from_str("model_loaded")).unwrap();
-        assert_eq!(model_loaded.as_bool().unwrap(), true);
+        assert!(model_loaded.as_bool().unwrap());
 
         console::log_1(&"✓ Worker response deserialization successful".into());
     }
@@ -471,7 +473,7 @@ mod worker_status_tests {
 
         // Verify status fields
         let webgpu_available = Reflect::get(&obj, &JsValue::from_str("webgpu_available")).unwrap();
-        assert_eq!(webgpu_available.as_bool().unwrap(), true);
+        assert!(webgpu_available.as_bool().unwrap());
 
         let active_sessions = Reflect::get(&obj, &JsValue::from_str("active_sessions")).unwrap();
         assert_eq!(active_sessions.as_f64().unwrap() as u32, 2);
@@ -542,7 +544,7 @@ mod worker_lifecycle_tests {
         let response_obj: Object = response_js.dyn_into().unwrap();
 
         let webgpu_available = Reflect::get(&response_obj, &JsValue::from_str("webgpu_available")).unwrap();
-        assert_eq!(webgpu_available.as_bool().unwrap(), true);
+        assert!(webgpu_available.as_bool().unwrap());
 
         console::log_1(&"✓ Worker initialization sequence test successful".into());
     }

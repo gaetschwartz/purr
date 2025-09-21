@@ -3,11 +3,13 @@
 //! This module tests WebGPU pipeline creation, compute shader execution,
 //! and rendering pipeline functionality for audio processing.
 
+#![allow(dead_code)]
+
 use purr_web::{WebError};
 use wasm_bindgen_test::*;
 use wasm_bindgen::prelude::*;
 use web_sys::{console};
-use js_sys::{Object, Reflect, Promise, Float32Array, Uint32Array};
+use js_sys::{Object, Reflect};
 
 wasm_bindgen_test_configure!(run_in_browser);
 
@@ -337,7 +339,7 @@ mod compute_pipeline_tests {
         console::log_1(&"Testing compute dispatch parameters".into());
 
         // Test dispatch configurations for different audio buffer sizes
-        let audio_buffer_sizes = vec![
+        let audio_buffer_sizes: Vec<u32> = vec![
             1024,    // 1K samples
             4096,    // 4K samples
             16384,   // 16K samples
@@ -349,7 +351,7 @@ mod compute_pipeline_tests {
 
         for buffer_size in audio_buffer_sizes {
             // Calculate dispatch size
-            let dispatch_x = (buffer_size + workgroup_size - 1) / workgroup_size;
+            let dispatch_x = buffer_size.div_ceil(workgroup_size);
             let dispatch_y = 1u32;
             let dispatch_z = 1u32;
 

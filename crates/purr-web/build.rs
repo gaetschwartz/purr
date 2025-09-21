@@ -22,9 +22,7 @@ fn main() {
             .status()
             .expect("Failed to run npm install");
 
-        if !install_status.success() {
-            panic!("npm install failed");
-        }
+        assert!(install_status.success(), "npm install failed");
 
         // Build the worker
         let build_status = Command::new("npm")
@@ -32,9 +30,7 @@ fn main() {
             .status()
             .expect("Failed to build worker");
 
-        if !build_status.success() {
-            panic!("Worker build failed");
-        }
+        assert!(build_status.success(), "Worker build failed");
 
         // Copy built worker to output directory
         let worker_src = Path::new("dist/worker.js");
