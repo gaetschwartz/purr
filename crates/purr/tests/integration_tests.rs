@@ -4,6 +4,8 @@ use assert_cmd::Command;
 use rstest::rstest;
 use std::path::{Path, PathBuf};
 
+const TINY_MODEL: &str = "../../.local/models/ggml-tiny.bin";
+
 /// Test missing audio file error - validates actual error handling
 #[test]
 fn test_missing_audio_file() {
@@ -14,12 +16,7 @@ fn test_missing_audio_file() {
 
 /// Test CLI transcription with all sample files
 #[rstest]
-fn slow_test_cli_transcribe_sample_files(
-    #[files("../../samples/*")] sample_path: PathBuf,
-    #[include_dot_files]
-    #[files("../../.local/models/ggml-tiny.bin")]
-    model_path: PathBuf,
-) {
+fn slow_test_cli_transcribe_sample_files(#[files("../../samples/*")] sample_path: PathBuf) {
     use purr_core::SyncTranscriptionResult;
 
     let sample_path = sample_path.canonicalize().unwrap();
@@ -33,7 +30,7 @@ fn slow_test_cli_transcribe_sample_files(
         .arg("--temperature")
         .arg("0.0") // Deterministic results
         .arg("--model")
-        .arg(&model_path)
+        .arg(TINY_MODEL)
         .timeout(std::time::Duration::from_secs(300)); // Allow up to 5 minutes
 
     let output = cmd.output().unwrap();
@@ -69,12 +66,7 @@ enum OutputFormat {
 #[case(OutputFormat::Text)]
 #[case(OutputFormat::Json)]
 #[case(OutputFormat::Srt)]
-fn slow_test_cli_output_formats(
-    #[case] format: OutputFormat,
-    #[include_dot_files]
-    #[files("../../.local/models/ggml-tiny.bin")]
-    model_path: PathBuf,
-) {
+fn slow_test_cli_output_formats(#[case] format: OutputFormat) {
     let sample_path = Path::new("../../samples/jfk.wav");
 
     let mut cmd = Command::cargo_bin("purr").unwrap();
@@ -85,7 +77,7 @@ fn slow_test_cli_output_formats(
         .arg("--temperature")
         .arg("0.0") // Deterministic results
         .arg("--model")
-        .arg(model_path)
+        .arg(TINY_MODEL)
         .timeout(std::time::Duration::from_secs(300)); // Allow up to 5 minutes
 
     let output = cmd.output().unwrap();
