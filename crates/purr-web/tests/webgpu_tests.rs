@@ -86,15 +86,11 @@ mod webgpu_device_tests {
         console::log_1(&"Testing WebGPU error handling".into());
 
         // Test WebGPU error creation
-        let webgpu_error = WebError::WebGpu {
-            operation: "test_operation".to_string(),
-            device_type: "webgpu".to_string(),
-            source: Box::new(std::io::Error::new(std::io::ErrorKind::Other, "Test WebGPU error")),
-        };
+        let webgpu_error = WebError::WebGpu(purr_web::WebGpuError::FeatureNotSupported { feature: "Test WebGPU error".to_string() });
 
         match &webgpu_error {
-            WebError::WebGpu { source, .. } => {
-                assert_eq!(source.to_string(), "Test WebGPU error");
+            WebError::WebGpu(webgpu_err) => {
+                assert_eq!(webgpu_err.to_string(), "Missing WebGPU features: Test WebGPU error");
                 console::log_1(&"✓ WebGPU error handling works correctly".into());
             }
             _ => panic!("Expected WebGPU error variant"),
@@ -311,11 +307,7 @@ mod webgpu_integration_tests {
         ];
 
         for error_msg in test_errors {
-            let webgpu_error = WebError::WebGpu {
-                operation: "test_operation".to_string(),
-                device_type: "webgpu".to_string(),
-                source: Box::new(std::io::Error::new(std::io::ErrorKind::Other, error_msg)),
-            };
+            let webgpu_error = WebError::WebGpu(purr_web::WebGpuError::FeatureNotSupported { feature: error_msg.to_string() });
             let platform_error = webgpu_error.into_platform_error();
 
             assert!(platform_error.to_string().contains(error_msg));

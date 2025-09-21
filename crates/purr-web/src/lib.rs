@@ -28,7 +28,7 @@ pub use transcription::{
     start_transcription_process, validate_audio_file, get_supported_formats,
     AudioTranscriptionProcessor, AudioProcessingConfig, AudioMetadata, AudioProcessingProgress,
 };
-pub use error::{WebError, WebResult};
+pub use error::{WebError, WebResult, WorkerError, StorageError, AudioFormatError, WebGpuError};
 
 // Module declarations
 mod error;

@@ -412,11 +412,7 @@ mod error_handling_integration_tests {
         ];
 
         for error_msg in webgpu_errors {
-            let webgpu_error = WebError::WebGpu {
-                operation: "test_operation".to_string(),
-                device_type: "webgpu".to_string(),
-                source: Box::new(std::io::Error::new(std::io::ErrorKind::Other, error_msg)),
-            };
+            let webgpu_error = WebError::WebGpu(purr_web::WebGpuError::FeatureNotSupported { feature: error_msg.to_string() });
             let platform_error = webgpu_error.into_platform_error();
 
             // Verify error propagation
@@ -460,15 +456,11 @@ mod error_handling_integration_tests {
             console::log_1(&"WebGPU available - testing graceful degradation".into());
 
             // Test graceful degradation when WebGPU operations fail
-            let webgpu_error = WebError::WebGpu {
-                operation: "test_operation".to_string(),
-                device_type: "webgpu".to_string(),
-                source: Box::new(std::io::Error::new(std::io::ErrorKind::Other, "Simulated WebGPU failure")),
-            };
+            let webgpu_error = WebError::WebGpu(purr_web::WebGpuError::FeatureNotSupported { feature: "Simulated WebGPU failure".to_string() });
 
             match webgpu_error {
-                WebError::WebGpu { source, .. } => {
-                    let msg = source.to_string();
+                WebError::WebGpu(webgpu_err) => {
+                    let msg = webgpu_err.to_string();
                     console::log_1(&format!("✓ WebGPU error handled gracefully: {}", msg).into());
                 }
                 _ => panic!("Expected WebGPU error"),

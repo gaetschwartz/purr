@@ -11,6 +11,7 @@ use web_sys::{console};
 use js_sys::{Object, Reflect, Promise, Float32Array};
 #[cfg(test)]
 use crate::{WebError, WebResult};
+use crate::error::WebGpuError;
 
 /// Mock WebGPU adapter for testing
 #[cfg(test)]
@@ -225,20 +226,12 @@ pub fn validate_device_limits(limits: &Object) -> WebResult<()> {
         match Reflect::get(limits, &JsValue::from_str(limit_name)) {
             Ok(limit_val) => {
                 if limit_val.is_undefined() {
-                    return Err(WebError::WebGpu {
-                        operation: "limit_validation".to_string(),
-                        device_type: "webgpu".to_string(),
-                        source: Box::new(std::io::Error::new(std::io::ErrorKind::Other, format!("Missing limit: {}", limit_name))),
-                    });
+                    return Err(WebGpuError::MissingLimit { limit_name: limit_name.to_string() }.into());
                 }
                 // In a real test, we'd validate the actual values
             }
             Err(_) => {
-                return Err(WebError::WebGpu {
-                    operation: "limit_access".to_string(),
-                    device_type: "webgpu".to_string(),
-                    source: Box::new(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to get limit: {}", limit_name))),
-                });
+                return Err(WebGpuError::FailedToGetLimit { limit_name: limit_name.to_string() }.into());
             }
         }
     }
@@ -278,11 +271,7 @@ pub fn validate_audio_processing_results(
     expected_gain: f32,
 ) -> WebResult<()> {
     if input.len() != output.len() {
-        return Err(WebError::WebGpu {
-            operation: "buffer_validation".to_string(),
-            device_type: "webgpu".to_string(),
-            source: Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, "Input and output buffer sizes don't match")),
-        });
+        return Err(WebGpuError::BufferSizeMismatch.into());
     }
 
     let mut total_error = 0.0f32;
@@ -293,14 +282,11 @@ pub fn validate_audio_processing_results(
         let error = (output_sample - expected).abs();
 
         if error > tolerance {
-            return Err(WebError::WebGpu {
-                operation: "audio_processing".to_string(),
-                device_type: "webgpu".to_string(),
-                source: Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, format!(
-                    "Audio processing error at sample {}: expected {:.6}, got {:.6}, error {:.6}",
-                    i, expected, output_sample, error
-                ))),
-            });
+            return Err(WebGpuError::BufferDataMismatch {
+                index: i,
+                expected,
+                actual: output_sample,
+            }.into());
         }
 
         total_error += error;
@@ -308,14 +294,10 @@ pub fn validate_audio_processing_results(
 
     let average_error = total_error / input.len() as f32;
     if average_error > tolerance / 10.0 {
-        return Err(WebError::WebGpu {
-            operation: "audio_processing".to_string(),
-            device_type: "webgpu".to_string(),
-            source: Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, format!(
-                "Average audio processing error too high: {:.6}",
-                average_error
-            ))),
-        });
+        return Err(WebGpuError::ComputationFailed {
+            max_diff: average_error,
+            tolerance: 0.001, // Default tolerance
+        }.into());
     }
 
     Ok(())
@@ -334,14 +316,9 @@ pub fn test_webgpu_features(features: &js_sys::Set, required_features: &[&str]) 
     }
 
     if !missing_features.is_empty() {
-        return Err(WebError::WebGpu {
-            operation: "feature_validation".to_string(),
-            device_type: "webgpu".to_string(),
-            source: Box::new(std::io::Error::new(std::io::ErrorKind::Other, format!(
-                "Missing WebGPU features: {}",
-                missing_features.join(", ")
-            ))),
-        });
+        return Err(WebGpuError::FeatureNotSupported {
+            feature: missing_features.join(", "),
+        }.into());
     }
 
     Ok(missing_features)

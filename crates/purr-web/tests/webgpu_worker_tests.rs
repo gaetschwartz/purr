@@ -439,17 +439,13 @@ mod worker_error_handling_tests {
         ];
 
         for error_msg in webgpu_errors {
-            let webgpu_error = WebError::WebGpu {
-                operation: "worker_test".to_string(),
-                device_type: "webgpu".to_string(),
-                source: Box::new(std::io::Error::new(std::io::ErrorKind::Other, error_msg)),
-            };
+            let webgpu_error = WebError::WebGpu(purr_web::WebGpuError::FeatureNotSupported { feature: error_msg.to_string() });
 
             match webgpu_error {
-                WebError::WebGpu { source, .. } => {
-                    let msg = source.to_string();
-                    assert_eq!(msg, error_msg);
-                    assert!(msg.contains("WebGPU"));
+                WebError::WebGpu(webgpu_err) => {
+                    let msg = webgpu_err.to_string();
+                    assert!(msg.contains("Missing WebGPU features"));
+                    assert!(msg.contains(error_msg));
                 }
                 _ => panic!("Expected WebGPU error variant"),
             }

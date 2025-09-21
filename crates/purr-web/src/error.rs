@@ -4,7 +4,7 @@ use purr_common::platform::PlatformError;
 use wasm_bindgen::JsValue;
 
 // ========================================
-// Dedicated Error Types for Transparent Wrapper Pattern
+// Specialized Error Enums for Domain-Specific Error Handling
 // ========================================
 
 /// Error for session not found scenarios
@@ -22,6 +22,208 @@ impl SessionNotFoundError {
     }
 }
 
+/// Worker-specific errors
+#[derive(Debug, thiserror::Error)]
+pub enum WorkerError {
+    #[error("Worker not initialized")]
+    NotInitialized,
+
+    #[error("Worker command send failed: {details}")]
+    CommandSendFailed { details: String },
+
+    #[error("Worker ready timeout")]
+    ReadyTimeout,
+
+    #[error("Worker ready channel closed")]
+    ReadyChannelClosed,
+
+    #[error("Worker message handling failed: {details}")]
+    MessageHandlingFailed { details: String },
+}
+
+/// Storage-specific errors for IndexedDB and other storage operations
+#[derive(Debug, thiserror::Error)]
+pub enum StorageError {
+    #[error("IndexedDB availability check failed")]
+    IndexedDbUnavailable,
+
+    #[error("Database open failed")]
+    DatabaseOpenFailed,
+
+    #[error("Database connection failed")]
+    DatabaseConnectionFailed,
+
+    #[error("Database cast failed - invalid database object")]
+    DatabaseCastFailed,
+
+    #[error("Transaction creation failed")]
+    TransactionCreationFailed,
+
+    #[error("Object store access failed")]
+    ObjectStoreAccessFailed,
+
+    #[error("File store operation failed")]
+    FileStoreFailed,
+
+    #[error("File storage operation failed")]
+    FileStorageOperationFailed,
+
+    #[error("Metadata transaction creation failed")]
+    MetadataTransactionFailed,
+
+    #[error("Metadata store access failed")]
+    MetadataStoreAccessFailed,
+
+    #[error("Metadata serialization failed")]
+    MetadataSerializationFailed,
+
+    #[error("Metadata store operation failed")]
+    MetadataStoreFailed,
+
+    #[error("Metadata storage operation failed")]
+    MetadataStorageOperationFailed,
+
+    #[error("Get request failed")]
+    GetRequestFailed,
+
+    #[error("Get operation failed")]
+    GetOperationFailed,
+
+    #[error("Data format invalid")]
+    DataFormatInvalid,
+
+    #[error("Delete operation failed")]
+    DeleteOperationFailed,
+
+    #[error("File deletion failed")]
+    FileDeletionFailed,
+
+    #[error("Metadata delete operation failed")]
+    MetadataDeleteFailed,
+
+    #[error("Metadata deletion failed")]
+    MetadataDeletionFailed,
+
+    #[error("GetAll request failed")]
+    GetAllRequestFailed,
+
+    #[error("GetAll operation failed")]
+    GetAllOperationFailed,
+
+    #[error("Array format invalid")]
+    ArrayFormatInvalid,
+}
+
+/// Audio format and processing errors
+#[derive(Debug, thiserror::Error)]
+pub enum AudioFormatError {
+    #[error("File too small to analyze")]
+    FileTooSmallToAnalyze,
+
+    #[error("File too small")]
+    FileTooSmall,
+
+    #[error("Invalid WAV file")]
+    InvalidWavFile,
+
+    #[error("No MP3 data after ID3 tag")]
+    NoMp3DataAfterId3,
+
+    #[error("Invalid ID3/MP3 file")]
+    InvalidId3Mp3File,
+
+    #[error("Unknown or unsupported audio format")]
+    UnknownAudioFormat,
+
+    #[error("WAV file too small")]
+    WavFileTooSmall,
+
+    #[error("Invalid WAV header")]
+    InvalidWavHeader,
+
+    #[error("No fmt chunk found in WAV file")]
+    NoFmtChunkFound,
+
+    #[error("Invalid fmt chunk size")]
+    InvalidFmtChunkSize,
+
+    #[error("No MP3 frame found")]
+    NoMp3FrameFound,
+
+    #[error("No valid MP3 frame found")]
+    NoValidMp3FrameFound,
+
+    #[error("Frame too small")]
+    FrameTooSmall,
+
+    #[error("Invalid sync word")]
+    InvalidSyncWord,
+
+    #[error("Invalid sample rate")]
+    InvalidSampleRate,
+
+    #[error("Invalid channel mode")]
+    InvalidChannelMode,
+
+    #[error("Invalid FLAC file")]
+    InvalidFlacFile,
+
+    #[error("FLAC file too small")]
+    FlacFileTooSmall,
+
+    #[error("First FLAC block is not STREAMINFO")]
+    FlacFirstBlockNotStreaminfo,
+
+    #[error("STREAMINFO block too small")]
+    StreaminfoBlockTooSmall,
+
+    #[error("STREAMINFO data truncated")]
+    StreaminfoDataTruncated,
+
+    #[error("No data chunk found in WAV file")]
+    NoDataChunkFound,
+
+    #[error("Unsupported bit depth: {bit_depth}")]
+    UnsupportedBitDepth { bit_depth: u16 },
+
+    #[error("Resampling failed: source rate {source_rate}Hz, target rate {target_rate}Hz")]
+    ResamplingFailed { source_rate: f32, target_rate: f32 },
+
+    #[error("Empty audio file")]
+    EmptyAudioFile,
+
+    #[error("Sample rate {sample_rate}Hz is out of supported range (8000-48000 Hz)")]
+    SampleRateOutOfRange { sample_rate: f32 },
+
+    #[error("File too small to be valid audio")]
+    FileTooSmallForValidAudio,
+
+    #[error("Unsupported or invalid audio format")]
+    UnsupportedAudioFormat,
+}
+
+/// WebGPU-specific errors
+#[derive(Debug, thiserror::Error)]
+pub enum WebGpuError {
+    #[error("Missing limit: {limit_name}")]
+    MissingLimit { limit_name: String },
+
+    #[error("Failed to get limit: {limit_name}")]
+    FailedToGetLimit { limit_name: String },
+
+    #[error("Input and output buffer sizes don't match")]
+    BufferSizeMismatch,
+
+    #[error("Buffer data mismatch at index {index}: expected {expected}, got {actual}")]
+    BufferDataMismatch { index: usize, expected: f32, actual: f32 },
+
+    #[error("WebGPU computation failed: tolerance exceeded. Max difference: {max_diff}, tolerance: {tolerance}")]
+    ComputationFailed { max_diff: f32, tolerance: f32 },
+
+    #[error("WebGPU feature not supported: {feature}")]
+    FeatureNotSupported { feature: String },
+}
+
 /// Web-specific errors that can occur during platform operations
 #[derive(Debug, thiserror::Error)]
 pub enum WebError {
@@ -37,14 +239,6 @@ pub enum WebError {
         api: String,
         #[source]
         source: Box<dyn std::error::Error + Send + Sync>,
-    },
-
-    #[error("Worker communication error: {worker_type} worker failed")]
-    Worker {
-        worker_type: String,
-        operation: String,
-        #[source]
-        source: Option<Box<dyn std::error::Error + Send + Sync>>,
     },
 
     #[error("Model loading error: {model_id} failed to load")]
@@ -99,44 +293,10 @@ pub enum WebError {
         url: String,
     },
 
-    #[error("Storage error: {operation} failed in {storage_type}")]
-    StorageError {
-        operation: String,
-        storage_type: String,
-        #[source]
-        source: Option<Box<dyn std::error::Error + Send + Sync>>,
-    },
-
-    #[error("Worker initialization error: {worker_type} failed to start")]
-    WorkerInitialization {
-        worker_type: String,
-        #[source]
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
-
     #[error("Serialization error: {data_type} serialization failed")]
     Serialization {
         data_type: String,
         operation: String, // "serialize" or "deserialize"
-        #[source]
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
-
-    #[error(transparent)]
-    SessionNotFound(SessionNotFoundError),
-
-    #[error("Audio processing error: {operation} failed on {format} data")]
-    AudioProcessing {
-        operation: String,
-        format: String,
-        #[source]
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
-
-    #[error("WebGPU error: {operation} failed on {device_type}")]
-    WebGpu {
-        operation: String,
-        device_type: String,
         #[source]
         source: Box<dyn std::error::Error + Send + Sync>,
     },
@@ -159,6 +319,22 @@ pub enum WebError {
         #[source]
         source: Box<dyn std::error::Error + Send + Sync>,
     },
+
+    // === Transparent wrappers for specialized error enums ===
+    #[error(transparent)]
+    SessionNotFound(SessionNotFoundError),
+
+    #[error(transparent)]
+    Worker(WorkerError),
+
+    #[error(transparent)]
+    Storage(StorageError),
+
+    #[error(transparent)]
+    AudioFormat(AudioFormatError),
+
+    #[error(transparent)]
+    WebGpu(WebGpuError),
 }
 
 impl WebError {
@@ -181,30 +357,6 @@ impl WebError {
             status_code,
             status_text: status_text.into(),
             url: url.into(),
-        }
-    }
-
-    /// Create a new storage error
-    pub fn storage_error<E>(operation: impl Into<String>, storage_type: impl Into<String>, source: Option<E>) -> Self
-    where
-        E: Into<Box<dyn std::error::Error + Send + Sync>>,
-    {
-        Self::StorageError {
-            operation: operation.into(),
-            storage_type: storage_type.into(),
-            source: source.map(Into::into),
-        }
-    }
-
-    /// Create a new audio processing error
-    pub fn audio_processing<E>(operation: impl Into<String>, format: impl Into<String>, source: E) -> Self
-    where
-        E: Into<Box<dyn std::error::Error + Send + Sync>>,
-    {
-        Self::AudioProcessing {
-            operation: operation.into(),
-            format: format.into(),
-            source: source.into(),
         }
     }
 
@@ -236,8 +388,8 @@ impl WebError {
             WebError::Network { source, .. } => {
                 PlatformError::io(source)
             }
-            WebError::AudioProcessing { source, .. } => {
-                PlatformError::audio_processing(source)
+            WebError::AudioFormat { .. } => {
+                PlatformError::audio_processing(Box::new(self))
             }
             WebError::UnsupportedAudioFormat { .. } => {
                 PlatformError::audio_processing(Box::new(self))
@@ -248,8 +400,14 @@ impl WebError {
             WebError::WebAudioApi { source, .. } => {
                 PlatformError::audio_processing(source)
             }
-            WebError::WebGpu { source, .. } => {
-                PlatformError::initialization(source)
+            WebError::WebGpu { .. } => {
+                PlatformError::initialization(Box::new(self))
+            }
+            WebError::Worker { .. } => {
+                PlatformError::initialization(Box::new(self))
+            }
+            WebError::Storage { .. } => {
+                PlatformError::io(Box::new(self))
             }
             _ => PlatformError::io(Box::new(self)),
         }
@@ -271,6 +429,31 @@ impl From<WebError> for JsValue {
 impl From<WebError> for PlatformError {
     fn from(error: WebError) -> Self {
         error.into_platform_error()
+    }
+}
+
+// From implementations for specialized error enums
+impl From<WorkerError> for WebError {
+    fn from(error: WorkerError) -> Self {
+        WebError::Worker(error)
+    }
+}
+
+impl From<StorageError> for WebError {
+    fn from(error: StorageError) -> Self {
+        WebError::Storage(error)
+    }
+}
+
+impl From<AudioFormatError> for WebError {
+    fn from(error: AudioFormatError) -> Self {
+        WebError::AudioFormat(error)
+    }
+}
+
+impl From<WebGpuError> for WebError {
+    fn from(error: WebGpuError) -> Self {
+        WebError::WebGpu(error)
     }
 }
 

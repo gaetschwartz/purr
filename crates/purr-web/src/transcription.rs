@@ -1,7 +1,7 @@
 //! Comprehensive audio transcription module with real WebGPU processing
 //! Provides advanced audio format handling, conversion, and transcription coordination
 
-use crate::error::{WebError, WebResult};
+use crate::error::{WebError, WebResult, AudioFormatError};
 use crate::worker::{TranscriptionConfig, TranscriptionWorker};
 use bytes::Bytes;
 use purr_common::platform::{TranscriptionRequest, TranscriptionStatus};
@@ -126,11 +126,7 @@ impl AudioTranscriptionProcessor {
     /// Detect audio format from file header
     pub fn detect_audio_format(&self, file_data: &[u8]) -> WebResult<AudioMetadata> {
         if file_data.len() < 12 {
-            return Err(WebError::AudioProcessing {
-                operation: "format_detection".to_string(),
-                format: "unknown".to_string(),
-                source: Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, "File too small to analyze")),
-            });
+            return Err(AudioFormatError::FileTooSmallToAnalyze.into());
         }
 
         let format = self.detect_format_from_header(file_data)?;
@@ -158,11 +154,7 @@ impl AudioTranscriptionProcessor {
     /// Detect format from file header signatures
     fn detect_format_from_header(&self, data: &[u8]) -> WebResult<AudioFormat> {
         if data.len() < 12 {
-            return Err(WebError::AudioProcessing {
-                operation: "format_detection".to_string(),
-                format: "unknown".to_string(),
-                source: Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, "File too small")),
-            });
+            return Err(AudioFormatError::FileTooSmall.into());
         }
 
         match &data[0..4] {
@@ -170,11 +162,7 @@ impl AudioTranscriptionProcessor {
                 if data.len() >= 12 && &data[8..12] == b"WAVE" {
                     Ok(AudioFormat::Wav)
                 } else {
-                    Err(WebError::AudioProcessing {
-                    operation: "format_detection".to_string(),
-                    format: "wav".to_string(),
-                    source: Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid WAV file")),
-                })
+                    Err(AudioFormatError::InvalidWavFile.into())
                 }
             }
             [0xFF, b, ..] if (b & 0xE0) == 0xE0 => Ok(AudioFormat::Mp3),
@@ -188,25 +176,13 @@ impl AudioTranscriptionProcessor {
                     if mp3_start < data.len() {
                         Ok(AudioFormat::Mp3)
                     } else {
-                        Err(WebError::AudioProcessing {
-                        operation: "format_detection".to_string(),
-                        format: "mp3".to_string(),
-                        source: Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, "No MP3 data after ID3 tag")),
-                    })
+                        Err(AudioFormatError::NoMp3DataAfterId3.into())
                     }
                 } else {
-                    Err(WebError::AudioProcessing {
-                    operation: "format_detection".to_string(),
-                    format: "mp3".to_string(),
-                    source: Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid ID3/MP3 file")),
-                })
+                    Err(AudioFormatError::InvalidId3Mp3File.into())
                 }
             }
-            _ => Err(WebError::AudioProcessing {
-            operation: "format_detection".to_string(),
-            format: "unknown".to_string(),
-            source: Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, "Unknown or unsupported audio format")),
-        }),
+            _ => Err(AudioFormatError::UnknownAudioFormat.into()),
         }
     }
 
@@ -238,20 +214,12 @@ impl AudioTranscriptionProcessor {
     /// Parse WAV file metadata
     fn parse_wav_metadata(&self, data: &[u8]) -> WebResult<AudioMetadata> {
         if data.len() < 44 {
-            return Err(WebError::AudioProcessing {
-            operation: "wav_parsing".to_string(),
-            format: "wav".to_string(),
-            source: Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, "WAV file too small")),
-        });
+            return Err(AudioFormatError::WavFileTooSmall.into());
         }
 
         // Parse RIFF header
         if &data[0..4] != b"RIFF" || &data[8..12] != b"WAVE" {
-            return Err(WebError::AudioProcessing {
-            operation: "wav_parsing".to_string(),
-            format: "wav".to_string(),
-            source: Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid WAV header")),
-        });
+            return Err(AudioFormatError::InvalidWavHeader.into());
         }
 
         // Find fmt chunk
@@ -281,19 +249,11 @@ impl AudioTranscriptionProcessor {
         }
 
         let fmt_chunk = fmt_data.ok_or_else(|| {
-            WebError::AudioProcessing {
-            operation: "wav_parsing".to_string(),
-            format: "wav".to_string(),
-            source: Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, "No fmt chunk found in WAV file")),
-        }
+            WebError::from(AudioFormatError::NoFmtChunkFound)
         })?;
 
         if fmt_chunk.len() < 16 {
-            return Err(WebError::AudioProcessing {
-            operation: "wav_parsing".to_string(),
-            format: "wav".to_string(),
-            source: Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid fmt chunk size")),
-        });
+            return Err(AudioFormatError::InvalidFmtChunkSize.into());
         }
 
         // Parse fmt chunk
@@ -343,11 +303,7 @@ impl AudioTranscriptionProcessor {
         };
 
         if mp3_start >= data.len() - 4 {
-            return Err(WebError::AudioProcessing {
-            operation: "mp3_parsing".to_string(),
-            format: "mp3".to_string(),
-            source: Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, "No MP3 frame found")),
-        });
+            return Err(AudioFormatError::NoMp3FrameFound.into());
         }
 
         // Find first valid MP3 frame header
@@ -369,32 +325,20 @@ impl AudioTranscriptionProcessor {
             frame_start += 1;
         }
 
-        Err(WebError::AudioProcessing {
-        operation: "mp3_parsing".to_string(),
-        format: "mp3".to_string(),
-        source: Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, "No valid MP3 frame found")),
-    })
+        Err(AudioFormatError::NoValidMp3FrameFound.into())
     }
 
     /// Parse MP3 frame header to extract sample rate and channels
     fn parse_mp3_frame_header(&self, frame_data: &[u8]) -> WebResult<(f32, u32)> {
         if frame_data.len() < 4 {
-            return Err(WebError::AudioProcessing {
-            operation: "mp3_parsing".to_string(),
-            format: "mp3".to_string(),
-            source: Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, "Frame too small")),
-        });
+            return Err(AudioFormatError::FrameTooSmall.into());
         }
 
         let header = u32::from_be_bytes([frame_data[0], frame_data[1], frame_data[2], frame_data[3]]);
 
         // Check sync word
         if (header >> 21) != 0x7FF {
-            return Err(WebError::AudioProcessing {
-            operation: "mp3_parsing".to_string(),
-            format: "mp3".to_string(),
-            source: Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid sync word")),
-        });
+            return Err(AudioFormatError::InvalidSyncWord.into());
         }
 
         // Extract MPEG version
@@ -413,21 +357,13 @@ impl AudioTranscriptionProcessor {
 
         let sample_rate = sample_rates[sample_rate_index as usize];
         if sample_rate == 0 {
-            return Err(WebError::AudioProcessing {
-            operation: "mp3_parsing".to_string(),
-            format: "mp3".to_string(),
-            source: Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid sample rate")),
-        });
+            return Err(AudioFormatError::InvalidSampleRate.into());
         }
 
         let channels = match channel_mode {
             0..=2 => 2, // Stereo, Joint stereo, Dual channel
             3 => 1,     // Single channel (Mono)
-            _ => return Err(WebError::AudioProcessing {
-            operation: "mp3_parsing".to_string(),
-            format: "mp3".to_string(),
-            source: Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid channel mode")),
-        }),
+            _ => return Err(AudioFormatError::InvalidChannelMode.into()),
         };
 
         Ok((sample_rate as f32, channels))
@@ -490,11 +426,7 @@ impl AudioTranscriptionProcessor {
     /// Parse FLAC file metadata
     fn parse_flac_metadata(&self, data: &[u8]) -> WebResult<AudioMetadata> {
         if data.len() < 42 || !data.starts_with(b"fLaC") {
-            return Err(WebError::AudioProcessing {
-            operation: "flac_parsing".to_string(),
-            format: "flac".to_string(),
-            source: Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid FLAC file")),
-        });
+            return Err(AudioFormatError::InvalidFlacFile.into());
         }
 
         // Skip fLaC signature and find STREAMINFO block
@@ -502,40 +434,24 @@ impl AudioTranscriptionProcessor {
 
         // First metadata block should be STREAMINFO
         if offset + 4 > data.len() {
-            return Err(WebError::AudioProcessing {
-            operation: "flac_parsing".to_string(),
-            format: "flac".to_string(),
-            source: Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, "FLAC file too small")),
-        });
+            return Err(AudioFormatError::FlacFileTooSmall.into());
         }
 
         let block_header = data[offset];
         let block_type = block_header & 0x7F;
 
         if block_type != 0 {
-            return Err(WebError::AudioProcessing {
-            operation: "flac_parsing".to_string(),
-            format: "flac".to_string(),
-            source: Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, "First FLAC block is not STREAMINFO")),
-        });
+            return Err(AudioFormatError::FlacFirstBlockNotStreaminfo.into());
         }
 
         let block_size = u32::from_be_bytes([0, data[offset + 1], data[offset + 2], data[offset + 3]]) as usize;
         if block_size < 34 {
-            return Err(WebError::AudioProcessing {
-            operation: "flac_parsing".to_string(),
-            format: "flac".to_string(),
-            source: Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, "STREAMINFO block too small")),
-        });
+            return Err(AudioFormatError::StreaminfoBlockTooSmall.into());
         }
 
         offset += 4;
         if offset + 34 > data.len() {
-            return Err(WebError::AudioProcessing {
-            operation: "flac_parsing".to_string(),
-            format: "flac".to_string(),
-            source: Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, "STREAMINFO data truncated")),
-        });
+            return Err(AudioFormatError::StreaminfoDataTruncated.into());
         }
 
         let streaminfo = &data[offset..offset + 34];
@@ -660,11 +576,7 @@ impl AudioTranscriptionProcessor {
         }
 
         let pcm_data = data_chunk.ok_or_else(|| {
-            WebError::AudioProcessing {
-            operation: "wav_parsing".to_string(),
-            format: "wav".to_string(),
-            source: Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, "No data chunk found in WAV file")),
-        }
+            WebError::from(AudioFormatError::NoDataChunkFound)
         })?;
 
         // Convert based on bit depth
@@ -711,11 +623,7 @@ impl AudioTranscriptionProcessor {
                 samples
             },
             _ => {
-                return Err(WebError::AudioProcessing {
-                    operation: "wav_validation".to_string(),
-                    format: "wav".to_string(),
-                    source: Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, format!("Unsupported bit depth: {}", bit_depth))),
-                });
+                return Err(AudioFormatError::UnsupportedBitDepth { bit_depth }.into());
             }
         };
 
@@ -915,14 +823,9 @@ pub async fn start_transcription_process(
 
     // Validate file size
     if file_data.len() > processing_config.max_file_size {
-        return Err(WebError::AudioProcessing {
-            operation: "size_validation".to_string(),
-            format: "unknown".to_string(),
-            source: Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, format!(
-                "File too large: {} bytes (max: {} bytes)",
-                file_data.len(),
-                processing_config.max_file_size
-            ))),
+        return Err(WebError::AudioFileTooLarge {
+            file_size: file_data.len() as u64,
+            max_size: processing_config.max_file_size as u64,
         });
     }
 
@@ -997,32 +900,19 @@ pub async fn start_transcription_process(
 /// Utility function to validate audio file before processing
 pub fn validate_audio_file(file_data: &[u8], max_size: usize) -> WebResult<()> {
     if file_data.is_empty() {
-        return Err(WebError::AudioProcessing {
-            operation: "validation".to_string(),
-            format: "unknown".to_string(),
-            source: Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, "Empty audio file")),
-        });
+        return Err(AudioFormatError::EmptyAudioFile.into());
     }
 
     if file_data.len() > max_size {
-        return Err(WebError::AudioProcessing {
-            operation: "size_validation".to_string(),
-            format: "unknown".to_string(),
-            source: Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, format!(
-                "File too large: {} bytes (max: {} bytes)",
-                file_data.len(),
-                max_size
-            ))),
+        return Err(WebError::AudioFileTooLarge {
+            file_size: file_data.len() as u64,
+            max_size: max_size as u64,
         });
     }
 
     // Basic format validation
     if file_data.len() < 12 {
-        return Err(WebError::AudioProcessing {
-            operation: "validation".to_string(),
-            format: "unknown".to_string(),
-            source: Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, "File too small to be valid audio")),
-        });
+        return Err(AudioFormatError::FileTooSmallForValidAudio.into());
     }
 
     // Check for common audio file signatures
@@ -1036,11 +926,7 @@ pub fn validate_audio_file(file_data: &[u8], max_size: usize) -> WebResult<()> {
         || file_data.starts_with(&[0x1A, 0x45, 0xDF, 0xA3]); // WebM
 
     if !has_valid_signature {
-        return Err(WebError::AudioProcessing {
-            operation: "format_validation".to_string(),
-            format: "unknown".to_string(),
-            source: Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, "Unsupported or invalid audio format")),
-        });
+        return Err(AudioFormatError::UnsupportedAudioFormat.into());
     }
 
     Ok(())

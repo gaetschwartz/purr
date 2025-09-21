@@ -1,7 +1,7 @@
 //! WebGPU transcription using @huggingface/transformers
 //! Direct integration with worker.js
 
-use crate::error::{WebError, WebResult};
+use crate::error::{WebError, WebResult, WorkerError};
 use crate::model::WebModelManager;
 use crate::transcription::AudioMetadata;
 use purr_common::platform::{TranscriptionRequest, TranscriptionStatus};
@@ -301,17 +301,13 @@ impl TranscriptionWorker {
         let sender_guard = self.worker_command_sender.lock().await;
         let sender = sender_guard
             .as_ref()
-            .ok_or_else(|| WebError::WorkerInitialization {
-                worker_type: "audio_processing".to_string(),
-                source: Box::new(std::io::Error::new(std::io::ErrorKind::Other, "Worker not initialized")),
-            })?;
+            .ok_or(WorkerError::NotInitialized)?;
 
         sender
             .send(WorkerCommand::SendMessage(message))
             .map_err(|e| {
-                WebError::WorkerInitialization {
-                    worker_type: "audio_processing".to_string(),
-                    source: Box::new(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to send command: {:?}", e))),
+                WorkerError::CommandSendFailed {
+                    details: format!("{:?}", e),
                 }
             })?;
 
@@ -331,14 +327,8 @@ impl TranscriptionWorker {
         // Wait for actual WorkerReady message from worker.js with timeout
         tokio::time::timeout(std::time::Duration::from_secs(10), ready_rx)
             .await
-            .map_err(|_| WebError::WorkerInitialization {
-                worker_type: "audio_processing".to_string(),
-                source: Box::new(std::io::Error::new(std::io::ErrorKind::Other, "Worker ready timeout")),
-            })?
-            .map_err(|_| WebError::WorkerInitialization {
-                worker_type: "audio_processing".to_string(),
-                source: Box::new(std::io::Error::new(std::io::ErrorKind::Other, "Worker ready channel closed")),
-            })?;
+            .map_err(|_| WorkerError::ReadyTimeout)?
+            .map_err(|_| WorkerError::ReadyChannelClosed)?;
 
         tracing::info!("Worker ready for session: {}", session_id);
         Ok(())

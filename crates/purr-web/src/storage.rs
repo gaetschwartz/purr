@@ -1,7 +1,7 @@
 //! Web storage implementation using browser APIs
 //! Uses IndexedDB for persistent storage
 
-use crate::error::{WebError, WebResult};
+use crate::error::{WebError, WebResult, StorageError};
 use js_sys::{Array, Promise, Uint8Array};
 use purr_common::platform::FileId;
 use serde::{Deserialize, Serialize};
@@ -90,7 +90,7 @@ impl WebStorage {
                         let result = if let Some(ref database) = db {
                             Self::store_file_internal(database, &file_id, &data, &metadata).await
                         } else {
-                            Err(WebError::storage_error("database_initialization", "indexeddb", None::<std::io::Error>))
+                            Err(WebError::from(StorageError::DatabaseConnectionFailed))
                         };
                         let _ = response.send(result);
                     }
@@ -98,7 +98,7 @@ impl WebStorage {
                         let result = if let Some(ref database) = db {
                             Self::get_file_internal(database, &file_id).await
                         } else {
-                            Err(WebError::storage_error("database_initialization", "indexeddb", None::<std::io::Error>))
+                            Err(WebError::from(StorageError::DatabaseConnectionFailed))
                         };
                         let _ = response.send(result);
                     }
@@ -106,7 +106,7 @@ impl WebStorage {
                         let result = if let Some(ref database) = db {
                             Self::delete_file_internal(database, &file_id).await
                         } else {
-                            Err(WebError::storage_error("database_initialization", "indexeddb", None::<std::io::Error>))
+                            Err(WebError::from(StorageError::DatabaseConnectionFailed))
                         };
                         let _ = response.send(result);
                     }
@@ -114,7 +114,7 @@ impl WebStorage {
                         let result = if let Some(ref database) = db {
                             Self::load_metadata_internal(database).await
                         } else {
-                            Err(WebError::storage_error("database_initialization", "indexeddb", None::<std::io::Error>))
+                            Err(WebError::from(StorageError::DatabaseConnectionFailed))
                         };
                         let _ = response.send(result);
                     }
@@ -165,11 +165,11 @@ impl WebStorage {
 
         self.command_sender
             .send(command)
-            .map_err(|_| WebError::storage_error("command_send", "indexeddb", None::<std::io::Error>))?;
+            .map_err(|_| WebError::from(StorageError::ObjectStoreAccessFailed))?;
 
         response_rx
             .await
-            .map_err(|_| WebError::storage_error("response_receive", "indexeddb", None::<std::io::Error>))??;
+            .map_err(|_| WebError::from(StorageError::GetOperationFailed))??;
 
         tracing::info!("Stored file: {} ({} bytes)", filename, data.len());
         Ok(file_id)
@@ -194,11 +194,11 @@ impl WebStorage {
 
         self.command_sender
             .send(command)
-            .map_err(|_| WebError::storage_error("command_send", "indexeddb", None::<std::io::Error>))?;
+            .map_err(|_| WebError::from(StorageError::ObjectStoreAccessFailed))?;
 
         let file_data = response_rx
             .await
-            .map_err(|_| WebError::storage_error("response_receive", "indexeddb", None::<std::io::Error>))??;
+            .map_err(|_| WebError::from(StorageError::GetOperationFailed))??;
 
         tracing::info!("Retrieved file: {}", file_id);
         Ok(file_data.map(bytes::Bytes::from))
@@ -221,11 +221,11 @@ impl WebStorage {
 
         self.command_sender
             .send(command)
-            .map_err(|_| WebError::storage_error("command_send", "indexeddb", None::<std::io::Error>))?;
+            .map_err(|_| WebError::from(StorageError::ObjectStoreAccessFailed))?;
 
         response_rx
             .await
-            .map_err(|_| WebError::storage_error("response_receive", "indexeddb", None::<std::io::Error>))??;
+            .map_err(|_| WebError::from(StorageError::GetOperationFailed))??;
 
         tracing::info!("Deleted file: {}", file_id);
         Ok(())
@@ -253,11 +253,11 @@ impl WebStorage {
 
         self.command_sender
             .send(command)
-            .map_err(|_| WebError::storage_error("command_send", "indexeddb", None::<std::io::Error>))?;
+            .map_err(|_| WebError::from(StorageError::ObjectStoreAccessFailed))?;
 
         response_rx
             .await
-            .map_err(|_| WebError::storage_error("response_receive", "indexeddb", None::<std::io::Error>))??;
+            .map_err(|_| WebError::from(StorageError::GetOperationFailed))??;
 
         // Load existing metadata from IndexedDB
         self.load_metadata().await?;
@@ -275,11 +275,11 @@ impl WebStorage {
 
         self.command_sender
             .send(command)
-            .map_err(|_| WebError::storage_error("command_send", "indexeddb", None::<std::io::Error>))?;
+            .map_err(|_| WebError::from(StorageError::ObjectStoreAccessFailed))?;
 
         let metadata_map = response_rx
             .await
-            .map_err(|_| WebError::storage_error("response_receive", "indexeddb", None::<std::io::Error>))??;
+            .map_err(|_| WebError::from(StorageError::GetOperationFailed))??;
 
         // Update cache with loaded metadata
         {
@@ -294,16 +294,16 @@ impl WebStorage {
     /// Initialize database and create object stores
     async fn initialize_database(db_name: &str) -> WebResult<IdbDatabase> {
         let window = web_sys::window()
-            .ok_or_else(|| WebError::storage_error("window_access", "browser", None::<std::io::Error>))?;
+            .ok_or(StorageError::IndexedDbUnavailable)?;
 
         let idb = window
             .indexed_db()
-            .map_err(|e| WebError::storage_error("indexeddb_availability", "browser", Some(std::io::Error::new(std::io::ErrorKind::Other, format!("IndexedDB not available: {:?}", e)))))?
-            .ok_or_else(|| WebError::storage_error("indexeddb_support", "browser", None::<std::io::Error>))?;
+            .map_err(|_| StorageError::IndexedDbUnavailable)?
+            .ok_or(StorageError::IndexedDbUnavailable)?;
 
         let open_request = idb
             .open_with_u32(db_name, 1)
-            .map_err(|e| WebError::storage_error("database_open", "indexeddb", Some(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to open IndexedDB: {:?}", e)))))?;
+            .map_err(|_| StorageError::DatabaseOpenFailed)?;
 
         // Set up upgrade handler
         let upgrade_closure = Closure::wrap(Box::new(move |event: IdbVersionChangeEvent| {
@@ -327,11 +327,11 @@ impl WebStorage {
         let promise = Promise::from(JsValue::from(open_request));
         let db_result = JsFuture::from(promise)
             .await
-            .map_err(|e| WebError::storage_error("database_connection", "indexeddb", Some(std::io::Error::new(std::io::ErrorKind::Other, format!("Database open failed: {:?}", e)))))?;
+            .map_err(|_| StorageError::DatabaseConnectionFailed)?;
 
         let db: IdbDatabase = db_result
             .dyn_into()
-            .map_err(|e| WebError::storage_error("database_cast", "indexeddb", Some(std::io::Error::new(std::io::ErrorKind::Other, format!("Invalid database object: {:?}", e)))))?;
+            .map_err(|_| StorageError::DatabaseCastFailed)?;
 
         Ok(db)
     }
@@ -346,11 +346,11 @@ impl WebStorage {
         // Store file data
         let transaction = db
             .transaction_with_str_and_mode("files", web_sys::IdbTransactionMode::Readwrite)
-            .map_err(|e| WebError::storage_error("transaction_creation", "indexeddb", Some(std::io::Error::new(std::io::ErrorKind::Other, format!("Transaction creation failed: {:?}", e)))))?;
+            .map_err(|_| StorageError::TransactionCreationFailed)?;
 
         let files_store = transaction
             .object_store("files")
-            .map_err(|e| WebError::storage_error("object_store_access", "indexeddb", Some(std::io::Error::new(std::io::ErrorKind::Other, format!("Object store access failed: {:?}", e)))))?;
+            .map_err(|_| StorageError::ObjectStoreAccessFailed)?;
 
         // Convert bytes to Uint8Array
         let array = Uint8Array::new_with_length(data.len() as u32);
@@ -358,40 +358,36 @@ impl WebStorage {
 
         let file_request = files_store
             .put_with_key(&array.into(), &JsValue::from_str(file_id))
-            .map_err(|e| WebError::storage_error("file_store", "indexeddb", Some(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to store file: {:?}", e)))))?;
+            .map_err(|_| WebError::from(StorageError::FileStoreFailed))?;
 
         let promise = Promise::from(JsValue::from(file_request));
         JsFuture::from(promise)
             .await
-            .map_err(|e| WebError::storage_error("file_storage_operation", "indexeddb", Some(std::io::Error::new(std::io::ErrorKind::Other, format!("File storage failed: {:?}", e)))))?;
+            .map_err(|_| WebError::from(StorageError::FileStorageOperationFailed))?;
 
         // Store metadata
         let metadata_transaction = db
             .transaction_with_str_and_mode("metadata", web_sys::IdbTransactionMode::Readwrite)
             .map_err(|e| {
-                WebError::storage_error("metadata_transaction", "indexeddb", Some(std::io::Error::new(std::io::ErrorKind::Other, format!("Metadata transaction creation failed: {:?}", e))))
+                WebError::from(StorageError::MetadataTransactionFailed)
             })?;
 
         let metadata_store = metadata_transaction.object_store("metadata").map_err(|e| {
-            WebError::storage_error("metadata_store_access", "indexeddb", Some(std::io::Error::new(std::io::ErrorKind::Other, format!("Metadata store access failed: {:?}", e))))
+            WebError::from(StorageError::MetadataStoreAccessFailed)
         })?;
 
         let serialized = serde_wasm_bindgen::to_value(metadata).map_err(|e| {
-            WebError::Serialization {
-                data_type: "metadata".to_string(),
-                operation: "serialize".to_string(),
-                source: Box::new(std::io::Error::new(std::io::ErrorKind::Other, format!("Metadata serialization failed: {:?}", e))),
-            }
+            WebError::from(StorageError::MetadataSerializationFailed)
         })?;
 
         let metadata_request = metadata_store
             .put_with_key(&serialized, &JsValue::from_str(file_id))
-            .map_err(|e| WebError::storage_error("metadata_store", "indexeddb", Some(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to store metadata: {:?}", e)))))?;
+            .map_err(|_| WebError::from(StorageError::MetadataStoreFailed))?;
 
         let promise = Promise::from(JsValue::from(metadata_request));
         JsFuture::from(promise)
             .await
-            .map_err(|e| WebError::storage_error("metadata_storage_operation", "indexeddb", Some(std::io::Error::new(std::io::ErrorKind::Other, format!("Metadata storage failed: {:?}", e)))))?;
+            .map_err(|_| WebError::from(StorageError::MetadataStorageOperationFailed))?;
 
         Ok(())
     }
@@ -400,20 +396,20 @@ impl WebStorage {
     async fn get_file_internal(db: &IdbDatabase, file_id: &str) -> WebResult<Option<Vec<u8>>> {
         let transaction = db
             .transaction_with_str("files")
-            .map_err(|e| WebError::storage_error("transaction_creation", "indexeddb", Some(std::io::Error::new(std::io::ErrorKind::Other, format!("Transaction creation failed: {:?}", e)))))?;
+            .map_err(|_| WebError::from(StorageError::TransactionCreationFailed))?;
 
         let object_store = transaction
             .object_store("files")
-            .map_err(|e| WebError::storage_error("object_store_access", "indexeddb", Some(std::io::Error::new(std::io::ErrorKind::Other, format!("Object store access failed: {:?}", e)))))?;
+            .map_err(|_| WebError::from(StorageError::ObjectStoreAccessFailed))?;
 
         let request = object_store
             .get(&JsValue::from_str(file_id))
-            .map_err(|e| WebError::storage_error("get_request", "indexeddb", Some(std::io::Error::new(std::io::ErrorKind::Other, format!("Get request failed: {:?}", e)))))?;
+            .map_err(|_| WebError::from(StorageError::GetRequestFailed))?;
 
         let promise = Promise::from(JsValue::from(request));
         let result = JsFuture::from(promise)
             .await
-            .map_err(|e| WebError::storage_error("get_operation", "indexeddb", Some(std::io::Error::new(std::io::ErrorKind::Other, format!("Get operation failed: {:?}", e)))))?;
+            .map_err(|_| WebError::from(StorageError::GetOperationFailed))?;
 
         if result.is_undefined() {
             return Ok(None);
@@ -422,7 +418,7 @@ impl WebStorage {
         // Convert Uint8Array back to Vec<u8>
         let array: Uint8Array = result
             .dyn_into()
-            .map_err(|e| WebError::storage_error("data_format", "indexeddb", Some(std::io::Error::new(std::io::ErrorKind::Other, format!("Invalid data format: {:?}", e)))))?;
+            .map_err(|_| WebError::from(StorageError::DataFormatInvalid))?;
 
         let mut data = vec![0u8; array.length() as usize];
         array.copy_to(&mut data);
@@ -435,42 +431,42 @@ impl WebStorage {
         // Delete file data
         let file_transaction = db
             .transaction_with_str_and_mode("files", web_sys::IdbTransactionMode::Readwrite)
-            .map_err(|e| WebError::storage_error("transaction_creation", "indexeddb", Some(std::io::Error::new(std::io::ErrorKind::Other, format!("Transaction creation failed: {:?}", e)))))?;
+            .map_err(|_| WebError::from(StorageError::TransactionCreationFailed))?;
 
         let files_store = file_transaction
             .object_store("files")
-            .map_err(|e| WebError::storage_error("object_store_access", "indexeddb", Some(std::io::Error::new(std::io::ErrorKind::Other, format!("Object store access failed: {:?}", e)))))?;
+            .map_err(|_| WebError::from(StorageError::ObjectStoreAccessFailed))?;
 
         let file_request = files_store
             .delete(&JsValue::from_str(file_id))
-            .map_err(|e| WebError::storage_error("delete_operation", "indexeddb", Some(std::io::Error::new(std::io::ErrorKind::Other, format!("Delete operation failed: {:?}", e)))))?;
+            .map_err(|_| WebError::from(StorageError::DeleteOperationFailed))?;
 
         let promise = Promise::from(JsValue::from(file_request));
         JsFuture::from(promise)
             .await
-            .map_err(|e| WebError::storage_error("file_deletion", "indexeddb", Some(std::io::Error::new(std::io::ErrorKind::Other, format!("File deletion failed: {:?}", e)))))?;
+            .map_err(|_| WebError::from(StorageError::FileDeletionFailed))?;
 
         // Delete metadata
         let metadata_transaction = db
             .transaction_with_str_and_mode("metadata", web_sys::IdbTransactionMode::Readwrite)
             .map_err(|e| {
-                WebError::storage_error("metadata_transaction", "indexeddb", Some(std::io::Error::new(std::io::ErrorKind::Other, format!("Metadata transaction creation failed: {:?}", e))))
+                WebError::from(StorageError::MetadataTransactionFailed)
             })?;
 
         let metadata_store = metadata_transaction.object_store("metadata").map_err(|e| {
-            WebError::storage_error("metadata_store_access", "indexeddb", Some(std::io::Error::new(std::io::ErrorKind::Other, format!("Metadata store access failed: {:?}", e))))
+            WebError::from(StorageError::MetadataStoreAccessFailed)
         })?;
 
         let metadata_request = metadata_store
             .delete(&JsValue::from_str(file_id))
             .map_err(|e| {
-                WebError::storage_error("metadata_delete", "indexeddb", Some(std::io::Error::new(std::io::ErrorKind::Other, format!("Metadata delete operation failed: {:?}", e))))
+                WebError::from(StorageError::MetadataDeleteFailed)
             })?;
 
         let promise = Promise::from(JsValue::from(metadata_request));
         JsFuture::from(promise)
             .await
-            .map_err(|e| WebError::storage_error("metadata_deletion", "indexeddb", Some(std::io::Error::new(std::io::ErrorKind::Other, format!("Metadata deletion failed: {:?}", e)))))?;
+            .map_err(|_| WebError::from(StorageError::MetadataDeletionFailed))?;
 
         Ok(())
     }
@@ -479,24 +475,24 @@ impl WebStorage {
     async fn load_metadata_internal(db: &IdbDatabase) -> WebResult<HashMap<String, FileMetadata>> {
         let transaction = db
             .transaction_with_str("metadata")
-            .map_err(|e| WebError::storage_error("transaction_creation", "indexeddb", Some(std::io::Error::new(std::io::ErrorKind::Other, format!("Transaction creation failed: {:?}", e)))))?;
+            .map_err(|_| WebError::from(StorageError::TransactionCreationFailed))?;
 
         let object_store = transaction
             .object_store("metadata")
-            .map_err(|e| WebError::storage_error("object_store_access", "indexeddb", Some(std::io::Error::new(std::io::ErrorKind::Other, format!("Object store access failed: {:?}", e)))))?;
+            .map_err(|_| WebError::from(StorageError::ObjectStoreAccessFailed))?;
 
         let request = object_store
             .get_all()
-            .map_err(|e| WebError::storage_error("getall_request", "indexeddb", Some(std::io::Error::new(std::io::ErrorKind::Other, format!("GetAll request failed: {:?}", e)))))?;
+            .map_err(|_| WebError::from(StorageError::GetAllRequestFailed))?;
 
         let promise = Promise::from(JsValue::from(request));
         let result = JsFuture::from(promise)
             .await
-            .map_err(|e| WebError::storage_error("getall_operation", "indexeddb", Some(std::io::Error::new(std::io::ErrorKind::Other, format!("GetAll operation failed: {:?}", e)))))?;
+            .map_err(|_| WebError::from(StorageError::GetAllOperationFailed))?;
 
         let array: Array = result
             .dyn_into()
-            .map_err(|e| WebError::storage_error("array_format", "indexeddb", Some(std::io::Error::new(std::io::ErrorKind::Other, format!("Invalid array format: {:?}", e)))))?;
+            .map_err(|_| WebError::from(StorageError::ArrayFormatInvalid))?;
 
         let mut metadata_map = HashMap::new();
 
