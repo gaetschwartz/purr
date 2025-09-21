@@ -35,11 +35,6 @@ async fn test_missing_audio_file() {
     }
 }
 
-// Removed trivial tests:
-// - test_audio_processor: just tests creation with no validation
-// - test_transcription_result_serialization: tests serde derive functionality
-// - test_config_defaults: tests default values that are set by Default derive
-
 /// Test transcription with different configurations on a known sample
 #[tokio::test]
 async fn test_transcription_configurations() {

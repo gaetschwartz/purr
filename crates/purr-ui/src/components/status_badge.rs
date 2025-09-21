@@ -11,7 +11,7 @@ pub enum StatusType {
     Info,
 }
 
-/// Props for the StatusBadge component
+/// Props for the `StatusBadge` component
 #[derive(Props, Clone, PartialEq)]
 pub struct StatusBadgeProps {
     /// Badge text

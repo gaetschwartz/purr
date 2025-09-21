@@ -5,11 +5,11 @@
 
 #![allow(dead_code)]
 
-use purr_web::{WebError};
-use wasm_bindgen_test::*;
-use wasm_bindgen::prelude::*;
-use web_sys::{console};
 use js_sys::{Object, Reflect};
+use purr_web::WebError;
+use wasm_bindgen::prelude::*;
+use wasm_bindgen_test::*;
+use web_sys::console;
 
 wasm_bindgen_test_configure!(run_in_browser);
 
@@ -175,10 +175,20 @@ fn create_compute_pipeline_descriptor() -> Object {
     // Create compute stage
     let compute_stage = Object::new();
     Reflect::set(&compute_stage, &JsValue::from_str("module"), &JsValue::NULL).unwrap();
-    Reflect::set(&compute_stage, &JsValue::from_str("entryPoint"), &JsValue::from_str("audio_process_main")).unwrap();
+    Reflect::set(
+        &compute_stage,
+        &JsValue::from_str("entryPoint"),
+        &JsValue::from_str("audio_process_main"),
+    )
+    .unwrap();
 
     Reflect::set(&descriptor, &JsValue::from_str("compute"), &compute_stage).unwrap();
-    Reflect::set(&descriptor, &JsValue::from_str("layout"), &JsValue::from_str("auto")).unwrap();
+    Reflect::set(
+        &descriptor,
+        &JsValue::from_str("layout"),
+        &JsValue::from_str("auto"),
+    )
+    .unwrap();
 
     descriptor
 }
@@ -189,29 +199,64 @@ fn create_render_pipeline_descriptor() -> Object {
     // Vertex stage
     let vertex_stage = Object::new();
     Reflect::set(&vertex_stage, &JsValue::from_str("module"), &JsValue::NULL).unwrap();
-    Reflect::set(&vertex_stage, &JsValue::from_str("entryPoint"), &JsValue::from_str("vs_main")).unwrap();
+    Reflect::set(
+        &vertex_stage,
+        &JsValue::from_str("entryPoint"),
+        &JsValue::from_str("vs_main"),
+    )
+    .unwrap();
 
     // Fragment stage
     let fragment_stage = Object::new();
-    Reflect::set(&fragment_stage, &JsValue::from_str("module"), &JsValue::NULL).unwrap();
-    Reflect::set(&fragment_stage, &JsValue::from_str("entryPoint"), &JsValue::from_str("fs_main")).unwrap();
+    Reflect::set(
+        &fragment_stage,
+        &JsValue::from_str("module"),
+        &JsValue::NULL,
+    )
+    .unwrap();
+    Reflect::set(
+        &fragment_stage,
+        &JsValue::from_str("entryPoint"),
+        &JsValue::from_str("fs_main"),
+    )
+    .unwrap();
 
     // Color target
     let color_target = Object::new();
-    Reflect::set(&color_target, &JsValue::from_str("format"), &JsValue::from_str("bgra8unorm")).unwrap();
+    Reflect::set(
+        &color_target,
+        &JsValue::from_str("format"),
+        &JsValue::from_str("bgra8unorm"),
+    )
+    .unwrap();
 
     let color_targets = js_sys::Array::new();
     color_targets.push(&color_target);
 
-    Reflect::set(&fragment_stage, &JsValue::from_str("targets"), &color_targets).unwrap();
+    Reflect::set(
+        &fragment_stage,
+        &JsValue::from_str("targets"),
+        &color_targets,
+    )
+    .unwrap();
 
     Reflect::set(&descriptor, &JsValue::from_str("vertex"), &vertex_stage).unwrap();
     Reflect::set(&descriptor, &JsValue::from_str("fragment"), &fragment_stage).unwrap();
-    Reflect::set(&descriptor, &JsValue::from_str("layout"), &JsValue::from_str("auto")).unwrap();
+    Reflect::set(
+        &descriptor,
+        &JsValue::from_str("layout"),
+        &JsValue::from_str("auto"),
+    )
+    .unwrap();
 
     // Primitive state
     let primitive = Object::new();
-    Reflect::set(&primitive, &JsValue::from_str("topology"), &JsValue::from_str("triangle-list")).unwrap();
+    Reflect::set(
+        &primitive,
+        &JsValue::from_str("topology"),
+        &JsValue::from_str("triangle-list"),
+    )
+    .unwrap();
     Reflect::set(&descriptor, &JsValue::from_str("primitive"), &primitive).unwrap();
 
     descriptor
@@ -268,10 +313,10 @@ mod compute_pipeline_tests {
 
         // Test different workgroup sizes for audio processing
         let workgroup_configurations = vec![
-            (64, 1, 1),   // For audio processing
-            (256, 1, 1),  // For spectral analysis
-            (32, 32, 1),  // For 2D audio processing
-            (16, 16, 4),  // For 3D audio processing
+            (64, 1, 1),  // For audio processing
+            (256, 1, 1), // For spectral analysis
+            (32, 32, 1), // For 2D audio processing
+            (16, 16, 4), // For 3D audio processing
         ];
 
         for (x, y, z) in workgroup_configurations {
@@ -282,7 +327,10 @@ mod compute_pipeline_tests {
 
             // Check total invocations limit
             let total_invocations = x * y * z;
-            assert!(total_invocations <= 256, "Total workgroup invocations must be <= 256");
+            assert!(
+                total_invocations <= 256,
+                "Total workgroup invocations must be <= 256"
+            );
         }
 
         console::log_1(&"✓ Compute workgroup size validation passed".into());
@@ -298,32 +346,92 @@ mod compute_pipeline_tests {
 
         // Input buffer binding
         let input_entry = Object::new();
-        Reflect::set(&input_entry, &JsValue::from_str("binding"), &JsValue::from_f64(0.0)).unwrap();
-        Reflect::set(&input_entry, &JsValue::from_str("visibility"), &JsValue::from_f64(4.0)).unwrap(); // COMPUTE
+        Reflect::set(
+            &input_entry,
+            &JsValue::from_str("binding"),
+            &JsValue::from_f64(0.0),
+        )
+        .unwrap();
+        Reflect::set(
+            &input_entry,
+            &JsValue::from_str("visibility"),
+            &JsValue::from_f64(4.0),
+        )
+        .unwrap(); // COMPUTE
 
         let input_buffer_layout = Object::new();
-        Reflect::set(&input_buffer_layout, &JsValue::from_str("type"), &JsValue::from_str("read-only-storage")).unwrap();
-        Reflect::set(&input_entry, &JsValue::from_str("buffer"), &input_buffer_layout).unwrap();
+        Reflect::set(
+            &input_buffer_layout,
+            &JsValue::from_str("type"),
+            &JsValue::from_str("read-only-storage"),
+        )
+        .unwrap();
+        Reflect::set(
+            &input_entry,
+            &JsValue::from_str("buffer"),
+            &input_buffer_layout,
+        )
+        .unwrap();
         entries.push(&input_entry);
 
         // Output buffer binding
         let output_entry = Object::new();
-        Reflect::set(&output_entry, &JsValue::from_str("binding"), &JsValue::from_f64(1.0)).unwrap();
-        Reflect::set(&output_entry, &JsValue::from_str("visibility"), &JsValue::from_f64(4.0)).unwrap(); // COMPUTE
+        Reflect::set(
+            &output_entry,
+            &JsValue::from_str("binding"),
+            &JsValue::from_f64(1.0),
+        )
+        .unwrap();
+        Reflect::set(
+            &output_entry,
+            &JsValue::from_str("visibility"),
+            &JsValue::from_f64(4.0),
+        )
+        .unwrap(); // COMPUTE
 
         let output_buffer_layout = Object::new();
-        Reflect::set(&output_buffer_layout, &JsValue::from_str("type"), &JsValue::from_str("storage")).unwrap();
-        Reflect::set(&output_entry, &JsValue::from_str("buffer"), &output_buffer_layout).unwrap();
+        Reflect::set(
+            &output_buffer_layout,
+            &JsValue::from_str("type"),
+            &JsValue::from_str("storage"),
+        )
+        .unwrap();
+        Reflect::set(
+            &output_entry,
+            &JsValue::from_str("buffer"),
+            &output_buffer_layout,
+        )
+        .unwrap();
         entries.push(&output_entry);
 
         // Uniform buffer binding
         let uniform_entry = Object::new();
-        Reflect::set(&uniform_entry, &JsValue::from_str("binding"), &JsValue::from_f64(2.0)).unwrap();
-        Reflect::set(&uniform_entry, &JsValue::from_str("visibility"), &JsValue::from_f64(4.0)).unwrap(); // COMPUTE
+        Reflect::set(
+            &uniform_entry,
+            &JsValue::from_str("binding"),
+            &JsValue::from_f64(2.0),
+        )
+        .unwrap();
+        Reflect::set(
+            &uniform_entry,
+            &JsValue::from_str("visibility"),
+            &JsValue::from_f64(4.0),
+        )
+        .unwrap(); // COMPUTE
 
         let uniform_buffer_layout = Object::new();
-        Reflect::set(&uniform_buffer_layout, &JsValue::from_str("type"), &JsValue::from_str("uniform")).unwrap();
-        Reflect::set(&uniform_entry, &JsValue::from_str("buffer"), &uniform_buffer_layout).unwrap();
+        Reflect::set(
+            &uniform_buffer_layout,
+            &JsValue::from_str("type"),
+            &JsValue::from_str("uniform"),
+        )
+        .unwrap();
+        Reflect::set(
+            &uniform_entry,
+            &JsValue::from_str("buffer"),
+            &uniform_buffer_layout,
+        )
+        .unwrap();
         entries.push(&uniform_entry);
 
         Reflect::set(&bind_group_layout, &JsValue::from_str("entries"), &entries).unwrap();
@@ -340,11 +448,11 @@ mod compute_pipeline_tests {
 
         // Test dispatch configurations for different audio buffer sizes
         let audio_buffer_sizes: Vec<u32> = vec![
-            1024,    // 1K samples
-            4096,    // 4K samples
-            16384,   // 16K samples
-            44100,   // 1 second at 44.1kHz
-            176400,  // 4 seconds at 44.1kHz
+            1024,   // 1K samples
+            4096,   // 4K samples
+            16384,  // 16K samples
+            44100,  // 1 second at 44.1kHz
+            176400, // 4 seconds at 44.1kHz
         ];
 
         let workgroup_size = 64u32;
@@ -411,7 +519,8 @@ mod render_pipeline_tests {
         let fragment_stage = Reflect::get(&descriptor, &JsValue::from_str("fragment")).unwrap();
         assert!(!fragment_stage.is_undefined());
 
-        let fragment_entry = Reflect::get(&fragment_stage, &JsValue::from_str("entryPoint")).unwrap();
+        let fragment_entry =
+            Reflect::get(&fragment_stage, &JsValue::from_str("entryPoint")).unwrap();
         assert_eq!(fragment_entry.as_string().unwrap(), "fs_main");
 
         // Verify primitive state
@@ -428,8 +537,8 @@ mod render_pipeline_tests {
 
         // Define vertex attributes for audio visualization
         let vertex_attributes = vec![
-            ("position", 0, "float32x2", 0),      // 2D position
-            ("audio_sample", 1, "float32", 8),    // Audio sample value
+            ("position", 0, "float32x2", 0),   // 2D position
+            ("audio_sample", 1, "float32", 8), // Audio sample value
         ];
 
         let mut offset = 0u64;
@@ -464,29 +573,59 @@ mod render_pipeline_tests {
         console::log_1(&"Testing render target configuration".into());
 
         // Test different render target formats for audio visualization
-        let render_formats = vec![
-            "bgra8unorm",
-            "rgba8unorm",
-            "rgba16float",
-            "rgba32float",
-        ];
+        let render_formats = vec!["bgra8unorm", "rgba8unorm", "rgba16float", "rgba32float"];
 
         for format in render_formats {
             let color_target = Object::new();
-            Reflect::set(&color_target, &JsValue::from_str("format"), &JsValue::from_str(format)).unwrap();
+            Reflect::set(
+                &color_target,
+                &JsValue::from_str("format"),
+                &JsValue::from_str(format),
+            )
+            .unwrap();
 
             // Optional blend state for audio visualization
             let blend_state = Object::new();
 
             let color_blend = Object::new();
-            Reflect::set(&color_blend, &JsValue::from_str("operation"), &JsValue::from_str("add")).unwrap();
-            Reflect::set(&color_blend, &JsValue::from_str("srcFactor"), &JsValue::from_str("src-alpha")).unwrap();
-            Reflect::set(&color_blend, &JsValue::from_str("dstFactor"), &JsValue::from_str("one-minus-src-alpha")).unwrap();
+            Reflect::set(
+                &color_blend,
+                &JsValue::from_str("operation"),
+                &JsValue::from_str("add"),
+            )
+            .unwrap();
+            Reflect::set(
+                &color_blend,
+                &JsValue::from_str("srcFactor"),
+                &JsValue::from_str("src-alpha"),
+            )
+            .unwrap();
+            Reflect::set(
+                &color_blend,
+                &JsValue::from_str("dstFactor"),
+                &JsValue::from_str("one-minus-src-alpha"),
+            )
+            .unwrap();
 
             let alpha_blend = Object::new();
-            Reflect::set(&alpha_blend, &JsValue::from_str("operation"), &JsValue::from_str("add")).unwrap();
-            Reflect::set(&alpha_blend, &JsValue::from_str("srcFactor"), &JsValue::from_str("one")).unwrap();
-            Reflect::set(&alpha_blend, &JsValue::from_str("dstFactor"), &JsValue::from_str("zero")).unwrap();
+            Reflect::set(
+                &alpha_blend,
+                &JsValue::from_str("operation"),
+                &JsValue::from_str("add"),
+            )
+            .unwrap();
+            Reflect::set(
+                &alpha_blend,
+                &JsValue::from_str("srcFactor"),
+                &JsValue::from_str("one"),
+            )
+            .unwrap();
+            Reflect::set(
+                &alpha_blend,
+                &JsValue::from_str("dstFactor"),
+                &JsValue::from_str("zero"),
+            )
+            .unwrap();
 
             Reflect::set(&blend_state, &JsValue::from_str("color"), &color_blend).unwrap();
             Reflect::set(&blend_state, &JsValue::from_str("alpha"), &alpha_blend).unwrap();
@@ -528,19 +667,64 @@ mod pipeline_integration_tests {
         let color_attachments = js_sys::Array::new();
 
         let color_attachment = Object::new();
-        Reflect::set(&color_attachment, &JsValue::from_str("view"), &JsValue::NULL).unwrap();
-        Reflect::set(&color_attachment, &JsValue::from_str("loadOp"), &JsValue::from_str("clear")).unwrap();
-        Reflect::set(&color_attachment, &JsValue::from_str("storeOp"), &JsValue::from_str("store")).unwrap();
+        Reflect::set(
+            &color_attachment,
+            &JsValue::from_str("view"),
+            &JsValue::NULL,
+        )
+        .unwrap();
+        Reflect::set(
+            &color_attachment,
+            &JsValue::from_str("loadOp"),
+            &JsValue::from_str("clear"),
+        )
+        .unwrap();
+        Reflect::set(
+            &color_attachment,
+            &JsValue::from_str("storeOp"),
+            &JsValue::from_str("store"),
+        )
+        .unwrap();
 
         let clear_color = Object::new();
-        Reflect::set(&clear_color, &JsValue::from_str("r"), &JsValue::from_f64(0.0)).unwrap();
-        Reflect::set(&clear_color, &JsValue::from_str("g"), &JsValue::from_f64(0.0)).unwrap();
-        Reflect::set(&clear_color, &JsValue::from_str("b"), &JsValue::from_f64(0.0)).unwrap();
-        Reflect::set(&clear_color, &JsValue::from_str("a"), &JsValue::from_f64(1.0)).unwrap();
-        Reflect::set(&color_attachment, &JsValue::from_str("clearValue"), &clear_color).unwrap();
+        Reflect::set(
+            &clear_color,
+            &JsValue::from_str("r"),
+            &JsValue::from_f64(0.0),
+        )
+        .unwrap();
+        Reflect::set(
+            &clear_color,
+            &JsValue::from_str("g"),
+            &JsValue::from_f64(0.0),
+        )
+        .unwrap();
+        Reflect::set(
+            &clear_color,
+            &JsValue::from_str("b"),
+            &JsValue::from_f64(0.0),
+        )
+        .unwrap();
+        Reflect::set(
+            &clear_color,
+            &JsValue::from_str("a"),
+            &JsValue::from_f64(1.0),
+        )
+        .unwrap();
+        Reflect::set(
+            &color_attachment,
+            &JsValue::from_str("clearValue"),
+            &clear_color,
+        )
+        .unwrap();
 
         color_attachments.push(&color_attachment);
-        Reflect::set(&render_pass_descriptor, &JsValue::from_str("colorAttachments"), &color_attachments).unwrap();
+        Reflect::set(
+            &render_pass_descriptor,
+            &JsValue::from_str("colorAttachments"),
+            &color_attachments,
+        )
+        .unwrap();
 
         let render_pass = encoder.begin_render_pass(&render_pass_descriptor);
         assert!(!JsValue::from(&render_pass).is_undefined());
@@ -558,24 +742,59 @@ mod pipeline_integration_tests {
 
         // Audio input buffer entry
         let input_entry = Object::new();
-        Reflect::set(&input_entry, &JsValue::from_str("binding"), &JsValue::from_f64(0.0)).unwrap();
+        Reflect::set(
+            &input_entry,
+            &JsValue::from_str("binding"),
+            &JsValue::from_f64(0.0),
+        )
+        .unwrap();
         Reflect::set(&input_entry, &JsValue::from_str("resource"), &JsValue::NULL).unwrap(); // Would be actual buffer
         entries.push(&input_entry);
 
         // Audio output buffer entry
         let output_entry = Object::new();
-        Reflect::set(&output_entry, &JsValue::from_str("binding"), &JsValue::from_f64(1.0)).unwrap();
-        Reflect::set(&output_entry, &JsValue::from_str("resource"), &JsValue::NULL).unwrap(); // Would be actual buffer
+        Reflect::set(
+            &output_entry,
+            &JsValue::from_str("binding"),
+            &JsValue::from_f64(1.0),
+        )
+        .unwrap();
+        Reflect::set(
+            &output_entry,
+            &JsValue::from_str("resource"),
+            &JsValue::NULL,
+        )
+        .unwrap(); // Would be actual buffer
         entries.push(&output_entry);
 
         // Processing parameters uniform
         let params_entry = Object::new();
-        Reflect::set(&params_entry, &JsValue::from_str("binding"), &JsValue::from_f64(2.0)).unwrap();
-        Reflect::set(&params_entry, &JsValue::from_str("resource"), &JsValue::NULL).unwrap(); // Would be actual buffer
+        Reflect::set(
+            &params_entry,
+            &JsValue::from_str("binding"),
+            &JsValue::from_f64(2.0),
+        )
+        .unwrap();
+        Reflect::set(
+            &params_entry,
+            &JsValue::from_str("resource"),
+            &JsValue::NULL,
+        )
+        .unwrap(); // Would be actual buffer
         entries.push(&params_entry);
 
-        Reflect::set(&bind_group_descriptor, &JsValue::from_str("entries"), &entries).unwrap();
-        Reflect::set(&bind_group_descriptor, &JsValue::from_str("layout"), &JsValue::NULL).unwrap(); // Would be actual layout
+        Reflect::set(
+            &bind_group_descriptor,
+            &JsValue::from_str("entries"),
+            &entries,
+        )
+        .unwrap();
+        Reflect::set(
+            &bind_group_descriptor,
+            &JsValue::from_str("layout"),
+            &JsValue::NULL,
+        )
+        .unwrap(); // Would be actual layout
 
         // Verify bind group structure
         assert_eq!(entries.length(), 3);
@@ -597,7 +816,9 @@ mod pipeline_integration_tests {
         ];
 
         for error_msg in error_scenarios {
-            let pipeline_error = WebError::WebGpu(purr_web::WebGpuError::FeatureNotSupported { feature: format!("Pipeline error: {}", error_msg) });
+            let pipeline_error = WebError::WebGpu(purr_web::WebGpuError::FeatureNotSupported {
+                feature: format!("Pipeline error: {}", error_msg),
+            });
 
             match pipeline_error {
                 WebError::WebGpu(webgpu_err) => {
@@ -648,7 +869,10 @@ mod pipeline_integration_tests {
 
             // Test batch size efficiency
             let efficiency = opt.batch_size as f32 / opt.workgroup_size as f32;
-            assert!(efficiency >= 1.0, "Batch size should be efficient for workgroup");
+            assert!(
+                efficiency >= 1.0,
+                "Batch size should be efficient for workgroup"
+            );
         }
 
         console::log_1(&"✓ Pipeline performance optimization test successful".into());

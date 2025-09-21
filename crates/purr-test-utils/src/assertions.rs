@@ -141,6 +141,7 @@ pub fn get_memory_usage() -> u64 {
 }
 
 #[cfg(target_os = "macos")]
+#[must_use]
 pub fn get_memory_usage() -> u64 {
     // Simplified implementation for macOS
     // In a real implementation, you'd use mach APIs

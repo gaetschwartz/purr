@@ -6,11 +6,11 @@
 
 #![allow(dead_code)]
 
-use purr_web::{WebError, PlatformImpl};
-use wasm_bindgen_test::*;
+use js_sys::{Object, Promise, Reflect};
+use purr_web::{PlatformImpl, WebError};
 use wasm_bindgen::prelude::*;
-use web_sys::{console};
-use js_sys::{Object, Reflect, Promise};
+use wasm_bindgen_test::*;
+use web_sys::console;
 
 wasm_bindgen_test_configure!(run_in_browser);
 
@@ -68,8 +68,18 @@ fn is_webgpu_available() -> bool {
 /// Create test buffer descriptor
 fn create_buffer_descriptor(size: u64, usage: u32) -> Object {
     let descriptor = Object::new();
-    Reflect::set(&descriptor, &JsValue::from_str("size"), &JsValue::from_f64(size as f64)).unwrap();
-    Reflect::set(&descriptor, &JsValue::from_str("usage"), &JsValue::from_f64(usage as f64)).unwrap();
+    Reflect::set(
+        &descriptor,
+        &JsValue::from_str("size"),
+        &JsValue::from_f64(size as f64),
+    )
+    .unwrap();
+    Reflect::set(
+        &descriptor,
+        &JsValue::from_str("usage"),
+        &JsValue::from_f64(usage as f64),
+    )
+    .unwrap();
     descriptor
 }
 
@@ -77,20 +87,21 @@ fn create_buffer_descriptor(size: u64, usage: u32) -> Object {
 mod webgpu_device_tests {
     use super::*;
 
-    // Removed trivial WebGPU detection tests:
-    // - test_webgpu_adapter_detection: just checks if navigator.gpu exists (browser's responsibility)
-    // - test_webgpu_adapter_request: doesn't actually test WebGPU, just mocks it
-
     #[wasm_bindgen_test]
     fn test_webgpu_error_handling() {
         console::log_1(&"Testing WebGPU error handling".into());
 
         // Test WebGPU error creation
-        let webgpu_error = WebError::WebGpu(purr_web::WebGpuError::FeatureNotSupported { feature: "Test WebGPU error".to_string() });
+        let webgpu_error = WebError::WebGpu(purr_web::WebGpuError::FeatureNotSupported {
+            feature: "Test WebGPU error".to_string(),
+        });
 
         match &webgpu_error {
             WebError::WebGpu(webgpu_err) => {
-                assert_eq!(webgpu_err.to_string(), "Missing WebGPU features: Test WebGPU error");
+                assert_eq!(
+                    webgpu_err.to_string(),
+                    "Missing WebGPU features: Test WebGPU error"
+                );
                 console::log_1(&"✓ WebGPU error handling works correctly".into());
             }
             _ => panic!("Expected WebGPU error variant"),
@@ -101,20 +112,11 @@ mod webgpu_device_tests {
         assert!(platform_error.to_string().contains("WebGPU error"));
         console::log_1(&"✓ Error conversion works correctly".into());
     }
-
-    // Removed trivial validation tests:
-    // - test_webgpu_device_limits_validation: just validates hardcoded constants
-    // - test_webgpu_feature_detection: just validates string format of feature names
 }
 
 #[cfg(test)]
 mod webgpu_buffer_tests {
     use super::*;
-
-    // Removed trivial buffer tests:
-    // - test_buffer_usage_flags: just validates hardcoded flag constants
-    // - test_buffer_descriptor_creation: just tests Object.set/get (JS's responsibility)
-    // - test_buffer_size_validation: trivial range validation logic
 
     #[wasm_bindgen_test]
     fn test_buffer_descriptor_creation() {
@@ -201,7 +203,12 @@ mod webgpu_shader_tests {
         let shader_code = "@compute @workgroup_size(1) fn main() {}";
 
         let descriptor = Object::new();
-        Reflect::set(&descriptor, &JsValue::from_str("code"), &JsValue::from_str(shader_code)).unwrap();
+        Reflect::set(
+            &descriptor,
+            &JsValue::from_str("code"),
+            &JsValue::from_str(shader_code),
+        )
+        .unwrap();
 
         let code_val = Reflect::get(&descriptor, &JsValue::from_str("code")).unwrap();
         assert_eq!(code_val.as_string().unwrap(), shader_code);
@@ -219,11 +226,26 @@ mod webgpu_shader_tests {
 
         // Add a storage buffer binding
         let entry = Object::new();
-        Reflect::set(&entry, &JsValue::from_str("binding"), &JsValue::from_f64(0.0)).unwrap();
-        Reflect::set(&entry, &JsValue::from_str("visibility"), &JsValue::from_f64(4.0)).unwrap(); // COMPUTE
+        Reflect::set(
+            &entry,
+            &JsValue::from_str("binding"),
+            &JsValue::from_f64(0.0),
+        )
+        .unwrap();
+        Reflect::set(
+            &entry,
+            &JsValue::from_str("visibility"),
+            &JsValue::from_f64(4.0),
+        )
+        .unwrap(); // COMPUTE
 
         let buffer_layout = Object::new();
-        Reflect::set(&buffer_layout, &JsValue::from_str("type"), &JsValue::from_str("storage")).unwrap();
+        Reflect::set(
+            &buffer_layout,
+            &JsValue::from_str("type"),
+            &JsValue::from_str("storage"),
+        )
+        .unwrap();
         Reflect::set(&entry, &JsValue::from_str("buffer"), &buffer_layout).unwrap();
 
         entries.push(&entry);
@@ -241,10 +263,6 @@ mod webgpu_shader_tests {
 mod webgpu_texture_tests {
     use super::*;
 
-    // Removed trivial texture tests:
-    // - test_texture_format_validation: just validates string format
-    // - test_texture_usage_flags: just validates hardcoded constants
-
     #[wasm_bindgen_test]
     fn test_texture_descriptor_creation() {
         console::log_1(&"Testing texture descriptor creation".into());
@@ -253,13 +271,38 @@ mod webgpu_texture_tests {
 
         // Set texture size
         let size = Object::new();
-        Reflect::set(&size, &JsValue::from_str("width"), &JsValue::from_f64(512.0)).unwrap();
-        Reflect::set(&size, &JsValue::from_str("height"), &JsValue::from_f64(512.0)).unwrap();
-        Reflect::set(&size, &JsValue::from_str("depthOrArrayLayers"), &JsValue::from_f64(1.0)).unwrap();
+        Reflect::set(
+            &size,
+            &JsValue::from_str("width"),
+            &JsValue::from_f64(512.0),
+        )
+        .unwrap();
+        Reflect::set(
+            &size,
+            &JsValue::from_str("height"),
+            &JsValue::from_f64(512.0),
+        )
+        .unwrap();
+        Reflect::set(
+            &size,
+            &JsValue::from_str("depthOrArrayLayers"),
+            &JsValue::from_f64(1.0),
+        )
+        .unwrap();
 
         Reflect::set(&descriptor, &JsValue::from_str("size"), &size).unwrap();
-        Reflect::set(&descriptor, &JsValue::from_str("format"), &JsValue::from_str("rgba8unorm")).unwrap();
-        Reflect::set(&descriptor, &JsValue::from_str("usage"), &JsValue::from_f64(0x0014 as f64)).unwrap(); // TEXTURE_BINDING | COPY_DST
+        Reflect::set(
+            &descriptor,
+            &JsValue::from_str("format"),
+            &JsValue::from_str("rgba8unorm"),
+        )
+        .unwrap();
+        Reflect::set(
+            &descriptor,
+            &JsValue::from_str("usage"),
+            &JsValue::from_f64(0x0014 as f64),
+        )
+        .unwrap(); // TEXTURE_BINDING | COPY_DST
 
         // Verify descriptor properties
         let size_val = Reflect::get(&descriptor, &JsValue::from_str("size")).unwrap();
@@ -290,9 +333,6 @@ mod webgpu_integration_tests {
         console::log_1(&"✓ Platform WebGPU compatibility test passed".into());
     }
 
-    // Removed trivial test:
-    // - test_webgpu_model_attributes: just tests HashMap get/set operations
-
     #[wasm_bindgen_test]
     fn test_webgpu_error_propagation() {
         console::log_1(&"Testing WebGPU error propagation".into());
@@ -307,7 +347,9 @@ mod webgpu_integration_tests {
         ];
 
         for error_msg in test_errors {
-            let webgpu_error = WebError::WebGpu(purr_web::WebGpuError::FeatureNotSupported { feature: error_msg.to_string() });
+            let webgpu_error = WebError::WebGpu(purr_web::WebGpuError::FeatureNotSupported {
+                feature: error_msg.to_string(),
+            });
             let platform_error = webgpu_error.into_platform_error();
 
             assert!(platform_error.to_string().contains(error_msg));

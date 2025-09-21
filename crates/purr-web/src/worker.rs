@@ -141,6 +141,7 @@ struct SessionData {
 
 impl TranscriptionWorker {
     /// Create worker instance
+    #[must_use]
     pub fn new(model_manager: Arc<WebModelManager>) -> Self {
         Self {
             model_manager,
@@ -299,22 +300,18 @@ impl TranscriptionWorker {
     /// Send message to worker.js
     async fn send_to_worker(&self, message: WorkerMessage) -> WebResult<()> {
         let sender_guard = self.worker_command_sender.lock().await;
-        let sender = sender_guard
-            .as_ref()
-            .ok_or(WorkerError::NotInitialized)?;
+        let sender = sender_guard.as_ref().ok_or(WorkerError::NotInitialized)?;
 
         sender
             .send(WorkerCommand::SendMessage(message))
-            .map_err(|e| {
-                WorkerError::CommandSendFailed {
-                    details: format!("{:?}", e),
-                }
+            .map_err(|e| WorkerError::CommandSendFailed {
+                details: format!("{e:?}"),
             })?;
 
         Ok(())
     }
 
-    /// Wait for WorkerReady from worker.js
+    /// Wait for `WorkerReady` from worker.js
     async fn wait_for_worker_ready(&self, session_id: &str) -> WebResult<()> {
         let (ready_tx, ready_rx) = oneshot::channel();
 
@@ -386,7 +383,7 @@ impl TranscriptionWorker {
         }
     }
 
-    /// Convert worker progress to TranscriptionStatus
+    /// Convert worker progress to `TranscriptionStatus`
     fn convert_progress_status(status: TranscriptionProgressStatus) -> TranscriptionStatus {
         match status {
             TranscriptionProgressStatus::Starting => TranscriptionStatus::Starting,
@@ -415,12 +412,10 @@ impl TranscriptionWorker {
                 audio_duration: audio_duration as f32,
                 word_count,
             },
-            TranscriptionProgressStatus::Error { message } => {
-                TranscriptionStatus::Error {
-                    context: "Progress error".to_string(),
-                    error_message: message
-                }
-            }
+            TranscriptionProgressStatus::Error { message } => TranscriptionStatus::Error {
+                context: "Progress error".to_string(),
+                error_message: message,
+            },
         }
     }
 }

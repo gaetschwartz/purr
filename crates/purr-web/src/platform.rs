@@ -3,8 +3,10 @@
 use crate::error::{WebError, WebResult};
 use crate::model::WebModelManager;
 use crate::storage::WebStorage;
+use crate::transcription::{
+    start_transcription_process, validate_audio_file, AudioProcessingConfig,
+};
 use crate::worker::{TranscriptionConfig, TranscriptionWorker};
-use crate::transcription::{start_transcription_process, validate_audio_file, AudioProcessingConfig};
 use async_trait::async_trait;
 use bytes::Bytes;
 use futures::Stream;
@@ -36,7 +38,7 @@ pub struct PlatformImpl {
 }
 
 impl PlatformImpl {
-    /// Create a new WebPlatform instance
+    /// Create a new `WebPlatform` instance
     pub fn new() -> WebResult<Self> {
         let storage = Arc::new(WebStorage::new());
         let model_manager = Arc::new(WebModelManager::with_storage(storage.clone()));
@@ -164,7 +166,7 @@ impl PlatformImpl {
         Ok(())
     }
 
-    /// Convert WebError to PlatformError
+    /// Convert `WebError` to `PlatformError`
     fn convert_error(error: WebError) -> PlatformError {
         error.into()
     }
@@ -257,10 +259,10 @@ impl Platform for PlatformImpl {
 
         // Configure audio processing with optimized settings
         let audio_config = AudioProcessingConfig {
-            target_sample_rate: 16000.0, // Whisper's optimal sample rate
-            target_channels: 1,           // Mono for better transcription
-            enable_agc: true,            // Automatic gain control
-            enable_noise_reduction: false, // Disabled for now to avoid artifacts
+            target_sample_rate: 16000.0,      // Whisper's optimal sample rate
+            target_channels: 1,               // Mono for better transcription
+            enable_agc: true,                 // Automatic gain control
+            enable_noise_reduction: false,    // Disabled for now to avoid artifacts
             max_file_size: 100 * 1024 * 1024, // 100MB limit
             ..Default::default()
         };
@@ -272,13 +274,10 @@ impl Platform for PlatformImpl {
         );
 
         // Start comprehensive transcription process
-        let stream = start_transcription_process(
-            file_data,
-            transcription_config,
-            Some(audio_config),
-        )
-        .await
-        .map_err(Self::convert_error)?;
+        let stream =
+            start_transcription_process(file_data, transcription_config, Some(audio_config))
+                .await
+                .map_err(Self::convert_error)?;
 
         // Convert to Result stream for platform compatibility
         let converted_stream = stream.map(Ok);
@@ -398,7 +397,7 @@ impl Platform for PlatformImpl {
             // Return completed immediately
             let progress = vec![ModelOperationProgress::Completed {
                 model_id: model_id.to_string(),
-                local_path: std::path::PathBuf::from(format!("storage://{}", model_id)),
+                local_path: std::path::PathBuf::from(format!("storage://{model_id}")),
             }];
 
             let stream = futures::stream::iter(progress.into_iter().map(Ok));
@@ -418,7 +417,7 @@ impl Platform for PlatformImpl {
             if download_progress.percentage == Some(100.0) {
                 Ok(ModelOperationProgress::Completed {
                     model_id: model_id_clone.clone(),
-                    local_path: std::path::PathBuf::from(format!("storage://{}", model_id_clone)),
+                    local_path: std::path::PathBuf::from(format!("storage://{model_id_clone}")),
                 })
             } else {
                 Ok(ModelOperationProgress::Downloading {
@@ -492,7 +491,7 @@ impl Platform for PlatformImpl {
         }
 
         // For web platform, return storage key
-        Ok(format!("storage://{}", model_id))
+        Ok(format!("storage://{model_id}"))
     }
 }
 

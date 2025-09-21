@@ -537,8 +537,4 @@ mod tests {
         let invalid = WhisperModel::from_str("invalid_model");
         assert!(invalid.is_err(), "Expected an error but got: {:?}", invalid);
     }
-
-    // Removed trivial tests:
-    // - test_model_filename: just tests getter methods return hardcoded values
-    // - test_model_description: just tests string content of hardcoded descriptions
 }

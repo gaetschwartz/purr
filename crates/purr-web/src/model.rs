@@ -1,5 +1,5 @@
 //! Model management using browser APIs
-//! Uses fetch and IndexedDB for model operations
+//! Uses fetch and `IndexedDB` for model operations
 
 use crate::error::{WebError, WebResult};
 use crate::storage::WebStorage;
@@ -44,6 +44,7 @@ pub struct WebModelManager {
 
 impl WebModelManager {
     /// Create new manager
+    #[must_use]
     pub fn new() -> Self {
         Self {
             storage: None,
@@ -53,6 +54,7 @@ impl WebModelManager {
     }
 
     /// Create manager with storage
+    #[must_use]
     pub fn with_storage(storage: Arc<WebStorage>) -> Self {
         Self {
             storage: Some(storage),
@@ -108,7 +110,7 @@ impl WebModelManager {
         let downloads = Arc::clone(&self.downloads);
         wasm_bindgen_futures::spawn_local(async move {
             match Self::download_model_internal(model_id.clone(), url, tx).await {
-                Ok(_) => {
+                Ok(()) => {
                     // Mark download as complete
                     let mut downloads_guard = downloads.write().await;
                     downloads_guard.insert(model_id.clone(), true);
@@ -131,8 +133,9 @@ impl WebModelManager {
         let opts = RequestInit::new();
         opts.set_method("GET");
 
-        let request = Request::new_with_str_and_init(&url, &opts)
-            .map_err(|e| WebError::network_error(0, format!("Request creation failed: {:?}", e), "unknown"))?;
+        let request = Request::new_with_str_and_init(&url, &opts).map_err(|e| {
+            WebError::web_api_js("Request creation", e)
+        })?;
 
         let window = web_sys::window()
             .ok_or_else(|| WebError::network_error(0, "No window object", "unknown"))?;
@@ -140,17 +143,17 @@ impl WebModelManager {
         // Execute fetch
         let resp_value = JsFuture::from(window.fetch_with_request(&request))
             .await
-            .map_err(|e| WebError::network_error(0, format!("Fetch failed: {:?}", e), "unknown"))?;
+            .map_err(|e| WebError::web_api_js("Fetch", e))?;
 
-        let resp: Response = resp_value
-            .dyn_into()
-            .map_err(|e| WebError::network_error(0, format!("Invalid response: {:?}", e), "unknown"))?;
+        let resp: Response = resp_value.dyn_into().map_err(|e| {
+            WebError::web_api_js("Response cast", e)
+        })?;
 
         if !resp.ok() {
             return Err(WebError::network_error(
                 resp.status(),
                 resp.status_text(),
-                "unknown"
+                "unknown",
             ));
         }
 
@@ -169,12 +172,14 @@ impl WebModelManager {
             let reader = body
                 .get_reader()
                 .dyn_into::<web_sys::ReadableStreamDefaultReader>()
-                .map_err(|e| WebError::network_error(0, format!("Reader cast failed: {:?}", e), "unknown"))?;
+                .map_err(|e| {
+                    WebError::web_api_js("Reader cast", e.into())
+                })?;
             loop {
                 let read_promise = reader.read();
-                let result = JsFuture::from(read_promise)
-                    .await
-                    .map_err(|e| WebError::network_error(0, format!("Stream read failed: {:?}", e), "unknown"))?;
+                let result = JsFuture::from(read_promise).await.map_err(|e| {
+                    WebError::web_api_js("Stream read", e)
+                })?;
 
                 let chunk_obj = js_sys::Object::from(result);
                 let done = js_sys::Reflect::get(&chunk_obj, &"done".into())

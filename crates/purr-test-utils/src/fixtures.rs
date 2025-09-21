@@ -11,6 +11,7 @@ pub struct AudioFixtures {
 }
 
 impl AudioFixtures {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             temp_dir: tempfile::tempdir().expect("Failed to create temp dir"),
@@ -18,6 +19,7 @@ impl AudioFixtures {
     }
 
     /// Generate a simple sine wave as test audio data
+    #[must_use]
     pub fn generate_sine_wave(
         &self,
         duration_secs: f32,
@@ -37,6 +39,7 @@ impl AudioFixtures {
     }
 
     /// Generate white noise for testing
+    #[must_use]
     pub fn generate_white_noise(&self, duration_secs: f32, sample_rate: u32) -> Vec<f32> {
         use fake::{Fake, Faker};
 
@@ -47,6 +50,7 @@ impl AudioFixtures {
     }
 
     /// Create a temporary WAV file with test audio
+    #[must_use]
     pub fn create_wav_file(&self, audio_data: &[f32], sample_rate: u32) -> PathBuf {
         let file_path = self.temp_dir.path().join("test_audio.wav");
 
@@ -94,6 +98,7 @@ pub struct ConfigFixtures;
 
 impl ConfigFixtures {
     /// Create a minimal valid configuration
+    #[must_use]
     pub fn minimal_config() -> Value {
         serde_json::json!({
             "model": {
@@ -111,6 +116,7 @@ impl ConfigFixtures {
     }
 
     /// Create a full configuration with all options
+    #[must_use]
     pub fn full_config() -> Value {
         serde_json::json!({
             "model": {
@@ -145,6 +151,7 @@ impl ConfigFixtures {
     }
 
     /// Create an invalid configuration for error testing
+    #[must_use]
     pub fn invalid_config() -> Value {
         serde_json::json!({
             "model": {
@@ -203,6 +210,7 @@ pub struct NetworkFixtures;
 
 impl NetworkFixtures {
     /// Create a mock HTTP response for model downloads
+    #[must_use]
     pub fn mock_model_download_response() -> HashMap<String, Value> {
         let mut response = HashMap::new();
         response.insert(
@@ -217,6 +225,7 @@ impl NetworkFixtures {
     }
 
     /// Create mock error responses
+    #[must_use]
     pub fn mock_error_response(status: u16, message: &str) -> HashMap<String, Value> {
         let mut response = HashMap::new();
         response.insert("status".to_string(), serde_json::json!(status));
@@ -236,6 +245,7 @@ pub struct PerformanceFixtures;
 
 impl PerformanceFixtures {
     /// Generate large audio data for performance testing
+    #[must_use]
     pub fn large_audio_data(minutes: u32) -> Vec<f32> {
         let sample_rate = 16000;
         let samples_per_minute = sample_rate * 60;
@@ -249,6 +259,7 @@ impl PerformanceFixtures {
     }
 
     /// Create stress test scenarios
+    #[must_use]
     pub fn stress_test_scenarios() -> Vec<(String, usize)> {
         vec![
             ("Small file".to_string(), 1024),

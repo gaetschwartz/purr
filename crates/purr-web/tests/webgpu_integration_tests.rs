@@ -5,19 +5,18 @@
 
 #![allow(dead_code)]
 
-use purr_web::{
-    PlatformImpl, WebError, TranscriptionWorker, TranscriptionConfig,
-    WebModelManager, WebStorage, ModelInfo, AudioProcessingConfig,
-    start_transcription_process, validate_audio_file
-};
-use purr_common::platform::{Platform, TranscriptionRequest, TranscriptionStatus};
-use wasm_bindgen_test::*;
-use wasm_bindgen::prelude::*;
-use web_sys::{console};
-use js_sys::{Reflect};
-use futures::StreamExt;
-use std::sync::Arc;
 use bytes::Bytes;
+use futures::StreamExt;
+use js_sys::Reflect;
+use purr_common::platform::{Platform, TranscriptionRequest, TranscriptionStatus};
+use purr_web::{
+    start_transcription_process, validate_audio_file, AudioProcessingConfig, ModelInfo,
+    PlatformImpl, TranscriptionConfig, TranscriptionWorker, WebError, WebModelManager, WebStorage,
+};
+use std::sync::Arc;
+use wasm_bindgen::prelude::*;
+use wasm_bindgen_test::*;
+use web_sys::console;
 
 wasm_bindgen_test_configure!(run_in_browser);
 
@@ -104,14 +103,18 @@ mod platform_integration_tests {
                 console::log_1(&format!("Found {} available models", models.len()).into());
 
                 // Check for WebGPU-compatible models
-                let webgpu_models: Vec<_> = models.iter()
-                    .filter(|m| {
-                        m.metadata.format.contains("webgpu")
-                    })
+                let webgpu_models: Vec<_> = models
+                    .iter()
+                    .filter(|m| m.metadata.format.contains("webgpu"))
                     .collect();
 
-                console::log_1(&format!("Found {} WebGPU-compatible models", webgpu_models.len()).into());
-                assert!(!webgpu_models.is_empty(), "Should have WebGPU-compatible models");
+                console::log_1(
+                    &format!("Found {} WebGPU-compatible models", webgpu_models.len()).into(),
+                );
+                assert!(
+                    !webgpu_models.is_empty(),
+                    "Should have WebGPU-compatible models"
+                );
             }
             Err(e) => {
                 console::log_1(&format!("Failed to list models: {}", e).into());
@@ -141,8 +144,10 @@ mod platform_integration_tests {
 
                     // Check quantization
                     if let Some(quantization) = model.metadata.quantization {
-                        assert!(quantization == "fp16" || quantization == "fp32",
-                               "WebGPU models should use fp16 or fp32 quantization");
+                        assert!(
+                            quantization == "fp16" || quantization == "fp32",
+                            "WebGPU models should use fp16 or fp32 quantization"
+                        );
                     }
                 } else {
                     console::log_1(&"Model is not WebGPU compatible".into());
@@ -170,7 +175,10 @@ mod platform_integration_tests {
         let audio_bytes = Bytes::from(audio_data);
 
         // Process file through platform
-        match platform.process_file(audio_bytes.clone(), std::path::Path::new("test.wav")).await {
+        match platform
+            .process_file(audio_bytes.clone(), std::path::Path::new("test.wav"))
+            .await
+        {
             Ok(file_id) => {
                 console::log_1(&format!("File processed with ID: {}", file_id).into());
 
@@ -189,7 +197,9 @@ mod platform_integration_tests {
                         // Process a few stream items
                         let mut count = 0;
                         while let Some(result) = stream.next().await {
-                            if count >= 3 { break; } // Limit test iterations
+                            if count >= 3 {
+                                break;
+                            } // Limit test iterations
 
                             match result {
                                 Ok(status) => {
@@ -203,16 +213,24 @@ mod platform_integration_tests {
                                         TranscriptionStatus::InProgress { text, .. } => {
                                             console::log_1(&format!("Progress: {}", text).into());
                                         }
-                                        TranscriptionStatus::Completed { processing_time, audio_duration, word_count } => {
+                                        TranscriptionStatus::Completed {
+                                            processing_time,
+                                            audio_duration,
+                                            word_count,
+                                        } => {
                                             console::log_1(&format!("Completed in {:.2}s, duration: {:.2}s, words: {}", processing_time, audio_duration, word_count).into());
                                             break;
                                         }
                                         TranscriptionStatus::Error { error_message, .. } => {
-                                            console::log_1(&format!("Error: {}", error_message).into());
+                                            console::log_1(
+                                                &format!("Error: {}", error_message).into(),
+                                            );
                                             break;
                                         }
                                         TranscriptionStatus::InitFailed { reason, .. } => {
-                                            console::log_1(&format!("Init failed: {}", reason).into());
+                                            console::log_1(
+                                                &format!("Init failed: {}", reason).into(),
+                                            );
                                             break;
                                         }
                                     }
@@ -285,7 +303,9 @@ mod worker_integration_tests {
                         // Process a few stream items for testing
                         let mut items_processed = 0;
                         while let Some(status) = stream.next().await {
-                            if items_processed >= 2 { break; } // Limit test
+                            if items_processed >= 2 {
+                                break;
+                            } // Limit test
                             console::log_1(&format!("Stream status: {:?}", status).into());
                             items_processed += 1;
                         }
@@ -343,18 +363,18 @@ mod worker_integration_tests {
         };
 
         // Start transcription process
-        match start_transcription_process(
-            audio_bytes,
-            transcription_config,
-            Some(audio_config),
-        ).await {
+        match start_transcription_process(audio_bytes, transcription_config, Some(audio_config))
+            .await
+        {
             Ok(mut stream) => {
                 console::log_1(&"✓ Transcription process started".into());
 
                 // Process stream items
                 let mut items_processed = 0;
                 while let Some(status) = stream.next().await {
-                    if items_processed >= 5 { break; } // Limit test iterations
+                    if items_processed >= 5 {
+                        break;
+                    } // Limit test iterations
 
                     match status {
                         TranscriptionStatus::Starting => {
@@ -366,12 +386,18 @@ mod worker_integration_tests {
                         TranscriptionStatus::InProgress { text, .. } => {
                             console::log_1(&format!("Progress: {}", text).into());
                         }
-                        TranscriptionStatus::Completed { processing_time, audio_duration, word_count } => {
+                        TranscriptionStatus::Completed {
+                            processing_time,
+                            audio_duration,
+                            word_count,
+                        } => {
                             console::log_1(&format!("Transcription completed in {:.2}s, duration: {:.2}s, words: {}", processing_time, audio_duration, word_count).into());
                             break;
                         }
                         TranscriptionStatus::Error { error_message, .. } => {
-                            console::log_1(&format!("Transcription error: {}", error_message).into());
+                            console::log_1(
+                                &format!("Transcription error: {}", error_message).into(),
+                            );
                             break;
                         }
                         TranscriptionStatus::InitFailed { reason, .. } => {
@@ -412,7 +438,9 @@ mod error_handling_integration_tests {
         ];
 
         for error_msg in webgpu_errors {
-            let webgpu_error = WebError::WebGpu(purr_web::WebGpuError::FeatureNotSupported { feature: error_msg.to_string() });
+            let webgpu_error = WebError::WebGpu(purr_web::WebGpuError::FeatureNotSupported {
+                feature: error_msg.to_string(),
+            });
             let platform_error = webgpu_error.into_platform_error();
 
             // Verify error propagation
@@ -446,7 +474,9 @@ mod error_handling_integration_tests {
             // Test model listing (should work with CPU models)
             match platform.list_available_models().await {
                 Ok(models) => {
-                    console::log_1(&format!("✓ CPU fallback works: {} models available", models.len()).into());
+                    console::log_1(
+                        &format!("✓ CPU fallback works: {} models available", models.len()).into(),
+                    );
                 }
                 Err(e) => {
                     console::log_1(&format!("CPU fallback failed: {}", e).into());
@@ -456,7 +486,9 @@ mod error_handling_integration_tests {
             console::log_1(&"WebGPU available - testing graceful degradation".into());
 
             // Test graceful degradation when WebGPU operations fail
-            let webgpu_error = WebError::WebGpu(purr_web::WebGpuError::FeatureNotSupported { feature: "Simulated WebGPU failure".to_string() });
+            let webgpu_error = WebError::WebGpu(purr_web::WebGpuError::FeatureNotSupported {
+                feature: "Simulated WebGPU failure".to_string(),
+            });
 
             match webgpu_error {
                 WebError::WebGpu(webgpu_err) => {
@@ -496,8 +528,8 @@ mod performance_integration_tests {
             compute_units: 16,
             max_workgroup_size: [256, 256, 64],
             max_buffer_size: 256 * 1024 * 1024, // 256MB
-            timestamp_period: 1.0, // 1ns per tick
-            transcription_speed: 2.5, // 2.5x real-time
+            timestamp_period: 1.0,              // 1ns per tick
+            transcription_speed: 2.5,           // 2.5x real-time
         };
 
         // Validate performance metrics
@@ -509,9 +541,27 @@ mod performance_integration_tests {
         assert!(test_metrics.timestamp_period > 0.0);
         assert!(test_metrics.transcription_speed > 0.0);
 
-        console::log_1(&format!("✓ Performance metrics validated: {} device", test_metrics.device_type).into());
-        console::log_1(&format!("✓ Memory usage: {} MB", test_metrics.memory_usage / (1024 * 1024)).into());
-        console::log_1(&format!("✓ Transcription speed: {}x real-time", test_metrics.transcription_speed).into());
+        console::log_1(
+            &format!(
+                "✓ Performance metrics validated: {} device",
+                test_metrics.device_type
+            )
+            .into(),
+        );
+        console::log_1(
+            &format!(
+                "✓ Memory usage: {} MB",
+                test_metrics.memory_usage / (1024 * 1024)
+            )
+            .into(),
+        );
+        console::log_1(
+            &format!(
+                "✓ Transcription speed: {}x real-time",
+                test_metrics.transcription_speed
+            )
+            .into(),
+        );
 
         console::log_1(&"✓ WebGPU performance monitoring test completed".into());
     }
@@ -522,10 +572,10 @@ mod performance_integration_tests {
 
         // Test memory usage patterns for audio processing
         let audio_buffer_sizes = vec![
-            1024,      // 1K samples
-            4096,      // 4K samples
-            16384,     // 16K samples
-            65536,     // 64K samples
+            1024,  // 1K samples
+            4096,  // 4K samples
+            16384, // 16K samples
+            65536, // 64K samples
         ];
 
         for buffer_size in audio_buffer_sizes {
@@ -537,9 +587,19 @@ mod performance_integration_tests {
             let total_memory = input_buffer_size + output_buffer_size + uniform_buffer_size;
 
             // Validate memory usage is reasonable
-            assert!(total_memory < 10 * 1024 * 1024, "Memory usage should be < 10MB for test buffers");
+            assert!(
+                total_memory < 10 * 1024 * 1024,
+                "Memory usage should be < 10MB for test buffers"
+            );
 
-            console::log_1(&format!("✓ Buffer size {}: {} KB total memory", buffer_size, total_memory / 1024).into());
+            console::log_1(
+                &format!(
+                    "✓ Buffer size {}: {} KB total memory",
+                    buffer_size,
+                    total_memory / 1024
+                )
+                .into(),
+            );
         }
 
         console::log_1(&"✓ WebGPU memory optimization test completed".into());
@@ -576,11 +636,19 @@ mod configuration_integration_tests {
             assert!(!config.model_name.is_empty());
 
             if let Some(lang) = &config.language {
-                assert!(lang.len() >= 2, "Language code should be at least 2 characters");
+                assert!(
+                    lang.len() >= 2,
+                    "Language code should be at least 2 characters"
+                );
             }
 
-            console::log_1(&format!("✓ Valid config: {} (translate: {})",
-                                   config.model_name, config.translate).into());
+            console::log_1(
+                &format!(
+                    "✓ Valid config: {} (translate: {})",
+                    config.model_name, config.translate
+                )
+                .into(),
+            );
         }
 
         // Test audio processing configuration
@@ -614,8 +682,14 @@ mod configuration_integration_tests {
         assert!(!model.version.is_empty());
 
         // In a real implementation, we'd check WebGPU-specific metadata
-        console::log_1(&format!("✓ Model validated: {} ({}MB)",
-                               model.name, model.size / (1024 * 1024)).into());
+        console::log_1(
+            &format!(
+                "✓ Model validated: {} ({}MB)",
+                model.name,
+                model.size / (1024 * 1024)
+            )
+            .into(),
+        );
 
         console::log_1(&"✓ Model metadata WebGPU attributes test completed".into());
     }

@@ -131,7 +131,10 @@ fn start_transcription_process(
                                     info!("Transcription completed for file ID: {}", file_id);
                                     break;
                                 }
-                                TranscriptionStatus::Error { context, error_message } => {
+                                TranscriptionStatus::Error {
+                                    context,
+                                    error_message,
+                                } => {
                                     error!("Transcription error: {}: {}", context, error_message);
                                     break;
                                 }
@@ -142,7 +145,7 @@ fn start_transcription_process(
                             error!("Stream error: {}", e);
                             status_signal.set(Some(TranscriptionStatus::Error {
                                 context: "stream".to_string(),
-                                error_message: format!("Stream error: {}", e),
+                                error_message: format!("Stream error: {e}"),
                             }));
                             break;
                         }
@@ -153,7 +156,7 @@ fn start_transcription_process(
                 error!("Failed to start transcription: {}", e);
                 status_signal.set(Some(TranscriptionStatus::Error {
                     context: "transcription_start".to_string(),
-                    error_message: format!("Failed to start transcription: {}", e),
+                    error_message: format!("Failed to start transcription: {e}"),
                 }));
             }
         }

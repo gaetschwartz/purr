@@ -2,7 +2,7 @@ use super::{Card, CardVariant, Icon, IconType, StatusBadge, StatusType};
 use dioxus::prelude::*;
 use purr_common::platform::TranscriptionStatus;
 
-/// Props for the TranscriptionDisplay component
+/// Props for the `TranscriptionDisplay` component
 #[derive(Props, Clone, PartialEq)]
 pub struct TranscriptionDisplayProps {
     /// Current transcription status
@@ -102,7 +102,11 @@ pub fn TranscriptionDisplay(props: TranscriptionDisplayProps) -> Element {
             }
         },
 
-        Some(TranscriptionStatus::Error { context: _, error_message, .. }) => rsx! {
+        Some(TranscriptionStatus::Error {
+            context: _,
+            error_message,
+            ..
+        }) => rsx! {
             div { class: "text-center py-16",
                 ErrorIcon {}
                 h3 { class: "text-xl font-semibold text-red-800 mb-4", "Transcription Failed" }
@@ -116,7 +120,11 @@ pub fn TranscriptionDisplay(props: TranscriptionDisplayProps) -> Element {
             }
         },
 
-        Some(TranscriptionStatus::InitFailed { component: _, reason, .. }) => rsx! {
+        Some(TranscriptionStatus::InitFailed {
+            component: _,
+            reason,
+            ..
+        }) => rsx! {
             div { class: "text-center py-16",
                 ErrorIcon {}
                 h3 { class: "text-xl font-semibold text-red-800 mb-4", "Initialization Failed" }

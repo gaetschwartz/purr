@@ -32,5 +32,5 @@ pub fn main() {
 }
 
 fn is_feature_enabled(feature: &str) -> bool {
-    std::env::var(format!("CARGO_FEATURE_{}", feature.to_uppercase()).replace("-", "_")).is_ok()
+    std::env::var(format!("CARGO_FEATURE_{}", feature.to_uppercase()).replace('-', "_")).is_ok()
 }

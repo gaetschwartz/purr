@@ -1,10 +1,10 @@
 //! Benchmark utilities and performance testing helpers
 
-#[cfg(feature = "benchmarks")]
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId, Throughput};
-use std::time::{Duration, Instant};
 use crate::fixtures::AudioFixtures;
 use crate::generators::AudioData;
+#[cfg(feature = "benchmarks")]
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use std::time::{Duration, Instant};
 
 /// Performance benchmark suite for audio processing operations
 pub struct AudioBenchmarks;
@@ -26,7 +26,10 @@ impl AudioBenchmarks {
 
                 group.throughput(Throughput::Bytes(data_size as u64));
                 group.bench_with_input(
-                    BenchmarkId::new("sine_wave_generation", format!("{}Hz_{}s", sample_rate, duration)),
+                    BenchmarkId::new(
+                        "sine_wave_generation",
+                        format!("{}Hz_{}s", sample_rate, duration),
+                    ),
                     &(duration, sample_rate),
                     |b, &(duration, sample_rate)| {
                         b.iter(|| {
@@ -37,13 +40,22 @@ impl AudioBenchmarks {
                 );
 
                 group.bench_with_input(
-                    BenchmarkId::new("audio_normalization", format!("{}Hz_{}s", sample_rate, duration)),
+                    BenchmarkId::new(
+                        "audio_normalization",
+                        format!("{}Hz_{}s", sample_rate, duration),
+                    ),
                     &audio_data,
                     |b, audio_data| {
                         b.iter(|| {
-                            let max_amplitude = audio_data.iter().map(|&x| x.abs()).fold(0.0f32, f32::max);
+                            let max_amplitude =
+                                audio_data.iter().map(|&x| x.abs()).fold(0.0f32, f32::max);
                             if max_amplitude > 0.0 {
-                                black_box(audio_data.iter().map(|&x| x / max_amplitude).collect::<Vec<f32>>())
+                                black_box(
+                                    audio_data
+                                        .iter()
+                                        .map(|&x| x / max_amplitude)
+                                        .collect::<Vec<f32>>(),
+                                )
                             } else {
                                 black_box(audio_data.clone())
                             }
@@ -166,9 +178,7 @@ impl AsyncBenchmarks {
 
         group.bench_function("tokio_spawn_overhead", |b| {
             b.to_async(&runtime).iter(|| async {
-                let handle = tokio::spawn(async {
-                    black_box(42)
-                });
+                let handle = tokio::spawn(async { black_box(42) });
                 black_box(handle.await.unwrap())
             })
         });
@@ -348,10 +358,7 @@ criterion_group!(
 );
 
 #[cfg(all(feature = "benchmarks", feature = "web"))]
-criterion_group!(
-    webgpu_benches,
-    AudioBenchmarks::bench_webgpu_operations
-);
+criterion_group!(webgpu_benches, AudioBenchmarks::bench_webgpu_operations);
 
 #[cfg(feature = "benchmarks")]
 criterion_main!(benches);
@@ -381,10 +388,12 @@ mod tests {
     async fn test_async_profiler() {
         let mut profiler = SimpleProfiler::new();
 
-        let result = profiler.time_async("async_operation", || async {
-            tokio::time::sleep(Duration::from_millis(5)).await;
-            "done"
-        }).await;
+        let result = profiler
+            .time_async("async_operation", || async {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+                "done"
+            })
+            .await;
 
         assert_eq!(result, "done");
 

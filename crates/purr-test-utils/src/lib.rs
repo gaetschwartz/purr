@@ -32,11 +32,13 @@ pub use fake::{Dummy, Fake, Faker};
 pub type TestResult<T = ()> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
 /// Create a temporary directory for tests
+#[must_use]
 pub fn temp_dir() -> TempDir {
     tempfile::tempdir().expect("Failed to create temporary directory")
 }
 
 /// Create a temporary file for tests
+#[must_use]
 pub fn temp_file() -> tempfile::NamedTempFile {
     tempfile::NamedTempFile::new().expect("Failed to create temporary file")
 }

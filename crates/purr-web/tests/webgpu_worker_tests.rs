@@ -5,12 +5,12 @@
 
 #![allow(dead_code)]
 
-use purr_web::{WebError, TranscriptionConfig};
-use wasm_bindgen_test::*;
-use wasm_bindgen::prelude::*;
-use web_sys::{console};
 use js_sys::{Object, Reflect, Uint8Array};
+use purr_web::{TranscriptionConfig, WebError};
 use std::collections::HashMap;
+use wasm_bindgen::prelude::*;
+use wasm_bindgen_test::*;
+use web_sys::console;
 
 wasm_bindgen_test_configure!(run_in_browser);
 
@@ -38,18 +38,59 @@ impl MockWorkerMessage {
 
         match self {
             MockWorkerMessage::Initialize { config, session_id } => {
-                Reflect::set(&obj, &JsValue::from_str("type"), &JsValue::from_str("Initialize")).unwrap();
-                Reflect::set(&obj, &JsValue::from_str("session_id"), &JsValue::from_str(session_id)).unwrap();
+                Reflect::set(
+                    &obj,
+                    &JsValue::from_str("type"),
+                    &JsValue::from_str("Initialize"),
+                )
+                .unwrap();
+                Reflect::set(
+                    &obj,
+                    &JsValue::from_str("session_id"),
+                    &JsValue::from_str(session_id),
+                )
+                .unwrap();
 
                 let config_obj = Object::new();
-                Reflect::set(&config_obj, &JsValue::from_str("model_name"), &JsValue::from_str(&config.model_name)).unwrap();
-                Reflect::set(&config_obj, &JsValue::from_str("language"), &config.language.as_ref().map_or(JsValue::NULL, |l| JsValue::from_str(l))).unwrap();
-                Reflect::set(&config_obj, &JsValue::from_str("translate"), &JsValue::from_bool(config.translate)).unwrap();
+                Reflect::set(
+                    &config_obj,
+                    &JsValue::from_str("model_name"),
+                    &JsValue::from_str(&config.model_name),
+                )
+                .unwrap();
+                Reflect::set(
+                    &config_obj,
+                    &JsValue::from_str("language"),
+                    &config
+                        .language
+                        .as_ref()
+                        .map_or(JsValue::NULL, |l| JsValue::from_str(l)),
+                )
+                .unwrap();
+                Reflect::set(
+                    &config_obj,
+                    &JsValue::from_str("translate"),
+                    &JsValue::from_bool(config.translate),
+                )
+                .unwrap();
                 Reflect::set(&obj, &JsValue::from_str("config"), &config_obj).unwrap();
             }
-            MockWorkerMessage::ProcessAudio { audio_data, session_id } => {
-                Reflect::set(&obj, &JsValue::from_str("type"), &JsValue::from_str("ProcessAudio")).unwrap();
-                Reflect::set(&obj, &JsValue::from_str("session_id"), &JsValue::from_str(session_id)).unwrap();
+            MockWorkerMessage::ProcessAudio {
+                audio_data,
+                session_id,
+            } => {
+                Reflect::set(
+                    &obj,
+                    &JsValue::from_str("type"),
+                    &JsValue::from_str("ProcessAudio"),
+                )
+                .unwrap();
+                Reflect::set(
+                    &obj,
+                    &JsValue::from_str("session_id"),
+                    &JsValue::from_str(session_id),
+                )
+                .unwrap();
 
                 let array = Uint8Array::new_with_length(audio_data.len() as u32);
                 for (i, &byte) in audio_data.iter().enumerate() {
@@ -58,17 +99,37 @@ impl MockWorkerMessage {
                 Reflect::set(&obj, &JsValue::from_str("audio_data"), &array).unwrap();
             }
             MockWorkerMessage::UpdateConfig { config } => {
-                Reflect::set(&obj, &JsValue::from_str("type"), &JsValue::from_str("UpdateConfig")).unwrap();
+                Reflect::set(
+                    &obj,
+                    &JsValue::from_str("type"),
+                    &JsValue::from_str("UpdateConfig"),
+                )
+                .unwrap();
 
                 let config_obj = Object::new();
-                Reflect::set(&config_obj, &JsValue::from_str("model_name"), &JsValue::from_str(&config.model_name)).unwrap();
+                Reflect::set(
+                    &config_obj,
+                    &JsValue::from_str("model_name"),
+                    &JsValue::from_str(&config.model_name),
+                )
+                .unwrap();
                 Reflect::set(&obj, &JsValue::from_str("config"), &config_obj).unwrap();
             }
             MockWorkerMessage::GetStatus => {
-                Reflect::set(&obj, &JsValue::from_str("type"), &JsValue::from_str("GetStatus")).unwrap();
+                Reflect::set(
+                    &obj,
+                    &JsValue::from_str("type"),
+                    &JsValue::from_str("GetStatus"),
+                )
+                .unwrap();
             }
             MockWorkerMessage::Shutdown => {
-                Reflect::set(&obj, &JsValue::from_str("type"), &JsValue::from_str("Shutdown")).unwrap();
+                Reflect::set(
+                    &obj,
+                    &JsValue::from_str("type"),
+                    &JsValue::from_str("Shutdown"),
+                )
+                .unwrap();
             }
         }
 
@@ -110,43 +171,148 @@ impl MockWorkerResponse {
         let obj = Object::new();
 
         match self {
-            MockWorkerResponse::Initialized { session_id, webgpu_available, model_loaded } => {
-                Reflect::set(&obj, &JsValue::from_str("type"), &JsValue::from_str("Initialized")).unwrap();
-                Reflect::set(&obj, &JsValue::from_str("session_id"), &JsValue::from_str(session_id)).unwrap();
-                Reflect::set(&obj, &JsValue::from_str("webgpu_available"), &JsValue::from_bool(*webgpu_available)).unwrap();
-                Reflect::set(&obj, &JsValue::from_str("model_loaded"), &JsValue::from_bool(*model_loaded)).unwrap();
+            MockWorkerResponse::Initialized {
+                session_id,
+                webgpu_available,
+                model_loaded,
+            } => {
+                Reflect::set(
+                    &obj,
+                    &JsValue::from_str("type"),
+                    &JsValue::from_str("Initialized"),
+                )
+                .unwrap();
+                Reflect::set(
+                    &obj,
+                    &JsValue::from_str("session_id"),
+                    &JsValue::from_str(session_id),
+                )
+                .unwrap();
+                Reflect::set(
+                    &obj,
+                    &JsValue::from_str("webgpu_available"),
+                    &JsValue::from_bool(*webgpu_available),
+                )
+                .unwrap();
+                Reflect::set(
+                    &obj,
+                    &JsValue::from_str("model_loaded"),
+                    &JsValue::from_bool(*model_loaded),
+                )
+                .unwrap();
             }
-            MockWorkerResponse::TranscriptionProgress { session_id, progress, text } => {
-                Reflect::set(&obj, &JsValue::from_str("type"), &JsValue::from_str("TranscriptionProgress")).unwrap();
-                Reflect::set(&obj, &JsValue::from_str("session_id"), &JsValue::from_str(session_id)).unwrap();
-                Reflect::set(&obj, &JsValue::from_str("progress"), &JsValue::from_f64(*progress as f64)).unwrap();
+            MockWorkerResponse::TranscriptionProgress {
+                session_id,
+                progress,
+                text,
+            } => {
+                Reflect::set(
+                    &obj,
+                    &JsValue::from_str("type"),
+                    &JsValue::from_str("TranscriptionProgress"),
+                )
+                .unwrap();
+                Reflect::set(
+                    &obj,
+                    &JsValue::from_str("session_id"),
+                    &JsValue::from_str(session_id),
+                )
+                .unwrap();
+                Reflect::set(
+                    &obj,
+                    &JsValue::from_str("progress"),
+                    &JsValue::from_f64(*progress as f64),
+                )
+                .unwrap();
                 if let Some(text) = text {
-                    Reflect::set(&obj, &JsValue::from_str("text"), &JsValue::from_str(text)).unwrap();
+                    Reflect::set(&obj, &JsValue::from_str("text"), &JsValue::from_str(text))
+                        .unwrap();
                 }
             }
-            MockWorkerResponse::TranscriptionComplete { session_id, text, metadata } => {
-                Reflect::set(&obj, &JsValue::from_str("type"), &JsValue::from_str("TranscriptionComplete")).unwrap();
-                Reflect::set(&obj, &JsValue::from_str("session_id"), &JsValue::from_str(session_id)).unwrap();
+            MockWorkerResponse::TranscriptionComplete {
+                session_id,
+                text,
+                metadata,
+            } => {
+                Reflect::set(
+                    &obj,
+                    &JsValue::from_str("type"),
+                    &JsValue::from_str("TranscriptionComplete"),
+                )
+                .unwrap();
+                Reflect::set(
+                    &obj,
+                    &JsValue::from_str("session_id"),
+                    &JsValue::from_str(session_id),
+                )
+                .unwrap();
                 Reflect::set(&obj, &JsValue::from_str("text"), &JsValue::from_str(text)).unwrap();
 
                 let metadata_obj = Object::new();
                 for (key, value) in metadata {
-                    Reflect::set(&metadata_obj, &JsValue::from_str(key), &JsValue::from_str(value)).unwrap();
+                    Reflect::set(
+                        &metadata_obj,
+                        &JsValue::from_str(key),
+                        &JsValue::from_str(value),
+                    )
+                    .unwrap();
                 }
                 Reflect::set(&obj, &JsValue::from_str("metadata"), &metadata_obj).unwrap();
             }
-            MockWorkerResponse::Error { message, session_id } => {
-                Reflect::set(&obj, &JsValue::from_str("type"), &JsValue::from_str("Error")).unwrap();
-                Reflect::set(&obj, &JsValue::from_str("message"), &JsValue::from_str(message)).unwrap();
+            MockWorkerResponse::Error {
+                message,
+                session_id,
+            } => {
+                Reflect::set(
+                    &obj,
+                    &JsValue::from_str("type"),
+                    &JsValue::from_str("Error"),
+                )
+                .unwrap();
+                Reflect::set(
+                    &obj,
+                    &JsValue::from_str("message"),
+                    &JsValue::from_str(message),
+                )
+                .unwrap();
                 if let Some(session_id) = session_id {
-                    Reflect::set(&obj, &JsValue::from_str("session_id"), &JsValue::from_str(session_id)).unwrap();
+                    Reflect::set(
+                        &obj,
+                        &JsValue::from_str("session_id"),
+                        &JsValue::from_str(session_id),
+                    )
+                    .unwrap();
                 }
             }
-            MockWorkerResponse::Status { webgpu_available, active_sessions, memory_usage } => {
-                Reflect::set(&obj, &JsValue::from_str("type"), &JsValue::from_str("Status")).unwrap();
-                Reflect::set(&obj, &JsValue::from_str("webgpu_available"), &JsValue::from_bool(*webgpu_available)).unwrap();
-                Reflect::set(&obj, &JsValue::from_str("active_sessions"), &JsValue::from_f64(*active_sessions as f64)).unwrap();
-                Reflect::set(&obj, &JsValue::from_str("memory_usage"), &JsValue::from_f64(*memory_usage)).unwrap();
+            MockWorkerResponse::Status {
+                webgpu_available,
+                active_sessions,
+                memory_usage,
+            } => {
+                Reflect::set(
+                    &obj,
+                    &JsValue::from_str("type"),
+                    &JsValue::from_str("Status"),
+                )
+                .unwrap();
+                Reflect::set(
+                    &obj,
+                    &JsValue::from_str("webgpu_available"),
+                    &JsValue::from_bool(*webgpu_available),
+                )
+                .unwrap();
+                Reflect::set(
+                    &obj,
+                    &JsValue::from_str("active_sessions"),
+                    &JsValue::from_f64(*active_sessions as f64),
+                )
+                .unwrap();
+                Reflect::set(
+                    &obj,
+                    &JsValue::from_str("memory_usage"),
+                    &JsValue::from_f64(*memory_usage),
+                )
+                .unwrap();
             }
         }
 
@@ -329,7 +495,11 @@ mod worker_processing_tests {
             let response = MockWorkerResponse::TranscriptionProgress {
                 session_id: session_id.clone(),
                 progress,
-                text: if progress > 0.0 { Some("Partial text".to_string()) } else { None },
+                text: if progress > 0.0 {
+                    Some("Partial text".to_string())
+                } else {
+                    None
+                },
             };
 
             let js_value = response.to_js_value();
@@ -390,7 +560,10 @@ mod worker_error_handling_tests {
         let error_scenarios = vec![
             ("WebGPU device lost", Some("session-123".to_string())),
             ("Model loading failed", None),
-            ("Audio format not supported", Some("session-456".to_string())),
+            (
+                "Audio format not supported",
+                Some("session-456".to_string()),
+            ),
             ("Out of memory", Some("session-789".to_string())),
             ("Network timeout", None),
         ];
@@ -439,7 +612,9 @@ mod worker_error_handling_tests {
         ];
 
         for error_msg in webgpu_errors {
-            let webgpu_error = WebError::WebGpu(purr_web::WebGpuError::FeatureNotSupported { feature: error_msg.to_string() });
+            let webgpu_error = WebError::WebGpu(purr_web::WebGpuError::FeatureNotSupported {
+                feature: error_msg.to_string(),
+            });
 
             match webgpu_error {
                 WebError::WebGpu(webgpu_err) => {
@@ -491,23 +666,29 @@ mod worker_status_tests {
 
         // Test performance metric collection
         struct WorkerPerformanceMetrics {
-            transcription_speed: f64,    // Real-time factor
-            memory_peak: f64,           // MB
-            gpu_utilization: f64,       // Percentage
-            throughput: f64,            // Audio minutes per minute
+            transcription_speed: f64, // Real-time factor
+            memory_peak: f64,         // MB
+            gpu_utilization: f64,     // Percentage
+            throughput: f64,          // Audio minutes per minute
         }
 
         let metrics = WorkerPerformanceMetrics {
-            transcription_speed: 2.5,    // 2.5x real-time
-            memory_peak: 512.0,         // 512 MB
-            gpu_utilization: 85.0,      // 85%
-            throughput: 3.2,            // 3.2 minutes of audio per minute
+            transcription_speed: 2.5, // 2.5x real-time
+            memory_peak: 512.0,       // 512 MB
+            gpu_utilization: 85.0,    // 85%
+            throughput: 3.2,          // 3.2 minutes of audio per minute
         };
 
         // Validate performance metrics
-        assert!(metrics.transcription_speed > 1.0, "Should be faster than real-time");
+        assert!(
+            metrics.transcription_speed > 1.0,
+            "Should be faster than real-time"
+        );
         assert!(metrics.memory_peak > 0.0, "Memory usage should be positive");
-        assert!(metrics.gpu_utilization >= 0.0 && metrics.gpu_utilization <= 100.0, "GPU utilization should be 0-100%");
+        assert!(
+            metrics.gpu_utilization >= 0.0 && metrics.gpu_utilization <= 100.0,
+            "GPU utilization should be 0-100%"
+        );
         assert!(metrics.throughput > 0.0, "Throughput should be positive");
 
         console::log_1(&"✓ Worker performance metrics test successful".into());
@@ -544,7 +725,8 @@ mod worker_lifecycle_tests {
         let response_js = init_response.to_js_value();
         let response_obj: Object = response_js.dyn_into().unwrap();
 
-        let webgpu_available = Reflect::get(&response_obj, &JsValue::from_str("webgpu_available")).unwrap();
+        let webgpu_available =
+            Reflect::get(&response_obj, &JsValue::from_str("webgpu_available")).unwrap();
         assert!(webgpu_available.as_bool().unwrap());
 
         console::log_1(&"✓ Worker initialization sequence test successful".into());
@@ -573,7 +755,9 @@ mod worker_lifecycle_tests {
         config.language = Some("es".to_string());
         config.translate = true;
 
-        let update_message = MockWorkerMessage::UpdateConfig { config: config.clone() };
+        let update_message = MockWorkerMessage::UpdateConfig {
+            config: config.clone(),
+        };
         let update_js = update_message.to_js_value();
 
         let obj: Object = update_js.dyn_into().unwrap();

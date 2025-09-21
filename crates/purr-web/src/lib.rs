@@ -20,23 +20,23 @@ macro_rules! console_log {
 }
 
 // Re-export main types
-pub use model::{WebModelManager, ModelInfo, DownloadProgress, ModelStorageStats};
+pub use error::{AudioFormatError, StorageError, WebError, WebGpuError, WebResult, WorkerError};
+pub use model::{DownloadProgress, ModelInfo, ModelStorageStats, WebModelManager};
 pub use platform::PlatformImpl;
-pub use storage::{WebStorage, FileMetadata};
-pub use worker::{TranscriptionWorker, TranscriptionConfig};
+pub use storage::{FileMetadata, WebStorage};
 pub use transcription::{
-    start_transcription_process, validate_audio_file, get_supported_formats,
-    AudioTranscriptionProcessor, AudioProcessingConfig, AudioMetadata, AudioProcessingProgress,
+    get_supported_formats, start_transcription_process, validate_audio_file, AudioMetadata,
+    AudioProcessingConfig, AudioProcessingProgress, AudioTranscriptionProcessor,
 };
-pub use error::{WebError, WebResult, WorkerError, StorageError, AudioFormatError, WebGpuError};
+pub use worker::{TranscriptionConfig, TranscriptionWorker};
 
 // Module declarations
 mod error;
 mod model;
 pub mod platform;
 mod storage;
-mod worker;
 mod transcription;
+mod worker;
 
 // Test utilities (only available in test builds)
 #[cfg(test)]

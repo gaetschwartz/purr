@@ -1,6 +1,6 @@
 //! Tests for audio format detection and parsing (native-compatible)
 
-use purr_web::{validate_audio_file, get_supported_formats};
+use purr_web::{get_supported_formats, validate_audio_file};
 
 /// Create test WAV file data (44.1kHz, 16-bit, stereo, 1 second)
 fn create_test_wav_data() -> Vec<u8> {
@@ -26,7 +26,8 @@ fn create_test_wav_data() -> Vec<u8> {
     wav_data.extend_from_slice(&176400u32.to_le_bytes()); // Data size
 
     // Generate 1 second of sine wave (440 Hz)
-    for i in 0..88200 { // 44100 samples per channel
+    for i in 0..88200 {
+        // 44100 samples per channel
         let t = i as f32 / 44100.0;
         let sample = (440.0 * 2.0 * std::f32::consts::PI * t).sin();
         let sample16 = (sample * 32767.0) as i16;
@@ -190,27 +191,27 @@ mod tests {
         assert_eq!(&wav_data[fmt_start..fmt_start + 4], b"fmt ");
 
         let fmt_size = u32::from_le_bytes([
-            wav_data[fmt_start + 4], wav_data[fmt_start + 5],
-            wav_data[fmt_start + 6], wav_data[fmt_start + 7]
+            wav_data[fmt_start + 4],
+            wav_data[fmt_start + 5],
+            wav_data[fmt_start + 6],
+            wav_data[fmt_start + 7],
         ]);
         assert_eq!(fmt_size, 16);
 
         // Verify audio format (PCM = 1)
-        let audio_format = u16::from_le_bytes([
-            wav_data[fmt_start + 8], wav_data[fmt_start + 9]
-        ]);
+        let audio_format = u16::from_le_bytes([wav_data[fmt_start + 8], wav_data[fmt_start + 9]]);
         assert_eq!(audio_format, 1);
 
         // Verify channels (stereo = 2)
-        let channels = u16::from_le_bytes([
-            wav_data[fmt_start + 10], wav_data[fmt_start + 11]
-        ]);
+        let channels = u16::from_le_bytes([wav_data[fmt_start + 10], wav_data[fmt_start + 11]]);
         assert_eq!(channels, 2);
 
         // Verify sample rate (44100)
         let sample_rate = u32::from_le_bytes([
-            wav_data[fmt_start + 12], wav_data[fmt_start + 13],
-            wav_data[fmt_start + 14], wav_data[fmt_start + 15]
+            wav_data[fmt_start + 12],
+            wav_data[fmt_start + 13],
+            wav_data[fmt_start + 14],
+            wav_data[fmt_start + 15],
         ]);
         assert_eq!(sample_rate, 44100);
     }
@@ -241,9 +242,7 @@ mod tests {
         // Verify STREAMINFO block
         assert_eq!(flac_data[4] & 0x7F, 0); // Block type 0 (STREAMINFO)
 
-        let block_size = u32::from_be_bytes([
-            0, flac_data[5], flac_data[6], flac_data[7]
-        ]);
+        let block_size = u32::from_be_bytes([0, flac_data[5], flac_data[6], flac_data[7]]);
         assert_eq!(block_size, 34);
     }
 

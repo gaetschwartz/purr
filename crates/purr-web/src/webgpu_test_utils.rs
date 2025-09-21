@@ -3,15 +3,15 @@
 //! This module provides utilities and helpers for testing WebGPU functionality
 //! in both unit tests and integration tests.
 
+use crate::error::WebGpuError;
+#[cfg(test)]
+use crate::{WebError, WebResult};
+#[cfg(test)]
+use js_sys::{Float32Array, Object, Promise, Reflect};
 #[cfg(test)]
 use wasm_bindgen::prelude::*;
 #[cfg(test)]
-use web_sys::{console};
-#[cfg(test)]
-use js_sys::{Object, Reflect, Promise, Float32Array};
-#[cfg(test)]
-use crate::{WebError, WebResult};
-use crate::error::WebGpuError;
+use web_sys::console;
 
 /// Mock WebGPU adapter for testing
 #[cfg(test)]
@@ -140,10 +140,18 @@ impl WebGPUTestEnvironment {
 #[cfg(test)]
 pub fn create_test_buffer_descriptor(size: u64, usage: u32) -> Object {
     let descriptor = Object::new();
-    Reflect::set(&descriptor, &JsValue::from_str("size"), &JsValue::from_f64(size as f64))
-        .expect("Failed to set buffer size");
-    Reflect::set(&descriptor, &JsValue::from_str("usage"), &JsValue::from_f64(usage as f64))
-        .expect("Failed to set buffer usage");
+    Reflect::set(
+        &descriptor,
+        &JsValue::from_str("size"),
+        &JsValue::from_f64(size as f64),
+    )
+    .expect("Failed to set buffer size");
+    Reflect::set(
+        &descriptor,
+        &JsValue::from_str("usage"),
+        &JsValue::from_f64(usage as f64),
+    )
+    .expect("Failed to set buffer usage");
     descriptor
 }
 
@@ -151,8 +159,12 @@ pub fn create_test_buffer_descriptor(size: u64, usage: u32) -> Object {
 #[cfg(test)]
 pub fn create_test_shader_descriptor(wgsl_code: &str) -> Object {
     let descriptor = Object::new();
-    Reflect::set(&descriptor, &JsValue::from_str("code"), &JsValue::from_str(wgsl_code))
-        .expect("Failed to set shader code");
+    Reflect::set(
+        &descriptor,
+        &JsValue::from_str("code"),
+        &JsValue::from_str(wgsl_code),
+    )
+    .expect("Failed to set shader code");
     descriptor
 }
 
@@ -164,13 +176,21 @@ pub fn create_test_compute_pipeline_descriptor(entry_point: &str) -> Object {
     let compute_stage = Object::new();
     Reflect::set(&compute_stage, &JsValue::from_str("module"), &JsValue::NULL)
         .expect("Failed to set compute module");
-    Reflect::set(&compute_stage, &JsValue::from_str("entryPoint"), &JsValue::from_str(entry_point))
-        .expect("Failed to set compute entry point");
+    Reflect::set(
+        &compute_stage,
+        &JsValue::from_str("entryPoint"),
+        &JsValue::from_str(entry_point),
+    )
+    .expect("Failed to set compute entry point");
 
     Reflect::set(&descriptor, &JsValue::from_str("compute"), &compute_stage)
         .expect("Failed to set compute stage");
-    Reflect::set(&descriptor, &JsValue::from_str("layout"), &JsValue::from_str("auto"))
-        .expect("Failed to set pipeline layout");
+    Reflect::set(
+        &descriptor,
+        &JsValue::from_str("layout"),
+        &JsValue::from_str("auto"),
+    )
+    .expect("Failed to set pipeline layout");
 
     descriptor
 }
@@ -183,8 +203,12 @@ pub fn create_test_bind_group_layout(bindings: &[(u32, &str, &str)]) -> Object {
 
     for &(binding, visibility, buffer_type) in bindings {
         let entry = Object::new();
-        Reflect::set(&entry, &JsValue::from_str("binding"), &JsValue::from_f64(binding as f64))
-            .expect("Failed to set binding");
+        Reflect::set(
+            &entry,
+            &JsValue::from_str("binding"),
+            &JsValue::from_f64(binding as f64),
+        )
+        .expect("Failed to set binding");
 
         let visibility_flags = match visibility {
             "vertex" => 1u32,
@@ -192,12 +216,20 @@ pub fn create_test_bind_group_layout(bindings: &[(u32, &str, &str)]) -> Object {
             "compute" => 4u32,
             _ => 7u32, // All stages
         };
-        Reflect::set(&entry, &JsValue::from_str("visibility"), &JsValue::from_f64(visibility_flags as f64))
-            .expect("Failed to set visibility");
+        Reflect::set(
+            &entry,
+            &JsValue::from_str("visibility"),
+            &JsValue::from_f64(visibility_flags as f64),
+        )
+        .expect("Failed to set visibility");
 
         let buffer_layout = Object::new();
-        Reflect::set(&buffer_layout, &JsValue::from_str("type"), &JsValue::from_str(buffer_type))
-            .expect("Failed to set buffer type");
+        Reflect::set(
+            &buffer_layout,
+            &JsValue::from_str("type"),
+            &JsValue::from_str(buffer_type),
+        )
+        .expect("Failed to set buffer type");
         Reflect::set(&entry, &JsValue::from_str("buffer"), &buffer_layout)
             .expect("Failed to set buffer layout");
 
@@ -214,9 +246,9 @@ pub fn create_test_bind_group_layout(bindings: &[(u32, &str, &str)]) -> Object {
 #[cfg(test)]
 pub fn validate_device_limits(limits: &Object) -> WebResult<()> {
     let required_limits = [
-        ("maxBufferSize", 268_435_456u64),         // 256MB
+        ("maxBufferSize", 268_435_456u64),               // 256MB
         ("maxStorageBufferBindingSize", 134_217_728u64), // 128MB
-        ("maxUniformBufferBindingSize", 65536u64),  // 64KB
+        ("maxUniformBufferBindingSize", 65536u64),       // 64KB
         ("maxComputeWorkgroupSizeX", 256u64),
         ("maxComputeWorkgroupSizeY", 256u64),
         ("maxComputeWorkgroupSizeZ", 64u64),
@@ -226,12 +258,18 @@ pub fn validate_device_limits(limits: &Object) -> WebResult<()> {
         match Reflect::get(limits, &JsValue::from_str(limit_name)) {
             Ok(limit_val) => {
                 if limit_val.is_undefined() {
-                    return Err(WebGpuError::MissingLimit { limit_name: limit_name.to_string() }.into());
+                    return Err(WebGpuError::MissingLimit {
+                        limit_name: limit_name.to_string(),
+                    }
+                    .into());
                 }
                 // In a real test, we'd validate the actual values
             }
             Err(_) => {
-                return Err(WebGpuError::FailedToGetLimit { limit_name: limit_name.to_string() }.into());
+                return Err(WebGpuError::FailedToGetLimit {
+                    limit_name: limit_name.to_string(),
+                }
+                .into());
             }
         }
     }
@@ -241,7 +279,11 @@ pub fn validate_device_limits(limits: &Object) -> WebResult<()> {
 
 /// Create test audio data for WebGPU processing
 #[cfg(test)]
-pub fn create_test_audio_samples(sample_count: usize, frequency: f32, sample_rate: f32) -> Vec<f32> {
+pub fn create_test_audio_samples(
+    sample_count: usize,
+    frequency: f32,
+    sample_rate: f32,
+) -> Vec<f32> {
     let mut samples = Vec::with_capacity(sample_count);
 
     for i in 0..sample_count {
@@ -286,7 +328,8 @@ pub fn validate_audio_processing_results(
                 index: i,
                 expected,
                 actual: output_sample,
-            }.into());
+            }
+            .into());
         }
 
         total_error += error;
@@ -297,7 +340,8 @@ pub fn validate_audio_processing_results(
         return Err(WebGpuError::ComputationFailed {
             max_diff: average_error,
             tolerance: 0.001, // Default tolerance
-        }.into());
+        }
+        .into());
     }
 
     Ok(())
@@ -305,7 +349,10 @@ pub fn validate_audio_processing_results(
 
 /// Test WebGPU feature availability
 #[cfg(test)]
-pub fn test_webgpu_features(features: &js_sys::Set, required_features: &[&str]) -> WebResult<Vec<String>> {
+pub fn test_webgpu_features(
+    features: &js_sys::Set,
+    required_features: &[&str],
+) -> WebResult<Vec<String>> {
     let mut missing_features = Vec::new();
 
     for &feature in required_features {
@@ -318,7 +365,8 @@ pub fn test_webgpu_features(features: &js_sys::Set, required_features: &[&str]) 
     if !missing_features.is_empty() {
         return Err(WebGpuError::FeatureNotSupported {
             feature: missing_features.join(", "),
-        }.into());
+        }
+        .into());
     }
 
     Ok(missing_features)
@@ -330,19 +378,39 @@ pub fn create_test_texture_descriptor(width: u32, height: u32, format: &str) -> 
     let descriptor = Object::new();
 
     let size = Object::new();
-    Reflect::set(&size, &JsValue::from_str("width"), &JsValue::from_f64(width as f64))
-        .expect("Failed to set texture width");
-    Reflect::set(&size, &JsValue::from_str("height"), &JsValue::from_f64(height as f64))
-        .expect("Failed to set texture height");
-    Reflect::set(&size, &JsValue::from_str("depthOrArrayLayers"), &JsValue::from_f64(1.0))
-        .expect("Failed to set texture depth");
+    Reflect::set(
+        &size,
+        &JsValue::from_str("width"),
+        &JsValue::from_f64(width as f64),
+    )
+    .expect("Failed to set texture width");
+    Reflect::set(
+        &size,
+        &JsValue::from_str("height"),
+        &JsValue::from_f64(height as f64),
+    )
+    .expect("Failed to set texture height");
+    Reflect::set(
+        &size,
+        &JsValue::from_str("depthOrArrayLayers"),
+        &JsValue::from_f64(1.0),
+    )
+    .expect("Failed to set texture depth");
 
     Reflect::set(&descriptor, &JsValue::from_str("size"), &size)
         .expect("Failed to set texture size");
-    Reflect::set(&descriptor, &JsValue::from_str("format"), &JsValue::from_str(format))
-        .expect("Failed to set texture format");
-    Reflect::set(&descriptor, &JsValue::from_str("usage"), &JsValue::from_f64(0x0014 as f64)) // TEXTURE_BINDING | COPY_DST
-        .expect("Failed to set texture usage");
+    Reflect::set(
+        &descriptor,
+        &JsValue::from_str("format"),
+        &JsValue::from_str(format),
+    )
+    .expect("Failed to set texture format");
+    Reflect::set(
+        &descriptor,
+        &JsValue::from_str("usage"),
+        &JsValue::from_f64(0x0014 as f64),
+    ) // TEXTURE_BINDING | COPY_DST
+    .expect("Failed to set texture usage");
 
     descriptor
 }

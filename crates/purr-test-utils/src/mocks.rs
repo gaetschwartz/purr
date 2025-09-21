@@ -1,10 +1,10 @@
 //! Mock implementations for external dependencies and services
 
+use bytes::Bytes;
 use mockall::mock;
 use std::path::Path;
 use std::time::Duration;
 use tokio::sync::mpsc;
-use bytes::Bytes;
 
 // Mock audio processor for testing transcription without actual audio processing
 mock! {
@@ -210,6 +210,7 @@ pub struct TimerHandle {
 }
 
 impl TimerHandle {
+    #[must_use]
     pub fn stop(self) -> Duration {
         self.start_time.elapsed()
     }
@@ -224,6 +225,7 @@ pub struct MetricsSnapshot {
 }
 
 /// Factory functions for creating commonly used mocks
+#[must_use]
 pub fn create_mock_audio_processor() -> MockAudioProcessor {
     let mut mock = MockAudioProcessor::new();
 
@@ -233,16 +235,15 @@ pub fn create_mock_audio_processor() -> MockAudioProcessor {
             Ok(audio_data.to_vec()) // Identity transform by default
         });
 
-    mock.expect_normalize_audio()
-        .returning(|audio_data| {
-            // Simple normalization mock
-            let max_amplitude = audio_data.iter().map(|&x| x.abs()).fold(0.0f32, f32::max);
-            if max_amplitude > 0.0 {
-                audio_data.iter().map(|&x| x / max_amplitude).collect()
-            } else {
-                audio_data.to_vec()
-            }
-        });
+    mock.expect_normalize_audio().returning(|audio_data| {
+        // Simple normalization mock
+        let max_amplitude = audio_data.iter().map(|&x| x.abs()).fold(0.0f32, f32::max);
+        if max_amplitude > 0.0 {
+            audio_data.iter().map(|&x| x / max_amplitude).collect()
+        } else {
+            audio_data.to_vec()
+        }
+    });
 
     mock.expect_supported_formats()
         .returning(|| vec!["wav".to_string(), "mp3".to_string(), "flac".to_string()]);
@@ -250,26 +251,25 @@ pub fn create_mock_audio_processor() -> MockAudioProcessor {
     mock
 }
 
+#[must_use]
 pub fn create_mock_transcription_engine() -> MockTranscriptionEngine {
     let mut mock = MockTranscriptionEngine::new();
 
-    mock.expect_transcribe()
-        .returning(|_audio_data, _options| {
-            Ok(TranscriptionResult {
+    mock.expect_transcribe().returning(|_audio_data, _options| {
+        Ok(TranscriptionResult {
+            text: "Mock transcription result".to_string(),
+            confidence: 0.95,
+            duration: Duration::from_secs(1),
+            segments: vec![TranscriptionSegment {
+                start: Duration::ZERO,
+                end: Duration::from_secs(1),
                 text: "Mock transcription result".to_string(),
                 confidence: 0.95,
-                duration: Duration::from_secs(1),
-                segments: vec![TranscriptionSegment {
-                    start: Duration::ZERO,
-                    end: Duration::from_secs(1),
-                    text: "Mock transcription result".to_string(),
-                    confidence: 0.95,
-                }],
-            })
-        });
+            }],
+        })
+    });
 
-    mock.expect_is_model_loaded()
-        .returning(|| true);
+    mock.expect_is_model_loaded().returning(|| true);
 
     mock.expect_supported_languages()
         .returning(|| vec!["en".to_string(), "es".to_string(), "fr".to_string()]);
@@ -277,20 +277,20 @@ pub fn create_mock_transcription_engine() -> MockTranscriptionEngine {
     mock
 }
 
+#[must_use]
 pub fn create_mock_network_client() -> MockNetworkClient {
     let mut mock = MockNetworkClient::new();
 
     mock.expect_get_file_size()
         .returning(|_url| Ok(1024 * 1024)); // 1MB default
 
-    mock.expect_head_request()
-        .returning(|_url| {
-            Ok(ResponseHeaders {
-                content_length: Some(1024 * 1024),
-                content_type: Some("application/octet-stream".to_string()),
-                last_modified: Some("Wed, 21 Oct 2015 07:28:00 GMT".to_string()),
-            })
-        });
+    mock.expect_head_request().returning(|_url| {
+        Ok(ResponseHeaders {
+            content_length: Some(1024 * 1024),
+            content_type: Some("application/octet-stream".to_string()),
+            last_modified: Some("Wed, 21 Oct 2015 07:28:00 GMT".to_string()),
+        })
+    });
 
     mock
 }

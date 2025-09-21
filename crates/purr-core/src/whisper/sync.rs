@@ -146,10 +146,3 @@ impl SyncWhisperTranscriber {
         })
     }
 }
-
-#[cfg(test)]
-mod tests {
-    // Removed trivial inline tests:
-    // - test_transcription_config: just tests setter methods work
-    // - test_transcription_result_serialization: tests serde derive functionality
-}

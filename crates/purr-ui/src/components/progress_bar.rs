@@ -1,6 +1,6 @@
 use dioxus::prelude::*;
 
-/// Props for the ProgressBar component
+/// Props for the `ProgressBar` component
 #[derive(Props, Clone, PartialEq)]
 pub struct ProgressBarProps {
     /// Progress value (0-100)

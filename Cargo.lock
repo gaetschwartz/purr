@@ -5250,6 +5250,7 @@ dependencies = [
  "gloo-timers",
  "indexed_db_futures",
  "js-sys",
+ "miette",
  "pretty_assertions",
  "purr-common",
  "rstest",

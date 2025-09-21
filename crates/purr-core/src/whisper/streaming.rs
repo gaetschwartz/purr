@@ -77,7 +77,9 @@ impl StreamWhisperTranscriber {
                     if audio_chunk.is_final {
                         // Create a state for processing complete audio
                         let mut state = self.context.create_state().map_err(|e| {
-                            crate::WhisperError::from(TranscriptionError::StateCreation { source: e })
+                            crate::WhisperError::from(TranscriptionError::StateCreation {
+                                source: e,
+                            })
                         })?;
 
                         // Create params with proper whisper.cpp defaults
@@ -113,7 +115,10 @@ impl StreamWhisperTranscriber {
                                             }
                                         }
                                     } else {
-                                        warn!("Failed to get segment {} (out of {})", i, num_segments);
+                                        warn!(
+                                            "Failed to get segment {} (out of {})",
+                                            i, num_segments
+                                        );
                                     }
                                 }
 
@@ -144,7 +149,9 @@ impl StreamWhisperTranscriber {
                             }
                             Err(e) => {
                                 warn!("Transcription failed: {}", e);
-                                let _ = tx.send(Err(crate::WhisperError::from(TranscriptionError::Failed { source: e })));
+                                let _ = tx.send(Err(crate::WhisperError::from(
+                                    TranscriptionError::Failed { source: e },
+                                )));
                             }
                         }
                         break;

@@ -10,7 +10,7 @@ pub enum UploadState {
     Success { file_name: String },
 }
 
-/// Props for the UploadZone component
+/// Props for the `UploadZone` component
 #[derive(Props, Clone, PartialEq)]
 pub struct UploadZoneProps {
     /// Current upload state

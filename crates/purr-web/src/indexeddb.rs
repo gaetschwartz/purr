@@ -69,24 +69,22 @@ impl IndexedDBStorage {
     /// Initialize IndexedDB database with proper schema
     async fn init_database(&mut self) -> WebResult<()> {
         let window = web_sys::window().ok_or_else(|| WebError::WebApi {
-            message: "Window not available".to_string(),
+            api: "Window".to_string(),
+            source: Box::new(std::io::Error::new(std::io::ErrorKind::NotFound, "Window not available")),
         })?;
 
         let idb_factory = window
             .indexed_db()
-            .map_err(|e| WebError::WebApi {
-                message: format!("IndexedDB not available: {:?}", e),
-            })?
+            .map_err(|e| WebError::web_api_js("IndexedDB", e))?
             .ok_or_else(|| WebError::WebApi {
-                message: "IndexedDB not supported".to_string(),
+                api: "IndexedDB".to_string(),
+                source: Box::new(std::io::Error::new(std::io::ErrorKind::NotFound, "IndexedDB not supported")),
             })?;
 
         // Open database with version
         let open_request = idb_factory
             .open_with_u32(&self.db_name, self.db_version)
-            .map_err(|e| WebError::WebApi {
-                message: format!("Failed to open IndexedDB: {:?}", e),
-            })?;
+            .map_err(|e| WebError::web_api_js("IndexedDB open", e))?;
 
         // Set up upgrade handler
         let upgrade_closure = Closure::wrap(Box::new(move |event: web_sys::Event| {
@@ -125,9 +123,7 @@ impl IndexedDBStorage {
         });
 
         let db_result = JsFuture::from(db_promise).await
-            .map_err(|e| WebError::WebApi {
-                message: format!("Database initialization failed: {:?}", e),
-            })?;
+            .map_err(|e| WebError::web_api_js("Database initialization", e))?;
 
         self.db = Some(db_result.dyn_into::<IdbDatabase>().unwrap());
         upgrade_closure.forget();
@@ -141,47 +137,35 @@ impl IndexedDBStorage {
         if !db.object_store_names().contains(Self::MODELS_STORE) {
             let models_store = db
                 .create_object_store(Self::MODELS_STORE)
-                .map_err(|e| WebError::WebApi {
-                    message: format!("Failed to create models store: {:?}", e),
-                })?;
+                .map_err(|e| WebError::web_api_js("Create models store", e))?;
 
             // Index by model name
             models_store
                 .create_index("by_model_name", &JsValue::from_str("model_name"))
-                .map_err(|e| WebError::WebApi {
-                    message: format!("Failed to create model name index: {:?}", e),
-                })?;
+                .map_err(|e| WebError::web_api_js("Create model name index", e))?;
         }
 
         // Metadata store for model information
         if !db.object_store_names().contains(Self::METADATA_STORE) {
             let metadata_store = db
                 .create_object_store(Self::METADATA_STORE)
-                .map_err(|e| WebError::WebApi {
-                    message: format!("Failed to create metadata store: {:?}", e),
-                })?;
+                .map_err(|e| WebError::web_api_js("Create metadata store", e))?;
 
             // Index by model type
             metadata_store
                 .create_index("by_type", &JsValue::from_str("model_type"))
-                .map_err(|e| WebError::WebApi {
-                    message: format!("Failed to create type index: {:?}", e),
-                })?;
+                .map_err(|e| WebError::web_api_js("Create type index", e))?;
 
             // Index by completion status
             metadata_store
                 .create_index("by_complete", &JsValue::from_str("is_complete"))
-                .map_err(|e| WebError::WebApi {
-                    message: format!("Failed to create completion index: {:?}", e),
-                })?;
+                .map_err(|e| WebError::web_api_js("Create completion index", e))?;
         }
 
         // Downloads store for progress tracking
         if !db.object_store_names().contains(Self::DOWNLOADS_STORE) {
             db.create_object_store(Self::DOWNLOADS_STORE)
-                .map_err(|e| WebError::WebApi {
-                    message: format!("Failed to create downloads store: {:?}", e),
-                })?;
+                .map_err(|e| WebError::web_api_js("Create downloads store", e))?
         }
 
         Ok(())
@@ -218,14 +202,13 @@ impl IndexedDBStorage {
 
         // Start download with fetch API
         let window = web_sys::window().ok_or_else(|| WebError::WebApi {
-            message: "Window not available".to_string(),
+            api: "Window".to_string(),
+            source: Box::new(std::io::Error::new(std::io::ErrorKind::NotFound, "Window not available")),
         })?;
 
         let response = JsFuture::from(window.fetch_with_str(download_url))
             .await
-            .map_err(|e| WebError::WebApi {
-                message: format!("Fetch failed: {:?}", e),
-            })?;
+            .map_err(|e| WebError::web_api_js("Fetch", e))?;
 
         let response: Response = response.dyn_into().unwrap();
 
@@ -250,7 +233,8 @@ impl IndexedDBStorage {
 
         // Get readable stream
         let body = response.body().ok_or_else(|| WebError::WebApi {
-            message: "Response body not available".to_string(),
+            api: "Response body".to_string(),
+            source: Box::new(std::io::Error::new(std::io::ErrorKind::NotFound, "Response body not available")),
         })?;
 
         let reader = body.get_reader();
@@ -343,20 +327,17 @@ impl IndexedDBStorage {
     /// Store model binary data in IndexedDB
     async fn store_model_binary(&self, file_id: &str, data: Bytes) -> WebResult<()> {
         let db = self.db.as_ref().ok_or_else(|| WebError::WebApi {
-            message: "Database not initialized".to_string(),
+            api: "Database".to_string(),
+            source: Box::new(std::io::Error::new(std::io::ErrorKind::NotConnected, "Database not initialized")),
         })?;
 
         let transaction = db
             .transaction_with_str_and_mode(Self::MODELS_STORE, IdbTransactionMode::Readwrite)
-            .map_err(|e| WebError::WebApi {
-                message: format!("Failed to create transaction: {:?}", e),
-            })?;
+            .map_err(|e| WebError::web_api_js("Create transaction", e))?;
 
         let store = transaction
             .object_store(Self::MODELS_STORE)
-            .map_err(|e| WebError::WebApi {
-                message: format!("Failed to get object store: {:?}", e),
-            })?;
+            .map_err(|e| WebError::web_api_js("Get object store", e))?;
 
         // Convert Bytes to Uint8Array for storage
         let uint8_array = Uint8Array::new_with_length(data.len() as u32);
@@ -364,9 +345,7 @@ impl IndexedDBStorage {
 
         let request = store
             .put_with_key(&uint8_array.into(), &JsValue::from_str(file_id))
-            .map_err(|e| WebError::WebApi {
-                message: format!("Failed to store model: {:?}", e),
-            })?;
+            .map_err(|e| WebError::web_api_js("Store model", e))?;
 
         // Wait for completion
         let promise = Promise::new(&mut |resolve, reject| {
@@ -389,9 +368,7 @@ impl IndexedDBStorage {
         });
 
         JsFuture::from(promise).await
-            .map_err(|e| WebError::WebApi {
-                message: format!("Model storage failed: {:?}", e),
-            })?;
+            .map_err(|e| WebError::web_api_js("Model storage", e))?;
 
         Ok(())
     }
@@ -399,20 +376,17 @@ impl IndexedDBStorage {
     /// Store model metadata
     async fn store_metadata(&self, metadata: &ModelMetadata) -> WebResult<()> {
         let db = self.db.as_ref().ok_or_else(|| WebError::WebApi {
-            message: "Database not initialized".to_string(),
+            api: "Database".to_string(),
+            source: Box::new(std::io::Error::new(std::io::ErrorKind::NotConnected, "Database not initialized")),
         })?;
 
         let transaction = db
             .transaction_with_str_and_mode(Self::METADATA_STORE, IdbTransactionMode::Readwrite)
-            .map_err(|e| WebError::WebApi {
-                message: format!("Failed to create transaction: {:?}", e),
-            })?;
+            .map_err(|e| WebError::web_api_js("Create transaction", e))?;
 
         let store = transaction
             .object_store(Self::METADATA_STORE)
-            .map_err(|e| WebError::WebApi {
-                message: format!("Failed to get object store: {:?}", e),
-            })?;
+            .map_err(|e| WebError::web_api_js("Get object store", e))?;
 
         // Serialize metadata to JSON
         let metadata_json = serde_json::to_string(metadata)
@@ -422,9 +396,7 @@ impl IndexedDBStorage {
 
         let request = store
             .put_with_key(&JsValue::from_str(&metadata_json), &JsValue::from_str(&metadata.id))
-            .map_err(|e| WebError::WebApi {
-                message: format!("Failed to store metadata: {:?}", e),
-            })?;
+            .map_err(|e| WebError::web_api_js("Store metadata", e))?;
 
         // Wait for completion
         let promise = Promise::new(&mut |resolve, reject| {
@@ -447,9 +419,7 @@ impl IndexedDBStorage {
         });
 
         JsFuture::from(promise).await
-            .map_err(|e| WebError::WebApi {
-                message: format!("Metadata storage failed: {:?}", e),
-            })?;
+            .map_err(|e| WebError::web_api_js("Metadata storage", e))?;
 
         Ok(())
     }
@@ -457,20 +427,17 @@ impl IndexedDBStorage {
     /// Store download progress
     async fn store_download_progress(&self, file_id: &str, progress: &DownloadProgress) -> WebResult<()> {
         let db = self.db.as_ref().ok_or_else(|| WebError::WebApi {
-            message: "Database not initialized".to_string(),
+            api: "Database".to_string(),
+            source: Box::new(std::io::Error::new(std::io::ErrorKind::NotConnected, "Database not initialized")),
         })?;
 
         let transaction = db
             .transaction_with_str_and_mode(Self::DOWNLOADS_STORE, IdbTransactionMode::Readwrite)
-            .map_err(|e| WebError::WebApi {
-                message: format!("Failed to create transaction: {:?}", e),
-            })?;
+            .map_err(|e| WebError::web_api_js("Create transaction", e))?;
 
         let store = transaction
             .object_store(Self::DOWNLOADS_STORE)
-            .map_err(|e| WebError::WebApi {
-                message: format!("Failed to get object store: {:?}", e),
-            })?;
+            .map_err(|e| WebError::web_api_js("Get object store", e))?;
 
         let progress_json = serde_json::to_string(progress)
             .map_err(|e| WebError::WebApi {
@@ -479,9 +446,7 @@ impl IndexedDBStorage {
 
         store
             .put_with_key(&JsValue::from_str(&progress_json), &JsValue::from_str(file_id))
-            .map_err(|e| WebError::WebApi {
-                message: format!("Failed to store progress: {:?}", e),
-            })?;
+            .map_err(|e| WebError::web_api_js("Store progress", e))?;
 
         Ok(())
     }
@@ -489,26 +454,21 @@ impl IndexedDBStorage {
     /// Retrieve model binary data
     pub async fn get_model_binary(&self, file_id: &FileId) -> WebResult<Option<Bytes>> {
         let db = self.db.as_ref().ok_or_else(|| WebError::WebApi {
-            message: "Database not initialized".to_string(),
+            api: "Database".to_string(),
+            source: Box::new(std::io::Error::new(std::io::ErrorKind::NotConnected, "Database not initialized")),
         })?;
 
         let transaction = db
             .transaction_with_str(Self::MODELS_STORE)
-            .map_err(|e| WebError::WebApi {
-                message: format!("Failed to create transaction: {:?}", e),
-            })?;
+            .map_err(|e| WebError::web_api_js("Create transaction", e))?;
 
         let store = transaction
             .object_store(Self::MODELS_STORE)
-            .map_err(|e| WebError::WebApi {
-                message: format!("Failed to get object store: {:?}", e),
-            })?;
+            .map_err(|e| WebError::web_api_js("Get object store", e))?;
 
         let request = store
             .get(&JsValue::from_str(&file_id.to_string()))
-            .map_err(|e| WebError::WebApi {
-                message: format!("Failed to get model: {:?}", e),
-            })?;
+            .map_err(|e| WebError::web_api_js("Get model", e))?;
 
         let promise = Promise::new(&mut |resolve, reject| {
             let success_closure = Closure::wrap(Box::new(move |event: web_sys::Event| {
@@ -533,9 +493,7 @@ impl IndexedDBStorage {
         });
 
         let result = JsFuture::from(promise).await
-            .map_err(|e| WebError::WebApi {
-                message: format!("Model retrieval failed: {:?}", e),
-            })?;
+            .map_err(|e| WebError::web_api_js("Model retrieval", e))?;
 
         if result.is_undefined() {
             return Ok(None);
@@ -549,26 +507,21 @@ impl IndexedDBStorage {
     /// Get model metadata
     pub async fn get_metadata(&self, file_id: &FileId) -> WebResult<Option<ModelMetadata>> {
         let db = self.db.as_ref().ok_or_else(|| WebError::WebApi {
-            message: "Database not initialized".to_string(),
+            api: "Database".to_string(),
+            source: Box::new(std::io::Error::new(std::io::ErrorKind::NotConnected, "Database not initialized")),
         })?;
 
         let transaction = db
             .transaction_with_str(Self::METADATA_STORE)
-            .map_err(|e| WebError::WebApi {
-                message: format!("Failed to create transaction: {:?}", e),
-            })?;
+            .map_err(|e| WebError::web_api_js("Create transaction", e))?;
 
         let store = transaction
             .object_store(Self::METADATA_STORE)
-            .map_err(|e| WebError::WebApi {
-                message: format!("Failed to get object store: {:?}", e),
-            })?;
+            .map_err(|e| WebError::web_api_js("Get object store", e))?;
 
         let request = store
             .get(&JsValue::from_str(&file_id.to_string()))
-            .map_err(|e| WebError::WebApi {
-                message: format!("Failed to get metadata: {:?}", e),
-            })?;
+            .map_err(|e| WebError::web_api_js("Get metadata", e))?;
 
         let promise = Promise::new(&mut |resolve, reject| {
             let success_closure = Closure::wrap(Box::new(move |event: web_sys::Event| {
@@ -593,16 +546,15 @@ impl IndexedDBStorage {
         });
 
         let result = JsFuture::from(promise).await
-            .map_err(|e| WebError::WebApi {
-                message: format!("Metadata retrieval failed: {:?}", e),
-            })?;
+            .map_err(|e| WebError::web_api_js("Metadata retrieval", e))?;
 
         if result.is_undefined() {
             return Ok(None);
         }
 
         let metadata_json = result.as_string().ok_or_else(|| WebError::WebApi {
-            message: "Invalid metadata format".to_string(),
+            api: "Metadata format".to_string(),
+            source: Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid metadata format")),
         })?;
 
         let metadata: ModelMetadata = serde_json::from_str(&metadata_json)
@@ -616,26 +568,21 @@ impl IndexedDBStorage {
     /// List all stored models
     pub async fn list_models(&self) -> WebResult<Vec<ModelMetadata>> {
         let db = self.db.as_ref().ok_or_else(|| WebError::WebApi {
-            message: "Database not initialized".to_string(),
+            api: "Database".to_string(),
+            source: Box::new(std::io::Error::new(std::io::ErrorKind::NotConnected, "Database not initialized")),
         })?;
 
         let transaction = db
             .transaction_with_str(Self::METADATA_STORE)
-            .map_err(|e| WebError::WebApi {
-                message: format!("Failed to create transaction: {:?}", e),
-            })?;
+            .map_err(|e| WebError::web_api_js("Create transaction", e))?;
 
         let store = transaction
             .object_store(Self::METADATA_STORE)
-            .map_err(|e| WebError::WebApi {
-                message: format!("Failed to get object store: {:?}", e),
-            })?;
+            .map_err(|e| WebError::web_api_js("Get object store", e))?;
 
         let request = store
             .get_all()
-            .map_err(|e| WebError::WebApi {
-                message: format!("Failed to get all metadata: {:?}", e),
-            })?;
+            .map_err(|e| WebError::web_api_js("Get all metadata", e))?;
 
         let promise = Promise::new(&mut |resolve, reject| {
             let success_closure = Closure::wrap(Box::new(move |event: web_sys::Event| {
@@ -660,9 +607,7 @@ impl IndexedDBStorage {
         });
 
         let result = JsFuture::from(promise).await
-            .map_err(|e| WebError::WebApi {
-                message: format!("Model listing failed: {:?}", e),
-            })?;
+            .map_err(|e| WebError::web_api_js("Model listing", e))?;
 
         let js_array: Array = result.dyn_into().unwrap();
         let mut models = Vec::new();
@@ -682,7 +627,8 @@ impl IndexedDBStorage {
     /// Delete a model and its metadata
     pub async fn delete_model(&self, file_id: &FileId) -> WebResult<bool> {
         let db = self.db.as_ref().ok_or_else(|| WebError::WebApi {
-            message: "Database not initialized".to_string(),
+            api: "Database".to_string(),
+            source: Box::new(std::io::Error::new(std::io::ErrorKind::NotConnected, "Database not initialized")),
         })?;
 
         let file_id_str = file_id.to_string();
@@ -690,59 +636,41 @@ impl IndexedDBStorage {
         // Delete from models store
         let models_transaction = db
             .transaction_with_str_and_mode(Self::MODELS_STORE, IdbTransactionMode::Readwrite)
-            .map_err(|e| WebError::WebApi {
-                message: format!("Failed to create models transaction: {:?}", e),
-            })?;
+            .map_err(|e| WebError::web_api_js("Create models transaction", e))?;
 
         let models_store = models_transaction
             .object_store(Self::MODELS_STORE)
-            .map_err(|e| WebError::WebApi {
-                message: format!("Failed to get models store: {:?}", e),
-            })?;
+            .map_err(|e| WebError::web_api_js("Get models store", e))?;
 
         models_store
             .delete(&JsValue::from_str(&file_id_str))
-            .map_err(|e| WebError::WebApi {
-                message: format!("Failed to delete model: {:?}", e),
-            })?;
+            .map_err(|e| WebError::web_api_js("Delete model", e))?;
 
         // Delete from metadata store
         let metadata_transaction = db
             .transaction_with_str_and_mode(Self::METADATA_STORE, IdbTransactionMode::Readwrite)
-            .map_err(|e| WebError::WebApi {
-                message: format!("Failed to create metadata transaction: {:?}", e),
-            })?;
+            .map_err(|e| WebError::web_api_js("Create metadata transaction", e))?;
 
         let metadata_store = metadata_transaction
             .object_store(Self::METADATA_STORE)
-            .map_err(|e| WebError::WebApi {
-                message: format!("Failed to get metadata store: {:?}", e),
-            })?;
+            .map_err(|e| WebError::web_api_js("Get metadata store", e))?;
 
         metadata_store
             .delete(&JsValue::from_str(&file_id_str))
-            .map_err(|e| WebError::WebApi {
-                message: format!("Failed to delete metadata: {:?}", e),
-            })?;
+            .map_err(|e| WebError::web_api_js("Delete metadata", e))?;
 
         // Delete from downloads store
         let downloads_transaction = db
             .transaction_with_str_and_mode(Self::DOWNLOADS_STORE, IdbTransactionMode::Readwrite)
-            .map_err(|e| WebError::WebApi {
-                message: format!("Failed to create downloads transaction: {:?}", e),
-            })?;
+            .map_err(|e| WebError::web_api_js("Create downloads transaction", e))?;
 
         let downloads_store = downloads_transaction
             .object_store(Self::DOWNLOADS_STORE)
-            .map_err(|e| WebError::WebApi {
-                message: format!("Failed to get downloads store: {:?}", e),
-            })?;
+            .map_err(|e| WebError::web_api_js("Get downloads store", e))?;
 
         downloads_store
             .delete(&JsValue::from_str(&file_id_str))
-            .map_err(|e| WebError::WebApi {
-                message: format!("Failed to delete progress: {:?}", e),
-            })?;
+            .map_err(|e| WebError::web_api_js("Delete progress", e))?;
 
         Ok(true)
     }
@@ -751,16 +679,15 @@ impl IndexedDBStorage {
     pub async fn get_storage_quota(&self) -> WebResult<(u64, u64)> {
         let navigator = web_sys::window()
             .ok_or_else(|| WebError::WebApi {
-                message: "Window not available".to_string(),
+                api: "Window".to_string(),
+            source: Box::new(std::io::Error::new(std::io::ErrorKind::NotFound, "Window not available")),
             })?
             .navigator();
 
         if let Ok(storage_manager) = navigator.storage() {
             let estimate_promise = storage_manager.estimate();
             let estimate_result = JsFuture::from(estimate_promise).await
-                .map_err(|e| WebError::WebApi {
-                    message: format!("Storage estimate failed: {:?}", e),
-                })?;
+                .map_err(|e| WebError::web_api_js("Storage estimate", e))?;
 
             let estimate_obj = js_sys::Object::from(estimate_result);
 
@@ -785,16 +712,15 @@ impl IndexedDBStorage {
     pub async fn request_persistent_storage(&self) -> WebResult<bool> {
         let navigator = web_sys::window()
             .ok_or_else(|| WebError::WebApi {
-                message: "Window not available".to_string(),
+                api: "Window".to_string(),
+            source: Box::new(std::io::Error::new(std::io::ErrorKind::NotFound, "Window not available")),
             })?
             .navigator();
 
         if let Ok(storage_manager) = navigator.storage() {
             let persist_promise = storage_manager.persist();
             let persist_result = JsFuture::from(persist_promise).await
-                .map_err(|e| WebError::WebApi {
-                    message: format!("Persist request failed: {:?}", e),
-                })?;
+                .map_err(|e| WebError::web_api_js("Persist request", e))?;
 
             Ok(persist_result.as_bool().unwrap_or(false))
         } else {

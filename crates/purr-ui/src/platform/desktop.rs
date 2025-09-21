@@ -380,7 +380,7 @@ impl Platform for PlatformImpl {
 }
 
 impl PlatformImpl {
-    /// Helper method to create model metadata for WhisperModel
+    /// Helper method to create model metadata for `WhisperModel`
     fn create_model_metadata(&self, model: &WhisperModel) -> ModelMetadata {
         ModelMetadata::new(
             "ggml".to_string(),
@@ -404,7 +404,7 @@ impl PlatformImpl {
         })
     }
 
-    /// Helper method to get download URL for a model (since get_url is private)
+    /// Helper method to get download URL for a model (since `get_url` is private)
     fn get_model_download_url(model: &WhisperModel) -> String {
         let base_url = if model.as_str().contains("tdrz") {
             "https://huggingface.co/akashmjn/tinydiarize-whisper.cpp/resolve/main"

@@ -135,7 +135,7 @@ impl Dummy<Faker> for AudioData {
         let sample_rate = *[8000, 16000, 44100, 48000].choose(rng).unwrap();
         let channels = rng.gen_range(1..=2);
         let duration_secs = rng.gen_range(0.1..=10.0);
-        let num_samples = (sample_rate as f32 * duration_secs * channels as f32) as usize;
+        let num_samples = (sample_rate as f32 * duration_secs * f32::from(channels)) as usize;
 
         let samples: Vec<f32> = (0..num_samples)
             .map(|_| rng.gen_range(-1.0..=1.0))
@@ -268,8 +268,8 @@ pub fn url_string() -> impl Strategy<Value = String> {
         prop::option::of("[a-zA-Z0-9/_-]{0,50}"),
     )
         .prop_map(|(scheme, domain, tld, path)| match path {
-            Some(p) if !p.is_empty() => format!("{}://{}.{}/{}", scheme, domain, tld, p),
-            _ => format!("{}://{}.{}", scheme, domain, tld),
+            Some(p) if !p.is_empty() => format!("{scheme}://{domain}.{tld}/{p}"),
+            _ => format!("{scheme}://{domain}.{tld}"),
         })
 }
 

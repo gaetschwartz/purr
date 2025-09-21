@@ -326,21 +326,18 @@ async fn handle_streaming_output(
                 output_buffer.push('\n');
             }
         } else {
-            match cli.output {
-                OutputFormat::Json => {
-                    writeln!(stdout, "{chunk_text}").into_diagnostic()?;
-                }
-                _ => {
-                    write!(stdout, "{chunk_text}").into_diagnostic()?;
-                    if !chunk.text.is_empty() && !chunk.text.ends_with('\n') {
-                        if matches!(cli.output, OutputFormat::Srt) {
-                            writeln!(stdout).into_diagnostic()?;
-                        } else {
-                            write!(stdout, " ").into_diagnostic()?;
-                        }
+            if let OutputFormat::Json = cli.output {
+                writeln!(stdout, "{chunk_text}").into_diagnostic()?;
+            } else {
+                write!(stdout, "{chunk_text}").into_diagnostic()?;
+                if !chunk.text.is_empty() && !chunk.text.ends_with('\n') {
+                    if matches!(cli.output, OutputFormat::Srt) {
+                        writeln!(stdout).into_diagnostic()?;
+                    } else {
+                        write!(stdout, " ").into_diagnostic()?;
                     }
-                    stdout.flush().into_diagnostic()?;
                 }
+                stdout.flush().into_diagnostic()?;
             }
         }
 

@@ -250,12 +250,12 @@ impl AudioProcessor {
             let error_msg = format!("Audio file not found: {}", path.display());
             let error = WhisperError::from(AudioProcessingError::processing_failed(
                 "file validation",
-                std::io::Error::new(std::io::ErrorKind::NotFound, error_msg.clone())
+                std::io::Error::new(std::io::ErrorKind::NotFound, error_msg.clone()),
             ));
             let _ = tx.send(Err(WhisperError::from(
                 AudioProcessingError::processing_failed(
                     "file validation",
-                    std::io::Error::new(std::io::ErrorKind::NotFound, error_msg)
+                    std::io::Error::new(std::io::ErrorKind::NotFound, error_msg),
                 ),
             )));
             return Err(error);
@@ -386,12 +386,12 @@ impl AudioProcessor {
                 "No audio data could be extracted from file - file may be corrupted or unsupported";
             let error = WhisperError::from(AudioProcessingError::processing_failed(
                 "audio extraction",
-                std::io::Error::new(std::io::ErrorKind::InvalidData, error_msg)
+                std::io::Error::new(std::io::ErrorKind::InvalidData, error_msg),
             ));
             let _ = tx.send(Err(WhisperError::from(
                 AudioProcessingError::processing_failed(
                     "audio extraction",
-                    std::io::Error::new(std::io::ErrorKind::InvalidData, error_msg)
+                    std::io::Error::new(std::io::ErrorKind::InvalidData, error_msg),
                 ),
             )));
             return Err(error);
@@ -476,7 +476,7 @@ impl AudioProcessor {
                     *last_rate = None;
 
                     // Try fallback processing for this frame
-                    if let Ok(_) = Self::process_frame_fallback(frame, samples, current_rate) {
+                    if let Ok(()) = Self::process_frame_fallback(frame, samples, current_rate) {
                         // Fallback succeeded, continue
                     } else {
                         // Log warning and skip this frame
@@ -523,10 +523,12 @@ impl AudioProcessor {
                                     slice[idx]
                                 } else {
                                     // Average all channels for mono conversion
-                                    let sum: i32 = (0..channels).map(|c| slice[idx + c as usize] as i32).sum();
-                                    (sum / channels as i32) as i16
+                                    let sum: i32 = (0..channels)
+                                        .map(|c| i32::from(slice[idx + c as usize]))
+                                        .sum();
+                                    (sum / i32::from(channels)) as i16
                                 };
-                                samples.push(mono_sample as f32 / 32768.0);
+                                samples.push(f32::from(mono_sample) / 32768.0);
                                 pos += step;
                             }
                         }
@@ -534,7 +536,7 @@ impl AudioProcessor {
                             // Planar format - take first channel only
                             while (pos as usize) < sample_count {
                                 let idx = pos as usize;
-                                samples.push(slice[idx] as f32 / 32768.0);
+                                samples.push(f32::from(slice[idx]) / 32768.0);
                                 pos += step;
                             }
                         }
@@ -559,8 +561,9 @@ impl AudioProcessor {
                                     slice[idx]
                                 } else {
                                     // Average all channels for mono conversion
-                                    let sum: f32 = (0..channels).map(|c| slice[idx + c as usize]).sum();
-                                    sum / channels as f32
+                                    let sum: f32 =
+                                        (0..channels).map(|c| slice[idx + c as usize]).sum();
+                                    sum / f32::from(channels)
                                 };
                                 samples.push(mono_sample);
                                 pos += step;
@@ -661,7 +664,9 @@ impl AudioProcessor {
                     *last_rate = None;
 
                     // Try fallback processing for this frame
-                    if let Ok(_) = Self::process_frame_fallback(frame, output_samples, current_rate) {
+                    if let Ok(()) =
+                        Self::process_frame_fallback(frame, output_samples, current_rate)
+                    {
                         // Fallback succeeded, continue
                     } else {
                         // Log warning and skip this frame
@@ -850,7 +855,7 @@ mod tests {
         // Send an error
         let test_error = WhisperError::from(AudioProcessingError::processing_failed(
             "test operation",
-            std::io::Error::new(std::io::ErrorKind::Other, "Test error")
+            std::io::Error::new(std::io::ErrorKind::Other, "Test error"),
         ));
         tx.send(Err(test_error)).unwrap();
         drop(tx);

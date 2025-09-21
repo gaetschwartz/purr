@@ -153,10 +153,7 @@ pub enum AudioProcessingError {
 
     #[error("Audio file too large: {file_size} bytes exceeds limit of {max_size} bytes")]
     #[diagnostic(code(whisper::audio::file_too_large))]
-    FileTooLarge {
-        file_size: u64,
-        max_size: u64,
-    },
+    FileTooLarge { file_size: u64, max_size: u64 },
 
     #[error(transparent)]
     #[diagnostic(transparent)]
@@ -219,6 +216,7 @@ impl AudioProcessingError {
     }
 
     /// Create a new file too large error
+    #[must_use]
     pub fn file_too_large(file_size: u64, max_size: u64) -> Self {
         Self::FileTooLarge {
             file_size,

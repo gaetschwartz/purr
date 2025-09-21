@@ -105,10 +105,7 @@ pub enum PlatformError {
 
     #[error("Storage quota exceeded: {requested} bytes requested, {available} available")]
     #[diagnostic(code(platform::storage_quota_exceeded))]
-    StorageQuotaExceeded {
-        requested: u64,
-        available: u64,
-    },
+    StorageQuotaExceeded { requested: u64, available: u64 },
 
     #[error(transparent)]
     #[diagnostic(transparent)]
@@ -167,11 +164,12 @@ impl PlatformError {
     }
 
     /// Create a new `PlatformError::Unsupported`Platform
+    #[must_use]
     pub fn unsupported_platform() -> Self {
         PlatformError::Other(UnsupportedPlatformError)
     }
 
-    /// Create a new PlatformError::ModelManagement
+    /// Create a new `PlatformError::ModelManagement`
     pub fn model_management<E>(err: E) -> Self
     where
         E: Into<Box<dyn std::error::Error + Send + Sync>>,
@@ -179,7 +177,7 @@ impl PlatformError {
         PlatformError::ModelManagement { source: err.into() }
     }
 
-    /// Create a new PlatformError::ModelNotFound
+    /// Create a new `PlatformError::ModelNotFound`
     pub fn model_not_found<S>(model_id: S) -> Self
     where
         S: Into<String>,
@@ -189,7 +187,7 @@ impl PlatformError {
         }
     }
 
-    /// Create a new PlatformError::ModelDownloadFailed
+    /// Create a new `PlatformError::ModelDownloadFailed`
     pub fn model_download_failed<S1, S2, E>(model_id: S1, url: S2, source: E) -> Self
     where
         S1: Into<String>,
@@ -203,7 +201,7 @@ impl PlatformError {
         }
     }
 
-    /// Create a new PlatformError::ModelInstallationFailed
+    /// Create a new `PlatformError::ModelInstallationFailed`
     pub fn model_installation_failed<S, P, E>(model_id: S, path: P, source: E) -> Self
     where
         S: Into<String>,
@@ -217,7 +215,7 @@ impl PlatformError {
         }
     }
 
-    /// Create a new PlatformError::InvalidModelMetadata
+    /// Create a new `PlatformError::InvalidModelMetadata`
     pub fn invalid_model_metadata<S1, S2, S3>(model_id: S1, field: S2, issue: S3) -> Self
     where
         S1: Into<String>,
@@ -231,7 +229,7 @@ impl PlatformError {
         }
     }
 
-    /// Create a new PlatformError::ModelVerificationFailed
+    /// Create a new `PlatformError::ModelVerificationFailed`
     pub fn model_verification_failed<S1, S2, S3>(
         model_id: S1,
         expected_checksum: S2,
@@ -249,7 +247,8 @@ impl PlatformError {
         }
     }
 
-    /// Create a new PlatformError::StorageQuotaExceeded
+    /// Create a new `PlatformError::StorageQuotaExceeded`
+    #[must_use]
     pub fn storage_quota_exceeded(requested: u64, available: u64) -> Self {
         PlatformError::StorageQuotaExceeded {
             requested,
@@ -274,8 +273,13 @@ impl std::fmt::Display for UnsupportedPlatformError {
 /// Status updates for file processing operations
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ProcessingStatus {
-    InProgress { bytes_processed: usize },
-    Completed { total_bytes: usize, file_id: String },
+    InProgress {
+        bytes_processed: usize,
+    },
+    Completed {
+        total_bytes: usize,
+        file_id: String,
+    },
     Error {
         operation: String,
         error_message: String,
@@ -330,7 +334,8 @@ pub enum TranscriptionStatus {
 pub struct FileId(String);
 
 impl FileId {
-    /// Create a new FileId
+    /// Create a new `FileId`
+    #[must_use]
     pub fn new(id: String) -> Self {
         FileId(id)
     }
@@ -391,7 +396,8 @@ pub struct ModelInfo {
 }
 
 impl ModelInfo {
-    /// Create a new ModelInfo instance
+    /// Create a new `ModelInfo` instance
+    #[must_use]
     pub fn new(
         id: String,
         name: String,
@@ -411,6 +417,7 @@ impl ModelInfo {
     }
 
     /// Get the model file path if installed
+    #[must_use]
     pub fn local_path(&self) -> Option<&PathBuf> {
         if self.is_installed {
             self.metadata.local_path.as_ref()
@@ -445,7 +452,7 @@ pub struct ModelMetadata {
     pub architecture: String,
     /// Language support (e.g., "multilingual", "en-only")
     pub language_support: String,
-    /// Quantization level (e.g., "q5_1", "q8_0", "fp16")
+    /// Quantization level (e.g., "`q5_1`", "`q8_0`", "fp16")
     pub quantization: Option<String>,
     /// Model version or revision
     pub version: String,
@@ -454,7 +461,8 @@ pub struct ModelMetadata {
 }
 
 impl ModelMetadata {
-    /// Create new ModelMetadata instance
+    /// Create new `ModelMetadata` instance
+    #[must_use]
     pub fn new(
         format: String,
         architecture: String,
@@ -474,18 +482,21 @@ impl ModelMetadata {
     }
 
     /// Builder pattern for setting download URL
+    #[must_use]
     pub fn with_download_url(mut self, url: String) -> Self {
         self.download_url = Some(url);
         self
     }
 
     /// Builder pattern for setting quantization
+    #[must_use]
     pub fn with_quantization(mut self, quantization: String) -> Self {
         self.quantization = Some(quantization);
         self
     }
 
     /// Builder pattern for adding platform-specific attributes
+    #[must_use]
     pub fn with_platform_attribute(mut self, key: String, value: String) -> Self {
         self.platform_specific.insert(key, value);
         self
@@ -533,14 +544,14 @@ pub enum ModelOperationProgress {
 /// - Full featured model management with persistent storage
 ///
 /// ## Web Platform
-/// - Uses browser storage APIs (IndexedDB, OPFS) for model caching
+/// - Uses browser storage APIs (`IndexedDB`, OPFS) for model caching
 /// - Models may be fetched on-demand or preloaded
 /// - Limited by browser storage quotas
 /// - May use WebGPU-optimized model formats
 ///
 /// # Thread Safety
 ///
-/// All implementations must be thread-safe and use tokio::sync primitives
+/// All implementations must be thread-safe and use `tokio::sync` primitives
 /// for coordination between async operations. The trait requires Send + Sync.
 #[async_trait::async_trait]
 pub trait Platform: Send + Sync + 'static {
@@ -559,7 +570,7 @@ pub trait Platform: Send + Sync + 'static {
     /// * `file_path` - Original file path/name for context
     ///
     /// # Returns
-    /// A unique FileId that can be used for subsequent operations
+    /// A unique `FileId` that can be used for subsequent operations
     async fn process_file(
         &self,
         file_data: Bytes,
@@ -569,7 +580,7 @@ pub trait Platform: Send + Sync + 'static {
     /// Start transcription of processed file
     ///
     /// # Arguments
-    /// * `file_id` - ID returned from process_file
+    /// * `file_id` - ID returned from `process_file`
     /// * `request` - Transcription parameters
     ///
     /// # Returns
@@ -596,7 +607,7 @@ pub trait Platform: Send + Sync + 'static {
     /// List all models currently installed on the platform
     ///
     /// # Returns
-    /// Vector of ModelInfo for installed models, thread-safe access
+    /// Vector of `ModelInfo` for installed models, thread-safe access
     ///
     /// # Platform Differences
     /// - **Desktop**: Scans local model directory, uses file system metadata
@@ -606,7 +617,7 @@ pub trait Platform: Send + Sync + 'static {
     /// List all models available for download/installation
     ///
     /// # Returns
-    /// Vector of ModelInfo for available models, may include remote models
+    /// Vector of `ModelInfo` for available models, may include remote models
     ///
     /// # Platform Differences
     /// - **Desktop**: Returns full model catalog, can download any model
@@ -623,7 +634,7 @@ pub trait Platform: Send + Sync + 'static {
     /// Stream of progress updates during download and installation
     ///
     /// # Implementation Requirements
-    /// - MUST use tokio::sync primitives for thread safety
+    /// - MUST use `tokio::sync` primitives for thread safety
     /// - MUST support concurrent downloads with proper synchronization
     /// - MUST handle partial downloads and resume capability
     /// - MUST validate model integrity after download
@@ -645,7 +656,7 @@ pub trait Platform: Send + Sync + 'static {
     /// * `model_id` - Unique identifier of the model
     ///
     /// # Returns
-    /// ModelInfo with current installation status and metadata
+    /// `ModelInfo` with current installation status and metadata
     async fn get_model_info(&self, model_id: &str) -> Result<ModelInfo, PlatformError>;
 
     /// Remove an installed model from the platform

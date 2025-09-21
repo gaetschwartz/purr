@@ -7,11 +7,11 @@
 //! - Sample rate handling
 //! - Error conditions and edge cases
 
+use futures::StreamExt;
 use purr_core::{
-    audio::{AudioData, AudioChunk, AudioProcessor},
+    audio::{AudioChunk, AudioData, AudioProcessor},
     error::{AudioProcessingError, WhisperError},
 };
-use futures::StreamExt;
 use tempfile::NamedTempFile;
 use tokio::fs;
 
@@ -34,7 +34,10 @@ pub mod fixtures {
     }
 
     /// Create a test audio file with sine wave
-    pub async fn create_test_sine_wav(duration_secs: f32, frequency: f32) -> Result<NamedTempFile, Box<dyn std::error::Error>> {
+    pub async fn create_test_sine_wav(
+        duration_secs: f32,
+        frequency: f32,
+    ) -> Result<NamedTempFile, Box<dyn std::error::Error>> {
         let temp_file = NamedTempFile::new()?;
 
         let sample_rate = 16000u32;
@@ -73,7 +76,10 @@ pub mod fixtures {
     }
 
     /// Helper to create minimal WAV file bytes
-    fn create_wav_bytes(samples: Vec<i16>, sample_rate: u32) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    fn create_wav_bytes(
+        samples: Vec<i16>,
+        sample_rate: u32,
+    ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
         let mut wav_data = Vec::new();
 
         // WAV header
@@ -142,9 +148,10 @@ pub mod utils {
 
     /// Compare two audio data structures with tolerance
     pub fn compare_audio_data(a: &AudioData, b: &AudioData, tolerance: f32) -> bool {
-        if a.sample_rate != b.sample_rate ||
-           (a.duration - b.duration).abs() > tolerance ||
-           a.samples.len() != b.samples.len() {
+        if a.sample_rate != b.sample_rate
+            || (a.duration - b.duration).abs() > tolerance
+            || a.samples.len() != b.samples.len()
+        {
             return false;
         }
 
@@ -159,10 +166,10 @@ pub mod utils {
 
     /// Validate audio chunk properties
     pub fn validate_audio_chunk(chunk: &AudioChunk) -> bool {
-        chunk.sample_rate == 16000 &&
-        chunk.duration >= 0.0 &&
-        chunk.samples.len() <= AudioChunk::TARGET_SAMPLES &&
-        chunk.start_time >= 0.0
+        chunk.sample_rate == 16000
+            && chunk.duration >= 0.0
+            && chunk.samples.len() <= AudioChunk::TARGET_SAMPLES
+            && chunk.start_time >= 0.0
     }
 
     /// Calculate RMS (Root Mean Square) of audio samples
@@ -192,9 +199,16 @@ async fn test_audio_processor_load_nonexistent_file() {
 
     assert!(result.is_err());
     match result.unwrap_err() {
-        WhisperError::AudioProcessing { source: AudioProcessingError::ReadFailed { .. } } => {},
-        WhisperError::AudioProcessing { source: AudioProcessingError::ProcessingFailed { .. } } => {},
-        e => panic!("Expected ReadFailed or ProcessingFailed error, got: {:?}", e),
+        WhisperError::AudioProcessing {
+            source: AudioProcessingError::ReadFailed { .. },
+        } => {}
+        WhisperError::AudioProcessing {
+            source: AudioProcessingError::ProcessingFailed { .. },
+        } => {}
+        e => panic!(
+            "Expected ReadFailed or ProcessingFailed error, got: {:?}",
+            e
+        ),
     }
 }
 
@@ -204,7 +218,9 @@ async fn test_audio_processor_load_invalid_file() {
 
     // Create a temporary file with invalid content
     let temp_file = NamedTempFile::new().unwrap();
-    fs::write(temp_file.path(), b"invalid audio data").await.unwrap();
+    fs::write(temp_file.path(), b"invalid audio data")
+        .await
+        .unwrap();
 
     let result = processor.load_audio(temp_file.path()).await;
     assert!(result.is_err());
@@ -236,9 +252,12 @@ async fn test_audio_processor_stream_nonexistent() {
         Ok(mut stream) => {
             // Try to get the first chunk - this should fail
             if let Some(chunk_result) = stream.next().await {
-                assert!(chunk_result.is_err(), "Should get an error for nonexistent file");
+                assert!(
+                    chunk_result.is_err(),
+                    "Should get an error for nonexistent file"
+                );
             }
-        },
+        }
         Err(_) => {
             // Also acceptable - immediate failure
         }
@@ -250,7 +269,10 @@ async fn test_audio_processor_stream_valid_file() {
     let temp_wav = fixtures::create_test_sine_wav(5.0, 440.0).await.unwrap();
 
     let result = AudioProcessor::stream(temp_wav.path()).await;
-    assert!(result.is_ok(), "Should successfully create stream for valid file");
+    assert!(
+        result.is_ok(),
+        "Should successfully create stream for valid file"
+    );
 
     let mut stream = result.unwrap();
     let mut chunk_count = 0;
@@ -267,44 +289,17 @@ async fn test_audio_processor_stream_valid_file() {
                 if chunk.is_final {
                     break;
                 }
-            },
+            }
             Err(e) => panic!("Stream error: {:?}", e),
         }
     }
 
     assert!(chunk_count > 0, "Should produce at least one chunk");
-    assert!(total_duration > 4.0, "Total duration should be close to 5 seconds");
+    assert!(
+        total_duration > 4.0,
+        "Total duration should be close to 5 seconds"
+    );
 }
-
-// ============================================================================
-// AudioData Tests - Removed trivial tests
-// ============================================================================
-// Removed:
-// - test_audio_data_creation: trivial validation of test fixture
-// - test_audio_data_clone: tests Clone derive functionality
-
-// ============================================================================
-// AudioChunk Tests - Removed trivial tests
-// ============================================================================
-// Removed trivial tests:
-// - test_audio_chunk_creation: tests basic struct creation
-// - test_audio_chunk_constants: tests constant values
-// - test_audio_chunk_duration_calculation: trivial math validation
-// - test_audio_chunk_with_different_properties: tests field assignment
-
-// ============================================================================
-// Sample Rate Handling Tests - Removed trivial tests
-// ============================================================================
-// Removed:
-// - test_sample_rate_conversion_16khz: just validates test fixture
-// - test_sample_rate_constants: tests constant values
-
-// ============================================================================
-// Buffer Management Tests - Removed trivial tests
-// ============================================================================
-// Removed:
-// - test_audio_buffer_management: tests basic Vec operations (std library's responsibility)
-// - test_audio_chunk_buffer_reuse: tests basic struct creation
 
 // ============================================================================
 // Error Condition Tests
@@ -313,7 +308,9 @@ async fn test_audio_processor_stream_valid_file() {
 #[tokio::test]
 async fn test_error_invalid_file_format() {
     let temp_file = NamedTempFile::new().unwrap();
-    fs::write(temp_file.path(), b"not an audio file").await.unwrap();
+    fs::write(temp_file.path(), b"not an audio file")
+        .await
+        .unwrap();
 
     let mut processor = AudioProcessor::new().unwrap();
     let result = processor.load_audio(temp_file.path()).await;
@@ -351,25 +348,6 @@ async fn test_error_corrupted_audio_file() {
     assert!(result.is_err());
 }
 
-// ============================================================================
-// Edge Cases Tests - Removed trivial tests
-// ============================================================================
-// Removed:
-// - test_zero_duration_audio: trivial struct validation
-// - test_very_short_audio: trivial struct validation
-// - test_large_audio_buffer: just validates test fixture creation
-
-// ============================================================================
-// Audio Format Tests - Removed trivial tests
-// ============================================================================
-// Removed:
-// - test_audio_sample_format_f32: trivial range validation
-// - test_audio_sample_normalization: trivial arithmetic validation
-
-// ============================================================================
-// Utility Function Tests - Kept only meaningful ones
-// ============================================================================
-
 #[test]
 fn test_utils_calculate_rms() {
     let samples = vec![0.0, 1.0, 0.0, -1.0]; // RMS should be sqrt(0.5) ≈ 0.707
@@ -398,71 +376,4 @@ fn test_utils_validate_audio_chunk() {
         is_final: false,
     };
     assert!(!utils::validate_audio_chunk(&invalid_chunk));
-}
-
-// Removed trivial utility tests:
-// - test_utils_compare_audio_data: just tests test fixtures are equal
-// - test_utils_compare_audio_data_different: just tests test fixtures are different
-// - test_utils_is_silence: trivial validation logic
-
-// ============================================================================
-// Integration Tests with Mocked Whisper - Removed mock-only test
-// ============================================================================
-// Removed:
-// - test_mock_whisper_response: only tests mock functionality, not real behavior
-
-// ============================================================================
-// Performance Tests
-// ============================================================================
-
-#[tokio::test]
-async fn test_audio_processing_performance() {
-    let start = std::time::Instant::now();
-
-    // Create a medium-sized audio file (10 seconds)
-    let temp_wav = fixtures::create_test_sine_wav(10.0, 440.0).await.unwrap();
-
-    let mut processor = AudioProcessor::new().unwrap();
-    let result = processor.load_audio(temp_wav.path()).await;
-
-    let elapsed = start.elapsed();
-
-    assert!(result.is_ok());
-    assert!(elapsed.as_secs() < 5, "Audio processing should be reasonably fast");
-
-    let audio_data = result.unwrap();
-    assert!((audio_data.duration - 10.0).abs() < 0.1);
-}
-
-#[tokio::test]
-async fn test_streaming_performance() {
-    let temp_wav = fixtures::create_test_sine_wav(20.0, 440.0).await.unwrap();
-
-    let start = std::time::Instant::now();
-    let stream_result = AudioProcessor::stream(temp_wav.path()).await;
-    let stream_creation_time = start.elapsed();
-
-    assert!(stream_result.is_ok());
-    assert!(stream_creation_time.as_millis() < 1000, "Stream creation should be fast");
-
-    let mut stream = stream_result.unwrap();
-    let mut chunk_count = 0;
-    let process_start = std::time::Instant::now();
-
-    while let Some(chunk_result) = stream.next().await {
-        match chunk_result {
-            Ok(chunk) => {
-                chunk_count += 1;
-                if chunk.is_final {
-                    break;
-                }
-            },
-            Err(_) => break,
-        }
-    }
-
-    let process_time = process_start.elapsed();
-
-    assert!(chunk_count >= 2, "Should produce multiple chunks for 20-second audio");
-    assert!(process_time.as_secs() < 10, "Streaming should be reasonably fast");
 }

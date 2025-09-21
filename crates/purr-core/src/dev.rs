@@ -37,10 +37,10 @@ impl SystemInfo {
             backends: WhisperGpuBackend::ALL
                 .iter()
                 .map(|backend| {
-                    let status = if !backend.is_enabled() {
-                        FeatureStatus::Disabled
-                    } else {
+                    let status = if backend.is_enabled() {
                         FeatureStatus::Available(None) // VRAM not determined here
+                    } else {
+                        FeatureStatus::Disabled
                     };
                     (*backend, status)
                 })

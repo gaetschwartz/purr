@@ -29,6 +29,7 @@ pub struct TranscriptionStats {
 }
 
 impl TranscriptionStats {
+    #[must_use]
     pub fn real_time_factor(&self) -> f32 {
         if self.processing_time > 0.0 {
             self.audio_duration / self.processing_time as f32
@@ -37,6 +38,7 @@ impl TranscriptionStats {
         }
     }
 
+    #[must_use]
     pub fn words_per_minute(&self) -> f32 {
         if self.audio_duration > 0.0 {
             (self.word_count as f32 * 60.0) / self.audio_duration
