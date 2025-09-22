@@ -27,17 +27,6 @@ pub fn Navbar() -> Element {
                             span { "Purr" }
                         }
                     }
-
-                    // Navigation links
-                    div { class: "hidden md:block",
-                        div { class: "ml-10 flex items-baseline space-x-4",
-                            Link {
-                                to: Route::Home {},
-                                class: "px-3 py-2 rounded-md text-sm font-medium text-gray-700 hover:text-teal-600 hover:bg-teal-50 transition-all duration-200",
-                                "Upload Audio"
-                            }
-                        }
-                    }
                 }
             }
         }
