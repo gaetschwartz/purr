@@ -110,7 +110,7 @@ impl Platform for PlatformImpl {
             let _ = tx.send(Ok(TranscriptionStatus::ProcessingAudio)).await;
 
             // Start transcription
-            match transcribe_file_stream(&file_path, Some(config)).await {
+            match transcribe_file_stream(&file_path, config).await {
                 Ok(mut stream) => {
                     let mut word_count = 0;
                     let mut audio_duration = 0.0f32;

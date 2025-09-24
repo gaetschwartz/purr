@@ -42,10 +42,10 @@ rstest = "0.26"
 pretty_assertions = "1.4.1"
 
 [features]
-cuda = []
-vulkan = []
-no-metal = []
-coreml = []
+cuda = ["whisper-rs/cuda"]
+vulkan = ["whisper-rs/vulkan"]
+metal = ["whisper-rs/metal"]
+coreml = ["whisper-rs/coreml"]
 
 [build-dependencies]
 build-target = "0.8.0"

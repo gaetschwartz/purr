@@ -855,7 +855,7 @@ mod tests {
         // Send an error
         let test_error = WhisperError::from(AudioProcessingError::processing_failed(
             "test operation",
-            std::io::Error::new(std::io::ErrorKind::Other, "Test error"),
+            std::io::Error::other("Test error"),
         ));
         tx.send(Err(test_error)).unwrap();
         drop(tx);

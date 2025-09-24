@@ -51,10 +51,8 @@ pub async fn transcribe_file_sync<P: AsRef<std::path::Path>>(
 /// True streaming transcription function that processes audio in chunks
 pub async fn transcribe_file_stream<P: AsRef<std::path::Path>>(
     audio_path: P,
-    config: Option<TranscriptionConfig>,
+    config: TranscriptionConfig,
 ) -> Result<StreamingTranscriptionResult> {
-    let config = config.unwrap_or_default();
-
     info!(
         "Starting real-time streaming transcription for: {:?}",
         audio_path.as_ref()

@@ -194,8 +194,14 @@ impl WhisperGpuBackend {
     /// Check if a backend is enabled at compile time
     #[must_use]
     pub fn is_enabled(&self) -> bool {
-        const BACKENDS: &str = env!("WHISPER_RS_BACKENDS");
-        BACKENDS.split(',').any(|b| b == <&str>::from(self))
+        match self {
+            WhisperGpuBackend::Vulkan => cfg!(feature = "vulkan"),
+            WhisperGpuBackend::Cuda => cfg!(feature = "cuda"),
+            #[cfg(target_os = "macos")]
+            WhisperGpuBackend::Metal => cfg!(feature = "metal"),
+            #[cfg(target_os = "macos")]
+            WhisperGpuBackend::CoreML => cfg!(feature = "coreml"),
+        }
     }
 
     /// Pretty name of the backend

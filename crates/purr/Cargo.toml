@@ -44,7 +44,7 @@ strum = { version = "0.27.2", features = ["derive"] }
 [features]
 cuda = ["purr-core/cuda"]
 vulkan = ["purr-core/vulkan"]
-no-metal = ["purr-core/no-metal"]
+metal = ["purr-core/metal"]
 coreml = ["purr-core/coreml"]
 
 [build-dependencies]

@@ -28,7 +28,7 @@ jobs:
           sudo apt install -y --no-install-recommends clang curl pkg-config gcc ca-certificates openssl libssl-dev cmake libc6-dev make wget \
             libavcodec-dev libavformat-dev libavutil-dev libavfilter-dev libavdevice-dev libswscale-dev libswresample-dev \
             llvm \
-            libgtk-3-dev libglib2.0-dev libcairo2-dev libpango1.0-dev libgdk-pixbuf2.0-dev libatk1.0-dev
+            libgtk-3-dev libglib2.0-dev libcairo2-dev libpango1.0-dev libgdk-pixbuf2.0-dev libatk1.0-dev javascriptcoregtk-4.1-dev
       - name: Install cuda
         if: matrix.backend == 'cuda'
         run: |
@@ -77,8 +77,8 @@ jobs:
       - name: Build
         run: |
           cargo build --release ${{ matrix.backend != 'none' && format(' --features {0}', matrix.backend) || '' }}
-          dx bundle --release --platform desktop ${{ matrix.backend != 'none' && format(' --features {0}', matrix.backend) || '' }}
-          dx bundle --release --platform web ${{ matrix.backend != 'none' && format(' --features {0}', matrix.backend) || '' }}
+          dx bundle -p purr-ui --release --platform desktop ${{ matrix.backend != 'none' && format(' --features {0}', matrix.backend) || '' }}
+          dx bundle -p purr-ui --release --platform web ${{ matrix.backend != 'none' && format(' --features {0}', matrix.backend) || '' }}
       - name: Archive production artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -109,8 +109,8 @@ jobs:
       - name: Build
         run: |
           cargo build --release --features metal,coreml
-          dx bundle --release --platform desktop --features metal,coreml
-          dx bundle --release --platform web --features metal,coreml
+          dx bundle -p purr-ui --release --platform desktop --features metal,coreml
+          dx bundle -p purr-ui --release --platform web --features metal,coreml
       - name: Archive production artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -144,6 +144,7 @@ jobs:
           Add-Content $env:GITHUB_ENV "FFMPEG_DIR=${pwd}\ffmpeg`n"
           Add-Content $env:GITHUB_PATH "${pwd}\ffmpeg\bin`n"
           choco install -r cmake
+          vcpkg install --triplet x64-windows ffmpeg[avcodec,avformat]
       - name: Install cuda
         if: matrix.backend == 'cuda'
         run: |
@@ -183,14 +184,14 @@ jobs:
         if: matrix.backend != 'cuda'
         run: |
           cargo build --release ${{ matrix.backend != 'none' && format('--features {0}', matrix.backend) || '' }}
-          dx bundle --release --platform desktop
-          dx bundle --release --platform web
+          dx bundle -p purr-ui --release --platform desktop
+          dx bundle -p purr-ui --release --platform web
       - name: Build with CUDA
         if: matrix.backend == 'cuda'
         run: |
           cargo build --verbose --release --features cuda
-          dx bundle --release --platform desktop --features cuda
-          dx bundle --release --platform web --features cuda
+          dx bundle -p purr-ui --release --platform desktop --features cuda
+          dx bundle -p purr-ui --release --platform web --features cuda
       - name: Archive production artifacts
         uses: actions/upload-artifact@v4
         with:

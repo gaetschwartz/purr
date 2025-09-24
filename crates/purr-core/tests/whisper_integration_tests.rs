@@ -338,7 +338,7 @@ async fn test_streaming_transcription_high_level_api() {
         .with_gpu(false)
         .with_language("en");
 
-    let result = transcribe_file_stream(temp_audio.path(), Some(config)).await;
+    let result = transcribe_file_stream(temp_audio.path(), config).await;
     assert!(result.is_ok(), "High-level streaming API should work");
 
     let mut streaming_result = result.unwrap();
@@ -522,7 +522,7 @@ async fn test_transcription_performance_streaming() {
         .with_language("en");
 
     let start = std::time::Instant::now();
-    let result = transcribe_file_stream(temp_audio.path(), Some(config)).await;
+    let result = transcribe_file_stream(temp_audio.path(), config).await;
     assert!(result.is_ok(), "Streaming performance test should succeed");
 
     let mut streaming_result = result.unwrap();

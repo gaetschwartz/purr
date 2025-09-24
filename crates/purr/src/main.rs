@@ -139,7 +139,7 @@ async fn main_impl() -> miette::Result<()> {
         info!("Streaming transcription...");
 
         // Handle streaming transcription
-        let stream = match transcribe_file_stream(&audio_file, Some(config)).await {
+        let stream = match transcribe_file_stream(&audio_file, config).await {
             Ok(stream) => stream,
             Err(e) => {
                 // Check if this is a "no model found" error
@@ -925,9 +925,7 @@ fn print_model_groups() {
 
 async fn setup_config(cli: &Cli) -> miette::Result<TranscriptionConfig> {
     // Build transcription config
-    let mut config = TranscriptionConfig::new()
-        .with_gpu(!cli.no_gpu)
-        .with_sample_rate(16000); // Whisper's preferred sample rate
+    let mut config = TranscriptionConfig::new().with_sample_rate(16000); // Whisper's preferred sample rate
 
     let model_manager = ModelManager::new()?;
     if let Some(ref model_string) = cli.model {
@@ -989,6 +987,7 @@ async fn setup_config(cli: &Cli) -> miette::Result<TranscriptionConfig> {
         .with_threads(cli.threads.unwrap_or_else(num_cpus::get))
         .with_temperature(cli.temperature)
         .with_verbose(cli.verbose)
+        .with_gpu(!cli.no_gpu)
         .apply_output_format(|f| {
             f.with_timestamps(cli.timestamps)
                 .with_word_timestamps(cli.word_timestamps)
