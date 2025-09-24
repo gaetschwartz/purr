@@ -17,8 +17,7 @@ pub struct IconProps {
     /// The type of icon to display
     pub icon_type: IconType,
     /// CSS classes to apply to the icon
-    #[props(default = "w-6 h-6")]
-    pub class: &'static str,
+    pub class: Option<&'static str>,
 }
 
 /// Reusable Icon component that loads SVGs from assets
@@ -48,16 +47,9 @@ pub fn Icon(props: IconProps) -> Element {
         ),
     };
 
-    let classes = if props.class == "w-6 h-6" {
-        default_classes
-    } else {
-        props.class
-    };
+    let classes = props.class.unwrap_or(default_classes);
 
     rsx! {
-        div {
-            class: "{classes}",
-            dangerous_inner_html: "{svg_content}"
-        }
+        div { class: "{classes}", dangerous_inner_html: "{svg_content}" }
     }
 }
