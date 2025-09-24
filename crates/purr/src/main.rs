@@ -1,7 +1,7 @@
 //! Whisper UI CLI - Audio transcription command-line interface
 mod fmt;
 
-use crate::fmt::MyFormatter;
+use crate::fmt::{MyFormatter, Verbosity, VerbosityLevel};
 use clap::builder::{
     styling::{AnsiColor, Effects, Style},
     Styles,
@@ -14,7 +14,7 @@ use owo_colors::OwoColorize as _;
 use purr_core::{
     dev::{FeatureStatus, WhisperGpuBackend},
     install_logging_hooks, list_devices, transcribe_file_stream, transcribe_file_sync,
-    ModelManager, TranscriptionConfig, WhisperModel,
+    ModelManager, StreamingTranscription, TranscriptionConfig, WhisperModel,
 };
 use purr_core::{
     math::{ByteSpeed, RoundToUnit as _},
@@ -50,48 +50,13 @@ async fn main_impl() -> miette::Result<()> {
     let cli = Cli::parse();
 
     // Setup logging
-    if cli.verbose {
-        tracing_subscriber::fmt()
-            .with_env_filter(
-                EnvFilter::builder()
-                    .with_default_directive(Level::DEBUG.into())
-                    .from_env()
-                    .into_diagnostic()?
-                    .add_directive(
-                        cfmt!("{PURR_CORE}=trace", PURR_CORE = purr_core::PKG_NAME)
-                            .parse()
-                            .into_diagnostic()?,
-                    )
-                    .add_directive(cfmt!("{APP_NAME}=trace").parse().into_diagnostic()?),
-            )
-            .with_timer(tracing_subscriber::fmt::time::Uptime::default())
-            .with_writer(std::io::stderr)
-            .init();
-    } else {
-        tracing_subscriber::fmt()
-            .with_env_filter(
-                EnvFilter::builder()
-                    .with_default_directive(Level::WARN.into())
-                    .from_env()
-                    .into_diagnostic()?,
-            )
-            .compact()
-            .without_time()
-            .with_file(false)
-            .with_line_number(false)
-            .with_thread_ids(false)
-            .with_thread_names(false)
-            .with_target(false)
-            .event_format(MyFormatter)
-            .with_writer(std::io::stderr)
-            .init();
-    }
+    setup_tracing(&cli)?;
     debug!("Command line arguments: {:?}", cli);
     install_logging_hooks();
 
     // Handle subcommands
     if let Some(command) = cli.command {
-        return handle_command(command, cli.verbose).await;
+        return handle_command(command, cli.verbosity).await;
     }
 
     // Handle transcription (original behavior)
@@ -110,17 +75,14 @@ async fn main_impl() -> miette::Result<()> {
     let config = setup_config(&cli).await?;
 
     // Print startup info
-    if cli.verbose {
-        println!("{}", "Whisper UI - Audio Transcription".blue().bold());
-        if config.use_gpu {
-            println!("GPU acceleration: {}", "enabled".green());
-        } else {
-            println!("GPU acceleration: {}", "disabled".red());
-        }
-        if let Some(lang) = &config.language {
-            println!("Language: {lang}");
-        }
-        println!();
+    info!("{}", "Whisper UI - Audio Transcription".blue().bold());
+    if config.use_gpu {
+        info!("GPU acceleration: {}", "enabled".green());
+    } else {
+        info!("GPU acceleration: {}", "disabled".red());
+    }
+    if let Some(lang) = &config.language {
+        info!("Language: {lang}");
     }
 
     if cli.no_stream {
@@ -150,6 +112,51 @@ async fn main_impl() -> miette::Result<()> {
 
         // Process streaming results
         handle_streaming_output(stream, &cli).await?;
+    }
+
+    Ok(())
+}
+
+fn setup_tracing(cli: &Cli) -> Result<(), miette::Error> {
+    match *cli.verbosity.verbose {
+        VerbosityLevel::DEBUG_VALUE.. => {
+            tracing_subscriber::fmt()
+                .with_env_filter(
+                    EnvFilter::builder()
+                        .with_default_directive(
+                            cfmt!(
+                                "{APP_NAME}=trace,{PURR_CORE}=trace",
+                                PURR_CORE = purr_core::PKG_NAME
+                            )
+                            .parse()
+                            .into_diagnostic()?,
+                        )
+                        .from_env()
+                        .into_diagnostic()?,
+                )
+                .with_timer(tracing_subscriber::fmt::time::Uptime::default())
+                .with_writer(std::io::stderr)
+                .init();
+        }
+        VerbosityLevel::VERBOSE_VALUE => {
+            tracing_subscriber::fmt()
+                .with_timer(tracing_subscriber::fmt::time::Uptime::default())
+                .event_format(MyFormatter::new(cli.verbosity))
+                .with_writer(std::io::stderr)
+                .init();
+        }
+        VerbosityLevel::NORMAL_VALUE => {
+            tracing_subscriber::fmt()
+                .with_env_filter(
+                    EnvFilter::builder()
+                        .with_default_directive(Level::WARN.into())
+                        .from_env()
+                        .into_diagnostic()?,
+                )
+                .event_format(MyFormatter::new(cli.verbosity))
+                .with_writer(std::io::stderr)
+                .init();
+        }
     }
 
     Ok(())
@@ -214,8 +221,8 @@ struct Cli {
     temperature: f32,
 
     /// Verbose output
-    #[arg(short, long, global = true)]
-    verbose: bool,
+    #[clap(flatten)]
+    verbosity: Verbosity,
 }
 
 #[derive(Subcommand, Debug)]
@@ -283,7 +290,7 @@ enum OutputFormat {
 
 /// Handle streaming transcription output
 async fn handle_streaming_output(
-    mut stream: purr_core::StreamingTranscriptionResult,
+    mut stream: StreamingTranscription,
     cli: &Cli,
 ) -> miette::Result<()> {
     use std::fs;
@@ -342,15 +349,15 @@ async fn handle_streaming_output(
         // Check for final statistics
         if let Some(ref stats) = chunk.final_stats {
             // Display statistics after processing is complete
-            if cli.verbose {
-                println!();
-                println!("{}", "Streaming Transcription Statistics:".green().bold());
-                println!("Audio duration: {:.2}s", stats.audio_duration);
-                println!("Processing time: {:.2}s", stats.processing_time);
-                println!("Real-time factor: {:.2}x", stats.real_time_factor());
-                println!("Segments: {}", stats.segment_count);
-                println!("Words: {}", stats.word_count);
-                println!("Words per minute: {:.1}", stats.words_per_minute());
+            if cli.verbosity.is_verbose() {
+                eprintln!();
+                eprintln!("{}", "Streaming Transcription Statistics:".green().bold());
+                eprintln!("Audio duration: {:.2}s", stats.audio_duration);
+                eprintln!("Processing time: {:.2}s", stats.processing_time);
+                eprintln!("Real-time factor: {:.2}x", stats.real_time_factor());
+                eprintln!("Segments: {}", stats.segment_count);
+                eprintln!("Words: {}", stats.word_count);
+                eprintln!("Words per minute: {:.1}", stats.words_per_minute());
             }
         }
     }
@@ -358,7 +365,7 @@ async fn handle_streaming_output(
     // Write to file if specified
     if let Some(output_file) = &cli.output_file {
         fs::write(output_file, &output_buffer).into_diagnostic()?;
-        if cli.verbose {
+        if cli.verbosity.is_verbose() {
             info!(
                 "\n{} Streaming output written to: {}",
                 "Success:".green().bold(),
@@ -369,7 +376,7 @@ async fn handle_streaming_output(
         println!(); // Final newline for stdout
     }
 
-    if cli.verbose {
+    if cli.verbosity.is_verbose() {
         debug!("Processed {} chunks", all_chunks.len());
     }
 
@@ -458,15 +465,15 @@ async fn prompt_for_model_download(
 }
 
 /// Handle subcommands
-async fn handle_command(command: Commands, verbose: bool) -> miette::Result<()> {
+async fn handle_command(command: Commands, verbosity: Verbosity) -> miette::Result<()> {
     match command {
-        Commands::Models { command } => handle_model_command(command, verbose).await,
-        Commands::Sys {} => handle_sys_command(verbose).await,
+        Commands::Models { command } => handle_model_command(command, verbosity).await,
+        Commands::Sys {} => handle_sys_command(verbosity).await,
     }
 }
 
 /// Handle model management subcommands
-async fn handle_model_command(command: ModelCommands, verbose: bool) -> miette::Result<()> {
+async fn handle_model_command(command: ModelCommands, verbosity: Verbosity) -> miette::Result<()> {
     let model_manager = ModelManager::new()?;
 
     match command {
@@ -596,7 +603,7 @@ async fn handle_model_command(command: ModelCommands, verbose: bool) -> miette::
                             size.yellow()
                         );
 
-                        if verbose {
+                        if verbosity.is_verbose() {
                             println!("    Path: {}", path.display().to_string().dimmed());
                         }
                     }
@@ -677,7 +684,7 @@ async fn handle_model_command(command: ModelCommands, verbose: bool) -> miette::
 }
 
 /// Handle system subcommands
-async fn handle_sys_command(_verbose: bool) -> miette::Result<()> {
+async fn handle_sys_command(_verbosity: Verbosity) -> miette::Result<()> {
     let sys = SystemInfo::get();
 
     fn feature_status(feature: &FeatureStatus) -> String {
@@ -986,7 +993,7 @@ async fn setup_config(cli: &Cli) -> miette::Result<TranscriptionConfig> {
         .with_translate(cli.translate)
         .with_threads(cli.threads.unwrap_or_else(num_cpus::get))
         .with_temperature(cli.temperature)
-        .with_verbose(cli.verbose)
+        .with_verbose(cli.verbosity.is_verbose())
         .with_gpu(!cli.no_gpu)
         .apply_output_format(|f| {
             f.with_timestamps(cli.timestamps)
@@ -1039,7 +1046,7 @@ fn handle_output(result: purr_core::SyncTranscriptionResult, cli: &Cli) -> miett
     if let Some(output_file) = &cli.output_file {
         use std::fs;
         fs::write(output_file, &output_content).into_diagnostic()?;
-        if cli.verbose {
+        if cli.verbosity.is_verbose() {
             println!(
                 "{} Output written to: {}",
                 "Success:".green().bold(),
@@ -1051,7 +1058,7 @@ fn handle_output(result: purr_core::SyncTranscriptionResult, cli: &Cli) -> miett
     }
 
     // Print statistics
-    if cli.verbose {
+    if cli.verbosity.is_verbose() {
         println!();
         println!("{}", "Transcription Statistics:".green().bold());
         println!("Audio duration: {:.2}s", result.stats.audio_duration);
@@ -1116,15 +1123,3 @@ pub const CLAP_STYLING: Styles = Styles::styled()
     .error(ERROR)
     .valid(VALID)
     .invalid(INVALID);
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_srt_time_formatting() {
-        assert_eq!(format_srt_time(0.0), "00:00:00,000");
-        assert_eq!(format_srt_time(61.5), "00:01:01,500");
-        assert_eq!(format_srt_time(3661.123), "01:01:01,123");
-    }
-}

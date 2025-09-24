@@ -2,8 +2,6 @@
 /// This allows both the WASM frontend and native server to use the same components
 use dioxus::prelude::*;
 
-/// Client API module for HTTP/WebSocket communication
-mod client;
 /// Define a components module that contains all shared components for our app.
 mod components;
 /// Platform abstraction layer for client-only architecture

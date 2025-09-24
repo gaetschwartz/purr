@@ -7,21 +7,42 @@ use crate::{
 };
 use futures::{Stream, StreamExt};
 use std::{
+    collections::VecDeque,
     pin::Pin,
     task::{Context, Poll},
 };
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::UnboundedReceiverStream;
-use tracing::warn;
-use whisper_rs::{FullParams, SamplingStrategy, WhisperContext};
+use tracing::{debug, warn};
+use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperState};
 
 pub struct StreamWhisperTranscriber {
     context: WhisperContext,
     config: TranscriptionConfig,
 }
 
+/// Streaming state for managing audio buffers and context
+struct StreamingState {
+    /// Main audio buffer for processing
+    audio_buffer: VecDeque<f32>,
+    /// Previous audio chunk for context continuity (overlapping window)
+    context_buffer: Vec<f32>,
+    /// Whisper processing state
+    whisper_state: WhisperState,
+    /// Current chunk index
+    chunk_index: usize,
+    /// Total processed audio duration
+    total_duration: f32,
+    /// Start time for current processing window
+    window_start_time: f32,
+    /// Buffer size for processing chunks (in samples)
+    chunk_size: usize,
+    /// Context size to retain between chunks (in samples)
+    context_size: usize,
+}
+
 impl WhisperTranscriber for StreamWhisperTranscriber {
-    type TranscriberResult = StreamingTranscriptionResult;
+    type TranscriberResult = StreamingTranscription;
     type InputData = AudioStream;
 
     async fn from_config(config: crate::TranscriptionConfig) -> crate::Result<Self>
@@ -38,7 +59,7 @@ impl WhisperTranscriber for StreamWhisperTranscriber {
         Ok(Self { context, config })
     }
 
-    async fn transcribe(self, input: AudioStream) -> crate::Result<StreamingTranscriptionResult> {
+    async fn transcribe(self, input: AudioStream) -> crate::Result<StreamingTranscription> {
         let (tx, rx) = mpsc::unbounded_channel();
 
         // Spawn background task to process audio stream
@@ -49,9 +70,69 @@ impl WhisperTranscriber for StreamWhisperTranscriber {
             }
         });
 
-        Ok(StreamingTranscriptionResult {
+        Ok(StreamingTranscription {
             stream: Box::pin(UnboundedReceiverStream::new(rx)),
         })
+    }
+}
+
+impl StreamingState {
+    fn new(context: &WhisperContext) -> crate::Result<Self> {
+        let whisper_state = context.create_state().map_err(|e| {
+            crate::WhisperError::from(TranscriptionError::StateCreation { source: e })
+        })?;
+
+        // Stream processing configuration - based on whisper.cpp stream example
+        let chunk_size = 16000 * 3; // 3 seconds at 16kHz
+        let context_size = 16000; // 1 second overlap for context
+
+        Ok(Self {
+            audio_buffer: VecDeque::new(),
+            context_buffer: Vec::new(),
+            whisper_state,
+            chunk_index: 0,
+            total_duration: 0.0,
+            window_start_time: 0.0,
+            chunk_size,
+            context_size,
+        })
+    }
+
+    fn add_audio(&mut self, samples: &[f32]) {
+        self.audio_buffer.extend(samples);
+    }
+
+    fn should_process(&self) -> bool {
+        self.audio_buffer.len() >= self.chunk_size
+    }
+
+    fn prepare_processing_buffer(&mut self) -> Vec<f32> {
+        // Create processing buffer with context + new audio
+        let mut processing_buffer = Vec::with_capacity(self.context_buffer.len() + self.chunk_size);
+
+        // Add previous context for continuity
+        processing_buffer.extend_from_slice(&self.context_buffer);
+
+        // Add new audio chunk
+        let chunk_samples: Vec<f32> = self
+            .audio_buffer
+            .drain(..self.chunk_size.min(self.audio_buffer.len()))
+            .collect();
+
+        processing_buffer.extend_from_slice(&chunk_samples);
+
+        // Update context buffer with the end of current chunk for next iteration
+        let context_start = chunk_samples.len().saturating_sub(self.context_size);
+        self.context_buffer = chunk_samples[context_start..].to_vec();
+
+        processing_buffer
+    }
+
+    fn update_timing(&mut self, processed_samples: usize) {
+        let processed_duration = processed_samples as f32 / 16000.0;
+        self.total_duration += processed_duration;
+        self.window_start_time = self.total_duration - (self.context_buffer.len() as f32 / 16000.0);
+        self.chunk_index += 1;
     }
 }
 
@@ -61,118 +142,244 @@ impl StreamWhisperTranscriber {
         mut input: AudioStream,
         tx: mpsc::UnboundedSender<crate::Result<StreamingChunk>>,
     ) -> crate::Result<()> {
-        // Statistics tracking
-        let start_time = std::time::Instant::now();
-        let mut total_audio_duration = 0.0f32;
-        let mut accumulated_samples = Vec::new();
+        let processing_start = std::time::Instant::now();
+        let mut streaming_state = StreamingState::new(&self.context)?;
+        let mut is_stream_complete = false;
 
-        // Collect all audio chunks first
+        debug!("Starting progressive audio stream processing");
+
+        // Process audio chunks as they arrive
         while let Some(chunk_result) = input.next().await {
             match chunk_result {
                 Ok(audio_chunk) => {
-                    total_audio_duration += audio_chunk.duration;
-                    accumulated_samples.extend_from_slice(&audio_chunk.samples);
+                    debug!(
+                        "Received audio chunk {} with {} samples, duration: {:.2}s, is_final: {}",
+                        audio_chunk.index,
+                        audio_chunk.samples.len(),
+                        audio_chunk.duration,
+                        audio_chunk.is_final
+                    );
 
-                    // If this is the final chunk, process all accumulated audio
+                    // Add audio samples to the streaming buffer
+                    streaming_state.add_audio(&audio_chunk.samples);
+
+                    // Mark if this is the final chunk
                     if audio_chunk.is_final {
-                        // Create a state for processing complete audio
-                        let mut state = self.context.create_state().map_err(|e| {
-                            crate::WhisperError::from(TranscriptionError::StateCreation {
-                                source: e,
-                            })
-                        })?;
+                        is_stream_complete = true;
+                    }
 
-                        // Create params with proper whisper.cpp defaults
-                        let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
+                    // Process accumulated audio when we have enough samples
+                    while streaming_state.should_process()
+                        || (is_stream_complete && !streaming_state.audio_buffer.is_empty())
+                    {
+                        let processing_buffer = streaming_state.prepare_processing_buffer();
 
-                        // Configure parameters to match whisper.cpp behavior
-                        params.set_language(self.config.language.as_deref());
-                        params.set_translate(self.config.translate);
-
-                        if let Some(threads) = self.config.num_threads {
-                            params.set_n_threads(threads as i32);
+                        if processing_buffer.is_empty() {
+                            break;
                         }
 
-                        params.set_temperature(self.config.temperature);
-                        params.set_print_timestamps(false);
-                        params.set_print_progress(false);
-                        params.set_print_special(false);
-                        params.set_print_realtime(false);
+                        let buffer_len = processing_buffer.len();
+                        let is_final_chunk =
+                            is_stream_complete && streaming_state.audio_buffer.is_empty();
 
-                        // Process the complete audio data (like non-streaming mode)
-                        match state.full(params, &accumulated_samples) {
-                            Ok(_) => {
-                                // Extract results from state
-                                let num_segments = state.full_n_segments();
-                                let mut full_text = String::new();
-
-                                for i in 0..num_segments {
-                                    if let Some(segment) = state.get_segment(i) {
-                                        match segment.to_str() {
-                                            Ok(text) => full_text.push_str(text),
-                                            Err(e) => {
-                                                warn!("Failed to get segment text: {}", e);
-                                            }
-                                        }
-                                    } else {
-                                        warn!(
-                                            "Failed to get segment {} (out of {})",
-                                            i, num_segments
-                                        );
-                                    }
+                        // Process the audio chunk through whisper
+                        match self
+                            .process_audio_chunk(
+                                &mut streaming_state,
+                                processing_buffer,
+                                is_final_chunk,
+                            )
+                            .await
+                        {
+                            Ok(Some(chunk)) => {
+                                debug!(
+                                    "Emitting streaming chunk {} with text: '{}'",
+                                    chunk.chunk_index,
+                                    chunk.text.trim()
+                                );
+                                if tx.send(Ok(chunk)).is_err() {
+                                    debug!("Receiver dropped, stopping stream processing");
+                                    return Ok(());
                                 }
-
-                                // Calculate final statistics
-                                let processing_time = start_time.elapsed().as_secs_f64();
-                                let word_count = full_text.split_whitespace().count();
-                                let final_stats = Some(TranscriptionStats {
-                                    processing_time,
-                                    audio_duration: total_audio_duration,
-                                    segment_count: num_segments as usize,
-                                    word_count,
-                                });
-
-                                // Send the final result as a single chunk (maintaining streaming interface)
-                                let streaming_chunk = StreamingChunk {
-                                    text: full_text,
-                                    start: 0.0,
-                                    end: f64::from(total_audio_duration),
-                                    is_final: true,
-                                    chunk_index: 0,
-                                    final_stats,
-                                };
-
-                                if tx.send(Ok(streaming_chunk)).is_err() {
-                                    // Receiver dropped, stop processing
-                                    break;
-                                }
+                            }
+                            Ok(None) => {
+                                // No transcription result for this chunk (silent audio, etc.)
+                                debug!(
+                                    "No transcription result for chunk {}",
+                                    streaming_state.chunk_index
+                                );
                             }
                             Err(e) => {
-                                warn!("Transcription failed: {}", e);
-                                let _ = tx.send(Err(crate::WhisperError::from(
-                                    TranscriptionError::Failed { source: e },
-                                )));
+                                warn!("Failed to process audio chunk: {}", e);
+                                let _ = tx.send(Err(e));
+                                return Ok(());
                             }
                         }
+
+                        streaming_state.update_timing(buffer_len);
+                    }
+
+                    // If this was the final chunk and we've processed everything, break
+                    if is_stream_complete && streaming_state.audio_buffer.is_empty() {
                         break;
                     }
                 }
                 Err(e) => {
+                    warn!("Audio stream error: {}", e);
                     let _ = tx.send(Err(e));
                     break;
                 }
             }
         }
 
+        // Send final statistics if we completed successfully
+        if is_stream_complete {
+            let final_processing_time = processing_start.elapsed().as_secs_f64();
+            debug!(
+                "Stream processing completed. Total duration: {:.2}s, processing time: {:.2}s",
+                streaming_state.total_duration, final_processing_time
+            );
+        }
+
         Ok(())
+    }
+
+    async fn process_audio_chunk(
+        &mut self,
+        streaming_state: &mut StreamingState,
+        audio_buffer: Vec<f32>,
+        is_final_chunk: bool,
+    ) -> crate::Result<Option<StreamingChunk>> {
+        if audio_buffer.is_empty() {
+            return Ok(None);
+        }
+
+        // Create whisper processing parameters
+        let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
+
+        // Configure parameters for streaming (based on whisper.cpp)
+        params.set_language(self.config.language.as_deref());
+        params.set_translate(self.config.translate);
+        params.set_temperature(self.config.temperature);
+
+        if let Some(threads) = self.config.num_threads {
+            params.set_n_threads(threads as i32);
+        }
+
+        // Streaming-specific settings
+        params.set_print_timestamps(false);
+        params.set_print_progress(false);
+        params.set_print_special(false);
+        params.set_print_realtime(false);
+        params.set_no_context(false); // Keep context for continuity
+        params.set_single_segment(false); // Allow multiple segments
+
+        // Process audio through whisper
+        match streaming_state.whisper_state.full(params, &audio_buffer) {
+            Ok(_) => {
+                let num_segments = streaming_state.whisper_state.full_n_segments();
+
+                if num_segments == 0 {
+                    // No speech detected in this chunk
+                    return Ok(None);
+                }
+
+                // Extract transcription text from all segments
+                let mut chunk_text = String::new();
+                let mut chunk_start_time = f64::MAX;
+                let mut chunk_end_time: f64 = 0.0;
+
+                for i in 0..num_segments {
+                    if let Some(segment) = streaming_state.whisper_state.get_segment(i) {
+                        // Get segment timing (whisper provides relative times)
+                        let segment_start = segment.start_timestamp() as f64 / 100.0; // Convert from centiseconds
+                        let segment_end = segment.end_timestamp() as f64 / 100.0;
+
+                        // Adjust timing based on our streaming window
+                        let adjusted_start =
+                            streaming_state.window_start_time as f64 + segment_start;
+                        let adjusted_end = streaming_state.window_start_time as f64 + segment_end;
+
+                        chunk_start_time = chunk_start_time.min(adjusted_start);
+                        chunk_end_time = chunk_end_time.max(adjusted_end);
+
+                        match segment.to_str() {
+                            Ok(text) => {
+                                let trimmed_text = text.trim();
+                                if !trimmed_text.is_empty() {
+                                    if !chunk_text.is_empty() {
+                                        chunk_text.push(' ');
+                                    }
+                                    chunk_text.push_str(trimmed_text);
+                                }
+                            }
+                            Err(e) => {
+                                warn!("Failed to extract segment text: {}", e);
+                            }
+                        }
+                    }
+                }
+
+                // Only return a chunk if we have actual text
+                if chunk_text.trim().is_empty() {
+                    return Ok(None);
+                }
+
+                // Prepare final stats for the last chunk
+                let final_stats = if is_final_chunk {
+                    let total_processing_time = std::time::Instant::now()
+                        .duration_since(
+                            std::time::Instant::now()
+                                - std::time::Duration::from_secs_f32(
+                                    streaming_state.total_duration,
+                                ),
+                        )
+                        .as_secs_f64();
+                    let word_count = chunk_text.split_whitespace().count();
+
+                    Some(TranscriptionStats {
+                        processing_time: total_processing_time,
+                        audio_duration: streaming_state.total_duration,
+                        segment_count: num_segments as usize,
+                        word_count,
+                    })
+                } else {
+                    None
+                };
+
+                // Ensure we have valid timing
+                if chunk_start_time == f64::MAX {
+                    chunk_start_time = streaming_state.window_start_time as f64;
+                }
+                if chunk_end_time == 0.0 {
+                    chunk_end_time = (streaming_state.window_start_time
+                        + (audio_buffer.len() as f32 / 16000.0))
+                        as f64;
+                }
+
+                let streaming_chunk = StreamingChunk {
+                    text: chunk_text,
+                    start: chunk_start_time,
+                    end: chunk_end_time,
+                    is_final: is_final_chunk,
+                    chunk_index: streaming_state.chunk_index,
+                    final_stats,
+                };
+
+                Ok(Some(streaming_chunk))
+            }
+            Err(e) => Err(crate::WhisperError::from(TranscriptionError::Failed {
+                source: e,
+            })),
+        }
     }
 }
 
-pub struct StreamingTranscriptionResult {
+pub struct StreamingTranscription {
     stream: Pin<Box<dyn Stream<Item = Result<StreamingChunk, crate::WhisperError>> + Send>>,
 }
 
-impl Stream for StreamingTranscriptionResult {
+impl Stream for StreamingTranscription {
     type Item = Result<StreamingChunk, crate::WhisperError>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
@@ -180,4 +387,4 @@ impl Stream for StreamingTranscriptionResult {
     }
 }
 
-impl TranscriptionResult for StreamingTranscriptionResult {}
+impl TranscriptionResult for StreamingTranscription {}

@@ -24,7 +24,7 @@ use crate::whisper::{
 };
 
 // Re-export public types from whisper module for CLI
-pub use whisper::streaming::StreamingTranscriptionResult;
+pub use whisper::streaming::StreamingTranscription;
 pub use whisper::{StreamingChunk, SyncTranscriptionResult};
 
 /// High-level transcription function
@@ -52,7 +52,7 @@ pub async fn transcribe_file_sync<P: AsRef<std::path::Path>>(
 pub async fn transcribe_file_stream<P: AsRef<std::path::Path>>(
     audio_path: P,
     config: TranscriptionConfig,
-) -> Result<StreamingTranscriptionResult> {
+) -> Result<StreamingTranscription> {
     info!(
         "Starting real-time streaming transcription for: {:?}",
         audio_path.as_ref()

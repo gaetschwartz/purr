@@ -417,12 +417,3 @@ impl TranscriptionWorker {
         }
     }
 }
-
-// Worker session status
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SessionStatus {
-    pub id: String,
-    pub config: TranscriptionConfig,
-    pub is_ready: bool,
-    pub active_requests: usize,
-}
