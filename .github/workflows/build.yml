@@ -108,8 +108,8 @@ jobs:
           cargo install dioxus-cli --version ${{ env.DIOXUS_VERSION }} --locked
       - name: Build
         run: |
-          export CFLAGS="-mno-i8mm"
-          export CXXFLAGS="-mno-i8mm"
+          export CFLAGS="-march=armv8.2-a+noi8mm"
+          export CXXFLAGS="-march=armv8.2-a+noi8mm"
           cargo build --release --features metal,coreml
           dx bundle -p purr-ui --release --platform desktop --features metal,coreml
           dx bundle -p purr-ui --release --platform web --features metal,coreml
