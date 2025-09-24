@@ -91,6 +91,8 @@ jobs:
   build-macos:
     name: Build macOS (metal)
     runs-on: macos-latest
+    env:
+      GGML_COMPILE_I8MM: '0'
     steps:
       - uses: actions/checkout@v4
       - name: Install dependencies
