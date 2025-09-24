@@ -91,8 +91,6 @@ jobs:
   build-macos:
     name: Build macOS (metal)
     runs-on: macos-latest
-    env:
-      GGML_COMPILE_I8MM: '0'
     steps:
       - uses: actions/checkout@v4
       - name: Install dependencies
@@ -110,6 +108,8 @@ jobs:
           cargo install dioxus-cli --version ${{ env.DIOXUS_VERSION }} --locked
       - name: Build
         run: |
+          export CFLAGS="-mno-i8mm"
+          export CXXFLAGS="-mno-i8mm"
           cargo build --release --features metal,coreml
           dx bundle -p purr-ui --release --platform desktop --features metal,coreml
           dx bundle -p purr-ui --release --platform web --features metal,coreml
