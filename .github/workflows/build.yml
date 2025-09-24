@@ -150,6 +150,7 @@ jobs:
         run: |
           choco install -r visualstudio2022community --installargs "--quiet --wait --norestart --includeRecommended --includeOptional --add Microsoft.VisualStudio.Workload.VCTools --add Microsoft.VisualStudio.Component.VC.Tools.x86.x64"
           choco install -r cuda --version 12.9.1.576
+          choco install -y windows-sdk-10.0
           $CUDA_PATH = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.9\"
           # check if CUDA_PATH exists
           if (-Not (Test-Path $CUDA_PATH)) {
@@ -184,8 +185,8 @@ jobs:
         if: matrix.backend != 'cuda'
         run: |
           cargo build --release ${{ matrix.backend != 'none' && format('--features {0}', matrix.backend) || '' }}
-          dx bundle -p purr-ui --release --platform desktop
-          dx bundle -p purr-ui --release --platform web
+          dx bundle -p purr-ui --release --platform desktop ${{ matrix.backend != 'none' && format('--features {0}', matrix.backend) || '' }}
+          dx bundle -p purr-ui --release --platform web ${{ matrix.backend != 'none' && format('--features {0}', matrix.backend) || '' }}
       - name: Build with CUDA
         if: matrix.backend == 'cuda'
         run: |
