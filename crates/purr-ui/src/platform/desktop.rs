@@ -3,7 +3,10 @@
 use super::{Platform, PlatformError, TranscriptionRequest, TranscriptionStatus};
 use bytes::Bytes;
 use futures::{channel::mpsc, SinkExt, Stream, StreamExt};
-use purr_common::platform::{FileId, FileSource, ModelInfo, ModelMetadata, ModelOperationProgress};
+use purr_common::platform::{
+    DeviceInfo, DeviceType, FileId, FileSource, ModelInfo, ModelMetadata, ModelOperationProgress,
+};
+use purr_core::dev;
 use purr_core::model::{ModelManager, WhisperModel};
 use std::{
     path::{Path, PathBuf},
@@ -379,6 +382,38 @@ impl Platform for PlatformImpl {
 
         let model_path = manager.get_model_path(model);
         Ok(model_path.to_string_lossy().to_string())
+    }
+
+    async fn list_available_devices(&self) -> Result<Vec<DeviceInfo>, PlatformError> {
+        // Use the same logic as purr_core::dev::list_devices()
+        let devices = dev::list_devices();
+
+        let device_infos = devices
+            .into_iter()
+            .map(|device| DeviceInfo {
+                id: device.id,
+                name: device.name,
+                description: Some(device.description),
+                device_type: match device.tpe {
+                    dev::DeviceType::Cpu => DeviceType::Cpu,
+                    dev::DeviceType::Gpu => DeviceType::Gpu,
+                    dev::DeviceType::Accel => DeviceType::Accel,
+                    dev::DeviceType::Unknown => DeviceType::Unknown,
+                },
+                memory_free: Some(device.vram_free),
+                memory_total: Some(device.vram_total),
+                capabilities: device.caps.map(|caps| {
+                    let mut cap_map = std::collections::HashMap::new();
+                    cap_map.insert("async".to_string(), serde_json::Value::Bool(caps.async_));
+                    cap_map.insert("host_buffer".to_string(), serde_json::Value::Bool(caps.host_buffer));
+                    cap_map.insert("buffer_from_host_ptr".to_string(), serde_json::Value::Bool(caps.buffer_from_host_ptr));
+                    cap_map.insert("events".to_string(), serde_json::Value::Bool(caps.events));
+                    cap_map
+                }),
+            })
+            .collect();
+
+        Ok(device_infos)
     }
 }
 

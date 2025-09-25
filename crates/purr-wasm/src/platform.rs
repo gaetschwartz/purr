@@ -11,14 +11,16 @@ use bytes::Bytes;
 use futures::Stream;
 use futures::StreamExt;
 use purr_common::platform::{
-    FileId, FileSource, ModelInfo, ModelMetadata, ModelOperationProgress, Platform, PlatformError,
-    TranscriptionRequest, TranscriptionStatus,
+    DeviceInfo, DeviceType, FileId, FileSource, ModelInfo, ModelMetadata, ModelOperationProgress,
+    Platform, PlatformError, TranscriptionRequest, TranscriptionStatus,
 };
 use std::collections::HashMap;
 use std::path::Path;
 use std::pin::Pin;
 use std::sync::Arc;
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::{oneshot, Mutex, RwLock};
+use wasm_bindgen_futures;
+use web_sys::GpuAdapter;
 
 /// Web platform implementation using WebAssembly and browser APIs
 pub struct PlatformImpl {
@@ -497,6 +499,95 @@ impl Platform for PlatformImpl {
 
         // For web platform, return storage key
         Ok(format!("storage://{model_id}"))
+    }
+
+    async fn list_available_devices(&self) -> Result<Vec<DeviceInfo>, PlatformError> {
+        let mut devices = Vec::new();
+
+        // CPU is always available
+        devices.push(DeviceInfo {
+            id: 0,
+            name: "CPU".to_string(),
+            description: Some("CPU-based transcription".to_string()),
+            device_type: DeviceType::Cpu,
+            memory_free: None, // Don't guess values
+            memory_total: None,
+            capabilities: None,
+        });
+
+        // Check if WebGPU is available using message-passing to isolate non-Send operations
+        let (result_tx, result_rx) = oneshot::channel();
+
+        // Use spawn_local to isolate all non-Send WebGPU operations
+        wasm_bindgen_futures::spawn_local(async move {
+            let webgpu_result = async move {
+                // Move all window/navigator access inside spawn_local
+                let window = match web_sys::window() {
+                    Some(w) => w,
+                    None => return Err("No window available".to_string()),
+                };
+
+                let navigator = window.navigator();
+
+                // Check if WebGPU GPU interface exists
+                if navigator.gpu().is_undefined() {
+                    return Err("WebGPU not available".to_string());
+                }
+
+                let adapter_promise = navigator.gpu().request_adapter();
+                let adapter = wasm_bindgen_futures::JsFuture::from(adapter_promise)
+                    .await
+                    .map_err(|e| format!("Failed to get WebGPU adapter: {:?}", e))?;
+
+                if adapter.is_undefined() {
+                    return Err("No WebGPU adapter found".to_string());
+                }
+
+                let adapter = GpuAdapter::from(adapter);
+                let info = adapter.info();
+                let vendor = info.vendor();
+                let device = info.device();
+                let features = adapter.features();
+
+                let mut caps = HashMap::new();
+                let iter = features.keys();
+                while let Ok(key) = iter.next() {
+                    let value = features.has(&key.as_string().unwrap_or_default());
+                    caps.insert(
+                        key.as_string().unwrap_or_default(),
+                        value.to_string().into(),
+                    );
+                }
+
+                Ok::<DeviceInfo, String>(DeviceInfo {
+                    id: 1,
+                    name: format!("{} {}", vendor, device),
+                    description: Some("WebGPU-based transcription".to_string()),
+                    device_type: DeviceType::Gpu,
+                    memory_free: None, // WebGPU does not expose memory info
+                    memory_total: None,
+                    capabilities: Some(caps),
+                })
+            };
+
+            let result = webgpu_result.await;
+            let _ = result_tx.send(result);
+        });
+
+        // Wait for the result from the spawn_local task
+        if let Ok(webgpu_result) = result_rx.await {
+            match webgpu_result {
+                Ok(device_info) => {
+                    devices.push(device_info);
+                }
+                Err(err_msg) => {
+                    // Log the error but don't fail - just don't add GPU device
+                    tracing::warn!("WebGPU detection failed: {}", err_msg);
+                }
+            }
+        }
+
+        Ok(devices)
     }
 }
 

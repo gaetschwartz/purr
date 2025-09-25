@@ -110,6 +110,13 @@ pub enum PlatformError {
     #[diagnostic(code(platform::storage_quota_exceeded))]
     StorageQuotaExceeded { requested: u64, available: u64 },
 
+    #[error("Device detection error: {source}")]
+    #[diagnostic(code(platform::device_detection))]
+    DeviceDetection {
+        #[source]
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+
     #[error(transparent)]
     #[diagnostic(transparent)]
     Other(#[from] UnsupportedPlatformError),
@@ -257,6 +264,14 @@ impl PlatformError {
             requested,
             available,
         }
+    }
+
+    /// Create a new `PlatformError::DeviceDetection`
+    pub fn device_detection<E>(err: E) -> Self
+    where
+        E: Into<Box<dyn std::error::Error + Send + Sync>>,
+    {
+        PlatformError::DeviceDetection { source: err.into() }
     }
 }
 
@@ -574,6 +589,38 @@ pub enum ModelOperationProgress {
     },
 }
 
+/// Device type for transcription acceleration
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum DeviceType {
+    /// CPU device - always available
+    Cpu,
+    /// GPU device - available when GPU acceleration is supported
+    Gpu,
+    /// Accelerator device (TPU, NPU, etc.)
+    Accel,
+    /// Unknown device type
+    Unknown,
+}
+
+/// Information about available devices for transcription
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeviceInfo {
+    /// Unique device identifier
+    pub id: i32,
+    /// Human-readable device name
+    pub name: String,
+    /// Device description (optional)
+    pub description: Option<String>,
+    /// Device type
+    pub device_type: DeviceType,
+    /// Free memory in bytes (None if unknown)
+    pub memory_free: Option<usize>,
+    /// Total memory in bytes (None if unknown)
+    pub memory_total: Option<usize>,
+    /// Device capabilities (platform-specific)
+    pub capabilities: Option<HashMap<String, serde_json::Value>>,
+}
+
 /// Platform trait defining the interface for platform-specific implementations
 ///
 /// This trait provides a unified interface for both web and desktop platforms,
@@ -730,4 +777,18 @@ pub trait Platform: Send + Sync + 'static {
     /// - **Desktop**: Returns file system path to model file
     /// - **Web**: Returns storage key or blob URL for browser access
     async fn get_model_path(&self, model_id: &str) -> Result<String, PlatformError>;
+
+    /// List available devices for transcription
+    ///
+    /// # Returns
+    /// Vector of available devices with their capabilities
+    ///
+    /// # Platform Differences
+    /// - **Desktop**: Uses GPU detection from purr-core, includes CPU and available GPUs
+    /// - **Web**: Always includes CPU, includes GPU only when WebGPU is available
+    ///
+    /// # Implementation Notes
+    /// - Memory and capability values should be set to None if not accurately determinable
+    /// - Prefer conservative estimates over potentially incorrect values
+    async fn list_available_devices(&self) -> Result<Vec<DeviceInfo>, PlatformError>;
 }
