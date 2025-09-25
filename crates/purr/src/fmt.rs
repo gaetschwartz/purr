@@ -20,7 +20,7 @@ impl MyFormatter {
     pub fn new(verbosity: Verbosity) -> Self {
         let filter: Box<dyn Fn(&Event<'_>) -> bool + Send + Sync> = match *verbosity.verbose {
             VerbosityLevel::NORMAL_VALUE => {
-                Box::new(|event: &Event<'_>| *event.metadata().level() <= Level::INFO)
+                Box::new(|event: &Event<'_>| *event.metadata().level() >= Level::INFO)
             }
             VerbosityLevel::VERBOSE_VALUE => Box::new(|event: &Event<'_>| {
                 if *event.metadata().level() < Level::INFO {
@@ -36,7 +36,7 @@ impl MyFormatter {
                 .any(|t| event.metadata().target().starts_with(t))
             }),
             VerbosityLevel::DEBUG_VALUE => {
-                Box::new(|event: &Event<'_>| *event.metadata().level() <= Level::DEBUG)
+                Box::new(|event: &Event<'_>| *event.metadata().level() >= Level::DEBUG)
             }
             _ => Box::new(|_: &Event<'_>| true),
         };

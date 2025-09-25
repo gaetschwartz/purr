@@ -7,7 +7,6 @@ use clap::builder::{
     Styles,
 };
 use clap::{Parser, Subcommand};
-use const_str::format as cfmt;
 use indicatif::{HumanBytes, HumanDuration, ProgressBar, ProgressStyle};
 use miette::IntoDiagnostic as _;
 use owo_colors::OwoColorize as _;
@@ -29,7 +28,7 @@ use std::{
     io::{self, Write},
 };
 use tracing::{debug, error, info, warn, Level};
-use tracing_subscriber::EnvFilter;
+use tracing_subscriber::{fmt::time::Uptime, EnvFilter};
 
 const APP_NAME: &str = env!("CARGO_PKG_NAME");
 
@@ -39,7 +38,7 @@ shadow!(build);
 async fn main() -> miette::Result<()> {
     // Initialize tracing subscriber
     if let Err(e) = main_impl().await {
-        error!("Application error: {}", e);
+        println!("{}: {}", "Error".red().bold(), e);
         drop(e);
         process::exit(1);
     }
@@ -123,38 +122,25 @@ fn setup_tracing(cli: &Cli) -> Result<(), miette::Error> {
             tracing_subscriber::fmt()
                 .with_env_filter(
                     EnvFilter::builder()
-                        .with_default_directive(
-                            cfmt!(
-                                "{APP_NAME}=trace,{PURR_CORE}=trace",
-                                PURR_CORE = purr_core::PKG_NAME
-                            )
-                            .parse()
-                            .into_diagnostic()?,
-                        )
+                        .with_default_directive(Level::TRACE.into())
                         .from_env()
                         .into_diagnostic()?,
                 )
-                .with_timer(tracing_subscriber::fmt::time::Uptime::default())
-                .with_writer(std::io::stderr)
+                .with_timer(Uptime::default())
+                .with_writer(io::stderr)
                 .init();
         }
         VerbosityLevel::VERBOSE_VALUE => {
             tracing_subscriber::fmt()
-                .with_timer(tracing_subscriber::fmt::time::Uptime::default())
+                .with_timer(Uptime::default())
                 .event_format(MyFormatter::new(cli.verbosity))
-                .with_writer(std::io::stderr)
+                .with_writer(io::stderr)
                 .init();
         }
         VerbosityLevel::NORMAL_VALUE => {
             tracing_subscriber::fmt()
-                .with_env_filter(
-                    EnvFilter::builder()
-                        .with_default_directive(Level::WARN.into())
-                        .from_env()
-                        .into_diagnostic()?,
-                )
                 .event_format(MyFormatter::new(cli.verbosity))
-                .with_writer(std::io::stderr)
+                .with_writer(io::stderr)
                 .init();
         }
     }
