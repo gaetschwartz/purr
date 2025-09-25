@@ -147,12 +147,14 @@ jobs:
           Add-Content $env:GITHUB_PATH "${pwd}\ffmpeg\bin`n"
           choco install -r cmake
           vcpkg install --triplet x64-windows ffmpeg[avcodec,avformat]
+          choco install -y visualstudio2022buildtools
+          choco install -y visualstudio2022-workload-vctools
+          choco install -y llvm
+          choco install -y windows-sdk-10.0
       - name: Install cuda
         if: matrix.backend == 'cuda'
         run: |
-          choco install -r visualstudio2022community --installargs "--quiet --wait --norestart --includeRecommended --includeOptional --add Microsoft.VisualStudio.Workload.VCTools --add Microsoft.VisualStudio.Component.VC.Tools.x86.x64"
           choco install -r cuda --version 12.9.1.576
-          choco install -y windows-sdk-10.0
           $CUDA_PATH = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.9\"
           # check if CUDA_PATH exists
           if (-Not (Test-Path $CUDA_PATH)) {
