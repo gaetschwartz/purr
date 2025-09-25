@@ -191,14 +191,14 @@ jobs:
         if: matrix.backend != 'cuda'
         run: |
           cargo build --release ${{ matrix.backend != 'none' && format('--features {0}', matrix.backend) || '' }}
-          dx bundle -p purr-ui --release --platform desktop ${{ matrix.backend != 'none' && format('--features {0}', matrix.backend) || '' }}
-          dx bundle -p purr-ui --release --platform web ${{ matrix.backend != 'none' && format('--features {0}', matrix.backend) || '' }}
+          dx bundle --verbose -p purr-ui --release --windows ${{ matrix.backend != 'none' && format('--features {0}', matrix.backend) || '' }}
+          dx bundle --verbose -p purr-ui --release --web ${{ matrix.backend != 'none' && format('--features {0}', matrix.backend) || '' }}
       - name: Build with CUDA
         if: matrix.backend == 'cuda'
         run: |
           cargo build --verbose --release --features cuda
-          dx bundle -p purr-ui --release --platform desktop --features cuda
-          dx bundle -p purr-ui --release --platform web --features cuda
+          dx bundle --verbose -p purr-ui --release --windows --features cuda
+          dx bundle --verbose -p purr-ui --release --web --features cuda
       - name: Archive production artifacts
         uses: actions/upload-artifact@v4
         with:
