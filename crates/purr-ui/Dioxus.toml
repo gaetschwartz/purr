@@ -7,6 +7,7 @@ default_platform = "desktop"
 identifier = "dev.gaetans.purr"
 version = "0.1.0"
 publisher = "Gaëtan Schwatz"
+icon = ["crates/purr-ui/assets/icon.png"]
 
 [web.app]
 # The title of the web application
