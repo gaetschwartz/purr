@@ -83,19 +83,15 @@ jobs:
       - name: Build Binary${{ matrix.backend != 'none' && format(' - {0}', matrix.backend) || '' }}
         run: |
           cargo build --release ${{ matrix.backend != 'none' && format(' --features {0}', matrix.backend) || '' }}
-      - name: Build Dioxus Desktop${{ matrix.backend != 'none' && format(' - {0}', matrix.backend) || '' }}
-        run: |
-          sudo modprobe fuse || echo "fuse module not available"
-          sudo chmod +x /home/runner/.cache/tauri/linuxdeploy-x86_64.AppImage || echo "linuxdeploy appimage not installed yet ?"
-          export APPIMAGE_EXTRACT_AND_RUN=1
-          export NO_STRIP=true
-          dx bundle --verbose -p purr-ui --release --platform desktop \
-            --out-dir dist-linux \
-            ${{ matrix.backend != 'none' && format(' --features {0}', matrix.backend) || '' }}
+      #- name: Build Dioxus Desktop${{ matrix.backend != 'none' && format(' - {0}', matrix.backend) || '' }}
+      #  run: |
+      #   dx bundle --verbose -p purr-ui --release --platform desktop \
+      #     --out-dir dist-linux \
+      #     ${{ matrix.backend != 'none' && format(' --features {0}', matrix.backend) || '' }}
       - name: Build Dioxus web
         if: matrix.backend == 'none'
         run: |
-          dx bundle --verbose -p purr-ui --release --platform web --out-dir dist-web
+          dx bundle --verbose -p purr-ui --release --web --out-dir dist-web
       - name: Archive production artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -103,7 +99,11 @@ jobs:
           path: |
             target/release/purr*
             dist-linux/
-            dist-web/
+      - name: Archive web artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: purr-web
+          path: dist-web/
 
   build-macos:
     name: Build macOS ${{ matrix.backend != 'none' && format(' - {0}', matrix.backend) || '' }}
@@ -250,7 +250,7 @@ jobs:
       - name: Download Artifacts
         uses: actions/download-artifact@v4
         with:
-          name: purr-linux
+          name: purr-web
           path: artifacts
       - name: Install Vercel CLI
         run: npm install -g vercel
