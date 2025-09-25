@@ -7,23 +7,7 @@ default_platform = "desktop"
 identifier = "dev.gaetans.purr"
 version = "0.1.0"
 publisher = "Gaëtan Schwatz"
-icon = ["crates/purr-ui/assets/icon.png"]
+icon = ["res/icons/icon.png"]
 
-[web.app]
-# The title of the web application
-title = "Purr - Audio Transcription"
-
-[web.watcher]
-# Include rust source files
-watch_path = ["src", "Cargo.toml", "Dioxus.toml"]
-
-[web.resource]
-# Base application resources
-base_path = "."
-
-[web.resource.dev]
-# Development resource paths
-
-[bundler]
-# Bundle optimizations for production
-optimize = true
+[bundle.windows]
+icon_path = "res/icons/icon.ico"
