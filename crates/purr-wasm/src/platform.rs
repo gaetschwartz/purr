@@ -549,14 +549,12 @@ impl Platform for PlatformImpl {
                 let device = info.device();
                 let features = adapter.features();
 
-                let mut caps = HashMap::new();
+                let mut caps = HashMap::with_capacity(features.size() as usize);
                 let iter = features.keys();
                 while let Ok(key) = iter.next() {
-                    let value = features.has(&key.as_string().unwrap_or_default());
-                    caps.insert(
-                        key.as_string().unwrap_or_default(),
-                        value.to_string().into(),
-                    );
+                    let key = key.as_string().unwrap_or_default();
+                    let value = features.has(&key);
+                    caps.insert(key, value.to_string().into());
                 }
 
                 Ok::<DeviceInfo, String>(DeviceInfo {
@@ -590,5 +588,3 @@ impl Platform for PlatformImpl {
         Ok(devices)
     }
 }
-
-// WASM bindings will be added in a separate module when needed
