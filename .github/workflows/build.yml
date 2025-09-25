@@ -88,7 +88,7 @@ jobs:
           cargo build --release ${{ matrix.backend != 'none' && format(' --features {0}', matrix.backend) || '' }}
       - name: Build Dioxus Desktop${{ matrix.backend != 'none' && format(' - {0}', matrix.backend) || '' }}
         run: |
-          chmod +x ~/.cache/tauri/linuxdeploy-x86_64.AppImage || true
+          export NO_STRIP=true
           dx bundle --verbose -p purr-ui --release --platform desktop \
             --out-dir dist-linux \
             ${{ matrix.backend != 'none' && format(' --features {0}', matrix.backend) || '' }}
