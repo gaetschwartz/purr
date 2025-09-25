@@ -129,14 +129,10 @@ jobs:
           dx bundle --verbose -p purr-ui --release --platform desktop \
           --out-dir dist-macos \
           ${{ matrix.backend != 'none' && format('--features {0}', matrix.backend) || '' }}
-      - name: Build Dioxus web
-        if: matrix.backend == 'none'
-        run: |
-          dx bundle --verbose -p purr-ui --release --platform web --out-dir dist-web
       - name: Archive production artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: purr-macos
+          name: purr-macos${{ matrix.backend != 'none' && format('-{0}', matrix.backend) || '' }}
           path: |
             target/release/purr*
             dist-web/
@@ -216,10 +212,6 @@ jobs:
           dx bundle --verbose -p purr-ui --release --windows \
             --out-dir dist-windows \
             ${{ matrix.backend != 'none' && format('--features {0}', matrix.backend) || '' }}
-      - name: Build Dioxus web
-        if: matrix.backend == 'none'
-        run: |
-          dx bundle --verbose -p purr-ui --release --web --out-dir dist-web
       - name: Archive production artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -228,3 +220,20 @@ jobs:
             target/release/purr*
             dist-windows/
             dist-web/
+  deploy-vercel:
+    name: Deploy to Vercel
+    runs-on: ubuntu-latest
+    needs: [build-linux]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: purr-linux
+          path: artifacts
+      - name: Install Vercel CLI
+        run: npm install -g vercel
+      - name: Pull Vercel Environment Information
+        run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
+      - name: Deploy to Vercel
+        run: vercel --prod --token=${{ secrets.VERCEL_TOKEN }} --prebuilt artifacts/purr-linux/dist-web
