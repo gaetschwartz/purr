@@ -1,4 +1,4 @@
-//! Web platform implementation for Purr transcription engine
+//! WebAssembly platform implementation for Purr transcription engine
 //!
 //! This crate provides a WebAssembly-compatible implementation of the Platform trait
 //! for running Purr in web browsers. It handles file processing, model management,
@@ -49,5 +49,5 @@ pub mod webgpu_test_utils;
 #[wasm_bindgen(start)]
 pub fn init() {
     // Let Dioxus handle panic hooks and WASM setup
-    console_log!("Purr Web Platform initialized - Dioxus manages panic handling");
+    console_log!("Purr WASM Platform initialized - Dioxus manages panic handling");
 }

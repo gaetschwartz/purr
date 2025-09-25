@@ -10,7 +10,7 @@ use tokio::sync::OnceCell;
 mod platform_impl;
 
 #[cfg(all(feature = "web", target_arch = "wasm32", not(feature = "desktop")))]
-pub use purr_web::platform as platform_impl;
+pub use purr_wasm::platform as platform_impl;
 
 #[cfg(not(any(feature = "desktop", all(feature = "web", target_arch = "wasm32"))))]
 #[path = "unimplemented.rs"]

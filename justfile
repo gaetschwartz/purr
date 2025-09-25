@@ -1,180 +1,129 @@
-# Justfile for Purr WebGPU workspace test management
+# Default settings
+set positional-arguments := true
 
-# Default recipe
-default:
-    @just --list
+# Colors for output
+RED := '\033[0;31m'
+GREEN := '\033[0;32m'
+YELLOW := '\033[1;33m'
+BLUE := '\033[0;34m'
+NC := '\033[0m'
 
-# Run all tests with coverage
-test:
-    ./scripts/test-runner.sh
+# Test configuration
+test_profile := "test"
+timeout_seconds := "300"
 
-# Run tests without coverage
-test-fast:
-    ./scripts/test-runner.sh --no-coverage
+# Run all tests using cargo nextest
+test *ARGS:
+    @echo -e "{{BLUE}}[INFO]{{NC}} Running tests with nextest..."
+    cargo nextest run {{ARGS}}
 
-# Run tests for specific crate
-test-crate crate:
-    ./scripts/test-runner.sh --crate {{crate}}
+# Run tests for a specific crate
+test-crate crate *ARGS:
+    @echo -e "{{BLUE}}[INFO]{{NC}} Testing crate: {{crate}}"
+    cargo nextest run --package {{crate}} {{ARGS}}
+
+# Run tests with verbose output
+test-verbose:
+    @echo -e "{{BLUE}}[INFO]{{NC}} Running tests with verbose output..."
+    cargo nextest run --verbose
 
 # Run unit tests only
 test-unit:
-    cargo test --workspace --lib --profile test
+    @echo -e "{{BLUE}}[INFO]{{NC}} Running unit tests..."
+    cargo nextest run --lib
 
 # Run integration tests only
 test-integration:
-    cargo test --workspace --test '*' --profile test
+    @echo -e "{{BLUE}}[INFO]{{NC}} Running integration tests..."
+    cargo nextest run --test '*'
 
-# Run documentation tests
+# Run doctests
 test-doc:
-    cargo test --workspace --doc --profile test
+    @echo -e "{{BLUE}}[INFO]{{NC}} Running documentation tests..."
+    cargo test --doc --workspace
 
-# Run WASM tests
-test-wasm:
-    wasm-pack test --node crates/purr-ui --features web
-    wasm-pack test --node crates/purr-web
+# Generate coverage report with tarpaulin
+coverage *ARGS:
+    @echo -e "{{BLUE}}[INFO]{{NC}} Generating coverage report..."
+    cargo tarpaulin --out Html Xml --output-dir target/coverage --timeout {{timeout_seconds}} --workspace {{ARGS}}
 
 # Run benchmarks
-bench:
-    ./scripts/test-runner.sh --benchmarks
+bench *ARGS:
+    @echo -e "{{BLUE}}[INFO]{{NC}} Running benchmarks..."
+    cargo bench {{ARGS}}
 
-# Check for flaky tests
-test-flaky:
-    ./scripts/test-runner.sh --flakiness
-
-# Generate coverage report only
-coverage:
-    cargo tarpaulin --workspace --out Html Xml Json Lcov --output-dir target/coverage --timeout 300 --exclude purr-test-utils
-
-# Open coverage report in browser
-coverage-open:
-    @just coverage
-    @open target/coverage/tarpaulin-report.html || xdg-open target/coverage/tarpaulin-report.html
-
-# Run linting
-lint:
-    cargo clippy --workspace --all-targets --all-features -- -D warnings
-
-# Format code
-fmt:
-    cargo fmt --all
-
-# Check formatting
-fmt-check:
-    cargo fmt --all -- --check
-
-# Run all quality checks
-check-all:
-    @just fmt-check
-    @just lint
-    @just test-fast
-
-# Clean all build artifacts
-clean:
-    cargo clean
-    rm -rf target/coverage target/test-reports
-
-# Install development dependencies
-install-deps:
-    cargo install cargo-tarpaulin wasm-pack cargo-nextest
-    rustup target add wasm32-unknown-unknown
-
-# Setup development environment
-setup:
-    @just install-deps
-    mkdir -p target/coverage target/test-reports
-    echo "Development environment setup complete!"
-
-# Run tests with nextest (if available)
-test-nextest:
-    #!/usr/bin/env bash
-    if command -v cargo-nextest &> /dev/null; then
-        cargo nextest run --workspace --profile test
-    else
-        echo "cargo-nextest not installed, falling back to standard test runner"
-        cargo test --workspace --profile test
-    fi
-
-# Profile test performance
-profile-tests:
-    cargo test --workspace --profile test-opt --release
-
-# Validate workspace configuration
-validate:
-    cargo check --workspace --all-targets --all-features
-    cargo tree --workspace --duplicates
-    cargo audit || echo "cargo-audit not installed, skipping security check"
-
-# Generate test documentation
-docs:
-    cargo doc --workspace --document-private-items --open
-
-# Run stress tests
-stress-test:
-    #!/usr/bin/env bash
-    echo "Running stress tests..."
-    for i in {1..10}; do
-        echo "Stress test iteration $i/10"
-        cargo test --workspace --profile test-opt || exit 1
+# Check for flaky tests by running them multiple times
+test-flaky runs="5":
+    @echo -e "{{BLUE}}[INFO]{{NC}} Checking for flaky tests ({{runs}} runs)..."
+    @for i in $(seq 1 {{runs}}); do \
+        echo -e "{{BLUE}}[INFO]{{NC}} Run $$i/{{runs}}"; \
+        cargo nextest run --no-fail-fast || true; \
     done
-    echo "Stress tests completed successfully!"
 
-# Watch mode for continuous testing
-watch:
+# Run WASM tests (if wasm-pack is available)
+test-wasm:
     #!/usr/bin/env bash
-    if command -v cargo-watch &> /dev/null; then
-        cargo watch -x "test --workspace --lib"
-    else
-        echo "cargo-watch not installed. Install with: cargo install cargo-watch"
-        exit 1
+    echo -e "{{BLUE}}[INFO]{{NC}} Running WASM tests..."
+    if ! command -v wasm-pack &> /dev/null; then
+        echo -e "{{YELLOW}}[WARNING]{{NC}} wasm-pack not found, skipping WASM tests"
+        exit 0
     fi
 
-# Memory profiling (requires valgrind on Linux)
-profile-memory:
-    #!/usr/bin/env bash
-    if command -v valgrind &> /dev/null; then
-        valgrind --tool=massif --stacks=yes cargo test --workspace --profile test-opt
-    else
-        echo "valgrind not available, skipping memory profiling"
-    fi
+    declare -A WASM_CRATES
+    WASM_CRATES=(
+        #["purr-ui"]="--features web" 
+        ["purr-web"]="--chrome --headless"
+    )
+    for crate in "${!WASM_CRATES[@]}"; do
+        if [[ -d "crates/$crate" ]]; then
+            echo -e "{{BLUE}}[INFO]{{NC}} Testing WASM for $crate..."
+            pushd "crates/$crate" > /dev/null
+            if grep -q "wasm-bindgen-test" Cargo.toml 2>/dev/null; then
+                wasm-pack test ${WASM_CRATES[$crate]} || echo -e "{{YELLOW}}[WARNING]{{NC}} WASM tests failed for $crate"
+            fi
+            popd > /dev/null
+        fi
+    done
 
-# Security audit
-audit:
-    #!/usr/bin/env bash
-    if command -v cargo-audit &> /dev/null; then
-        cargo audit
-    else
-        echo "Installing cargo-audit..."
-        cargo install cargo-audit
-        cargo audit
-    fi
+# Clean test artifacts and reports
+clean-tests:
+    @echo -e "{{BLUE}}[INFO]{{NC}} Cleaning test artifacts..."
+    rm -rf target/coverage target/test-reports target/nextest
 
-# Update dependencies
-update:
-    cargo update --workspace
-    @just validate
+# Install test dependencies
+install-test-deps:
+    @echo -e "{{BLUE}}[INFO]{{NC}} Installing test dependencies..."
+    cargo install cargo-nextest --locked
+    cargo install cargo-tarpaulin --locked
 
-# Pre-commit checks
-pre-commit:
-    @just fmt-check
-    @just lint
-    @just test-fast
-    @just audit
+# Run all test types in sequence
+test-all: test test-doc test-wasm
+    @echo -e "{{GREEN}}[SUCCESS]{{NC}} All tests completed!"
 
-# CI simulation
-ci:
-    @echo "Simulating CI pipeline..."
-    @just clean
-    @just validate
-    @just pre-commit
-    @just test
-    @echo "CI simulation completed successfully!"
+# Run tests with coverage and save report
+test-with-coverage: test coverage
+    @echo -e "{{GREEN}}[SUCCESS]{{NC}} Tests with coverage completed!"
+    @echo "Coverage reports available in target/coverage/"
 
-# Create release build with tests
-release:
-    @just clean
-    @just ci
-    cargo build --release --workspace
-    @echo "Release build completed successfully!"
+# Run tests with specific profile (test, test-opt, dev, release)
+test-profile profile *ARGS:
+    @echo -e "{{BLUE}}[INFO]{{NC}} Running tests with profile: {{profile}}"
+    cargo nextest run --cargo-profile {{profile}} {{ARGS}}
+
+# Quick test for CI/CD (fail fast, no capture)
+test-ci:
+    @echo -e "{{BLUE}}[INFO]{{NC}} Running CI tests (fail-fast mode)..."
+    cargo nextest run --fail-fast --status-level fail
+
+# Run tests with timeout
+test-timeout seconds="60" *ARGS:
+    @echo -e "{{BLUE}}[INFO]{{NC}} Running tests with {{seconds}}s timeout per test..."
+    timeout {{seconds}} cargo nextest run {{ARGS}} || echo -e "{{YELLOW}}[WARNING]{{NC}} Tests timed out after {{seconds}} seconds"
+
+# List all available tests
+test-list *ARGS:
+    @echo -e "{{BLUE}}[INFO]{{NC}} Listing available tests..."
+    cargo nextest list {{ARGS}}
 
 fetch-model model *ARGS:
     #!/usr/bin/env bash

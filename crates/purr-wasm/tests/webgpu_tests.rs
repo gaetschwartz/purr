@@ -7,7 +7,7 @@
 #![allow(dead_code)]
 
 use js_sys::{Object, Promise, Reflect};
-use purr_web::{PlatformImpl, WebError};
+use purr_wasm::{PlatformImpl, WebError};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_test::*;
 use web_sys::console;
@@ -92,7 +92,7 @@ mod webgpu_device_tests {
         console::log_1(&"Testing WebGPU error handling".into());
 
         // Test WebGPU error creation
-        let webgpu_error = WebError::WebGpu(purr_web::WebGpuError::FeatureNotSupported {
+        let webgpu_error = WebError::WebGpu(purr_wasm::WebGpuError::FeatureNotSupported {
             feature: "Test WebGPU error".to_string(),
         });
 
@@ -347,7 +347,7 @@ mod webgpu_integration_tests {
         ];
 
         for error_msg in test_errors {
-            let webgpu_error = WebError::WebGpu(purr_web::WebGpuError::FeatureNotSupported {
+            let webgpu_error = WebError::WebGpu(purr_wasm::WebGpuError::FeatureNotSupported {
                 feature: error_msg.to_string(),
             });
             let platform_error = webgpu_error.into_platform_error();

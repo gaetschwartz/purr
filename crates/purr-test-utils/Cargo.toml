@@ -8,7 +8,7 @@ description = "Shared test utilities and fixtures for the Purr workspace"
 # Core dependencies
 purr-common = { path = "../purr-common" }
 purr-core = { path = "../purr-core", optional = true }
-purr-web = { path = "../purr-web", optional = true }
+purr-wasm = { path = "../purr-wasm", optional = true }
 
 # Test framework dependencies
 tokio = { version = "1.47", features = ["full", "test-util"] }
@@ -59,7 +59,7 @@ rand = { version = "0.8", features = ["small_rng"] }
 [features]
 default = ["core", "mocks"]
 core = ["purr-core"]
-web = ["purr-web", "wasm-bindgen-test", "js-sys", "web-sys", "wgpu"]
+web = ["purr-wasm", "wasm-bindgen-test", "js-sys", "web-sys", "wgpu"]
 benchmarks = ["dep:criterion"]
 mocks = ["dep:mockall"]
 

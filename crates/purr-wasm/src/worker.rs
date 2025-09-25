@@ -7,6 +7,7 @@ use crate::transcription::AudioMetadata;
 use purr_common::platform::{FileSource, TranscriptionRequest, TranscriptionStatus};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::pin::Pin;
 use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot, Mutex, RwLock};
 use tokio_stream::wrappers::UnboundedReceiverStream;
@@ -190,7 +191,7 @@ impl TranscriptionWorker {
         &self,
         session_id: &str,
         request: TranscriptionRequest,
-    ) -> WebResult<impl Stream<Item = TranscriptionStatus>> {
+    ) -> WebResult<Pin<Box<dyn Stream<Item = TranscriptionStatus> + Send>>> {
         let request_id = Uuid::new_v4().to_string();
         let (tx, rx) = mpsc::unbounded_channel();
 
@@ -226,7 +227,7 @@ impl TranscriptionWorker {
         self.send_to_worker(transcription_message).await?;
 
         // Return stream
-        Ok(UnboundedReceiverStream::new(rx))
+        Ok(Box::pin(UnboundedReceiverStream::new(rx)))
     }
 
     /// Close transcription session
@@ -272,9 +273,11 @@ impl TranscriptionWorker {
                 worker.set_onmessage(Some(closure.as_ref().unchecked_ref()));
                 closure.forget(); // Keep closure alive
 
-                // Set up error handler
-                let error_closure = Closure::wrap(Box::new(move |event: web_sys::ErrorEvent| {
-                    web_sys::console::error_1(&format!("Worker error: {}", event.message()).into());
+                // Set up error handler - avoid accessing undefined error message
+                let error_closure = Closure::wrap(Box::new(move |_event: web_sys::ErrorEvent| {
+                    // Don't try to access event.message() since it might be undefined
+                    // Just log a generic worker error message
+                    web_sys::console::error_1(&"Worker error occurred".into());
                 })
                     as Box<dyn FnMut(web_sys::ErrorEvent)>);
 
@@ -329,13 +332,66 @@ impl TranscriptionWorker {
         }
 
         // Wait for actual WorkerReady message from worker.js with timeout
-        tokio::time::timeout(std::time::Duration::from_secs(10), ready_rx)
-            .await
-            .map_err(|_| WorkerError::ReadyTimeout)?
-            .map_err(|_| WorkerError::ReadyChannelClosed)?;
+        // Use a Send-safe timeout by isolating non-Send WASM operations
+        self.wait_with_wasm_timeout(ready_rx).await?;
 
         tracing::info!("Worker ready for session: {}", session_id);
         Ok(())
+    }
+
+    /// Send-safe WASM timeout implementation using message passing
+    async fn wait_with_wasm_timeout(&self, ready_rx: oneshot::Receiver<()>) -> WebResult<()> {
+        use wasm_bindgen_futures::spawn_local;
+        let (ready_result_tx, ready_result_rx) = oneshot::channel();
+
+        // Spawn the non-Send WASM timeout operation locally
+        spawn_local(async move {
+            use js_sys::Promise;
+            use wasm_bindgen::closure::Closure;
+
+            // Create timeout promise (non-Send)
+            let timeout_promise = Promise::new(&mut |_, reject| {
+                let closure = Closure::once(Box::new(move || {
+                    reject
+                        .call1(&JsValue::undefined(), &JsValue::from_str("Timeout"))
+                        .unwrap();
+                }) as Box<dyn FnOnce()>);
+
+                web_sys::window()
+                    .unwrap()
+                    .set_timeout_with_callback_and_timeout_and_arguments_0(
+                        closure.as_ref().unchecked_ref(),
+                        10000, // 10 seconds
+                    )
+                    .unwrap();
+
+                closure.forget();
+            });
+
+            let timeout_future = wasm_bindgen_futures::JsFuture::from(timeout_promise);
+
+            // Wait for either ready signal or timeout (all non-Send, stays local)
+            let result = tokio::select! {
+                ready_result = ready_rx => {
+                    match ready_result {
+                        Ok(()) => Ok(()),
+                        Err(_) => Err(WorkerError::ReadyChannelClosed),
+                    }
+                }
+                _ = timeout_future => {
+                    Err(WorkerError::ReadyTimeout)
+                }
+            };
+
+            // Send result back via Send-safe channel
+            let _ = ready_result_tx.send(result);
+        });
+
+        // Wait for the result from the local spawn (this is Send-safe)
+        ready_result_rx
+            .await
+            .map_err(|_| WorkerError::ReadyChannelClosed)?
+            .map_err(|e| e.into())
     }
 
     /// Handle messages from worker.js

@@ -12,6 +12,9 @@ use std::{
     pin::Pin,
     str::FromStr,
 };
+
+type TranscriptionStream =
+    Pin<Box<dyn Stream<Item = Result<TranscriptionStatus, PlatformError>> + Send>>;
 // Note: tokio::sync primitives are used in platform implementations
 #[allow(unused_imports)]
 use tokio::sync::{Mutex, RwLock};
@@ -629,10 +632,7 @@ pub trait Platform: Send + Sync + 'static {
     async fn transcribe(
         &self,
         request: TranscriptionRequest,
-    ) -> Result<
-        Pin<Box<dyn Stream<Item = Result<TranscriptionStatus, PlatformError>> + Send>>,
-        PlatformError,
-    >;
+    ) -> Result<TranscriptionStream, PlatformError>;
 
     /// Clean up temporary files if any
     ///

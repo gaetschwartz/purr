@@ -1,5 +1,5 @@
 {
-  "name": "purr-web-worker",
+  "name": "purr-wasm-worker",
   "version": "1.0.0",
   "description": "Real WebGPU transcription worker for Purr using @huggingface/transformers",
   "type": "module",

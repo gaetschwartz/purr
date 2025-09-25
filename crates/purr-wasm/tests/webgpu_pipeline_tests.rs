@@ -6,7 +6,7 @@
 #![allow(dead_code)]
 
 use js_sys::{Object, Reflect};
-use purr_web::WebError;
+use purr_wasm::WebError;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_test::*;
 use web_sys::console;
@@ -816,7 +816,7 @@ mod pipeline_integration_tests {
         ];
 
         for error_msg in error_scenarios {
-            let pipeline_error = WebError::WebGpu(purr_web::WebGpuError::FeatureNotSupported {
+            let pipeline_error = WebError::WebGpu(purr_wasm::WebGpuError::FeatureNotSupported {
                 feature: format!("Pipeline error: {}", error_msg),
             });
 

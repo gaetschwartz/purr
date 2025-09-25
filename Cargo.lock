@@ -5032,7 +5032,7 @@ dependencies = [
  "proptest-derive",
  "purr-common",
  "purr-core",
- "purr-web",
+ "purr-wasm",
  "quickcheck",
  "quickcheck_macros",
  "rand 0.8.5",
@@ -5069,7 +5069,7 @@ dependencies = [
  "pretty_assertions",
  "purr-common",
  "purr-core",
- "purr-web",
+ "purr-wasm",
  "rfd",
  "rstest",
  "serde",
@@ -5088,7 +5088,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "purr-web"
+name = "purr-wasm"
 version = "0.1.0"
 dependencies = [
  "async-trait",

@@ -1,6 +1,6 @@
 //! Tests for audio format detection and parsing (native-compatible)
 
-use purr_web::{get_supported_formats, validate_audio_file};
+use purr_wasm::{get_supported_formats, validate_audio_file};
 
 /// Create test WAV file data (44.1kHz, 16-bit, stereo, 1 second)
 fn create_test_wav_data() -> Vec<u8> {

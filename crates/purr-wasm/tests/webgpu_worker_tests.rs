@@ -6,7 +6,7 @@
 #![allow(dead_code)]
 
 use js_sys::{Object, Reflect, Uint8Array};
-use purr_web::{TranscriptionConfig, WebError};
+use purr_wasm::{TranscriptionConfig, WebError};
 use std::collections::HashMap;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_test::*;
@@ -612,7 +612,7 @@ mod worker_error_handling_tests {
         ];
 
         for error_msg in webgpu_errors {
-            let webgpu_error = WebError::WebGpu(purr_web::WebGpuError::FeatureNotSupported {
+            let webgpu_error = WebError::WebGpu(purr_wasm::WebGpuError::FeatureNotSupported {
                 feature: error_msg.to_string(),
             });
 

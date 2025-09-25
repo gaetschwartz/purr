@@ -7,7 +7,6 @@ use crate::transcription::{
     start_transcription_process, validate_audio_file, AudioProcessingConfig,
 };
 use crate::worker::{TranscriptionConfig, TranscriptionWorker};
-use async_trait::async_trait;
 use bytes::Bytes;
 use futures::Stream;
 use futures::StreamExt;
@@ -172,7 +171,7 @@ impl PlatformImpl {
     }
 }
 
-#[async_trait]
+#[async_trait::async_trait]
 impl Platform for PlatformImpl {
     async fn new() -> Result<Self, PlatformError>
     where

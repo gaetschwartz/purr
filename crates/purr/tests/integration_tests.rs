@@ -18,6 +18,12 @@ fn test_missing_audio_file() {
 #[rstest]
 fn slow_test_cli_transcribe_sample_files(#[files("../../samples/*")] sample_path: PathBuf) {
     use purr_core::SyncTranscriptionResult;
+    if !Path::new(&TINY_MODEL).exists() {
+        panic!(
+            "Tiny model not found at {}. Please download it to run tests.",
+            TINY_MODEL
+        );
+    }
 
     let sample_path = sample_path.canonicalize().unwrap();
     println!("Testing CLI transcription of: {}", sample_path.display());
@@ -68,6 +74,12 @@ enum OutputFormat {
 #[case(OutputFormat::Srt)]
 fn slow_test_cli_output_formats(#[case] format: OutputFormat) {
     let sample_path = Path::new("../../samples/jfk.wav");
+    if !Path::new(&TINY_MODEL).exists() {
+        panic!(
+            "Tiny model not found at {}. Please download it to run tests.",
+            TINY_MODEL
+        );
+    }
 
     let mut cmd = Command::cargo_bin("purr").unwrap();
     cmd.arg(sample_path)

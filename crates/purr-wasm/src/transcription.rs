@@ -7,6 +7,7 @@ use bytes::Bytes;
 use purr_common::platform::{TranscriptionRequest, TranscriptionStatus};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::pin::Pin;
 use tokio_stream::Stream;
 
 /// Audio format enumeration
@@ -865,7 +866,7 @@ pub async fn start_transcription_process(
     file_data: Bytes,
     config: TranscriptionConfig,
     processing_config: Option<AudioProcessingConfig>,
-) -> WebResult<impl Stream<Item = TranscriptionStatus>> {
+) -> WebResult<Pin<Box<dyn Stream<Item = TranscriptionStatus> + Send>>> {
     let processing_config = processing_config.unwrap_or_default();
 
     // Validate file size
@@ -940,6 +941,7 @@ pub async fn start_transcription_process(
 
     tracing::info!("Transcription process started successfully");
 
+    // Box the stream for WASM compatibility
     Ok(transcription_stream)
 }
 

@@ -1,8 +1,8 @@
 [package]
-name = "purr-web"
+name = "purr-wasm"
 version = "0.1.0"
 edition = "2021"
-description = "Web platform implementation for Purr transcription engine"
+description = "WebAssembly platform implementation for Purr transcription engine"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
