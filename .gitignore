@@ -3,6 +3,7 @@ models/
 whisper.cpp/
 node_modules/
 dist/
+build/
 .local/
 local/
 

@@ -100,6 +100,10 @@ desktop = [
 # Mobile feature
 mobile = ["dioxus/mobile"]
 
+vulkan = ["purr-core/vulkan"]
+cuda = ["purr-core/cuda"]
+metal = ["purr-core/metal"]
+coreml = ["purr-core/coreml"]
 
 [dev-dependencies]
 rstest = "0.26"

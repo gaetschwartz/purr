@@ -2,12 +2,15 @@
 name = "purr-ui"
 # The main entry point of the application
 default_platform = "desktop"
+out_dir = "dist"
 
 [bundle]
 identifier = "dev.gaetans.purr"
 version = "0.1.0"
 publisher = "Gaëtan Schwatz"
 icon = ["res/icons/icon.png"]
+category = "Utility"
+
 
 [bundle.windows]
 icon_path = "res/icons/icon.ico"

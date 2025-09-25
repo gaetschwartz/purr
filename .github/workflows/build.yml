@@ -17,7 +17,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        backend: ['none', cuda, vulkan]
+        backend: ["none", cuda, vulkan]
     # env:
     #   GGML_CUDA: ${{ matrix.backend == 'cuda' && 'ON' || 'OFF' }}
     #   CMAKE_ARGS: ${{ matrix.backend == 'cuda' && '' || '-DGGML_CUDA=OFF -DWHISPER_CUDA=OFF' }}
@@ -81,19 +81,21 @@ jobs:
           cargo build --release ${{ matrix.backend != 'none' && format(' --features {0}', matrix.backend) || '' }}
       - name: Build Dioxus Desktop${{ matrix.backend != 'none' && format(' - {0}', matrix.backend) || '' }}
         run: |
-          dx bundle --verbose -p purr-ui --release --platform desktop ${{ matrix.backend != 'none' && format(' --features {0}', matrix.backend) || '' }}
+          dx bundle --verbose -p purr-ui --release --platform desktop \
+            --out-dir dist-linux \
+            ${{ matrix.backend != 'none' && format(' --features {0}', matrix.backend) || '' }}
       - name: Build Dioxus web
         if: matrix.backend == 'none'
         run: |
-          dx bundle --verbose -p purr-ui --release --platform web
+          dx bundle --verbose -p purr-ui --release --platform web --out-dir dist-web
       - name: Archive production artifacts
         uses: actions/upload-artifact@v4
         with:
           name: purr-linux${{ matrix.backend != 'none' && format('-{0}', matrix.backend) || '' }}
           path: |
             target/release/purr*
-            target/dx/purr-ui/release/web/public/
-            target/dx/purr-ui/release/linux/
+            dist-linux/
+            dist-web/
 
   build-macos:
     name: Build macOS ${{ matrix.backend != 'none' && format(' - {0}', matrix.backend) || '' }}
@@ -101,7 +103,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        backend: ['none', 'metal', 'coreml', 'metal,coreml']
+        backend: ["none", "metal", "coreml", "metal,coreml"]
     steps:
       - uses: actions/checkout@v4
       - name: Install dependencies
@@ -124,19 +126,21 @@ jobs:
           cargo build --release ${{ matrix.backend != 'none' && format('--features {0}', matrix.backend) || '' }}
       - name: Build Dioxus Desktop
         run: |
-          dx bundle --verbose -p purr-ui --release --platform desktop ${{ matrix.backend != 'none' && format('--features {0}', matrix.backend) || '' }}
+          dx bundle --verbose -p purr-ui --release --platform desktop \
+          --out-dir dist-macos \
+          ${{ matrix.backend != 'none' && format('--features {0}', matrix.backend) || '' }}
       - name: Build Dioxus web
         if: matrix.backend == 'none'
         run: |
-          dx bundle --verbose -p purr-ui --release --platform web
+          dx bundle --verbose -p purr-ui --release --platform web --out-dir dist-web
       - name: Archive production artifacts
         uses: actions/upload-artifact@v4
         with:
           name: purr-macos
           path: |
             target/release/purr*
-            target/dx/purr-ui/release/web/public/
-            target/dx/purr-ui/release/macos/
+            dist-web/
+            dist-macos/
 
   build-windows:
     defaults:
@@ -147,7 +151,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        backend: ['none', cuda, vulkan]
+        backend: ["none", cuda, vulkan]
     env:
       FFMPEG_DOWNLOAD_URL: https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-full-shared.7z
     steps:
@@ -209,16 +213,18 @@ jobs:
           cargo build --release ${{ matrix.backend != 'none' && format('--features {0}', matrix.backend) || '' }}
       - name: Build Dioxus Desktop${{ matrix.backend != 'none' && format(' - {0}', matrix.backend) || '' }}
         run: |
-          dx bundle --verbose -p purr-ui --release --windows ${{ matrix.backend != 'none' && format('--features {0}', matrix.backend) || '' }}
+          dx bundle --verbose -p purr-ui --release --windows \
+            --out-dir dist-windows \
+            ${{ matrix.backend != 'none' && format('--features {0}', matrix.backend) || '' }}
       - name: Build Dioxus web
-        if : matrix.backend == 'none'
+        if: matrix.backend == 'none'
         run: |
-          dx bundle --verbose -p purr-ui --release --web
+          dx bundle --verbose -p purr-ui --release --web --out-dir dist-web
       - name: Archive production artifacts
         uses: actions/upload-artifact@v4
         with:
           name: purr-windows${{ matrix.backend != 'none' && format('-{0}', matrix.backend) || '' }}
           path: |
             target/release/purr*
-            target/dx/purr-ui/release/web/public/
-            target/dx/purr-ui/release/windows/
+            dist-windows/
+            dist-web/
