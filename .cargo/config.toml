@@ -7,3 +7,7 @@ linker = "C:\\msys64\\mingw64\\bin\\gcc.exe"
 
 [build]
 rustflags = ["--cfg=web_sys_unstable_apis"]
+
+# Fix for sccache incompatibility with complex ARM CPU flags
+[env]
+SCCACHE_DISABLE = "1"
