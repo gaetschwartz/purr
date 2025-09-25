@@ -18,9 +18,6 @@ jobs:
       fail-fast: false
       matrix:
         backend: ["none", cuda, vulkan]
-    # env:
-    #   GGML_CUDA: ${{ matrix.backend == 'cuda' && 'ON' || 'OFF' }}
-    #   CMAKE_ARGS: ${{ matrix.backend == 'cuda' && '' || '-DGGML_CUDA=OFF -DWHISPER_CUDA=OFF' }}
     steps:
       - uses: actions/checkout@v4
       - name: Install dependencies
@@ -88,6 +85,9 @@ jobs:
           cargo build --release ${{ matrix.backend != 'none' && format(' --features {0}', matrix.backend) || '' }}
       - name: Build Dioxus Desktop${{ matrix.backend != 'none' && format(' - {0}', matrix.backend) || '' }}
         run: |
+          sudo modprobe fuse || echo "fuse module not available"
+          sudo chmod +x /home/runner/.cache/tauri/linuxdeploy-x86_64.AppImage || echo "linuxdeploy appimage not installed yet ?"
+          export APPIMAGE_EXTRACT_AND_RUN=1
           export NO_STRIP=true
           dx bundle --verbose -p purr-ui --release --platform desktop \
             --out-dir dist-linux \
