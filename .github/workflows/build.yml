@@ -98,8 +98,10 @@ jobs:
   build-macos:
     name: Build macOS ${{ matrix.backend != 'none' && format(' - {0}', matrix.backend) || '' }}
     runs-on: macos-latest
-    matrix:
-      backend: ['none', 'metal', 'coreml', 'metal,coreml']
+    strategy:
+      fail-fast: false
+      matrix:
+        backend: ['none', 'metal', 'coreml', 'metal,coreml']
     steps:
       - uses: actions/checkout@v4
       - name: Install dependencies
