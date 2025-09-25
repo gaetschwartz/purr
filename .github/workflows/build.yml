@@ -152,7 +152,6 @@ jobs:
           name: purr-macos${{ matrix.backend != 'none' && format('-{0}', matrix.backend) || '' }}
           path: |
             target/release/purr*
-            dist-web/
             dist-macos/
 
   build-windows:
@@ -233,7 +232,7 @@ jobs:
           cargo build --release ${{ matrix.backend != 'none' && format('--features {0}', matrix.backend) || '' }}
       - name: Build Dioxus Desktop${{ matrix.backend != 'none' && format(' - {0}', matrix.backend) || '' }}
         run: |
-          dx bundle --verbose -p purr-ui --release --windows --out-dir dist-windows ${{ matrix.backend != 'none' && format('--features {0}', matrix.backend) || '' }}
+          dx bundle --verbose --trace -p purr-ui --release --windows --out-dir dist-windows ${{ matrix.backend != 'none' && format('--features {0}', matrix.backend) || '' }}
       - name: Archive production artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -241,7 +240,7 @@ jobs:
           path: |
             target/release/purr*
             dist-windows/
-            dist-web/
+
   deploy-vercel:
     name: Deploy to Vercel
     runs-on: ubuntu-latest
