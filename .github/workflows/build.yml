@@ -73,7 +73,14 @@ jobs:
           toolchain: stable
           targets: x86_64-unknown-linux-gnu, wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
+      - name: Cache Dioxus CLI
+        id: cache-dx-linux
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/dx
+          key: dioxus-cli-${{ runner.os }}-${{ env.DIOXUS_VERSION }}
       - name: Install Dioxus CLI
+        if: steps.cache-dx-linux.outputs.cache-hit != 'true'
         run: |
           cargo install dioxus-cli --version ${{ env.DIOXUS_VERSION }} --locked
       - name: Build Binary${{ matrix.backend != 'none' && format(' - {0}', matrix.backend) || '' }}
@@ -117,7 +124,14 @@ jobs:
           toolchain: stable
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
+      - name: Cache Dioxus CLI
+        id: cache-dx-macos
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/dx
+          key: dioxus-cli-${{ runner.os }}-${{ env.DIOXUS_VERSION }}
       - name: Install Dioxus CLI
+        if: steps.cache-dx-macos.outputs.cache-hit != 'true'
         run: |
           cargo install dioxus-cli --version ${{ env.DIOXUS_VERSION }} --locked
       - name: Build
@@ -127,9 +141,11 @@ jobs:
           cargo build --release ${{ matrix.backend != 'none' && format('--features {0}', matrix.backend) || '' }}
       - name: Build Dioxus Desktop
         run: |
+          export CFLAGS="-march=armv8.2-a+noi8mm"
+          export CXXFLAGS="-march=armv8.2-a+noi8mm"
           dx bundle --verbose -p purr-ui --release --platform desktop \
-          --out-dir dist-macos \
-          ${{ matrix.backend != 'none' && format('--features {0}', matrix.backend) || '' }}
+            --out-dir dist-macos \
+            ${{ matrix.backend != 'none' && format('--features {0}', matrix.backend) || '' }}
       - name: Archive production artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -200,7 +216,14 @@ jobs:
           toolchain: stable
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
+      - name: Cache Dioxus CLI
+        id: cache-dx-windows
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/dx.exe
+          key: dioxus-cli-${{ runner.os }}-${{ env.DIOXUS_VERSION }}
       - name: Install Dioxus CLI
+        if: steps.cache-dx-windows.outputs.cache-hit != 'true'
         run: |
           cargo install dioxus-cli --version ${{ env.DIOXUS_VERSION }} --locked
       - name: Install Visual Studio Build Tools
@@ -210,9 +233,7 @@ jobs:
           cargo build --release ${{ matrix.backend != 'none' && format('--features {0}', matrix.backend) || '' }}
       - name: Build Dioxus Desktop${{ matrix.backend != 'none' && format(' - {0}', matrix.backend) || '' }}
         run: |
-          dx bundle --verbose -p purr-ui --release --windows \
-            --out-dir dist-windows \
-            ${{ matrix.backend != 'none' && format('--features {0}', matrix.backend) || '' }}
+          dx bundle --verbose -p purr-ui --release --windows --out-dir dist-windows ${{ matrix.backend != 'none' && format('--features {0}', matrix.backend) || '' }}
       - name: Archive production artifacts
         uses: actions/upload-artifact@v4
         with:
