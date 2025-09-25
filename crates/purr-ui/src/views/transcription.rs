@@ -2,10 +2,9 @@ use crate::{
     components::{Button, ButtonVariant, Card, IconType, TranscriptionDisplay},
     platform::{self, TranscriptionRequest, TranscriptionStatus},
 };
-use bytes::Bytes;
 use dioxus::prelude::*;
 use futures::StreamExt;
-use purr_common::platform::FileId;
+use purr_common::platform::{FileId, FileSource};
 use tracing::{error, info};
 
 /// The Transcription page component that displays the transcription functionality
@@ -97,17 +96,14 @@ fn start_transcription_process(
             }
         };
 
-        // Create transcription request
-        // Note: In a real implementation, we'd need to retrieve the file data
-        // For now, we'll use empty bytes as placeholder
         let request = TranscriptionRequest {
-            file_data: Bytes::new(),
             language: None,
             translate: false,
+            file: FileSource::Uploaded(file_id.clone()),
         };
 
         // Start transcription with streaming updates
-        match platform.transcribe(file_id.clone(), request).await {
+        match platform.transcribe(request).await {
             Ok(mut stream) => {
                 let mut full_text = String::new();
 

@@ -3,7 +3,7 @@
 use super::{Platform, PlatformError, TranscriptionRequest, TranscriptionStatus};
 use bytes::Bytes;
 use futures::{channel::mpsc, SinkExt, Stream, StreamExt};
-use purr_common::platform::{FileId, ModelInfo, ModelMetadata, ModelOperationProgress};
+use purr_common::platform::{FileId, FileSource, ModelInfo, ModelMetadata, ModelOperationProgress};
 use purr_core::model::{ModelManager, WhisperModel};
 use std::{
     path::{Path, PathBuf},
@@ -78,7 +78,6 @@ impl Platform for PlatformImpl {
 
     async fn transcribe(
         &self,
-        file_id: FileId,
         request: TranscriptionRequest,
     ) -> Result<
         Pin<Box<dyn Stream<Item = Result<TranscriptionStatus, PlatformError>> + Send>>,
@@ -88,17 +87,16 @@ impl Platform for PlatformImpl {
         use futures::SinkExt;
         use purr_core::{transcribe_file_stream, TranscriptionConfig};
 
-        let file_path = self.temp_dir.join(&file_id);
-
         // Create a channel for status updates
         let (mut tx, rx) = mpsc::channel(10);
+        let tmp_dir = self.temp_dir.clone();
 
         tokio::spawn(async move {
             let start_time = std::time::Instant::now();
 
             // Send starting status
             let _ = tx.send(Ok(TranscriptionStatus::Starting)).await;
-            info!("Starting transcription for file: {}", file_id);
+            info!("Starting transcription for {}", request.file);
 
             // Create transcription configuration
             let mut config = TranscriptionConfig::new().with_translate(request.translate);
@@ -109,8 +107,13 @@ impl Platform for PlatformImpl {
             // Send processing audio status
             let _ = tx.send(Ok(TranscriptionStatus::ProcessingAudio)).await;
 
+            let audio_path = match &request.file {
+                FileSource::Bytes(_) => panic!("Bytes source not supported in desktop platform"),
+                FileSource::Path(path) => path,
+                FileSource::Uploaded(file_id) => &tmp_dir.join(file_id),
+            };
             // Start transcription
-            match transcribe_file_stream(&file_path, config).await {
+            match transcribe_file_stream(audio_path, config).await {
                 Ok(mut stream) => {
                     let mut word_count = 0;
                     let mut audio_duration = 0.0f32;

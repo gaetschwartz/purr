@@ -109,7 +109,7 @@ impl AudioProcessor {
     }
 
     /// Stream audio file as chunks for real-time processing
-    pub async fn stream<P: AsRef<Path>>(path: P) -> Result<AudioStream> {
+    pub async fn stream_file<P: AsRef<Path>>(path: P) -> Result<AudioStream> {
         let path = path.as_ref().to_path_buf();
 
         let (tx, rx) = mpsc::unbounded_channel();
@@ -933,7 +933,7 @@ mod tests {
     async fn test_stream_nonexistent_file() {
         use futures::StreamExt;
 
-        let result = AudioProcessor::stream("nonexistent_file.wav").await;
+        let result = AudioProcessor::stream_file("nonexistent_file.wav").await;
 
         // Stream creation might succeed, but the first chunk should contain an error
         match result {
@@ -966,7 +966,7 @@ mod tests {
         let temp_file = NamedTempFile::new().unwrap();
         fs::write(temp_file.path(), wav_data).await.unwrap();
 
-        let result = AudioProcessor::stream(temp_file.path()).await;
+        let result = AudioProcessor::stream_file(temp_file.path()).await;
         assert!(
             result.is_ok(),
             "Should successfully create stream for valid file"

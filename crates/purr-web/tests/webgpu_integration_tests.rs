@@ -184,13 +184,13 @@ mod platform_integration_tests {
 
                 // Create transcription request
                 let request = TranscriptionRequest {
-                    file_data: audio_bytes.clone(),
+                    file: audio_bytes.clone().into(),
                     language: Some("en".to_string()),
                     translate: false,
                 };
 
                 // Start transcription
-                match platform.transcribe(file_id.clone(), request).await {
+                match platform.transcribe(request).await {
                     Ok(mut stream) => {
                         console::log_1(&"Transcription started successfully".into());
 
@@ -291,7 +291,7 @@ mod worker_integration_tests {
 
                 // Test transcription instead of status check
                 let sample_request = TranscriptionRequest {
-                    file_data: Bytes::from(vec![0u8; 1024]), // Sample audio data
+                    file: Bytes::from(vec![0u8; 1024]).into(), // Dummy audio data
                     language: None,
                     translate: false,
                 };

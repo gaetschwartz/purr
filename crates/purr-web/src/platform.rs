@@ -12,7 +12,7 @@ use bytes::Bytes;
 use futures::Stream;
 use futures::StreamExt;
 use purr_common::platform::{
-    FileId, ModelInfo, ModelMetadata, ModelOperationProgress, Platform, PlatformError,
+    FileId, FileSource, ModelInfo, ModelMetadata, ModelOperationProgress, Platform, PlatformError,
     TranscriptionRequest, TranscriptionStatus,
 };
 use std::collections::HashMap;
@@ -219,7 +219,6 @@ impl Platform for PlatformImpl {
 
     async fn transcribe(
         &self,
-        file_id: FileId,
         request: TranscriptionRequest,
     ) -> Result<
         Pin<Box<dyn Stream<Item = Result<TranscriptionStatus, PlatformError>> + Send>>,
@@ -228,12 +227,19 @@ impl Platform for PlatformImpl {
         self.ensure_initialized().await?;
 
         // Get file data
-        let file_data = self
-            .storage
-            .get_file(&file_id)
-            .await
-            .map_err(Self::convert_error)?
-            .ok_or_else(|| PlatformError::file_processing("File not found".to_string()))?;
+        let file_data = match &request.file {
+            FileSource::Bytes(bytes) => bytes.clone(),
+            FileSource::Path(path_buf) => panic!(
+                "FileSource::Path is not supported in web platform: {}",
+                path_buf.display()
+            ),
+            FileSource::Uploaded(file_id) => self
+                .storage
+                .get_file(file_id)
+                .await
+                .map_err(Self::convert_error)?
+                .ok_or_else(|| PlatformError::file_processing("File not found".to_string()))?,
+        };
 
         // Create transcription configuration
         let _config = TranscriptionConfig {

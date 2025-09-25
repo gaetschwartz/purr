@@ -924,7 +924,7 @@ pub async fn start_transcription_process(
 
     // Create transcription request with processed audio
     let transcription_request = TranscriptionRequest {
-        file_data: Bytes::from(audio_bytes),
+        file: Bytes::from(audio_bytes).into(),
         language: config.language.clone(),
         translate: config.translate,
     };

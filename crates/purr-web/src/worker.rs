@@ -4,7 +4,7 @@
 use crate::error::{WebError, WebResult, WorkerError};
 use crate::model::WebModelManager;
 use crate::transcription::AudioMetadata;
-use purr_common::platform::{TranscriptionRequest, TranscriptionStatus};
+use purr_common::platform::{FileSource, TranscriptionRequest, TranscriptionStatus};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -209,7 +209,16 @@ impl TranscriptionWorker {
         let transcription_message = WorkerMessage::StartTranscription {
             session_id: session_id.to_string(),
             request_id: request_id.clone(),
-            audio_data: request.file_data.to_vec(),
+            audio_data: if let FileSource::Bytes(bytes) = request.file {
+                bytes.to_vec()
+            } else {
+                return Err(WorkerError::InvalidRequest {
+                    context: "transcribe".into(),
+                    error_message: "We should only receive in-memory byte streams at this point"
+                        .into(),
+                }
+                .into());
+            },
             language: request.language.clone(),
             translate: request.translate,
         };

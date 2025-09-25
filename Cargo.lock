@@ -4995,6 +4995,7 @@ name = "purr-core"
 version = "0.1.0"
 dependencies = [
  "build-target",
+ "bytes",
  "directories",
  "ffmpeg-next",
  "futures",

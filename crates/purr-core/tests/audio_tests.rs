@@ -245,7 +245,7 @@ async fn test_audio_processor_load_valid_wav() {
 async fn test_audio_processor_stream_nonexistent() {
     use futures::StreamExt;
 
-    let result = AudioProcessor::stream("nonexistent_file.wav").await;
+    let result = AudioProcessor::stream_file("nonexistent_file.wav").await;
 
     // Stream creation might succeed, but the first chunk should contain an error
     match result {
@@ -268,7 +268,7 @@ async fn test_audio_processor_stream_nonexistent() {
 async fn test_audio_processor_stream_valid_file() {
     let temp_wav = fixtures::create_test_sine_wav(5.0, 440.0).await.unwrap();
 
-    let result = AudioProcessor::stream(temp_wav.path()).await;
+    let result = AudioProcessor::stream_file(temp_wav.path()).await;
     assert!(
         result.is_ok(),
         "Should successfully create stream for valid file"

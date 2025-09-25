@@ -283,7 +283,9 @@ async fn test_streaming_whisper_with_audio_stream() {
         .with_language("en");
 
     let transcriber = StreamWhisperTranscriber::from_config(config).await.unwrap();
-    let audio_stream = AudioProcessor::stream(temp_audio.path()).await.unwrap();
+    let audio_stream = AudioProcessor::stream_file(temp_audio.path())
+        .await
+        .unwrap();
 
     let result = transcriber.transcribe(audio_stream).await;
     assert!(result.is_ok(), "Streaming transcription should succeed");

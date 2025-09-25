@@ -289,12 +289,53 @@ pub enum ProcessingStatus {
 /// Transcription request parameters
 #[derive(Debug, Clone)]
 pub struct TranscriptionRequest {
-    /// File data as bytes
-    pub file_data: Bytes,
+    /// File to transcribe (bytes, path, or uploaded file ID)
+    pub file: FileSource,
     /// Optional language (auto-detect if None)
     pub language: Option<String>,
     /// Whether to translate to English
     pub translate: bool,
+}
+
+#[derive(Debug, Clone)]
+pub enum FileSource {
+    Bytes(Bytes),
+    Path(PathBuf),
+    Uploaded(FileId),
+}
+
+impl std::fmt::Display for FileSource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            FileSource::Path(p) => write!(f, "[{}]", p.display()),
+            FileSource::Bytes(b) => write!(f, "[{} bytes]", b.len()),
+            FileSource::Uploaded(id) => write!(f, "[#{}]", id),
+        }
+    }
+}
+
+impl From<PathBuf> for FileSource {
+    fn from(path: PathBuf) -> Self {
+        FileSource::Path(path)
+    }
+}
+
+impl From<&Path> for FileSource {
+    fn from(path: &Path) -> Self {
+        FileSource::Path(path.to_path_buf())
+    }
+}
+
+impl From<FileId> for FileSource {
+    fn from(file_id: FileId) -> Self {
+        FileSource::Uploaded(file_id)
+    }
+}
+
+impl From<Bytes> for FileSource {
+    fn from(bytes: Bytes) -> Self {
+        FileSource::Bytes(bytes)
+    }
 }
 
 /// Transcription status updates
@@ -587,7 +628,6 @@ pub trait Platform: Send + Sync + 'static {
     /// A stream of transcription status updates
     async fn transcribe(
         &self,
-        file_id: FileId,
         request: TranscriptionRequest,
     ) -> Result<
         Pin<Box<dyn Stream<Item = Result<TranscriptionStatus, PlatformError>> + Send>>,

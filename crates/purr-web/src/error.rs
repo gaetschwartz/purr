@@ -80,6 +80,13 @@ pub enum WorkerError {
     #[error("Worker ready channel closed")]
     #[diagnostic(code(purr::web::worker::ready_channel_closed))]
     ReadyChannelClosed,
+
+    #[error("Invalid request: {context}, {error_message}")]
+    #[diagnostic(code(purr::web::worker::invalid_request))]
+    InvalidRequest {
+        context: String,
+        error_message: String,
+    },
 }
 
 /// Storage-specific errors for `IndexedDB` and other storage operations
