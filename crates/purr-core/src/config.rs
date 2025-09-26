@@ -64,7 +64,7 @@ impl Default for TranscriptionConfig {
             sample_rate: 16000, // Whisper's preferred sample rate
             max_duration: None,
             temperature: 0.0,
-            beam_size: None,
+            beam_size: Some(5), // Default to beam search with 5 beams for better quality
             output_format: OutputFormat::default(),
             verbose: false,
         }
@@ -139,6 +139,13 @@ impl TranscriptionConfig {
     #[must_use]
     pub fn with_temperature(mut self, temperature: f32) -> Self {
         self.temperature = temperature;
+        self
+    }
+
+    /// Set the beam size for beam search
+    #[must_use]
+    pub fn with_beam_size(mut self, beam_size: usize) -> Self {
+        self.beam_size = Some(beam_size);
         self
     }
 

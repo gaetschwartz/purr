@@ -52,8 +52,14 @@ impl SyncWhisperTranscriber {
     ) -> Result<SyncTranscriptionResult> {
         let start_time = std::time::Instant::now();
 
-        // Setup transcription parameters
-        let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
+        // Setup transcription parameters with proper sampling strategy
+        // Match whisper.cpp's "4 threads, 1 processors, 5 beams + best of 5" quality
+        let beam_size = self.config.beam_size.unwrap_or(5) as i32;
+        let mut params = if beam_size > 1 {
+            FullParams::new(SamplingStrategy::BeamSearch { beam_size, patience: -1.0 })
+        } else {
+            FullParams::new(SamplingStrategy::Greedy { best_of: 5 })
+        };
 
         // Configure parameters
         params.set_language(self.config.language.as_deref());

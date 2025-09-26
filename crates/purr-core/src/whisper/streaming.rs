@@ -83,8 +83,9 @@ impl StreamingState {
         })?;
 
         // Stream processing configuration - based on whisper.cpp stream example
-        let chunk_size = 16000 * 3; // 3 seconds at 16kHz
-        let context_size = 16000; // 1 second overlap for context
+        // Larger chunks for better quality with beam search
+        let chunk_size = 16000 * 4; // 4 seconds at 16kHz - better for beam search quality
+        let context_size = 16000 * 2; // 2 seconds overlap for stronger context continuity
 
         Ok(Self {
             audio_buffer: VecDeque::new(),
@@ -254,8 +255,17 @@ impl StreamWhisperTranscriber {
             return Ok(None);
         }
 
-        // Create whisper processing parameters
-        let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
+        // Create whisper processing parameters with proper sampling strategy
+        // Match whisper.cpp's "4 threads, 1 processors, 5 beams + best of 5" quality
+        let beam_size = self.config.beam_size.unwrap_or(5) as i32;
+        let mut params = if beam_size > 1 {
+            FullParams::new(SamplingStrategy::BeamSearch {
+                beam_size,
+                patience: -1.0,
+            })
+        } else {
+            FullParams::new(SamplingStrategy::Greedy { best_of: 5 })
+        };
 
         // Configure parameters for streaming (based on whisper.cpp)
         params.set_language(self.config.language.as_deref());
@@ -271,7 +281,7 @@ impl StreamWhisperTranscriber {
         params.set_print_progress(false);
         params.set_print_special(false);
         params.set_print_realtime(false);
-        params.set_no_context(false); // Keep context for continuity
+        params.set_no_context(false); // Keep context for continuity - CRITICAL for full transcription
         params.set_single_segment(false); // Allow multiple segments
 
         // Process audio through whisper
