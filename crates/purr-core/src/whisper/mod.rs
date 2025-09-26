@@ -54,9 +54,6 @@ pub struct SyncTranscriptionResult {
     /// The transcribed text
     pub text: String,
 
-    /// Language detected (if auto-detection was used)
-    pub language: Option<String>,
-
     /// Segments with timestamps
     pub segments: Vec<TranscriptionSegment>,
 

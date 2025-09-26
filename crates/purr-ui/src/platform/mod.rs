@@ -4,6 +4,9 @@ pub use purr_common::platform::*;
 use std::sync::Arc;
 use tokio::sync::OnceCell;
 
+/// Logging infrastructure
+pub mod logging;
+
 /// Re-export the appropriate platform implementation
 #[cfg(feature = "desktop")]
 #[path = "desktop.rs"]

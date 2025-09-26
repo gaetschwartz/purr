@@ -27,6 +27,28 @@ pub fn Navbar() -> Element {
                             span { "Purr" }
                         }
                     }
+
+                    // Navigation Icons
+                    div { class: "flex items-center space-x-4",
+                        Link {
+                            to: Route::Settings {},
+                            class: "p-2 rounded-lg text-gray-600 hover:text-teal-600 hover:bg-gray-100 transition-colors",
+                            title: "Settings",
+                            onclick: move |_| {
+                                tracing::info!("Navigating to Settings page");
+                            },
+                            Icon { icon_type: IconType::Settings }
+                        }
+                        Link {
+                            to: Route::Logs {},
+                            class: "p-2 rounded-lg text-gray-600 hover:text-teal-600 hover:bg-gray-100 transition-colors",
+                            title: "Logs",
+                            onclick: move |_| {
+                                tracing::info!("Navigating to Logs page");
+                            },
+                            Icon { icon_type: IconType::Logs }
+                        }
+                    }
                 }
             }
         }

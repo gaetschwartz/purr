@@ -6,19 +6,6 @@
 
 use wasm_bindgen::prelude::*;
 
-// Import console.log for debugging
-#[wasm_bindgen]
-extern "C" {
-    #[wasm_bindgen(js_namespace = console)]
-    fn log(s: &str);
-}
-
-// Macro for console logging (public for modules)
-#[macro_export]
-macro_rules! console_log {
-    ($($t:tt)*) => (log(&format_args!($($t)*).to_string()))
-}
-
 // Re-export main types
 pub use error::{AudioFormatError, StorageError, WebError, WebGpuError, WebResult, WorkerError};
 pub use model::{DownloadProgress, ModelInfo, ModelStorageStats, WebModelManager};
@@ -42,12 +29,87 @@ mod worker;
 #[cfg(test)]
 pub mod webgpu_test_utils;
 
-// NOTE: Removed panic hooks - let Dioxus handle panic management
-// Dioxus provides its own panic handling and WASM initialization
-
 // Initialize the web platform
 #[wasm_bindgen(start)]
-pub fn init() {
-    // Let Dioxus handle panic hooks and WASM setup
-    console_log!("Purr WASM Platform initialized - Dioxus manages panic handling");
+pub fn init() -> Result<(), JsValue> {
+    // print pretty errors in wasm https://github.com/rustwasm/console_error_panic_hook
+    // This is not needed for tracing_wasm to work, but it is a common tool for getting proper error line numbers for panics.
+    console_error_panic_hook::set_once();
+
+    // Add this line:
+    tracing_wasm::set_as_global_default();
+
+    console_log!("Purr WASM Platform initialized");
+    Ok(())
+}
+
+// Import console.log for debugging
+pub(crate) mod console {
+    use wasm_bindgen::prelude::*;
+    #[wasm_bindgen]
+    extern "C" {
+        #[wasm_bindgen(js_namespace = console)]
+        pub(crate) fn log(a: js_sys::Array);
+        #[wasm_bindgen(js_namespace = console, js_name = error)]
+        pub(crate) fn error(a: js_sys::Array);
+        #[wasm_bindgen(js_namespace = console, js_name = warn)]
+        pub(crate) fn warn(a: js_sys::Array);
+        #[wasm_bindgen(js_namespace = console, js_name = info)]
+        pub(crate) fn info(a: js_sys::Array);
+        #[wasm_bindgen(js_namespace = console, js_name = debug)]
+        pub(crate) fn debug(a: js_sys::Array);
+        #[wasm_bindgen(js_namespace = console, js_name = inspect)]
+        pub(crate) fn inspect(s: &JsValue);
+    }
+}
+
+// Macro for console logging (public for modules)
+#[macro_export]
+macro_rules! console_log {
+    ($($e:expr),*) => {
+        let array = ::js_sys::Array::new();
+        $(array.push(&wasm_bindgen::JsValue::from($e));)*
+        $crate::console::log(array);
+    }
+}
+
+#[macro_export]
+macro_rules! console_error {
+    ($($e:expr),*) => {
+        let array = ::js_sys::Array::new();
+        $(array.push(&wasm_bindgen::JsValue::from($e));)*
+        $crate::console::error(array);
+    }
+}
+
+#[macro_export]
+macro_rules! console_warn {
+    ($($e:expr),*) => {
+        let array = ::js_sys::Array::new();
+        $(array.push(&wasm_bindgen::JsValue::from($e));)*
+        $crate::console::warn(array);
+    }
+}
+#[macro_export]
+macro_rules! console_info {
+    ($($e:expr),*) => {
+        let array = ::js_sys::Array::new();
+        $(array.push(&wasm_bindgen::JsValue::from($e));)*
+        $crate::console::info(array);
+    }
+}
+#[macro_export]
+macro_rules! console_debug {
+    ($($e:expr),*) => {
+        let array = ::js_sys::Array::new();
+        $(array.push(&wasm_bindgen::JsValue::from($e));)*
+        $crate::console::debug(array);
+    }
+}
+
+#[macro_export]
+macro_rules! console_inspect {
+    ($s:expr) => {
+        $crate::console::inspect(&wasm_bindgen::JsValue::from($s));
+    };
 }

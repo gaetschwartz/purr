@@ -20,14 +20,14 @@ impl MyFormatter {
     pub fn new(verbosity: Verbosity) -> Self {
         let filter: Box<dyn Fn(&Event<'_>) -> bool + Send + Sync> = match *verbosity.verbose {
             VerbosityLevel::NORMAL_VALUE => Box::new(|event: &Event<'_>| {
-                *event.metadata().level() >= Level::INFO && {
-                    [APP_NAME, purr_core::PKG_NAME]
+                *event.metadata().level() <= Level::INFO
+                    && ![WHISPER_LOG_TARGET, GGML_LOG_TARGET].contains(&event.metadata().target())
+                    && [APP_NAME, purr_core::PKG_NAME]
                         .iter()
                         .any(|t| event.metadata().target().starts_with(t))
-                }
             }),
             VerbosityLevel::VERBOSE_VALUE => Box::new(|event: &Event<'_>| {
-                if *event.metadata().level() < Level::INFO {
+                if *event.metadata().level() <= Level::INFO {
                     return false;
                 }
                 [
@@ -40,7 +40,10 @@ impl MyFormatter {
                 .any(|t| event.metadata().target().starts_with(t))
             }),
             VerbosityLevel::DEBUG_VALUE => {
-                Box::new(|event: &Event<'_>| *event.metadata().level() >= Level::DEBUG)
+                Box::new(|event: &Event<'_>| *event.metadata().level() <= Level::DEBUG)
+            }
+            VerbosityLevel::TRACE_VALUE => {
+                Box::new(|event: &Event<'_>| *event.metadata().level() <= Level::TRACE)
             }
             _ => Box::new(|_: &Event<'_>| true),
         };

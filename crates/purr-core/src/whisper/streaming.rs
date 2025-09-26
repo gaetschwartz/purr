@@ -9,6 +9,7 @@ use futures::{Stream, StreamExt};
 use std::{
     collections::VecDeque,
     pin::Pin,
+    sync::Arc,
     task::{Context, Poll},
 };
 use tokio::sync::mpsc;
@@ -18,7 +19,7 @@ use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperState};
 
 pub struct StreamWhisperTranscriber {
     context: WhisperContext,
-    config: TranscriptionConfig,
+    config: Arc<TranscriptionConfig>,
 }
 
 /// Streaming state for managing audio buffers and context
@@ -49,12 +50,11 @@ impl WhisperTranscriber for StreamWhisperTranscriber {
     where
         Self: Sized,
     {
-        let config_clone = config.clone();
-
+        let config = Arc::new(config);
         let model_manager = ModelManager::new()?;
 
         // Load the model (which may involve async model discovery)
-        let context = load_model(&config_clone, &model_manager).await?;
+        let context = load_model(&config, &model_manager).await?;
 
         Ok(Self { context, config })
     }
@@ -77,15 +77,15 @@ impl WhisperTranscriber for StreamWhisperTranscriber {
 }
 
 impl StreamingState {
-    fn new(context: &WhisperContext) -> crate::Result<Self> {
+    fn new(context: &WhisperContext, config: Arc<TranscriptionConfig>) -> crate::Result<Self> {
         let whisper_state = context.create_state().map_err(|e| {
             crate::WhisperError::from(TranscriptionError::StateCreation { source: e })
         })?;
 
-        // Stream processing configuration - based on whisper.cpp stream example
-        // Larger chunks for better quality with beam search
-        let chunk_size = 16000 * 4; // 4 seconds at 16kHz - better for beam search quality
-        let context_size = 16000 * 2; // 2 seconds overlap for stronger context continuity
+        // Stream processing configuration - optimized for performance vs quality balance
+        // 4-second chunks with minimal overlap for better performance
+        let chunk_size = (config.sample_rate as f32 * config.chunk_size) as usize; // 4 seconds at 16kHz - good for beam search quality
+        let context_size = (config.sample_rate as f32 * config.chunk_overlap) as usize; // 0.5 seconds overlap for context continuity
 
         Ok(Self {
             audio_buffer: VecDeque::new(),
@@ -144,7 +144,7 @@ impl StreamWhisperTranscriber {
         tx: mpsc::UnboundedSender<crate::Result<StreamingChunk>>,
     ) -> crate::Result<()> {
         let processing_start = std::time::Instant::now();
-        let mut streaming_state = StreamingState::new(&self.context)?;
+        let mut streaming_state = StreamingState::new(&self.context, self.config.clone())?;
         let mut is_stream_complete = false;
 
         debug!("Starting progressive audio stream processing");
