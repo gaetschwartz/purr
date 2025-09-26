@@ -20,7 +20,7 @@ path = "src/main.rs"
 purr-core = { path = "../purr-core", optional = true }
 purr-common = { path = "../purr-common" }
 tokio = { version = "1.47.1", default-features = false }
-tracing-subscriber = { version = "0.3", optional = true }
+tracing-subscriber = { version = "0.3" }
 
 # Shared dependencies (work on both WASM and native)
 dioxus = { version = "0.7.0-rc.0", features = ["router"] }
@@ -93,7 +93,6 @@ desktop = [
   "dioxus/desktop",
   "tokio/full",
   "purr-core",
-  "tracing-subscriber",
   "rfd",
   "cached",
   "serde_json",

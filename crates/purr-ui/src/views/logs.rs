@@ -39,7 +39,7 @@ fn generate_example_logs() {
                 1 => tracing::warn!(duration_ms = 150, "Example warning log #{}", counter),
                 2 => tracing::debug!(component = "ui", "Example debug log #{}", counter),
                 3 => tracing::error!(error_code = 500, "Example error log #{}", counter),
-                _ => {},
+                _ => {}
             }
 
             thread::sleep(Duration::from_secs(2));
@@ -102,8 +102,8 @@ pub fn Logs() -> Element {
     });
 
     // Real-time updates using a simple timer
-    let state_clone = state.clone();
-    let mut logs_clone = logs.clone();
+    let state_clone = state;
+    let mut logs_clone = logs;
 
     use_effect(move || {
         // Create a simple interval for updates
@@ -222,16 +222,14 @@ pub fn Logs() -> Element {
                             button {
                                 class: "px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded-md transition-colors duration-200",
                                 onclick: move |_| {
-                                    // Clear the global logs storage
                                     get_logs_storage().clear();
-                                    // Clear the local state too
                                     logs.set(vec![]);
                                 },
                                 "🗑 Clear"
                             }
 
                             // Export dropdown
-                            ExportDropdown { state: state }
+                            ExportDropdown { state }
                         }
                     }
                 }
@@ -329,7 +327,13 @@ pub fn Logs() -> Element {
                     }
 
                     div {
-                        {format!("Displaying {} logs (total: {})", filtered_logs.len(), get_logs_storage().count())}
+                        {
+                            format!(
+                                "Displaying {} logs (total: {})",
+                                filtered_logs.len(),
+                                get_logs_storage().count(),
+                            )
+                        }
                     }
                 }
             }
@@ -577,7 +581,7 @@ fn export_logs(format: LogExportFormat, state: &Signal<LogsState>) {
 
     #[cfg(all(feature = "web", target_arch = "wasm32"))]
     {
-        if let Err(e) = save_file_web(filename, content_type, &exported_data) {
+        if let Err(e) = save_file_web(filename, _content_type, &exported_data) {
             tracing::error!("Failed to download file: {}", e);
         }
     }
@@ -587,7 +591,10 @@ fn export_logs(format: LogExportFormat, state: &Signal<LogsState>) {
 
 /// Save file on desktop platforms
 #[cfg(feature = "desktop")]
-async fn save_file_desktop(filename: &str, content: &str) -> Result<(), Box<dyn std::error::Error>> {
+async fn save_file_desktop(
+    filename: &str,
+    content: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
     use rfd::AsyncFileDialog;
     use std::io::Write;
 
@@ -606,33 +613,46 @@ async fn save_file_desktop(filename: &str, content: &str) -> Result<(), Box<dyn 
 
 /// Save file on web platforms
 #[cfg(all(feature = "web", target_arch = "wasm32"))]
-fn save_file_web(filename: &str, content_type: &str, content: &str) -> Result<(), Box<dyn std::error::Error>> {
-    use web_sys::{window, Blob, BlobPropertyBag, Url, Document, HtmlElement};
+fn save_file_web(filename: &str, content_type: &str, content: &str) -> Result<(), miette::Report> {
     use wasm_bindgen::JsCast;
+    use web_sys::{window, Blob, BlobPropertyBag, HtmlElement, Url};
 
-    let window = window().ok_or("No window object")?;
-    let document = window.document().ok_or("No document object")?;
+    let window = window().ok_or_else(|| miette::miette!("No window object"))?;
+    let document = window
+        .document()
+        .ok_or_else(|| miette::miette!("No document object"))?;
 
     // Create blob
-    let mut blob_options = BlobPropertyBag::new();
-    blob_options.type_(content_type);
+    let blob_options = BlobPropertyBag::new();
+    blob_options.set_type(content_type);
 
     let array = js_sys::Array::new();
     array.push(&content.into());
 
-    let blob = Blob::new_with_str_sequence_and_options(&array, &blob_options)?;
-    let url = Url::create_object_url_with_blob(&blob)?;
+    let blob = Blob::new_with_str_sequence_and_options(&array, &blob_options)
+        .map_err(|e| miette::miette!("Failed to create blob: {:?}", e))?;
+    let url = Url::create_object_url_with_blob(&blob)
+        .map_err(|e| miette::miette!("Failed to create object URL: {:?}", e))?;
 
     // Create download link
-    let link = document.create_element("a")?;
-    let html_link = link.dyn_into::<HtmlElement>()?;
+    let link = document
+        .create_element("a")
+        .map_err(|e| miette::miette!("Failed to create link element: {:?}", e))?;
+    let html_link = link
+        .dyn_into::<HtmlElement>()
+        .map_err(|e| miette::miette!("Failed to cast to HtmlElement: {:?}", e))?;
 
-    html_link.set_attribute("href", &url)?;
-    html_link.set_attribute("download", filename)?;
+    html_link
+        .set_attribute("href", &url)
+        .map_err(|e| miette::miette!("Failed to set href attribute on link: {:?}", e))?;
+    html_link
+        .set_attribute("download", filename)
+        .map_err(|e| miette::miette!("Failed to set download attribute on link: {:?}", e))?;
     html_link.click();
 
     // Clean up
-    Url::revoke_object_url(&url)?;
+    Url::revoke_object_url(&url)
+        .map_err(|e| miette::miette!("Failed to revoke object URL: {:?}", e))?;
 
     Ok(())
 }
