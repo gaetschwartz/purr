@@ -1,23 +1,23 @@
 //! Logs viewer component for displaying application logs in real-time
 
-use crate::platform::logging::{get_logs_storage, LogEntry, LogExportFormat};
+use crate::platform::logging::{get_logs_storage, LogEntry, LogExportFormat, SerdeTracingLevel};
 use dioxus::prelude::*;
 use std::collections::HashSet;
+use strum::VariantArray as _;
 
 // Use LogEntry from the platform logging module
 
 /// Get logs from the storage system
 fn get_logs(
     search_query: &str,
-    selected_levels: &HashSet<String>,
+    selected_levels: &HashSet<SerdeTracingLevel>,
     max_display: usize,
 ) -> Vec<LogEntry> {
     let storage = get_logs_storage();
-    let level_filters: Vec<String> = selected_levels.iter().cloned().collect();
 
     storage.get_filtered_entries(
         search_query,
-        &level_filters,
+        selected_levels,
         &[], // No target filters for now
         Some(max_display),
     )
@@ -52,16 +52,13 @@ fn generate_example_logs() {
     });
 }
 
-/// Available log levels for filtering
-const LOG_LEVELS: &[&str] = &["ERROR", "WARN", "INFO", "DEBUG", "TRACE"];
-
 /// Log viewer settings and state
 #[derive(Clone, PartialEq)]
 struct LogsState {
     /// Search query for filtering logs
     search_query: String,
     /// Selected log levels for filtering
-    selected_levels: HashSet<String>,
+    selected_levels: HashSet<SerdeTracingLevel>,
     /// Whether auto-refresh is enabled
     auto_refresh: bool,
     /// Whether to stick to bottom when new logs arrive
@@ -185,11 +182,11 @@ pub fn Logs() -> Element {
                                 "Levels:"
                             }
 
-                            for level in LOG_LEVELS {
+                            for & level in SerdeTracingLevel::VARIANTS {
                                 LogLevelButton {
-                                    level: level.to_string(),
-                                    selected: current_state.selected_levels.contains(*level),
-                                    on_toggle: move |level: String| {
+                                    level,
+                                    selected: current_state.selected_levels.contains(&level),
+                                    on_toggle: move |level: SerdeTracingLevel| {
                                         let mut current_state = state.write();
                                         if current_state.selected_levels.contains(&level) {
                                             current_state.selected_levels.remove(&level);
@@ -247,7 +244,7 @@ pub fn Logs() -> Element {
                             span { class: "text-blue-700 dark:text-blue-300", "Levels:" }
                             for level in &current_state.selected_levels {
                                 span { class: "px-2 py-1 bg-blue-100 dark:bg-blue-800 text-blue-800 dark:text-blue-200 rounded text-xs",
-                                    {level.clone()}
+                                    {level.to_string()}
                                 }
                             }
                         }
@@ -344,13 +341,12 @@ pub fn Logs() -> Element {
 /// Individual log entry row component
 #[component]
 fn LogEntryRow(entry: LogEntry, search_query: String) -> Element {
-    let level_indicator = match entry.level.as_str() {
-        "ERROR" => "🔴",
-        "WARN" => "🟡",
-        "INFO" => "🔵",
-        "DEBUG" => "⚪",
-        "TRACE" => "⚫",
-        _ => "⚪",
+    let level_indicator = match entry.level {
+        SerdeTracingLevel::ERROR => "🔴",
+        SerdeTracingLevel::WARN => "🟡",
+        SerdeTracingLevel::INFO => "🔵",
+        SerdeTracingLevel::DEBUG => "⚪",
+        SerdeTracingLevel::TRACE => "⚫",
     };
 
     rsx! {
@@ -376,18 +372,25 @@ fn LogEntryRow(entry: LogEntry, search_query: String) -> Element {
                         span {
                             class: format!(
                                 "px-2 py-1 rounded text-xs font-semibold {}",
-                                match entry.level.as_str() {
-                                    "ERROR" => "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
-                                    "WARN" => {
+                                match entry.level {
+                                    SerdeTracingLevel::ERROR => {
+                                        "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"
+                                    }
+                                    SerdeTracingLevel::WARN => {
                                         "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200"
                                     }
-                                    "INFO" => "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
-                                    "DEBUG" => "bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200",
-                                    "TRACE" => "bg-gray-50 text-gray-600 dark:bg-gray-800 dark:text-gray-400",
-                                    _ => "bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200",
+                                    SerdeTracingLevel::INFO => {
+                                        "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200"
+                                    }
+                                    SerdeTracingLevel::DEBUG => {
+                                        "bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200"
+                                    }
+                                    SerdeTracingLevel::TRACE => {
+                                        "bg-gray-50 text-gray-600 dark:bg-gray-800 dark:text-gray-400"
+                                    }
                                 },
                             ),
-                            {entry.level.clone()}
+                            {entry.level.to_string()}
                         }
 
                         code { class: "text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded text-xs",
@@ -461,21 +464,24 @@ fn LogMessage(message: String, search_query: String) -> Element {
 
 /// Log level filter button
 #[component]
-fn LogLevelButton(level: String, selected: bool, on_toggle: EventHandler<String>) -> Element {
+fn LogLevelButton(
+    level: SerdeTracingLevel,
+    selected: bool,
+    on_toggle: EventHandler<SerdeTracingLevel>,
+) -> Element {
     let (bg_class, text_class) = if selected {
-        match level.as_str() {
-            "ERROR" => ("bg-red-600 hover:bg-red-700", "text-white"),
-            "WARN" => ("bg-yellow-600 hover:bg-yellow-700", "text-white"),
-            "INFO" => ("bg-blue-600 hover:bg-blue-700", "text-white"),
-            "DEBUG" => ("bg-gray-600 hover:bg-gray-700", "text-white"),
-            "TRACE" => ("bg-gray-500 hover:bg-gray-600", "text-white"),
-            _ => ("bg-gray-600 hover:bg-gray-700", "text-white"),
+        match level {
+            SerdeTracingLevel::ERROR => ("bg-red-600 hover:bg-red-700", "text-white"),
+            SerdeTracingLevel::WARN => ("bg-yellow-600 hover:bg-yellow-700", "text-white"),
+            SerdeTracingLevel::INFO => ("bg-blue-600 hover:bg-blue-700", "text-white"),
+            SerdeTracingLevel::DEBUG => ("bg-gray-600 hover:bg-gray-700", "text-white"),
+            SerdeTracingLevel::TRACE => ("bg-gray-500 hover:bg-gray-600", "text-white"),
         }
     } else {
         ("bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 border border-gray-300 dark:border-gray-600", "text-gray-700 dark:text-gray-300")
     };
 
-    let level_text = level.clone();
+    let level_text = level.to_string();
 
     rsx! {
         button {
@@ -554,12 +560,12 @@ fn ExportDropdown(state: Signal<LogsState>) -> Element {
 fn export_logs(format: LogExportFormat, state: &Signal<LogsState>) {
     let current_state = state.read();
     let storage = get_logs_storage();
-    let level_filters: Vec<String> = current_state.selected_levels.iter().cloned().collect();
+    let level_filters = &current_state.selected_levels;
 
     let exported_data = storage.export_logs(
         format,
         &current_state.search_query,
-        &level_filters,
+        level_filters,
         &[], // No target filters for now
     );
 

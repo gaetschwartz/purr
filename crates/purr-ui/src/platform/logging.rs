@@ -5,13 +5,14 @@
 
 use miette::IntoDiagnostic as _;
 use serde::{Deserialize, Serialize};
+use serde_with::{DeserializeFromStr, SerializeDisplay};
 use std::{
     collections::HashSet,
     fmt,
     sync::{atomic, OnceLock},
     time::{SystemTime, UNIX_EPOCH},
 };
-use tracing::Subscriber;
+use tracing::{Level, Subscriber};
 use tracing_subscriber::{
     layer::{Context, Layer},
     registry::LookupSpan,
@@ -28,7 +29,7 @@ pub struct LogEntry {
     /// Timestamp when the log was created
     pub timestamp: u64,
     /// Log level (Error, Warn, Info, Debug, Trace)
-    pub level: String,
+    pub level: SerdeTracingLevel,
     /// Target/module that generated the log
     pub target: String,
     /// The log message content
@@ -82,7 +83,7 @@ impl LogEntry {
     }
 
     /// Check if this log entry matches a level filter
-    pub fn matches_level(&self, filter_levels: &[String]) -> bool {
+    pub fn matches_level(&self, filter_levels: &HashSet<SerdeTracingLevel>) -> bool {
         filter_levels.is_empty() || filter_levels.contains(&self.level)
     }
 
@@ -92,6 +93,51 @@ impl LogEntry {
             || filter_targets
                 .iter()
                 .any(|target| self.target.starts_with(target))
+    }
+}
+
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    SerializeDisplay,
+    DeserializeFromStr,
+    PartialEq,
+    Eq,
+    Hash,
+    strum::EnumString,
+    strum::Display,
+    strum::VariantArray,
+)]
+pub enum SerdeTracingLevel {
+    ERROR,
+    WARN,
+    INFO,
+    DEBUG,
+    TRACE,
+}
+
+impl From<&Level> for SerdeTracingLevel {
+    fn from(level: &Level) -> Self {
+        match *level {
+            Level::ERROR => SerdeTracingLevel::ERROR,
+            Level::WARN => SerdeTracingLevel::WARN,
+            Level::INFO => SerdeTracingLevel::INFO,
+            Level::DEBUG => SerdeTracingLevel::DEBUG,
+            Level::TRACE => SerdeTracingLevel::TRACE,
+        }
+    }
+}
+
+impl From<SerdeTracingLevel> for Level {
+    fn from(level: SerdeTracingLevel) -> Self {
+        match level {
+            SerdeTracingLevel::ERROR => Level::ERROR,
+            SerdeTracingLevel::WARN => Level::WARN,
+            SerdeTracingLevel::INFO => Level::INFO,
+            SerdeTracingLevel::DEBUG => Level::DEBUG,
+            SerdeTracingLevel::TRACE => Level::TRACE,
+        }
     }
 }
 
@@ -134,7 +180,7 @@ impl LogsStorage {
     pub fn get_filtered_entries(
         &self,
         search_query: &str,
-        level_filters: &[String],
+        level_filters: &HashSet<SerdeTracingLevel>,
         target_filters: &[String],
         limit: Option<usize>,
     ) -> Vec<LogEntry> {
@@ -222,7 +268,7 @@ where
                 .duration_since(UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_millis() as u64,
-            level: metadata.level().to_string().to_uppercase(),
+            level: SerdeTracingLevel::from(metadata.level()),
             target: metadata.target().to_string(),
             message: String::new(),
             fields: Vec::new(),
@@ -354,7 +400,7 @@ impl LogsStorage {
         &self,
         format: LogExportFormat,
         search_query: &str,
-        level_filters: &[String],
+        level_filters: &HashSet<SerdeTracingLevel>,
         target_filters: &[String],
     ) -> String {
         let entries = self.get_filtered_entries(search_query, level_filters, target_filters, None);
@@ -405,7 +451,7 @@ mod tests {
         let entry = LogEntry {
             id: 0,
             timestamp: 1234567890,
-            level: "INFO".to_string(),
+            level: SerdeTracingLevel::INFO,
             target: "test::module".to_string(),
             message: "Test message".to_string(),
             fields: vec![],
@@ -426,7 +472,7 @@ mod tests {
         let entry = LogEntry {
             id: 1,
             timestamp: 1234567890,
-            level: "INFO".to_string(),
+            level: SerdeTracingLevel::INFO,
             target: "test::module".to_string(),
             message: "Important test message".to_string(),
             fields: vec![("key".to_string(), "value".to_string())],
@@ -441,9 +487,9 @@ mod tests {
         assert!(!entry.matches_search("nonexistent"));
 
         // Test level filtering
-        assert!(entry.matches_level(&["INFO".to_string()]));
-        assert!(!entry.matches_level(&["ERROR".to_string()]));
-        assert!(entry.matches_level(&[])); // Empty filter matches all
+        assert!(entry.matches_level(&[SerdeTracingLevel::INFO].into_iter().collect()));
+        assert!(!entry.matches_level(&[SerdeTracingLevel::ERROR].into_iter().collect()));
+        assert!(entry.matches_level(&[].into_iter().collect())); // Empty filter matches all
 
         // Test target filtering
         assert!(entry.matches_target(&["test".to_string()]));

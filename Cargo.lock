@@ -5129,6 +5129,8 @@ dependencies = [
  "serde",
  "serde-wasm-bindgen",
  "serde_json",
+ "serde_with",
+ "strum",
  "tempfile",
  "thiserror 2.0.16",
  "tokio",
