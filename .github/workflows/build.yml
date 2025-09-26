@@ -178,12 +178,18 @@ jobs:
           mv ffmpeg-*/* ffmpeg/
           Add-Content $env:GITHUB_ENV "FFMPEG_DIR=${pwd}\ffmpeg`n"
           Add-Content $env:GITHUB_PATH "${pwd}\ffmpeg\bin`n"
-          choco install -r cmake
-          vcpkg install --triplet x64-windows ffmpeg[avcodec,avformat]
+          choco install -y cmake
           choco install -y visualstudio2022buildtools
           choco install -y visualstudio2022-workload-vctools
           choco install -y llvm
           choco install -y windows-sdk-10.0
+      - name: vcpkg build
+        uses: johnwason/vcpkg-action@v7
+        id: vcpkg
+        with:
+          pkgs: ffmpeg[avcodec,avformat]
+          triplet: x64-windows-release
+          token: ${{ github.token }}
       - name: Install cuda
         if: matrix.backend == 'cuda'
         run: |
@@ -257,4 +263,6 @@ jobs:
       - name: Pull Vercel Environment Information
         run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
       - name: Deploy to Vercel
-        run: vercel --prod --token=${{ secrets.VERCEL_TOKEN }} --prebuilt artifacts/purr-web/dist-web
+        run: |
+          tree
+          vercel --prod --token=${{ secrets.VERCEL_TOKEN }} --prebuilt artifacts/purr-web/dist-web
