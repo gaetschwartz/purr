@@ -1,7 +1,10 @@
 //! Configuration options for transcription
 
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::{
+    borrow::Cow,
+    path::{Path, PathBuf},
+};
 
 /// Configuration for transcription operations
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -10,7 +13,7 @@ pub struct TranscriptionConfig {
     pub model_path: Option<PathBuf>,
 
     /// Language code (e.g., "en", "es", "fr")
-    pub language: Option<String>,
+    pub language: Option<Cow<'static, str>>,
 
     /// Translate to English (like whisper.cpp --translate flag)
     pub translate: bool,
@@ -21,7 +24,7 @@ pub struct TranscriptionConfig {
     /// Number of threads to use
     pub num_threads: Option<usize>,
 
-    /// Audio sample rate to convert to
+    /// Sample rate to use in Hz. 16'000 is the recommended and default value.
     pub sample_rate: u32,
 
     /// Maximum audio duration in seconds
@@ -38,6 +41,12 @@ pub struct TranscriptionConfig {
 
     /// Enable verbose debug output
     pub verbose: bool,
+
+    /// Chunk size for streaming (in seconds)
+    pub chunk_size: f32,
+
+    /// Chunk overlap for streaming (in seconds)
+    pub chunk_overlap: f32,
 }
 
 /// Output format options
@@ -67,6 +76,8 @@ impl Default for TranscriptionConfig {
             beam_size: Some(5), // Default to beam search with 5 beams for better quality
             output_format: OutputFormat::default(),
             verbose: false,
+            chunk_size: 4.0,    // 4 seconds
+            chunk_overlap: 0.5, // 0.5 seconds
         }
     }
 }
@@ -89,14 +100,20 @@ impl TranscriptionConfig {
     }
 
     /// Set the model path
-    pub fn with_model_path<P: Into<PathBuf>>(mut self, path: P) -> Self {
-        self.model_path = Some(path.into());
+    pub fn with_model_path<P: AsRef<Path>>(mut self, path: P) -> Self {
+        self.model_path = Some(path.as_ref().into());
         self
     }
 
     /// Set the language
-    pub fn with_language<S: Into<String>>(mut self, language: S) -> Self {
+    pub fn with_language<S: Into<Cow<'static, str>>>(mut self, language: S) -> Self {
         self.language = Some(language.into());
+        self
+    }
+
+    /// Optionally set the language
+    pub fn with_opt_language<S: Into<Cow<'static, str>>>(mut self, language: Option<S>) -> Self {
+        self.language = language.map(Into::into);
         self
     }
 
@@ -104,6 +121,13 @@ impl TranscriptionConfig {
     #[must_use]
     pub fn with_gpu(mut self, use_gpu: bool) -> Self {
         self.use_gpu = use_gpu;
+        self
+    }
+
+    /// Disable GPU acceleration
+    #[must_use]
+    pub fn without_gpu(mut self, no_gpu: bool) -> Self {
+        self.use_gpu = !no_gpu;
         self
     }
 
@@ -146,6 +170,20 @@ impl TranscriptionConfig {
     #[must_use]
     pub fn with_beam_size(mut self, beam_size: usize) -> Self {
         self.beam_size = Some(beam_size);
+        self
+    }
+
+    /// Set the chunk size for streaming (in seconds)
+    #[must_use]
+    pub fn with_chunk_size(mut self, chunk_size: f32) -> Self {
+        self.chunk_size = chunk_size;
+        self
+    }
+
+    /// Set the chunk overlap for streaming (in seconds)
+    #[must_use]
+    pub fn with_chunk_overlap(mut self, chunk_overlap: f32) -> Self {
+        self.chunk_overlap = chunk_overlap;
         self
     }
 

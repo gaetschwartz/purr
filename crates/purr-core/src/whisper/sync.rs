@@ -56,7 +56,10 @@ impl SyncWhisperTranscriber {
         // Match whisper.cpp's "4 threads, 1 processors, 5 beams + best of 5" quality
         let beam_size = self.config.beam_size.unwrap_or(5) as i32;
         let mut params = if beam_size > 1 {
-            FullParams::new(SamplingStrategy::BeamSearch { beam_size, patience: -1.0 })
+            FullParams::new(SamplingStrategy::BeamSearch {
+                beam_size,
+                patience: -1.0,
+            })
         } else {
             FullParams::new(SamplingStrategy::Greedy { best_of: 5 })
         };
@@ -126,9 +129,6 @@ impl SyncWhisperTranscriber {
             }
         }
 
-        // FIXME: Implement language detection
-        let detected_language = config.language;
-
         // Calculate statistics
         let word_count = full_text.split_whitespace().count();
         let stats = {
@@ -144,7 +144,6 @@ impl SyncWhisperTranscriber {
 
         Ok(SyncTranscriptionResult {
             text: full_text,
-            language: detected_language,
             segments,
             processing_time,
             audio_duration: audio_data.duration,

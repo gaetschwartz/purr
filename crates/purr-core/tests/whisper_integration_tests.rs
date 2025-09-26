@@ -421,7 +421,7 @@ async fn test_transcription_with_gpu_settings(#[case] use_gpu: bool) {
 #[case("en")]
 #[case("auto")]
 #[tokio::test]
-async fn test_transcription_with_language_settings(#[case] language: &str) {
+async fn test_transcription_with_language_settings(#[case] language: &'static str) {
     if !whisper_fixtures::is_model_available().await {
         println!("⏭ Skipping test - no Whisper model available");
         return;

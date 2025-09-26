@@ -1,12 +1,10 @@
 //! Whisper UI CLI - Audio transcription command-line interface
+mod cli;
 mod fmt;
 
 use crate::fmt::{MyFormatter, Verbosity, VerbosityLevel};
-use clap::builder::{
-    styling::{AnsiColor, Effects, Style},
-    Styles,
-};
-use clap::{Parser, Subcommand};
+use clap::Parser as _;
+use cli::*;
 use indicatif::{HumanBytes, HumanDuration, ProgressBar, ProgressStyle};
 use miette::IntoDiagnostic as _;
 use owo_colors::OwoColorize as _;
@@ -20,7 +18,7 @@ use purr_core::{
     SystemInfo,
 };
 use shadow_rs::shadow;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process;
 use std::str::FromStr as _;
 use std::{
@@ -146,132 +144,6 @@ fn setup_tracing(cli: &Cli) -> Result<(), miette::Error> {
     }
 
     Ok(())
-}
-
-const ABOUT: &str = "😸 Transcribe audio files using Whisper AI";
-#[derive(Parser, Debug)]
-#[command(name = env!("CARGO_PKG_NAME"), author = env!("CARGO_PKG_AUTHORS"))]
-#[command(about = ABOUT)]
-#[command(version = "0.1.0")]
-#[command(styles = CLAP_STYLING)]
-struct Cli {
-    #[command(subcommand)]
-    command: Option<Commands>,
-
-    /// Path to the audio file to transcribe (when no subcommand)
-    #[arg(value_name = "AUDIO_FILE")]
-    audio_file: Option<PathBuf>,
-
-    /// Path to the Whisper model file
-    #[arg(short, long)]
-    model: Option<String>,
-
-    /// Language code (e.g., en, es, fr). Auto-detect if not specified
-    #[arg(short, long)]
-    language: Option<String>,
-
-    /// Translate to English (like whisper.cpp --translate)
-    #[arg(long)]
-    translate: bool,
-
-    /// Disable GPU acceleration
-    #[arg(long)]
-    no_gpu: bool,
-
-    /// Number of threads to use
-    #[arg(short, long)]
-    threads: Option<usize>,
-
-    /// Output format: text, json, srt, txt
-    #[arg(short, long, default_value = "text")]
-    output: OutputFormat,
-
-    /// Output file path (writes to file instead of stdout)
-    #[arg(short = 'f', long = "output-file")]
-    output_file: Option<PathBuf>,
-
-    /// Include timestamps in output (text format only)
-    #[arg(long)]
-    timestamps: bool,
-
-    /// Include word-level timestamps (if supported)
-    #[arg(long)]
-    word_timestamps: bool,
-
-    /// Stream transcription results in real-time
-    #[arg(short = 'S', long)]
-    no_stream: bool,
-
-    /// Temperature for sampling (0.0 = deterministic)
-    #[arg(long, default_value = "0.0")]
-    temperature: f32,
-
-    /// Verbose output
-    #[clap(flatten)]
-    verbosity: Verbosity,
-}
-
-#[derive(Subcommand, Debug)]
-enum Commands {
-    /// Model management commands
-    Models {
-        #[command(subcommand)]
-        command: ModelCommands,
-    },
-    /// System commands
-    #[clap(alias = "s")]
-    Sys {},
-}
-
-#[derive(Subcommand, Debug)]
-enum ModelCommands {
-    /// Download a Whisper model
-    Download {
-        /// Model to download (e.g., base, small, large-v3)
-        #[arg(value_name = "MODEL")]
-        model: String,
-
-        /// Force download even if the model is already downloaded
-        #[arg(short, long)]
-        force: bool,
-    },
-    /// List models (downloaded by default, use --available to list all available models)
-    List {
-        /// List all available models instead of downloaded models
-        #[arg(short, long)]
-        available: bool,
-    },
-    /// Delete a downloaded model
-    Delete {
-        /// Model to delete (e.g., base, small, large-v3)
-        #[arg(value_name = "MODEL")]
-        model: String,
-    },
-    /// Show model information
-    Info {
-        /// Model to show info for (e.g., base, small, large-v3)
-        #[arg(value_name = "MODEL")]
-        model: String,
-    },
-}
-
-#[derive(Subcommand, Debug)]
-enum SysCommands {
-    /// List GPU devices available for acceleration
-    Info,
-}
-
-/// Output format options
-#[derive(Clone, Debug, clap::ValueEnum)]
-enum OutputFormat {
-    /// Plain text output with optional timestamps
-    Text,
-    /// JSON output with metadata
-    Json,
-    /// SRT subtitle format
-    Srt,
-    /// Plain text output (clean, no timestamps)
-    Txt,
 }
 
 /// Handle streaming transcription output
@@ -918,8 +790,19 @@ fn print_model_groups() {
 
 async fn setup_config(cli: &Cli) -> miette::Result<TranscriptionConfig> {
     // Build transcription config
-    let mut config = TranscriptionConfig::new().with_sample_rate(16000); // Whisper's preferred sample rate
+    let mut config = TranscriptionConfig::new();
 
+    config = setup_model_config(cli, config).await?;
+
+    config = config.with_cli_options(cli);
+
+    Ok(config)
+}
+
+async fn setup_model_config(
+    cli: &Cli,
+    mut config: TranscriptionConfig,
+) -> Result<TranscriptionConfig, miette::Error> {
     let model_manager = ModelManager::new()?;
     if let Some(ref model_string) = cli.model {
         let model_path = Path::new(model_string);
@@ -970,22 +853,6 @@ async fn setup_config(cli: &Cli) -> miette::Result<TranscriptionConfig> {
             }
         }
     }
-
-    if let Some(ref language) = cli.language {
-        config = config.with_language(language);
-    }
-
-    config = config
-        .with_translate(cli.translate)
-        .with_threads(cli.threads.unwrap_or_else(num_cpus::get))
-        .with_temperature(cli.temperature)
-        .with_verbose(cli.verbosity.is_verbose())
-        .with_gpu(!cli.no_gpu)
-        .apply_output_format(|f| {
-            f.with_timestamps(cli.timestamps)
-                .with_word_timestamps(cli.word_timestamps)
-        });
-
     Ok(config)
 }
 
@@ -1053,9 +920,6 @@ fn handle_output(result: purr_core::SyncTranscriptionResult, cli: &Cli) -> miett
         println!("Segments: {}", result.stats.segment_count);
         println!("Words: {}", result.stats.word_count);
         println!("Words per minute: {:.1}", result.stats.words_per_minute());
-        if let Some(lang) = &result.language {
-            println!("Detected language: {lang}");
-        }
     }
 
     Ok(())
@@ -1069,43 +933,3 @@ struct ModelGroup {
     base_models: Vec<WhisperModel>,
     quantized: Vec<WhisperModel>,
 }
-
-const ASCII_ART: &str = r"
-             *     ,MMM8&&&.            *
-                  MMMM88&&&&&    .
-                 MMMM88&&&&&&&
-     *           MMM88&&&&&&&&
-                 MMM88&&&&&&&&
-                 'MMM88&&&&&&'
-                   'MMM8&&&'      *
-          |\___/|
-          )     (             .              '
-         =\     /=
-           )===(       *
-          /     \
-          |     |
-         /       \
-         \       /
-  _/\_/\_/\__  _/_/\_/\_/\_/\_/\_/\_/\_/\_/\_
-  |  |  |  |( (  |  |  |  |  |  |  |  |  |  |
-  |  |  |  | ) ) |  |  |  |  |  |  |  |  |  |
-  |  |  |  |(_(  |  |  |  |  |  |  |  |  |  |
-  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |";
-
-pub const HEADER: Style = AnsiColor::Green.on_default().effects(Effects::BOLD);
-pub const USAGE: Style = AnsiColor::Green.on_default().effects(Effects::BOLD);
-pub const LITERAL: Style = AnsiColor::Cyan.on_default().effects(Effects::BOLD);
-pub const PLACEHOLDER: Style = AnsiColor::Cyan.on_default().italic();
-pub const ERROR: Style = AnsiColor::Red.on_default().effects(Effects::BOLD);
-pub const VALID: Style = AnsiColor::Cyan.on_default().effects(Effects::BOLD);
-pub const INVALID: Style = AnsiColor::Yellow.on_default().effects(Effects::BOLD);
-
-pub const CLAP_STYLING: Styles = Styles::styled()
-    .header(HEADER)
-    .usage(USAGE)
-    .literal(LITERAL)
-    .placeholder(PLACEHOLDER)
-    .error(ERROR)
-    .valid(VALID)
-    .invalid(INVALID);

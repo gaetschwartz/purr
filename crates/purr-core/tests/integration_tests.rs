@@ -13,7 +13,7 @@ async fn test_transcription_config() {
         .with_threads(2)
         .with_sample_rate(16000);
 
-    assert_eq!(config.language, Some("en".to_string()));
+    assert_eq!(config.language, Some("en".into()));
     assert!(!config.use_gpu);
     assert_eq!(config.num_threads, Some(2));
     assert_eq!(config.sample_rate, 16000);
