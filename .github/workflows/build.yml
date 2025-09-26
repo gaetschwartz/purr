@@ -100,6 +100,7 @@ jobs:
             target/release/purr*
             dist-linux/
       - name: Archive web artifacts
+        if: matrix.backend == 'none'
         uses: actions/upload-artifact@v4
         with:
           name: purr-web
@@ -265,4 +266,4 @@ jobs:
       - name: Deploy to Vercel
         run: |
           tree
-          vercel --prod --token=${{ secrets.VERCEL_TOKEN }} --prebuilt artifacts/purr-web/dist-web
+          vercel --prod --token=${{ secrets.VERCEL_TOKEN }} --prebuilt artifacts/public
