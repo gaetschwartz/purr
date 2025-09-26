@@ -133,9 +133,8 @@ impl WebModelManager {
         let opts = RequestInit::new();
         opts.set_method("GET");
 
-        let request = Request::new_with_str_and_init(&url, &opts).map_err(|e| {
-            WebError::web_api("Request creation", e)
-        })?;
+        let request = Request::new_with_str_and_init(&url, &opts)
+            .map_err(|e| WebError::web_api("Request creation", e))?;
 
         let window = web_sys::window()
             .ok_or_else(|| WebError::network_error(0, "No window object", "unknown"))?;
@@ -145,9 +144,9 @@ impl WebModelManager {
             .await
             .map_err(|e| WebError::web_api("Fetch", e))?;
 
-        let resp: Response = resp_value.dyn_into().map_err(|e| {
-            WebError::web_api("Response cast", e)
-        })?;
+        let resp: Response = resp_value
+            .dyn_into()
+            .map_err(|e| WebError::web_api("Response cast", e))?;
 
         if !resp.ok() {
             return Err(WebError::network_error(
@@ -172,14 +171,12 @@ impl WebModelManager {
             let reader = body
                 .get_reader()
                 .dyn_into::<web_sys::ReadableStreamDefaultReader>()
-                .map_err(|e| {
-                    WebError::web_api("Reader cast", e.into())
-                })?;
+                .map_err(|e| WebError::web_api("Reader cast", e.into()))?;
             loop {
                 let read_promise = reader.read();
-                let result = JsFuture::from(read_promise).await.map_err(|e| {
-                    WebError::web_api("Stream read", e)
-                })?;
+                let result = JsFuture::from(read_promise)
+                    .await
+                    .map_err(|e| WebError::web_api("Stream read", e))?;
 
                 let chunk_obj = js_sys::Object::from(result);
                 let done = js_sys::Reflect::get(&chunk_obj, &"done".into())

@@ -307,8 +307,9 @@ impl StreamWhisperTranscriber {
 
                         // Adjust timing based on our streaming window
                         let adjusted_start =
-                            streaming_state.window_start_time as f64 + segment_start;
-                        let adjusted_end = streaming_state.window_start_time as f64 + segment_end;
+                            f64::from(streaming_state.window_start_time) + segment_start;
+                        let adjusted_end =
+                            f64::from(streaming_state.window_start_time) + segment_end;
 
                         chunk_start_time = chunk_start_time.min(adjusted_start);
                         chunk_end_time = chunk_end_time.max(adjusted_end);
@@ -340,9 +341,10 @@ impl StreamWhisperTranscriber {
                     let total_processing_time = std::time::Instant::now()
                         .duration_since(
                             std::time::Instant::now()
-                                - std::time::Duration::from_secs_f32(
+                                .checked_sub(std::time::Duration::from_secs_f32(
                                     streaming_state.total_duration,
-                                ),
+                                ))
+                                .unwrap(),
                         )
                         .as_secs_f64();
                     let word_count = chunk_text.split_whitespace().count();
@@ -359,12 +361,12 @@ impl StreamWhisperTranscriber {
 
                 // Ensure we have valid timing
                 if chunk_start_time == f64::MAX {
-                    chunk_start_time = streaming_state.window_start_time as f64;
+                    chunk_start_time = f64::from(streaming_state.window_start_time);
                 }
                 if chunk_end_time == 0.0 {
-                    chunk_end_time = (streaming_state.window_start_time
-                        + (audio_buffer.len() as f32 / 16000.0))
-                        as f64;
+                    chunk_end_time = f64::from(
+                        streaming_state.window_start_time + (audio_buffer.len() as f32 / 16000.0),
+                    );
                 }
 
                 let streaming_chunk = StreamingChunk {

@@ -150,7 +150,7 @@ pub fn Select(props: SelectProps) -> Element {
     }
 }
 
-/// Props for the NumberInput component
+/// Props for the `NumberInput` component
 #[derive(Props, Clone, PartialEq)]
 pub struct NumberInputProps {
     /// Current value
@@ -173,7 +173,7 @@ pub struct NumberInputProps {
     pub class: &'static str,
 }
 
-/// Reusable NumberInput component for numeric settings
+/// Reusable `NumberInput` component for numeric settings
 #[component]
 pub fn NumberInput(props: NumberInputProps) -> Element {
     rsx! {

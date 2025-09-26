@@ -327,7 +327,7 @@ impl std::fmt::Display for FileSource {
         match self {
             FileSource::Path(p) => write!(f, "[{}]", p.display()),
             FileSource::Bytes(b) => write!(f, "[{} bytes]", b.len()),
-            FileSource::Uploaded(id) => write!(f, "[#{}]", id),
+            FileSource::Uploaded(id) => write!(f, "[#{id}]"),
         }
     }
 }

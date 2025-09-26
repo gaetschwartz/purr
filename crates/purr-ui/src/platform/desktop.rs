@@ -405,8 +405,14 @@ impl Platform for PlatformImpl {
                 capabilities: device.caps.map(|caps| {
                     let mut cap_map = std::collections::HashMap::new();
                     cap_map.insert("async".to_string(), serde_json::Value::Bool(caps.async_));
-                    cap_map.insert("host_buffer".to_string(), serde_json::Value::Bool(caps.host_buffer));
-                    cap_map.insert("buffer_from_host_ptr".to_string(), serde_json::Value::Bool(caps.buffer_from_host_ptr));
+                    cap_map.insert(
+                        "host_buffer".to_string(),
+                        serde_json::Value::Bool(caps.host_buffer),
+                    );
+                    cap_map.insert(
+                        "buffer_from_host_ptr".to_string(),
+                        serde_json::Value::Bool(caps.buffer_from_host_ptr),
+                    );
                     cap_map.insert("events".to_string(), serde_json::Value::Bool(caps.events));
                     cap_map
                 }),

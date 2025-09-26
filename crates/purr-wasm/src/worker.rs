@@ -391,7 +391,7 @@ impl TranscriptionWorker {
         ready_result_rx
             .await
             .map_err(|_| WorkerError::ReadyChannelClosed)?
-            .map_err(|e| e.into())
+            .map_err(std::convert::Into::into)
     }
 
     /// Handle messages from worker.js

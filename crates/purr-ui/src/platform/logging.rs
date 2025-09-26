@@ -44,6 +44,7 @@ pub struct LogEntry {
 
 impl LogEntry {
     /// Get timestamp as a formatted string
+    #[must_use]
     pub fn formatted_timestamp(&self) -> String {
         #[cfg(feature = "chrono")]
         {
@@ -65,11 +66,13 @@ impl LogEntry {
     }
 
     /// Get a short target name (last component of the module path)
+    #[must_use]
     pub fn short_target(&self) -> &str {
         self.target.split("::").last().unwrap_or(&self.target)
     }
 
     /// Check if this log entry matches a search query
+    #[must_use]
     pub fn matches_search(&self, query: &str) -> bool {
         if query.is_empty() {
             return true;
@@ -83,11 +86,13 @@ impl LogEntry {
     }
 
     /// Check if this log entry matches a level filter
+    #[must_use]
     pub fn matches_level(&self, filter_levels: &HashSet<SerdeTracingLevel>) -> bool {
         filter_levels.is_empty() || filter_levels.contains(&self.level)
     }
 
     /// Check if this log entry matches a target filter
+    #[must_use]
     pub fn matches_target(&self, filter_targets: &[String]) -> bool {
         filter_targets.is_empty()
             || filter_targets
@@ -150,6 +155,7 @@ pub struct LogsStorage {
 
 impl LogsStorage {
     /// Create a new logs storage instance
+    #[must_use]
     pub fn new() -> Self {
         Self {
             entries: scc::Queue::default(),
@@ -243,6 +249,7 @@ pub struct LogsCaptureLayer;
 
 impl LogsCaptureLayer {
     /// Create a new logs capture layer
+    #[must_use]
     pub fn new() -> Self {
         Self
     }
@@ -272,7 +279,7 @@ where
             target: metadata.target().to_string(),
             message: String::new(),
             fields: Vec::new(),
-            file: metadata.file().map(|f| f.to_string()),
+            file: metadata.file().map(std::string::ToString::to_string),
             line: metadata.line(),
         };
 
@@ -296,10 +303,10 @@ impl<'a> LogFieldVisitor<'a> {
     }
 }
 
-impl<'a> tracing::field::Visit for LogFieldVisitor<'a> {
+impl tracing::field::Visit for LogFieldVisitor<'_> {
     fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn fmt::Debug) {
         if field.name() == "message" {
-            self.entry.message = format!("{:?}", value);
+            self.entry.message = format!("{value:?}");
             // Remove quotes around the message if they exist
             if self.entry.message.starts_with('"') && self.entry.message.ends_with('"') {
                 self.entry.message =
@@ -308,7 +315,7 @@ impl<'a> tracing::field::Visit for LogFieldVisitor<'a> {
         } else {
             self.entry
                 .fields
-                .push((field.name().to_string(), format!("{:?}", value)));
+                .push((field.name().to_string(), format!("{value:?}")));
         }
     }
 
@@ -429,7 +436,7 @@ impl LogsStorage {
                         entry.formatted_timestamp(),
                         entry.level,
                         entry.target,
-                        entry.message.replace("\"", "\"\""), // Escape quotes in CSV
+                        entry.message.replace('"', "\"\""), // Escape quotes in CSV
                         entry.file.unwrap_or_default(),
                         entry.line.unwrap_or_default()
                     ));

@@ -3,7 +3,7 @@
 use purr_common::platform::PlatformError;
 use wasm_bindgen::JsValue;
 
-/// Helper function to format JsValue errors into strings while preserving information
+/// Helper function to format `JsValue` errors into strings while preserving information
 pub(crate) fn format_js_error(js_error: JsValue) -> String {
     if js_error.is_string() {
         js_error
@@ -16,29 +16,29 @@ pub(crate) fn format_js_error(js_error: JsValue) -> String {
 
         if let Ok(name) = js_sys::Reflect::get(&obj, &"name".into()) {
             if let Some(name_str) = name.as_string() {
-                parts.push(format!("name: {}", name_str));
+                parts.push(format!("name: {name_str}"));
             }
         }
 
         if let Ok(message) = js_sys::Reflect::get(&obj, &"message".into()) {
             if let Some(message_str) = message.as_string() {
-                parts.push(format!("message: {}", message_str));
+                parts.push(format!("message: {message_str}"));
             }
         }
 
         if let Ok(stack) = js_sys::Reflect::get(&obj, &"stack".into()) {
             if let Some(stack_str) = stack.as_string() {
-                parts.push(format!("stack: {}", stack_str));
+                parts.push(format!("stack: {stack_str}"));
             }
         }
 
         if parts.is_empty() {
-            format!("{:?}", obj)
+            format!("{obj:?}")
         } else {
             parts.join(", ")
         }
     } else {
-        format!("{:?}", js_error)
+        format!("{js_error:?}")
     }
 }
 
@@ -186,56 +186,64 @@ pub enum StorageError {
 }
 
 impl StorageError {
-    /// Create a database open error with JsValue
+    /// Create a database open error with `JsValue`
+    #[must_use]
     pub fn database_open_failed(js_error: JsValue) -> Self {
         Self::DatabaseOpenFailed {
             js_error: format_js_error(js_error),
         }
     }
 
-    /// Create a database connection error with JsValue
+    /// Create a database connection error with `JsValue`
+    #[must_use]
     pub fn database_connection_failed(js_error: JsValue) -> Self {
         Self::DatabaseConnectionFailed {
             js_error: format_js_error(js_error),
         }
     }
 
-    /// Create a transaction creation error with JsValue
+    /// Create a transaction creation error with `JsValue`
+    #[must_use]
     pub fn transaction_creation_failed(js_error: JsValue) -> Self {
         Self::TransactionCreationFailed {
             js_error: format_js_error(js_error),
         }
     }
 
-    /// Create an object store access error with JsValue
+    /// Create an object store access error with `JsValue`
+    #[must_use]
     pub fn object_store_access_failed(js_error: JsValue) -> Self {
         Self::ObjectStoreAccessFailed {
             js_error: format_js_error(js_error),
         }
     }
 
-    /// Create a file store error with JsValue
+    /// Create a file store error with `JsValue`
+    #[must_use]
     pub fn file_store_failed(js_error: JsValue) -> Self {
         Self::FileStoreFailed {
             js_error: format_js_error(js_error),
         }
     }
 
-    /// Create a metadata store error with JsValue
+    /// Create a metadata store error with `JsValue`
+    #[must_use]
     pub fn metadata_store_failed(js_error: JsValue) -> Self {
         Self::MetadataStoreFailed {
             js_error: format_js_error(js_error),
         }
     }
 
-    /// Create a get request error with JsValue
+    /// Create a get request error with `JsValue`
+    #[must_use]
     pub fn get_request_failed(js_error: JsValue) -> Self {
         Self::GetRequestFailed {
             js_error: format_js_error(js_error),
         }
     }
 
-    /// Create a get operation error with JsValue
+    /// Create a get operation error with `JsValue`
+    #[must_use]
     pub fn get_operation_failed(js_error: JsValue) -> Self {
         Self::GetOperationFailed {
             js_error: format_js_error(js_error),
@@ -477,7 +485,7 @@ impl WebError {
         }
     }
 
-    /// Create a new IndexedDB error with JsValue
+    /// Create a new `IndexedDB` error with `JsValue`
     pub fn indexeddb(operation: impl Into<String>, js_error: JsValue) -> Self {
         Self::IndexedDb {
             operation: operation.into(),
@@ -485,7 +493,7 @@ impl WebError {
         }
     }
 
-    /// Create a new Web API error with JsValue
+    /// Create a new Web API error with `JsValue`
     pub fn web_api(api: impl Into<String>, js_error: JsValue) -> Self {
         Self::WebApi {
             api: api.into(),
@@ -493,7 +501,7 @@ impl WebError {
         }
     }
 
-    /// Create a new Web Audio API error with JsValue
+    /// Create a new Web Audio API error with `JsValue`
     pub fn web_audio_api(operation: impl Into<String>, js_error: JsValue) -> Self {
         Self::WebAudioApi {
             operation: operation.into(),
@@ -501,7 +509,7 @@ impl WebError {
         }
     }
 
-    /// Create a new JavaScript error with JsValue
+    /// Create a new JavaScript error with `JsValue`
     pub fn javascript(context: impl Into<String>, js_error: JsValue) -> Self {
         Self::JavaScript {
             context: context.into(),

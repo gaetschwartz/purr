@@ -180,7 +180,7 @@ impl WebStorage {
 
         response_rx.await.map_err(|e| {
             WebError::from(StorageError::GetOperationFailed {
-                js_error: format!("{:?}", e),
+                js_error: format!("{e:?}"),
             })
         })??;
 
@@ -213,7 +213,7 @@ impl WebStorage {
 
         let file_data = response_rx.await.map_err(|e| {
             WebError::from(StorageError::GetOperationFailed {
-                js_error: format!("{:?}", e),
+                js_error: format!("{e:?}"),
             })
         })??;
 
@@ -244,7 +244,7 @@ impl WebStorage {
 
         response_rx.await.map_err(|e| {
             WebError::from(StorageError::GetOperationFailed {
-                js_error: format!("{:?}", e),
+                js_error: format!("{e:?}"),
             })
         })??;
 
@@ -280,7 +280,7 @@ impl WebStorage {
 
         response_rx.await.map_err(|e| {
             WebError::from(StorageError::GetOperationFailed {
-                js_error: format!("{:?}", e),
+                js_error: format!("{e:?}"),
             })
         })??;
 
@@ -306,7 +306,7 @@ impl WebStorage {
 
         let metadata_map = response_rx.await.map_err(|e| {
             WebError::from(StorageError::GetOperationFailed {
-                js_error: format!("{:?}", e),
+                js_error: format!("{e:?}"),
             })
         })??;
 
@@ -364,11 +364,18 @@ impl WebStorage {
             let success_closure = Closure::once(move |event: web_sys::Event| {
                 let target = event.target().unwrap();
                 let request: IdbOpenDbRequest = target.dyn_into().unwrap();
-                resolve.call1(&JsValue::undefined(), &request.result().unwrap()).unwrap();
+                resolve
+                    .call1(&JsValue::undefined(), &request.result().unwrap())
+                    .unwrap();
             });
 
             let error_closure = Closure::once(move |_event: web_sys::Event| {
-                reject.call1(&JsValue::undefined(), &JsValue::from_str("Failed to open database")).unwrap();
+                reject
+                    .call1(
+                        &JsValue::undefined(),
+                        &JsValue::from_str("Failed to open database"),
+                    )
+                    .unwrap();
             });
 
             open_request.set_onsuccess(Some(success_closure.as_ref().unchecked_ref()));
@@ -430,11 +437,18 @@ impl WebStorage {
         // Create a promise wrapper for the request
         let promise = Promise::new(&mut |resolve, reject| {
             let success_closure = Closure::once(move |_event: web_sys::Event| {
-                resolve.call1(&JsValue::undefined(), &JsValue::undefined()).unwrap();
+                resolve
+                    .call1(&JsValue::undefined(), &JsValue::undefined())
+                    .unwrap();
             });
 
             let error_closure = Closure::once(move |_event: web_sys::Event| {
-                reject.call1(&JsValue::undefined(), &JsValue::from_str("Failed to store file")).unwrap();
+                reject
+                    .call1(
+                        &JsValue::undefined(),
+                        &JsValue::from_str("Failed to store file"),
+                    )
+                    .unwrap();
             });
 
             file_request.set_onsuccess(Some(success_closure.as_ref().unchecked_ref()));
@@ -455,13 +469,13 @@ impl WebStorage {
             .transaction_with_str_and_mode("metadata", web_sys::IdbTransactionMode::Readwrite)
             .map_err(|e| {
                 WebError::from(StorageError::MetadataTransactionFailed {
-                    js_error: format!("{:?}", e),
+                    js_error: format!("{e:?}"),
                 })
             })?;
 
         let metadata_store = metadata_transaction.object_store("metadata").map_err(|e| {
             WebError::from(StorageError::MetadataStoreAccessFailed {
-                js_error: format!("{:?}", e),
+                js_error: format!("{e:?}"),
             })
         })?;
 
@@ -479,11 +493,18 @@ impl WebStorage {
         // Create a promise wrapper for the request
         let promise = Promise::new(&mut |resolve, reject| {
             let success_closure = Closure::once(move |_event: web_sys::Event| {
-                resolve.call1(&JsValue::undefined(), &JsValue::undefined()).unwrap();
+                resolve
+                    .call1(&JsValue::undefined(), &JsValue::undefined())
+                    .unwrap();
             });
 
             let error_closure = Closure::once(move |_event: web_sys::Event| {
-                reject.call1(&JsValue::undefined(), &JsValue::from_str("Failed to store metadata")).unwrap();
+                reject
+                    .call1(
+                        &JsValue::undefined(),
+                        &JsValue::from_str("Failed to store metadata"),
+                    )
+                    .unwrap();
             });
 
             metadata_request.set_onsuccess(Some(success_closure.as_ref().unchecked_ref()));
@@ -527,11 +548,18 @@ impl WebStorage {
             let success_closure = Closure::once(move |event: web_sys::Event| {
                 let target = event.target().unwrap();
                 let request: web_sys::IdbRequest = target.dyn_into().unwrap();
-                resolve.call1(&JsValue::undefined(), &request.result().unwrap()).unwrap();
+                resolve
+                    .call1(&JsValue::undefined(), &request.result().unwrap())
+                    .unwrap();
             });
 
             let error_closure = Closure::once(move |_event: web_sys::Event| {
-                reject.call1(&JsValue::undefined(), &JsValue::from_str("Failed to get file")).unwrap();
+                reject
+                    .call1(
+                        &JsValue::undefined(),
+                        &JsValue::from_str("Failed to get file"),
+                    )
+                    .unwrap();
             });
 
             request.set_onsuccess(Some(success_closure.as_ref().unchecked_ref()));
@@ -590,11 +618,18 @@ impl WebStorage {
         // Create a promise wrapper for the request
         let promise = Promise::new(&mut |resolve, reject| {
             let success_closure = Closure::once(move |_event: web_sys::Event| {
-                resolve.call1(&JsValue::undefined(), &JsValue::undefined()).unwrap();
+                resolve
+                    .call1(&JsValue::undefined(), &JsValue::undefined())
+                    .unwrap();
             });
 
             let error_closure = Closure::once(move |_event: web_sys::Event| {
-                reject.call1(&JsValue::undefined(), &JsValue::from_str("Failed to delete file")).unwrap();
+                reject
+                    .call1(
+                        &JsValue::undefined(),
+                        &JsValue::from_str("Failed to delete file"),
+                    )
+                    .unwrap();
             });
 
             file_request.set_onsuccess(Some(success_closure.as_ref().unchecked_ref()));
@@ -615,13 +650,13 @@ impl WebStorage {
             .transaction_with_str_and_mode("metadata", web_sys::IdbTransactionMode::Readwrite)
             .map_err(|e| {
                 WebError::from(StorageError::MetadataTransactionFailed {
-                    js_error: format!("{:?}", e),
+                    js_error: format!("{e:?}"),
                 })
             })?;
 
         let metadata_store = metadata_transaction.object_store("metadata").map_err(|e| {
             WebError::from(StorageError::MetadataStoreAccessFailed {
-                js_error: format!("{:?}", e),
+                js_error: format!("{e:?}"),
             })
         })?;
 
@@ -629,18 +664,25 @@ impl WebStorage {
             .delete(&JsValue::from_str(file_id))
             .map_err(|e| {
                 WebError::from(StorageError::MetadataDeleteFailed {
-                    js_error: format!("{:?}", e),
+                    js_error: format!("{e:?}"),
                 })
             })?;
 
         // Create a promise wrapper for the request
         let promise = Promise::new(&mut |resolve, reject| {
             let success_closure = Closure::once(move |_event: web_sys::Event| {
-                resolve.call1(&JsValue::undefined(), &JsValue::undefined()).unwrap();
+                resolve
+                    .call1(&JsValue::undefined(), &JsValue::undefined())
+                    .unwrap();
             });
 
             let error_closure = Closure::once(move |_event: web_sys::Event| {
-                reject.call1(&JsValue::undefined(), &JsValue::from_str("Failed to delete metadata")).unwrap();
+                reject
+                    .call1(
+                        &JsValue::undefined(),
+                        &JsValue::from_str("Failed to delete metadata"),
+                    )
+                    .unwrap();
             });
 
             metadata_request.set_onsuccess(Some(success_closure.as_ref().unchecked_ref()));
@@ -684,11 +726,18 @@ impl WebStorage {
             let success_closure = Closure::once(move |event: web_sys::Event| {
                 let target = event.target().unwrap();
                 let request: web_sys::IdbRequest = target.dyn_into().unwrap();
-                resolve.call1(&JsValue::undefined(), &request.result().unwrap()).unwrap();
+                resolve
+                    .call1(&JsValue::undefined(), &request.result().unwrap())
+                    .unwrap();
             });
 
             let error_closure = Closure::once(move |_event: web_sys::Event| {
-                reject.call1(&JsValue::undefined(), &JsValue::from_str("Failed to get all metadata")).unwrap();
+                reject
+                    .call1(
+                        &JsValue::undefined(),
+                        &JsValue::from_str("Failed to get all metadata"),
+                    )
+                    .unwrap();
             });
 
             request.set_onsuccess(Some(success_closure.as_ref().unchecked_ref()));

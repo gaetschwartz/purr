@@ -151,7 +151,7 @@ pub trait TranscriptionConfigWithCliExt {
 impl TranscriptionConfigWithCliExt for purr_core::TranscriptionConfig {
     fn with_cli_options(self, cli: &Cli) -> Self {
         self.with_verbose(cli.verbosity.is_verbose())
-            .with_opt_language(cli.language.as_ref().map(|l| l.code()))
+            .with_opt_language(cli.language.as_ref().map(Language::code))
             .with_translate(cli.translate)
             .with_threads(cli.threads.unwrap_or_else(num_cpus::get))
             .with_temperature(cli.temperature)

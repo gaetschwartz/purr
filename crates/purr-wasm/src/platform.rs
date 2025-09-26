@@ -537,7 +537,7 @@ impl Platform for PlatformImpl {
                 let adapter_promise = navigator.gpu().request_adapter();
                 let adapter = wasm_bindgen_futures::JsFuture::from(adapter_promise)
                     .await
-                    .map_err(|e| format!("Failed to get WebGPU adapter: {:?}", e))?;
+                    .map_err(|e| format!("Failed to get WebGPU adapter: {e:?}"))?;
 
                 if adapter.is_undefined() {
                     return Err("No WebGPU adapter found".to_string());
@@ -559,7 +559,7 @@ impl Platform for PlatformImpl {
 
                 Ok::<DeviceInfo, String>(DeviceInfo {
                     id: 1,
-                    name: format!("{} {}", vendor, device),
+                    name: format!("{vendor} {device}"),
                     description: Some("WebGPU-based transcription".to_string()),
                     device_type: DeviceType::Gpu,
                     memory_free: None, // WebGPU does not expose memory info

@@ -490,7 +490,7 @@ fn LogLevelButton(
                 bg_class,
                 text_class,
             ),
-            onclick: move |_| on_toggle.call(level.clone()),
+            onclick: move |_| on_toggle.call(level),
             {level_text}
         }
     }

@@ -4,7 +4,7 @@ mod fmt;
 
 use crate::fmt::{MyFormatter, Verbosity, VerbosityLevel};
 use clap::Parser as _;
-use cli::*;
+use cli::{Cli, Commands, ModelCommands, OutputFormat, TranscriptionConfigWithCliExt, ASCII_ART};
 use indicatif::{HumanBytes, HumanDuration, ProgressBar, ProgressStyle};
 use miette::IntoDiagnostic as _;
 use owo_colors::OwoColorize as _;
