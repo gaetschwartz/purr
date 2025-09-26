@@ -19,9 +19,13 @@ pub struct MyFormatter {
 impl MyFormatter {
     pub fn new(verbosity: Verbosity) -> Self {
         let filter: Box<dyn Fn(&Event<'_>) -> bool + Send + Sync> = match *verbosity.verbose {
-            VerbosityLevel::NORMAL_VALUE => {
-                Box::new(|event: &Event<'_>| *event.metadata().level() >= Level::INFO)
-            }
+            VerbosityLevel::NORMAL_VALUE => Box::new(|event: &Event<'_>| {
+                *event.metadata().level() >= Level::INFO && {
+                    [APP_NAME, purr_core::PKG_NAME]
+                        .iter()
+                        .any(|t| event.metadata().target().starts_with(t))
+                }
+            }),
             VerbosityLevel::VERBOSE_VALUE => Box::new(|event: &Event<'_>| {
                 if *event.metadata().level() < Level::INFO {
                     return false;
