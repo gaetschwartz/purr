@@ -19,3 +19,9 @@ pub use drag_drop::DragDropZone;
 
 mod transcription;
 pub use transcription::Transcription;
+
+mod settings;
+pub use settings::Settings;
+
+mod logs;
+pub use logs::Logs;

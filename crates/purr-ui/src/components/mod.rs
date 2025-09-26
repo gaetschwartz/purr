@@ -23,3 +23,6 @@ pub use status_badge::*;
 
 mod progress_bar;
 pub use progress_bar::*;
+
+mod form;
+pub use form::*;

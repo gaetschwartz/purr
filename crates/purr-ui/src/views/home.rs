@@ -7,6 +7,12 @@ use dioxus::prelude::*;
 /// the drop zone should be surrounded by a dashed border
 #[component]
 pub fn Home() -> Element {
+    // Log when the home page renders
+    use_effect(move || {
+        tracing::info!("Home page loaded");
+        tracing::debug!("Rendering DragDropZone component");
+    });
+
     rsx! {
         DragDropZone {}
     }

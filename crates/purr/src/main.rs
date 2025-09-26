@@ -65,7 +65,7 @@ async fn main_impl() -> miette::Result<()> {
 
     // Validate audio file exists
     if !audio_file.exists() {
-        error!("Audio file not found: {}", audio_file.display());
+        error!("Audio file not found: {}", audio_file.display().bold());
         process::exit(1);
     }
 
@@ -85,27 +85,18 @@ async fn main_impl() -> miette::Result<()> {
     if cli.no_stream {
         info!("Transcribing audio...");
 
-        let result = match transcribe_file_sync(&audio_file, Some(config)).await {
-            Ok(result) => result,
-            Err(e) => {
-                error!("Transcription failed: {}", e);
-                process::exit(1);
-            }
-        };
+        let result = transcribe_file_sync(&audio_file, Some(config))
+            .await
+            .into_diagnostic()?;
 
         handle_output(result, &cli)?;
     } else {
         info!("Streaming transcription...");
 
         // Handle streaming transcription
-        let stream = match transcribe_file_stream(&audio_file, config).await {
-            Ok(stream) => stream,
-            Err(e) => {
-                // Check if this is a "no model found" error
-                error!("Streaming transcription failed: {}", e);
-                process::exit(1);
-            }
-        };
+        let stream = transcribe_file_stream(&audio_file, config)
+            .await
+            .into_diagnostic()?;
 
         // Process streaming results
         handle_streaming_output(stream, &cli).await?;

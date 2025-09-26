@@ -12,7 +12,7 @@ mod utils;
 mod views;
 
 use purr_common::platform::FileId;
-use views::{Home, Navbar, Transcription};
+use views::{Home, Logs, Navbar, Settings, Transcription};
 
 /// The Route enum is used to define the structure of internal routes in our app. All route enums need to derive
 /// the [`Routable`] trait, which provides the necessary methods for the router to work.
@@ -33,6 +33,10 @@ enum Route {
         // In this case, file_path will match any string like `/transcription/audio.mp3`.
         #[route("/transcription/:file")]
         Transcription { file: FileId },
+        #[route("/settings")]
+        Settings {},
+        #[route("/logs")]
+        Logs {},
 }
 
 // We can import assets in dioxus with the `asset!` macro. This macro takes a path to an asset relative to the crate root.
@@ -48,6 +52,9 @@ const TAILWIND_CSS: Asset = asset!("/assets/tailwind.css");
 /// Components should be annotated with `#[component]` to support props, better error messages, and autocomplete
 #[component]
 pub fn App() -> Element {
+    // Log when the app renders
+    tracing::debug!("App component rendering");
+
     // The `rsx!` macro lets us define HTML inside of rust. It expands to an Element with all of our HTML inside.
     rsx! {
         // In addition to element and text (which we will see later), rsx can contain other components. In this case,

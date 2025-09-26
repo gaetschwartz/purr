@@ -2,7 +2,10 @@
 
 use assert_cmd::Command;
 use rstest::rstest;
-use std::path::{Path, PathBuf};
+use std::{
+    path::{Path, PathBuf},
+    time::Duration,
+};
 
 const TINY_MODEL: &str = "../../.local/models/ggml-tiny.bin";
 
@@ -37,7 +40,7 @@ fn slow_test_cli_transcribe_sample_files(#[files("../../samples/*")] sample_path
         .arg("0.0") // Deterministic results
         .arg("--model")
         .arg(TINY_MODEL)
-        .timeout(std::time::Duration::from_secs(300)); // Allow up to 5 minutes
+        .timeout(Duration::from_secs(300)); // Allow up to 5 minutes
 
     let output = cmd.output().unwrap();
 
@@ -90,7 +93,7 @@ fn slow_test_cli_output_formats(#[case] format: OutputFormat) {
         .arg("0.0") // Deterministic results
         .arg("--model")
         .arg(TINY_MODEL)
-        .timeout(std::time::Duration::from_secs(300)); // Allow up to 5 minutes
+        .timeout(Duration::from_secs(300)); // Allow up to 5 minutes
 
     let output = cmd.output().unwrap();
 
@@ -138,9 +141,7 @@ fn slow_test_cli_output_formats(#[case] format: OutputFormat) {
 #[test]
 fn test_cli_error_handling(#[case] invalid_path: &str, #[case] description: &str) {
     let mut cmd = Command::cargo_bin("purr").unwrap();
-    cmd.arg(invalid_path)
-        .arg("--no-gpu")
-        .timeout(std::time::Duration::from_secs(30));
+    cmd.arg(invalid_path).timeout(Duration::from_secs(30));
 
     let output = cmd.output().unwrap();
     assert!(

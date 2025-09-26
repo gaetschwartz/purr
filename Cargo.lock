@@ -5110,6 +5110,7 @@ dependencies = [
  "async-trait",
  "bytes",
  "cached",
+ "chrono",
  "const-str 0.7.0",
  "dioxus",
  "futures",
@@ -5124,6 +5125,7 @@ dependencies = [
  "purr-wasm",
  "rfd",
  "rstest",
+ "scc",
  "serde",
  "serde-wasm-bindgen",
  "serde_json",
@@ -5145,6 +5147,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "bytes",
+ "console_error_panic_hook",
  "futures",
  "getrandom 0.2.16",
  "gloo-file",
@@ -5165,6 +5168,7 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "tracing",
+ "tracing-wasm",
  "uuid",
  "wasm-bindgen",
  "wasm-bindgen-futures",
@@ -5754,6 +5758,7 @@ checksum = "b502f85d09e86afa08920ba0e320d9919e0edfb57aa6d7f7947d9961f789cdd7"
 dependencies = [
  "saa",
  "sdd",
+ "serde",
 ]
 
 [[package]]

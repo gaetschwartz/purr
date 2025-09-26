@@ -9,6 +9,8 @@ pub enum IconType {
     Error,
     Logo,
     LiveTranscription,
+    Settings,
+    Logs,
 }
 
 /// Props for the Icon component
@@ -44,6 +46,14 @@ pub fn Icon(props: IconProps) -> Element {
         IconType::LiveTranscription => (
             include_str!("../../assets/icons/live-transcription.svg"),
             "w-5 h-5 text-blue-600",
+        ),
+        IconType::Settings => (
+            include_str!("../../assets/icons/settings.svg"),
+            "w-5 h-5 text-gray-600",
+        ),
+        IconType::Logs => (
+            include_str!("../../assets/icons/logs.svg"),
+            "w-5 h-5 text-gray-600",
         ),
     };
 
