@@ -1,14 +1,17 @@
 //! Audio processing functionality using `FFmpeg`
 
 use crate::error::{AudioProcessingError, Result, WhisperError};
+use crate::input::AsyncStreamBuffer;
 use ffmpeg_next as ffmpeg;
 use futures::Stream;
+use reqwest::IntoUrl;
 use std::path::Path;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 use tokio::sync::mpsc;
 use tokio::task;
 use tracing::warn;
+use url::Url;
 
 /// Audio data structure
 #[derive(Debug, Clone)]
@@ -79,6 +82,12 @@ impl Stream for AudioStream {
     }
 }
 
+impl std::fmt::Debug for AudioStream {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AudioStream").finish()
+    }
+}
+
 /// Audio processor using `FFmpeg`
 pub struct AudioProcessor {}
 
@@ -124,7 +133,7 @@ impl AudioProcessor {
                 Ok(p) => p,
             };
 
-            if let Err(e) = processor.stream_audio_sync(&path, tx) {
+            if let Err(e) = processor.stream_audio(&path, tx) {
                 // Error will already be sent through channel if possible
                 warn!("Audio streaming failed: {}", e);
             }
@@ -143,104 +152,16 @@ impl AudioProcessor {
             }));
         }
 
-        // Open input file
-        let mut ictx = ffmpeg::format::input(&path).map_err(WhisperError::from)?;
+        // Open input file and convert to AsyncCustomInput
+        let input_ctx = ffmpeg::format::input(&path).map_err(WhisperError::from)?;
+        let custom_input = crate::input::AsyncCustomInput::from_input_context(input_ctx)?;
 
-        // Find the audio stream
-        let input = ictx
-            .streams()
-            .best(ffmpeg::media::Type::Audio)
-            .ok_or_else(|| WhisperError::from(AudioProcessingError::NoAudioStream))?;
-
-        let stream_index = input.index();
-
-        // Get decoder
-        let context_decoder = ffmpeg::codec::context::Context::from_parameters(input.parameters())
-            .map_err(WhisperError::from)?;
-
-        let mut decoder = context_decoder
-            .decoder()
-            .audio()
-            .map_err(WhisperError::from)?;
-
-        let mut samples = Vec::new();
-        let mut frame = ffmpeg::frame::Audio::empty();
-        let mut resampled = ffmpeg::frame::Audio::empty();
-
-        // Resampler state tracking
-        let mut resampler: Option<ffmpeg::software::resampling::context::Context> = None;
-        let mut last_format: Option<ffmpeg::format::Sample> = None;
-        let mut last_channel_layout: Option<ffmpeg::channel_layout::ChannelLayout> = None;
-        let mut last_rate: Option<u32> = None;
-
-        // Process packets with error resilience
-        for (stream, packet) in ictx.packets() {
-            if stream.index() == stream_index {
-                // Try to send packet, but continue on errors to handle corrupted streams
-                match decoder.send_packet(&packet) {
-                    Ok(()) => {
-                        // Successfully sent packet, process frames
-                        while decoder.receive_frame(&mut frame).is_ok() {
-                            Self::process_audio_frame(
-                                &frame,
-                                &mut samples,
-                                &mut resampled,
-                                &mut resampler,
-                                &mut last_format,
-                                &mut last_channel_layout,
-                                &mut last_rate,
-                            )?;
-                        }
-                    }
-                    Err(ffmpeg_next::Error::InvalidData) => {
-                        // Log the error but continue processing - skip corrupted packets
-                        warn!("Skipping invalid chunk at stream index {}", stream_index,);
-                        continue;
-                    }
-                    Err(e) => return Err(WhisperError::from(e)),
-                }
-            }
-        }
-
-        // Flush decoder - continue even if flushing fails
-        match decoder.send_eof() {
-            Ok(()) => {
-                while decoder.receive_frame(&mut frame).is_ok() {
-                    Self::process_audio_frame(
-                        &frame,
-                        &mut samples,
-                        &mut resampled,
-                        &mut resampler,
-                        &mut last_format,
-                        &mut last_channel_layout,
-                        &mut last_rate,
-                    )?;
-                }
-            }
-            Err(e) => {
-                eprintln!("Warning: Failed to flush decoder, but continuing: {e}");
-            }
-        }
-
-        // Check if we got any audio data
-        if samples.is_empty() {
-            return Err(WhisperError::from(AudioProcessingError::processing_failed(
-                "audio extraction",
-                std::io::Error::new(std::io::ErrorKind::InvalidData, "No audio data could be extracted from file - file may be corrupted or unsupported")
-            )));
-        }
-
-        let duration = samples.len() as f32 / 16000.0;
-
-        Ok(AudioData {
-            samples,
-            sample_rate: 16000,
-            duration,
-        })
+        // Use the common input processing logic
+        self.load_audio_from_input(custom_input)
     }
 
     /// Synchronous streaming audio implementation
-    fn stream_audio_sync(
+    fn stream_audio(
         &mut self,
         path: &Path,
         tx: mpsc::UnboundedSender<Result<AudioChunk>>,
@@ -261,143 +182,12 @@ impl AudioProcessor {
             return Err(error);
         }
 
-        // Open input file
-        let mut ictx = ffmpeg::format::input(&path).map_err(WhisperError::from)?;
+        // Open input file and convert to AsyncCustomInput
+        let input_ctx = ffmpeg::format::input(&path).map_err(WhisperError::from)?;
+        let custom_input = crate::input::AsyncCustomInput::from_input_context(input_ctx)?;
 
-        // Find the audio stream
-        let input = ictx
-            .streams()
-            .best(ffmpeg::media::Type::Audio)
-            .ok_or_else(|| WhisperError::from(AudioProcessingError::NoAudioStream))?;
-
-        let stream_index = input.index();
-
-        // Get decoder
-        let context_decoder = ffmpeg::codec::context::Context::from_parameters(input.parameters())
-            .map_err(WhisperError::from)?;
-
-        let mut decoder = context_decoder
-            .decoder()
-            .audio()
-            .map_err(WhisperError::from)?;
-
-        let mut chunk_samples = Vec::new();
-        let mut frame = ffmpeg::frame::Audio::empty();
-        let mut resampled = ffmpeg::frame::Audio::empty();
-        let mut chunk_index = 0;
-        let mut total_samples_processed = 0u64;
-
-        // Resampler state tracking
-        let mut resampler: Option<ffmpeg::software::resampling::context::Context> = None;
-        let mut last_format: Option<ffmpeg::format::Sample> = None;
-        let mut last_channel_layout: Option<ffmpeg::channel_layout::ChannelLayout> = None;
-        let mut last_rate: Option<u32> = None;
-
-        // Process packets and build chunks
-        for (stream, packet) in ictx.packets() {
-            if stream.index() == stream_index {
-                match decoder.send_packet(&packet) {
-                    Ok(()) => {
-                        while decoder.receive_frame(&mut frame).is_ok() {
-                            // Process frame into temporary samples buffer
-                            let mut frame_samples = Vec::new();
-                            if let Err(e) = Self::process_audio_frame_to_buffer(
-                                &frame,
-                                &mut frame_samples,
-                                &mut resampled,
-                                &mut resampler,
-                                &mut last_format,
-                                &mut last_channel_layout,
-                                &mut last_rate,
-                            ) {
-                                warn!("Failed to process frame, skipping: {}", e);
-                                continue;
-                            }
-
-                            // Add frame samples to current chunk
-                            chunk_samples.extend_from_slice(&frame_samples);
-
-                            // Check if we have enough samples for a chunk
-                            while chunk_samples.len() >= AudioChunk::TARGET_SAMPLES {
-                                let chunk_data = chunk_samples
-                                    .drain(..AudioChunk::TARGET_SAMPLES)
-                                    .collect::<Vec<f32>>();
-
-                                let start_time = total_samples_processed as f32 / 16000.0;
-                                let chunk =
-                                    AudioChunk::new(chunk_data, chunk_index, start_time, false);
-
-                                if tx.send(Ok(chunk)).is_err() {
-                                    // Receiver dropped, stop processing
-                                    return Ok(());
-                                }
-
-                                chunk_index += 1;
-                                total_samples_processed += AudioChunk::TARGET_SAMPLES as u64;
-                            }
-                        }
-                    }
-                    Err(ffmpeg_next::Error::InvalidData) => {
-                        warn!("Skipping invalid chunk at stream index {}", stream_index);
-                        continue;
-                    }
-                    Err(e) => {
-                        let error = WhisperError::from(e);
-                        let _ = tx.send(Err(WhisperError::from(e)));
-                        return Err(error);
-                    }
-                }
-            }
-        }
-
-        // Flush decoder
-        match decoder.send_eof() {
-            Ok(()) => {
-                while decoder.receive_frame(&mut frame).is_ok() {
-                    let mut frame_samples = Vec::new();
-                    if let Err(e) = Self::process_audio_frame_to_buffer(
-                        &frame,
-                        &mut frame_samples,
-                        &mut resampled,
-                        &mut resampler,
-                        &mut last_format,
-                        &mut last_channel_layout,
-                        &mut last_rate,
-                    ) {
-                        warn!("Failed to process final frame, skipping: {}", e);
-                        continue;
-                    }
-                    chunk_samples.extend_from_slice(&frame_samples);
-                }
-            }
-            Err(e) => {
-                warn!("Failed to flush decoder, but continuing: {}", e);
-            }
-        }
-
-        // Send final chunk if we have remaining samples
-        if !chunk_samples.is_empty() {
-            let start_time = total_samples_processed as f32 / 16000.0;
-            let final_chunk = AudioChunk::new(chunk_samples, chunk_index, start_time, true);
-            let _ = tx.send(Ok(final_chunk));
-        } else if chunk_index == 0 {
-            // No chunks were sent, send error
-            let error_msg =
-                "No audio data could be extracted from file - file may be corrupted or unsupported";
-            let error = WhisperError::from(AudioProcessingError::processing_failed(
-                "audio extraction",
-                std::io::Error::new(std::io::ErrorKind::InvalidData, error_msg),
-            ));
-            let _ = tx.send(Err(WhisperError::from(
-                AudioProcessingError::processing_failed(
-                    "audio extraction",
-                    std::io::Error::new(std::io::ErrorKind::InvalidData, error_msg),
-                ),
-            )));
-            return Err(error);
-        }
-
-        Ok(())
+        // Use the common input processing logic
+        self.stream_audio_from_input(custom_input, tx)
     }
 
     /// Process a single audio frame with proper resampling
@@ -674,6 +464,376 @@ impl AudioProcessor {
                     }
                 }
             }
+        }
+
+        Ok(())
+    }
+
+    /// Load audio from URL and convert to the format expected by Whisper
+    pub async fn load_audio_from_url(url: impl IntoUrl) -> Result<AudioData> {
+        Self::load_audio_from_url_with_config(
+            url.into_url()?,
+            &crate::TranscriptionConfig::default(),
+        )
+        .await
+    }
+
+    /// Load audio from URL with custom configuration
+    pub async fn load_audio_from_url_with_config(
+        url: Url,
+        config: &crate::TranscriptionConfig,
+    ) -> Result<AudioData> {
+        use crate::input::AsyncCustomInput;
+        use crate::url::{HttpStreamer, UrlStreamConfig};
+        use std::time::Duration;
+
+        // Create URL streamer with timeout configuration from TranscriptionConfig
+        let url_config = UrlStreamConfig {
+            timeout: Duration::from_secs(config.http_timeout),
+            connect_timeout: Duration::from_secs(config.http_connect_timeout),
+            ..Default::default()
+        };
+        let streamer = HttpStreamer::with_config(url_config)?;
+
+        // Create buffer for streaming
+        let buffer = AsyncStreamBuffer::new();
+
+        // Start streaming URL data
+        let streaming_handle = streamer.stream_url(url, buffer.clone()).await?;
+
+        // Create custom input from the buffer
+        let custom_input = AsyncCustomInput::create(buffer).await?;
+
+        // Process the streaming input
+        let audio_data = task::spawn_blocking(move || {
+            let mut processor = AudioProcessor::new()?;
+            processor.load_audio_from_input(custom_input)
+        })
+        .await
+        .map_err(|e| WhisperError::from(AudioProcessingError::TaskJoin { source: e }))??;
+
+        // Wait for streaming to complete
+        let _ = streaming_handle.await;
+
+        Ok(audio_data)
+    }
+
+    /// Stream audio from URL as chunks for real-time processing
+    pub async fn stream_url(url: Url) -> Result<AudioStream> {
+        Self::stream_url_with_config(url, &crate::TranscriptionConfig::default()).await
+    }
+
+    /// Stream audio from URL with custom configuration
+    pub async fn stream_url_with_config(
+        url: Url,
+        config: &crate::TranscriptionConfig,
+    ) -> Result<AudioStream> {
+        use crate::input::AsyncCustomInput;
+        use crate::url::{HttpStreamer, UrlStreamConfig};
+        use std::time::Duration;
+
+        // Create URL streamer with timeout configuration from TranscriptionConfig
+        let url_config = UrlStreamConfig {
+            timeout: Duration::from_secs(config.http_timeout),
+            connect_timeout: Duration::from_secs(config.http_connect_timeout),
+            ..Default::default()
+        };
+        let streamer = HttpStreamer::with_config(url_config)?;
+
+        // Create buffer for streaming
+        let buffer = AsyncStreamBuffer::new();
+
+        // Start streaming URL data
+        let _streaming_handle = streamer.stream_url(url, buffer.clone()).await?;
+
+        let (tx, rx) = mpsc::unbounded_channel();
+
+        // Process audio in a background task
+        task::spawn_blocking(move || {
+            let mut processor = match AudioProcessor::new() {
+                Err(e) => {
+                    let _ = tx.send(Err(e));
+                    return;
+                }
+                Ok(p) => p,
+            };
+
+            // Create custom input from the buffer
+            let custom_input = match futures::executor::block_on(AsyncCustomInput::create(buffer)) {
+                Err(e) => {
+                    let _ = tx.send(Err(WhisperError::from(e)));
+                    return;
+                }
+                Ok(input) => input,
+            };
+
+            if let Err(e) = processor.stream_audio_from_input(custom_input, tx) {
+                // Error will already be sent through channel if possible
+                warn!("URL audio streaming failed: {}", e);
+            }
+        });
+
+        Ok(AudioStream::new(rx))
+    }
+
+    /// Load audio from AsyncCustomInput
+    fn load_audio_from_input(
+        &mut self,
+        input: crate::input::AsyncCustomInput,
+    ) -> Result<AudioData> {
+        let mut ictx = input.into_input();
+
+        // Find the audio stream
+        let input_stream = ictx
+            .streams()
+            .best(ffmpeg::media::Type::Audio)
+            .ok_or_else(|| WhisperError::from(AudioProcessingError::NoAudioStream))?;
+
+        let stream_index = input_stream.index();
+
+        // Get decoder
+        let context_decoder =
+            ffmpeg::codec::context::Context::from_parameters(input_stream.parameters())
+                .map_err(WhisperError::from)?;
+
+        let mut decoder = context_decoder
+            .decoder()
+            .audio()
+            .map_err(WhisperError::from)?;
+
+        let mut samples = Vec::new();
+        let mut frame = ffmpeg::frame::Audio::empty();
+        let mut resampled = ffmpeg::frame::Audio::empty();
+
+        // Resampler state tracking
+        let mut resampler: Option<ffmpeg::software::resampling::context::Context> = None;
+        let mut last_format: Option<ffmpeg::format::Sample> = None;
+        let mut last_channel_layout: Option<ffmpeg::channel_layout::ChannelLayout> = None;
+        let mut last_rate: Option<u32> = None;
+
+        // Process packets with error resilience
+        for (stream, packet) in ictx.packets() {
+            if stream.index() == stream_index {
+                match decoder.send_packet(&packet) {
+                    Ok(()) => {
+                        while decoder.receive_frame(&mut frame).is_ok() {
+                            Self::process_audio_frame(
+                                &frame,
+                                &mut samples,
+                                &mut resampled,
+                                &mut resampler,
+                                &mut last_format,
+                                &mut last_channel_layout,
+                                &mut last_rate,
+                            )?;
+                        }
+                    }
+                    Err(ffmpeg_next::Error::InvalidData) => {
+                        warn!("Skipping invalid chunk at stream index {}", stream_index);
+                        continue;
+                    }
+                    Err(e) => return Err(WhisperError::from(e)),
+                }
+            }
+        }
+
+        // Flush decoder
+        match decoder.send_eof() {
+            Ok(()) => {
+                while decoder.receive_frame(&mut frame).is_ok() {
+                    Self::process_audio_frame(
+                        &frame,
+                        &mut samples,
+                        &mut resampled,
+                        &mut resampler,
+                        &mut last_format,
+                        &mut last_channel_layout,
+                        &mut last_rate,
+                    )?;
+                }
+            }
+            Err(e) => {
+                eprintln!("Warning: Failed to flush decoder, but continuing: {e}");
+            }
+        }
+
+        // Check if we got any audio data
+        if samples.is_empty() {
+            return Err(WhisperError::from(AudioProcessingError::processing_failed(
+                "audio extraction",
+                std::io::Error::new(std::io::ErrorKind::InvalidData, "No audio data could be extracted from URL - stream may be corrupted or unsupported")
+            )));
+        }
+
+        let duration = samples.len() as f32 / 16000.0;
+
+        Ok(AudioData {
+            samples,
+            sample_rate: 16000,
+            duration,
+        })
+    }
+
+    /// Stream audio from AsyncCustomInput for real-time processing
+    fn stream_audio_from_input(
+        &mut self,
+        input: crate::input::AsyncCustomInput,
+        tx: mpsc::UnboundedSender<Result<AudioChunk>>,
+    ) -> Result<()> {
+        let mut ictx = input.into_input();
+
+        // Find the audio stream
+        let input_stream = ictx
+            .streams()
+            .best(ffmpeg::media::Type::Audio)
+            .ok_or_else(|| WhisperError::from(AudioProcessingError::NoAudioStream))?;
+
+        let stream_index = input_stream.index();
+
+        // Get decoder
+        let context_decoder =
+            ffmpeg::codec::context::Context::from_parameters(input_stream.parameters())
+                .map_err(WhisperError::from)?;
+
+        let mut decoder = context_decoder
+            .decoder()
+            .audio()
+            .map_err(WhisperError::from)?;
+
+        let mut output_samples = Vec::new();
+        let mut frame = ffmpeg::frame::Audio::empty();
+
+        let mut chunk_index = 0;
+        let mut total_processed_time = 0.0;
+
+        // Process packets with error resilience
+        for (stream, packet) in ictx.packets() {
+            if stream.index() == stream_index {
+                match decoder.send_packet(&packet) {
+                    Ok(()) => {
+                        while decoder.receive_frame(&mut frame).is_ok() {
+                            let mut resampled = ffmpeg::frame::Audio::empty();
+                            let mut resampler: Option<
+                                ffmpeg::software::resampling::context::Context,
+                            > = None;
+                            let mut last_format: Option<ffmpeg::format::Sample> = None;
+                            let mut last_channel_layout: Option<
+                                ffmpeg::channel_layout::ChannelLayout,
+                            > = None;
+                            let mut last_rate: Option<u32> = None;
+
+                            Self::process_audio_frame_to_buffer(
+                                &frame,
+                                &mut output_samples,
+                                &mut resampled,
+                                &mut resampler,
+                                &mut last_format,
+                                &mut last_channel_layout,
+                                &mut last_rate,
+                            )?;
+
+                            // Check if we have enough samples for a chunk
+                            while output_samples.len() >= AudioChunk::TARGET_SAMPLES {
+                                let chunk_samples: Vec<f32> =
+                                    output_samples.drain(..AudioChunk::TARGET_SAMPLES).collect();
+                                let chunk = AudioChunk::new(
+                                    chunk_samples,
+                                    chunk_index,
+                                    total_processed_time,
+                                    false,
+                                );
+                                total_processed_time += chunk.duration;
+                                chunk_index += 1;
+
+                                if tx.send(Ok(chunk)).is_err() {
+                                    return Ok(());
+                                }
+                            }
+                        }
+                    }
+                    Err(ffmpeg_next::Error::InvalidData) => {
+                        warn!("Skipping invalid chunk at stream index {}", stream_index);
+                        continue;
+                    }
+                    Err(e) => {
+                        let whisper_error = WhisperError::from(e);
+                        let _ = tx.send(Err(WhisperError::NetworkError {
+                            message: format!("Failed to decode audio packet: {}", e),
+                        }));
+                        return Err(whisper_error);
+                    }
+                }
+            }
+        }
+
+        // Flush decoder
+        match decoder.send_eof() {
+            Ok(()) => {
+                while decoder.receive_frame(&mut frame).is_ok() {
+                    let mut resampled = ffmpeg::frame::Audio::empty();
+                    let mut resampler: Option<ffmpeg::software::resampling::context::Context> =
+                        None;
+                    let mut last_format: Option<ffmpeg::format::Sample> = None;
+                    let mut last_channel_layout: Option<ffmpeg::channel_layout::ChannelLayout> =
+                        None;
+                    let mut last_rate: Option<u32> = None;
+
+                    Self::process_audio_frame_to_buffer(
+                        &frame,
+                        &mut output_samples,
+                        &mut resampled,
+                        &mut resampler,
+                        &mut last_format,
+                        &mut last_channel_layout,
+                        &mut last_rate,
+                    )?;
+
+                    // Process any complete chunks
+                    while output_samples.len() >= AudioChunk::TARGET_SAMPLES {
+                        let chunk_samples: Vec<f32> =
+                            output_samples.drain(..AudioChunk::TARGET_SAMPLES).collect();
+                        let chunk = AudioChunk::new(
+                            chunk_samples,
+                            chunk_index,
+                            total_processed_time,
+                            false,
+                        );
+                        total_processed_time += chunk.duration;
+                        chunk_index += 1;
+
+                        if tx.send(Ok(chunk)).is_err() {
+                            return Ok(());
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("Warning: Failed to flush decoder, but continuing: {e}");
+            }
+        }
+
+        // Send remaining samples as final chunk
+        if !output_samples.is_empty() {
+            let final_chunk =
+                AudioChunk::new(output_samples, chunk_index, total_processed_time, true);
+            let _ = tx.send(Ok(final_chunk));
+        } else if chunk_index == 0 {
+            // No chunks were sent, send an error
+            let error = WhisperError::from(AudioProcessingError::processing_failed(
+                "audio processing",
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "No audio data could be processed from URL",
+                ),
+            ));
+            let _ = tx.send(Err(error));
+            return Err(WhisperError::from(AudioProcessingError::processing_failed(
+                "audio processing",
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "No audio data could be processed from URL",
+                ),
+            )));
         }
 
         Ok(())

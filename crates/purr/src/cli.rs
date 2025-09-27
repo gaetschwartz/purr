@@ -6,7 +6,7 @@ use clap::builder::{
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
-const ABOUT: &str = "😸 Transcribe audio files using Whisper AI";
+const ABOUT: &str = "😸 Transcribe audio files and URLs using Whisper AI";
 #[derive(Parser, Debug)]
 #[command(name = env!("CARGO_PKG_NAME"), author = env!("CARGO_PKG_AUTHORS"))]
 #[command(about = ABOUT)]
@@ -16,9 +16,9 @@ pub struct Cli {
     #[command(subcommand)]
     pub command: Option<Commands>,
 
-    /// Path to the audio file to transcribe (when no subcommand)
-    #[arg(value_name = "AUDIO_FILE")]
-    pub audio_file: Option<PathBuf>,
+    /// Path to the audio file or URL to transcribe (when no subcommand)
+    #[arg(value_name = "AUDIO_FILE_OR_URL")]
+    pub audio_input: Option<String>,
 
     /// Path to the Whisper model file
     #[arg(short, long)]
@@ -79,6 +79,14 @@ pub struct Cli {
     /// Chunk overlap for streaming (in seconds)
     #[arg(long, default_value = "0.5")]
     pub chunk_overlap: f32,
+
+    /// HTTP timeout for URL requests (in seconds)
+    #[arg(long, default_value = "30")]
+    pub http_timeout: u64,
+
+    /// HTTP connection timeout for URL requests (in seconds)
+    #[arg(long, default_value = "10")]
+    pub http_connect_timeout: u64,
 }
 
 #[derive(Subcommand, Debug)]
@@ -159,6 +167,8 @@ impl TranscriptionConfigWithCliExt for purr_core::TranscriptionConfig {
             .with_chunk_overlap(cli.chunk_overlap)
             .with_chunk_size(cli.chunk_size)
             .without_gpu(cli.no_gpu)
+            .with_http_timeout(cli.http_timeout)
+            .with_http_connect_timeout(cli.http_connect_timeout)
             .apply_output_format(|f| {
                 f.with_timestamps(cli.timestamps)
                     .with_word_timestamps(cli.word_timestamps)

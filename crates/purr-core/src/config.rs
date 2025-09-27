@@ -47,6 +47,12 @@ pub struct TranscriptionConfig {
 
     /// Chunk overlap for streaming (in seconds)
     pub chunk_overlap: f32,
+
+    /// HTTP timeout for URL requests (in seconds)
+    pub http_timeout: u64,
+
+    /// HTTP connection timeout for URL requests (in seconds)
+    pub http_connect_timeout: u64,
 }
 
 /// Output format options
@@ -78,6 +84,8 @@ impl Default for TranscriptionConfig {
             verbose: false,
             chunk_size: 4.0,    // 4 seconds
             chunk_overlap: 0.5, // 0.5 seconds
+            http_timeout: 30,        // 30 seconds
+            http_connect_timeout: 10, // 10 seconds
         }
     }
 }
@@ -184,6 +192,20 @@ impl TranscriptionConfig {
     #[must_use]
     pub fn with_chunk_overlap(mut self, chunk_overlap: f32) -> Self {
         self.chunk_overlap = chunk_overlap;
+        self
+    }
+
+    /// Set the HTTP timeout for URL requests (in seconds)
+    #[must_use]
+    pub fn with_http_timeout(mut self, timeout: u64) -> Self {
+        self.http_timeout = timeout;
+        self
+    }
+
+    /// Set the HTTP connection timeout for URL requests (in seconds)
+    #[must_use]
+    pub fn with_http_connect_timeout(mut self, timeout: u64) -> Self {
+        self.http_connect_timeout = timeout;
         self
     }
 

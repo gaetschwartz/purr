@@ -234,6 +234,14 @@ pub enum WhisperError {
         #[from]
         source: tokio::task::JoinError,
     },
+
+    #[error("Network error: {message}")]
+    #[diagnostic(code(whisper::network::error))]
+    NetworkError { message: String },
+
+    #[error("Invalid input: {message}")]
+    #[diagnostic(code(whisper::input::error))]
+    InvalidInput { message: String },
 }
 
 /// Result type alias for purr operations

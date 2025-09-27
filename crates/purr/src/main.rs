@@ -10,8 +10,9 @@ use miette::IntoDiagnostic as _;
 use owo_colors::OwoColorize as _;
 use purr_core::{
     dev::{FeatureStatus, WhisperGpuBackend},
-    install_logging_hooks, list_devices, transcribe_file_stream, transcribe_file_sync,
-    ModelManager, StreamingTranscription, TranscriptionConfig, WhisperModel,
+    install_logging_hooks, is_valid_url, is_file_path, list_devices, transcribe_file_stream,
+    transcribe_file_sync, transcribe_url_stream, transcribe_url_sync, ModelManager,
+    StreamingTranscription, TranscriptionConfig, WhisperModel,
 };
 use purr_core::{
     math::{ByteSpeed, RoundToUnit as _},
@@ -57,16 +58,35 @@ async fn main_impl() -> miette::Result<()> {
     }
 
     // Handle transcription (original behavior)
-    let Some(audio_file) = cli.audio_file.clone() else {
+    let Some(audio_input) = cli.audio_input.clone() else {
         println!("{ASCII_ART}\n");
-        error!("No audio file specified. Please provide an audio file to transcribe.",);
+        error!("No audio file or URL specified. Please provide an audio file path or URL to transcribe.");
         std::process::exit(1);
     };
 
-    // Validate audio file exists
-    if !audio_file.exists() {
-        error!("Audio file not found: {}", audio_file.display().bold());
+    // Determine if input is a URL or file path
+    let is_url = is_valid_url(&audio_input);
+    let is_path = is_file_path(&audio_input);
+
+    if !is_url && !is_path {
+        error!("Invalid input: '{}'. Please provide a valid file path or URL.", audio_input.bold());
         process::exit(1);
+    }
+
+    // Validate file exists if it's a file path
+    if is_path {
+        let path = std::path::Path::new(&audio_input);
+        if !path.exists() {
+            error!("Audio file not found: {}", path.display().bold());
+            process::exit(1);
+        }
+    }
+
+    // Display input type
+    if is_url {
+        info!("Input: {} (URL)", audio_input.cyan());
+    } else {
+        info!("Input: {} (file)", audio_input.cyan());
     }
 
     let config = setup_config(&cli).await?;
@@ -85,18 +105,30 @@ async fn main_impl() -> miette::Result<()> {
     if cli.no_stream {
         info!("Transcribing audio...");
 
-        let result = transcribe_file_sync(&audio_file, Some(config))
-            .await
-            .into_diagnostic()?;
+        let result = if is_url {
+            transcribe_url_sync(&audio_input, Some(config))
+                .await
+                .into_diagnostic()?
+        } else {
+            transcribe_file_sync(&audio_input, Some(config))
+                .await
+                .into_diagnostic()?
+        };
 
         handle_output(result, &cli)?;
     } else {
         info!("Streaming transcription...");
 
         // Handle streaming transcription
-        let stream = transcribe_file_stream(&audio_file, config)
-            .await
-            .into_diagnostic()?;
+        let stream = if is_url {
+            transcribe_url_stream(&audio_input, config)
+                .await
+                .into_diagnostic()?
+        } else {
+            transcribe_file_stream(&audio_input, config)
+                .await
+                .into_diagnostic()?
+        };
 
         // Process streaming results
         handle_streaming_output(stream, &cli).await?;

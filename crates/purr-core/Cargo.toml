@@ -36,11 +36,16 @@ tokio-stream = "0.1.17"
 miette = { version = "7.6.0", features = ["fancy"] }
 serde_with = "3.14.1"
 bytes = "1.10.1"
+url = "2.5"
 
 [dev-dependencies]
 tempfile = "3.21"
 rstest = "0.26"
 pretty_assertions = "1.4.1"
+axum = "0.8"
+axum-test = "18.1"
+tower = "0.5"
+tokio-util = { version = "0.7", features = ["io"] }
 
 [features]
 cuda = ["whisper-rs/cuda"]
