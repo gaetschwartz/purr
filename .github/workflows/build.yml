@@ -274,7 +274,7 @@ jobs:
         id: setup-env
         run: |
           # set the environment to dev by default, and nightly if the workflow is triggered by schedule or manual with nightly input
-          ENVIRONMENT=${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.nightly == true) && 'preview' || 'development' }}
+          ENVIRONMENT="preview""
           echo "environment=$ENVIRONMENT" >> $GITHUB_OUTPUT
           vercel pull --yes --environment=$ENVIRONMENT --token=${{ secrets.VERCEL_TOKEN }}
       - name: Deploy to Vercel
