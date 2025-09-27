@@ -151,6 +151,6 @@ fetch-model model *ARGS:
     fi
 
 trigger-nightly:
-    @echo -e "{{BLUE}}[INFO]{{NC}} Triggering nightly build workflow..."
+    @echo "{{BLUE}}[INFO]{{NC}} Triggering nightly build workflow..."
     gh workflow run build.yml -f nightly=true
-    @echo -e "{{GREEN}}[SUCCESS]{{NC}} Nightly build triggered!"
+    @echo "{{GREEN}}[SUCCESS]{{NC}} Nightly build triggered!"
