@@ -263,23 +263,27 @@ jobs:
     needs: [build-linux]
     steps:
       - uses: actions/checkout@v4
-      - name: Download Artifacts
+      - name: Download Web Artifacts
         uses: actions/download-artifact@v4
         with:
           name: purr-web
-          path: ./.vercel/output
+          path: ./dist-web
+      - name: Setup Vercel Output Directory
+        run: |
+          mkdir -p .vercel/output/static
+          cp -r ./dist-web/* .vercel/output/static/
+          cp res/vercel-config.json .vercel/output/config.json
       - name: Install Vercel CLI
         run: npm install -g vercel
       - name: Setup Environment
         id: setup-env
         run: |
-          # set the environment to dev by default, and nightly if the workflow is triggered by schedule or manual with nightly input
+          # set the environment to preview by default, and production if needed
           ENVIRONMENT="preview"
           echo "environment=$ENVIRONMENT" >> $GITHUB_OUTPUT
           vercel pull --yes --environment=$ENVIRONMENT --token=${{ secrets.VERCEL_TOKEN }}
       - name: Deploy to Vercel
         run: |
-          cp res/vercel-config.json .vercel/output/config.json
           vercel --yes ${{ steps.setup-env.outputs.environment == 'production' && '--prod' || '' }} --token=${{ secrets.VERCEL_TOKEN }} --archive=tgz --prebuilt
 
   nightly-release:
