@@ -271,7 +271,7 @@ jobs:
       - name: Setup Vercel Output Directory
         run: |
           mkdir -p .vercel/output/static
-          cp -r ./dist-web/* .vercel/output/static/
+          cp -r ./dist-web/public/* .vercel/output/static/
           cp res/vercel-config.json .vercel/output/config.json
       - name: Install Vercel CLI
         run: npm install -g vercel
