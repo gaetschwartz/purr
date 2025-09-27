@@ -235,6 +235,8 @@ jobs:
         run: |
           cargo build --release ${{ matrix.backend != 'none' && format('--features {0}', matrix.backend) || '' }}
       - name: Build Dioxus Desktop${{ matrix.backend != 'none' && format(' - {0}', matrix.backend) || '' }}
+        # TODO: enable vulkan when fixed
+        if: matrix.backend != 'vulkan'
         run: |
           dx bundle --verbose --trace -p purr-ui --release --windows --out-dir dist-windows ${{ matrix.backend != 'none' && format('--features {0}', matrix.backend) || '' }}
       - name: Archive production artifacts
