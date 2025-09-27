@@ -255,12 +255,11 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: purr-web
-          path: artifacts
+          path: ./.vercel/output
       - name: Install Vercel CLI
         run: npm install -g vercel
       - name: Pull Vercel Environment Information
         run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
       - name: Deploy to Vercel
         run: |
-          tree
-          vercel --yes --prod --token=${{ secrets.VERCEL_TOKEN }} --prebuilt artifacts/public
+          vercel --yes --prod --token=${{ secrets.VERCEL_TOKEN }} --prebuilt
