@@ -3,6 +3,10 @@
 name: build
 on:
   push:
+  schedule:
+    # Run nightly builds at 2 AM UTC
+    - cron: "0 2 * * *"
+  workflow_dispatch:
 
 env:
   DIOXUS_VERSION: 0.7.0-rc.0
@@ -265,3 +269,115 @@ jobs:
       - name: Deploy to Vercel
         run: |
           vercel --yes --prod --token=${{ secrets.VERCEL_TOKEN }} --prebuilt
+
+  nightly-release:
+    name: Create Nightly Release
+    runs-on: ubuntu-latest
+    # Only run for scheduled nightly builds
+    if: github.event_name == 'schedule'
+    needs: [build-linux, build-macos, build-windows]
+    permissions:
+      contents: write
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Fetch all history for tags
+
+      - name: Get current date
+        id: date
+        run: echo "date=$(date +'%Y.%m.%d')" >> $GITHUB_OUTPUT
+
+      - name: Get previous nightly tag
+        id: prev_tag
+        run: |
+          # Find the most recent nightly tag
+          PREV_TAG=$(git tag -l 'nightly-*' --sort=-version:refname | head -n 1)
+          if [ -z "$PREV_TAG" ]; then
+            # If no nightly tag exists, use the most recent tag
+            PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          fi
+          echo "tag=$PREV_TAG" >> $GITHUB_OUTPUT
+
+      - name: Generate Changelog
+        id: changelog
+        uses: mikepenz/release-changelog-builder-action@v5
+        with:
+          configuration: |
+            {
+              "categories": [
+                {
+                  "title": "## 🚀 Features",
+                  "labels": ["feature", "feat", "enhancement"]
+                },
+                {
+                  "title": "## 🐛 Bug Fixes",
+                  "labels": ["fix", "bugfix", "bug"]
+                },
+                {
+                  "title": "## 🧪 Tests",
+                  "labels": ["test", "testing"]
+                },
+                {
+                  "title": "## 📚 Documentation",
+                  "labels": ["docs", "documentation"]
+                },
+                {
+                  "title": "## 🏗️ Refactoring",
+                  "labels": ["refactor", "refactoring"]
+                },
+                {
+                  "title": "## 🎨 Style",
+                  "labels": ["style"]
+                },
+                {
+                  "title": "## 🔧 Maintenance",
+                  "labels": ["chore", "ci", "build", "deps"]
+                }
+              ],
+              "template": "# Nightly Build - ${{ steps.date.outputs.date }}\n\n#{{CHANGELOG}}\n\n## 📊 Uncategorized Changes\n#{{UNCATEGORIZED}}\n\n---\n*This is an automated nightly build. It may be unstable.*",
+              "pr_template": "- #{{TITLE}} (#{{NUMBER}}) @#{{AUTHOR}}"
+            }
+          fromTag: ${{ steps.prev_tag.outputs.tag }}
+          toTag: HEAD
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./artifacts
+
+      - name: Package artifacts
+        run: |
+          cd artifacts
+          for dir in */; do
+            tar czf "../${dir%/}.tar.gz" "$dir"
+          done
+          cd ..
+
+      - name: Create Nightly Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: nightly-${{ steps.date.outputs.date }}
+          name: Nightly Build - ${{ steps.date.outputs.date }}
+          body: ${{ steps.changelog.outputs.changelog }}
+          prerelease: true
+          files: |
+            *.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Clean up old nightly releases
+        run: |
+          # Keep only the last 7 nightly releases
+          NIGHTLY_TAGS=$(git tag -l 'nightly-*' --sort=-version:refname | tail -n +8)
+          if [ ! -z "$NIGHTLY_TAGS" ]; then
+            for tag in $NIGHTLY_TAGS; do
+              echo "Deleting old nightly release: $tag"
+              gh release delete "$tag" --yes || true
+              git push --delete origin "$tag" || true
+            done
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
