@@ -194,8 +194,7 @@ pub mod utils {
 
 #[tokio::test]
 async fn test_audio_processor_load_nonexistent_file() {
-    let mut processor = AudioProcessor::new().unwrap();
-    let result = processor.load_audio("nonexistent_file.wav").await;
+    let result = AudioProcessor::load_audio("nonexistent_file.wav").await;
 
     assert!(result.is_err());
     match result.unwrap_err() {
@@ -214,15 +213,13 @@ async fn test_audio_processor_load_nonexistent_file() {
 
 #[tokio::test]
 async fn test_audio_processor_load_invalid_file() {
-    let mut processor = AudioProcessor::new().unwrap();
-
     // Create a temporary file with invalid content
     let temp_file = NamedTempFile::new().unwrap();
     fs::write(temp_file.path(), b"invalid audio data")
         .await
         .unwrap();
 
-    let result = processor.load_audio(temp_file.path()).await;
+    let result = AudioProcessor::load_audio(temp_file.path()).await;
     assert!(result.is_err());
 }
 
@@ -230,8 +227,7 @@ async fn test_audio_processor_load_invalid_file() {
 async fn test_audio_processor_load_valid_wav() {
     let temp_wav = fixtures::create_test_wav_file().await.unwrap();
 
-    let mut processor = AudioProcessor::new().unwrap();
-    let result = processor.load_audio(temp_wav.path()).await;
+    let result = AudioProcessor::load_audio(temp_wav.path()).await;
 
     assert!(result.is_ok(), "Should successfully load valid WAV file");
 
@@ -312,8 +308,7 @@ async fn test_error_invalid_file_format() {
         .await
         .unwrap();
 
-    let mut processor = AudioProcessor::new().unwrap();
-    let result = processor.load_audio(temp_file.path()).await;
+    let result = AudioProcessor::load_audio(temp_file.path()).await;
 
     assert!(result.is_err());
 }
@@ -323,8 +318,7 @@ async fn test_error_empty_file() {
     let temp_file = NamedTempFile::new().unwrap();
     // File exists but is empty
 
-    let mut processor = AudioProcessor::new().unwrap();
-    let result = processor.load_audio(temp_file.path()).await;
+    let result = AudioProcessor::load_audio(temp_file.path()).await;
 
     assert!(result.is_err());
 }
@@ -342,8 +336,7 @@ async fn test_error_corrupted_audio_file() {
 
     fs::write(temp_file.path(), corrupted_wav).await.unwrap();
 
-    let mut processor = AudioProcessor::new().unwrap();
-    let result = processor.load_audio(temp_file.path()).await;
+    let result = AudioProcessor::load_audio(temp_file.path()).await;
 
     assert!(result.is_err());
 }

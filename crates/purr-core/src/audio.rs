@@ -96,7 +96,7 @@ impl AudioProcessor {
     }
 
     /// Load audio file and convert to the format expected by Whisper
-    pub async fn load_audio<P: AsRef<Path>>(&mut self, path: P) -> Result<AudioData> {
+    pub async fn load_audio<P: AsRef<Path>>(path: P) -> Result<AudioData> {
         let path = path.as_ref().to_path_buf();
 
         // Run FFmpeg processing in a blocking task to avoid blocking the async runtime
@@ -870,8 +870,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_load_audio_nonexistent_file() {
-        let mut processor = AudioProcessor::new().unwrap();
-        let result = processor.load_audio("definitely_does_not_exist.wav").await;
+        let result = AudioProcessor::load_audio("definitely_does_not_exist.wav").await;
 
         assert!(result.is_err());
         let error = result.unwrap_err();
@@ -901,8 +900,7 @@ mod tests {
             .await
             .unwrap();
 
-        let mut processor = AudioProcessor::new().unwrap();
-        let result = processor.load_audio(temp_file.path()).await;
+        let result = AudioProcessor::load_audio(temp_file.path()).await;
 
         assert!(result.is_err());
         // The exact error type may vary depending on FFmpeg's response
@@ -918,8 +916,7 @@ mod tests {
         let temp_file = NamedTempFile::new().unwrap();
         fs::write(temp_file.path(), wav_data).await.unwrap();
 
-        let mut processor = AudioProcessor::new().unwrap();
-        let result = processor.load_audio(temp_file.path()).await;
+        let result = AudioProcessor::load_audio(temp_file.path()).await;
 
         assert!(result.is_ok(), "Should successfully load valid WAV file");
 

@@ -209,8 +209,7 @@ async fn test_sync_whisper_with_generated_audio() {
         .with_language("en")
         .with_verbose(false);
 
-    let mut processor = AudioProcessor::new().unwrap();
-    let audio_data = processor.load_audio(temp_audio.path()).await.unwrap();
+    let audio_data = AudioProcessor::load_audio(temp_audio.path()).await.unwrap();
 
     let transcriber = SyncWhisperTranscriber::from_config(config).await.unwrap();
     let result = transcriber.transcribe(audio_data).await;

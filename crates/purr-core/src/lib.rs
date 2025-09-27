@@ -38,8 +38,7 @@ pub async fn transcribe_file_sync<P: AsRef<std::path::Path>>(
 
     debug!("Transcribing audio file: {:?}", audio_path.as_ref());
     // Process audio
-    let mut audio_processor = AudioProcessor::new()?;
-    let audio_data = audio_processor.load_audio(audio_path).await?;
+    let audio_data = AudioProcessor::load_audio(audio_path).await?;
 
     debug!("Audio data loaded, starting transcription...");
 
