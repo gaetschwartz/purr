@@ -257,7 +257,7 @@ jobs:
             target/release/purr*
             dist-windows/
 
-  deploy-vercel-dev:
+  deploy-vercel:
     name: Deploy to Vercel
     runs-on: ubuntu-latest
     needs: [build-linux]
@@ -280,7 +280,7 @@ jobs:
       - name: Deploy to Vercel
         run: |
           cp res/vercel-config.json .vercel/output/config.json
-          vercel --yes --target=${{ steps.setup-env.outputs.environment }} --token=${{ secrets.VERCEL_TOKEN }} --archive=tgz --prebuilt
+          vercel --yes ${{ steps.setup-env.outputs.environment == 'production' && '--prod' || '' }} --token=${{ secrets.VERCEL_TOKEN }} --archive=tgz --prebuilt
 
   nightly-release:
     name: Create Nightly Release
