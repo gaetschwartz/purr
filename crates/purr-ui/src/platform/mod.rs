@@ -15,17 +15,18 @@ mod platform_impl;
 #[cfg(all(feature = "web", target_arch = "wasm32", not(feature = "desktop")))]
 pub use purr_wasm::platform as platform_impl;
 
-#[cfg(not(any(feature = "desktop", all(feature = "web", target_arch = "wasm32"))))]
-#[path = "unimplemented.rs"]
-mod platform_impl;
+mod unimplemented;
 
-pub async fn get_platform() -> Result<&'static Arc<dyn Platform>, PlatformError> {
-    static PLATFORM: OnceCell<Arc<dyn Platform>> = OnceCell::const_new();
+#[cfg(not(any(feature = "desktop", all(feature = "web", target_arch = "wasm32"))))]
+use unimplemented as platform_impl;
+
+pub async fn get_platform() -> Result<&'static Arc<platform_impl::PlatformImpl>, PlatformError> {
+    static PLATFORM: OnceCell<Arc<platform_impl::PlatformImpl>> = OnceCell::const_new();
     PLATFORM
         .get_or_try_init(|| async move {
-            <platform_impl::PlatformImpl as Platform>::new()
+            <platform_impl::PlatformImpl>::new()
                 .await
-                .map(|p| Arc::new(p) as Arc<dyn Platform>)
+                .map(|p| Arc::new(p))
         })
         .await
 }

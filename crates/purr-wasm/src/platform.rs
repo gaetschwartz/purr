@@ -22,8 +22,9 @@ use tokio::sync::{oneshot, Mutex, RwLock};
 use wasm_bindgen_futures;
 use web_sys::GpuAdapter;
 
+pub type PlatformImpl = WasmPlatformImpl;
 /// Web platform implementation using WebAssembly and browser APIs
-pub struct PlatformImpl {
+pub struct WasmPlatformImpl {
     /// Storage manager for file operations
     storage: Arc<WebStorage>,
     /// Model manager for model operations
@@ -38,7 +39,7 @@ pub struct PlatformImpl {
     config_mutex: Mutex<()>,
 }
 
-impl PlatformImpl {
+impl WasmPlatformImpl {
     /// Create a new `WebPlatform` instance
     pub fn new() -> WebResult<Self> {
         let storage = Arc::new(WebStorage::new());
@@ -174,7 +175,7 @@ impl PlatformImpl {
 }
 
 #[async_trait::async_trait]
-impl Platform for PlatformImpl {
+impl Platform for WasmPlatformImpl {
     async fn new() -> Result<Self, PlatformError>
     where
         Self: Sized,

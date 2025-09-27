@@ -17,12 +17,14 @@ use std::{
 use tokio::sync::Mutex;
 use tracing::{error, info, warn};
 
-pub(super) struct PlatformImpl {
+pub(crate) type PlatformImpl = DesktopPlatformImpl;
+
+pub(super) struct DesktopPlatformImpl {
     temp_dir: PathBuf,
     model_manager: Arc<Mutex<ModelManager>>,
 }
 
-impl PlatformImpl {
+impl DesktopPlatformImpl {
     pub fn new() -> Self {
         let temp_dir = std::env::temp_dir().join("purr-temp");
         // Ensure temp directory exists
@@ -45,7 +47,7 @@ impl PlatformImpl {
 }
 
 #[async_trait::async_trait]
-impl Platform for PlatformImpl {
+impl Platform for DesktopPlatformImpl {
     async fn new() -> Result<Self, PlatformError> {
         Ok(Self::new())
     }
@@ -423,7 +425,7 @@ impl Platform for PlatformImpl {
     }
 }
 
-impl PlatformImpl {
+impl DesktopPlatformImpl {
     /// Helper method to create model metadata for `WhisperModel`
     fn create_model_metadata(&self, model: &WhisperModel) -> ModelMetadata {
         ModelMetadata::new(
