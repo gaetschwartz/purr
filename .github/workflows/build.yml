@@ -7,6 +7,12 @@ on:
     # Run nightly builds at 2 AM UTC
     - cron: "0 2 * * *"
   workflow_dispatch:
+    inputs:
+      nightly:
+        description: 'Create nightly release'
+        required: false
+        default: false
+        type: boolean
 
 env:
   DIOXUS_VERSION: 0.7.0-rc.0
@@ -273,8 +279,8 @@ jobs:
   nightly-release:
     name: Create Nightly Release
     runs-on: ubuntu-latest
-    # Only run for scheduled nightly builds
-    if: github.event_name == 'schedule'
+    # Only run for scheduled nightly builds or manual trigger with nightly input
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.nightly == true)
     needs: [build-linux, build-macos, build-windows]
     permissions:
       contents: write

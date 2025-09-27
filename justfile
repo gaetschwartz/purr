@@ -149,3 +149,8 @@ fetch-model model *ARGS:
     else
         echo "Model ${MODEL} already exists in $DEST_DIR, use -f to force re-download"
     fi
+
+trigger-nightly:
+    @echo -e "{{BLUE}}[INFO]{{NC}} Triggering nightly build workflow..."
+    gh workflow run build.yml -f nightly=true
+    @echo -e "{{GREEN}}[SUCCESS]{{NC}} Nightly build triggered!"
