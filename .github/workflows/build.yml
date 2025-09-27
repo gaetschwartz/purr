@@ -257,7 +257,7 @@ jobs:
             target/release/purr*
             dist-windows/
 
-  deploy-vercel:
+  deploy-vercel-dev:
     name: Deploy to Vercel
     runs-on: ubuntu-latest
     needs: [build-linux]
@@ -270,12 +270,17 @@ jobs:
           path: ./.vercel/output
       - name: Install Vercel CLI
         run: npm install -g vercel
-      - name: Pull Vercel Environment Information
-        run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
+      - name: Setup Environment
+        id: setup-env
+        run: |
+          # set the environment to dev by default, and nightly if the workflow is triggered by schedule or manual with nightly input
+          ENVIRONMENT=${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.nightly == true) && 'nightly' || 'dev' }}
+          echo "environment=$ENVIRONMENT" >> $GITHUB_OUTPUT
+          vercel pull --yes --environment=$ENVIRONMENT --token=${{ secrets.VERCEL_TOKEN }}
       - name: Deploy to Vercel
         run: |
           cp res/vercel-config.json .vercel/output/config.json
-          vercel --yes --prod --token=${{ secrets.VERCEL_TOKEN }} --archive=tgz --prebuilt
+          vercel --yes --target=${{ steps.setup-env.outputs.environment }} --token=${{ secrets.VERCEL_TOKEN }} --archive=tgz --prebuilt
 
   nightly-release:
     name: Create Nightly Release
