@@ -2,15 +2,15 @@
 /// This implementation uses direct file system access and native whisper transcription
 use super::{Platform, PlatformError, TranscriptionRequest, TranscriptionStatus};
 use bytes::Bytes;
-use futures::{channel::mpsc, SinkExt, Stream, StreamExt};
+use futures::{channel::mpsc, SinkExt, StreamExt};
 use purr_common::platform::{
     DeviceInfo, DeviceType, FileId, FileSource, ModelInfo, ModelMetadata, ModelOperationProgress,
+    ModelProgressStream, TranscriptionStream,
 };
 use purr_core::dev;
 use purr_core::model::{ModelManager, WhisperModel};
 use std::{
     path::{Path, PathBuf},
-    pin::Pin,
     str::FromStr,
     sync::Arc,
 };
@@ -25,7 +25,7 @@ pub(super) struct DesktopPlatformImpl {
 }
 
 impl DesktopPlatformImpl {
-    pub fn new() -> Self {
+    pub fn new() -> Result<Self, PlatformError> {
         let temp_dir = std::env::temp_dir().join("purr-temp");
         // Ensure temp directory exists
         let _ = std::fs::create_dir_all(&temp_dir);
@@ -39,19 +39,14 @@ impl DesktopPlatformImpl {
                 Arc::new(Mutex::new(ModelManager::default()))
             });
 
-        Self {
+        Ok(Self {
             temp_dir,
             model_manager,
-        }
+        })
     }
 }
 
-#[async_trait::async_trait]
 impl Platform for DesktopPlatformImpl {
-    async fn new() -> Result<Self, PlatformError> {
-        Ok(Self::new())
-    }
-
     async fn process_file(
         &self,
         file_data: Bytes,
@@ -84,10 +79,7 @@ impl Platform for DesktopPlatformImpl {
     async fn transcribe(
         &self,
         request: TranscriptionRequest,
-    ) -> Result<
-        Pin<Box<dyn Stream<Item = Result<TranscriptionStatus, PlatformError>> + Send>>,
-        PlatformError,
-    > {
+    ) -> Result<TranscriptionStream, PlatformError> {
         use futures::channel::mpsc;
         use futures::SinkExt;
         use purr_core::{transcribe_file_stream, TranscriptionConfig};
@@ -249,13 +241,7 @@ impl Platform for DesktopPlatformImpl {
         Ok(model_infos)
     }
 
-    async fn fetch_model(
-        &self,
-        model_id: &str,
-    ) -> Result<
-        Pin<Box<dyn Stream<Item = Result<ModelOperationProgress, PlatformError>> + Send>>,
-        PlatformError,
-    > {
+    async fn fetch_model(&self, model_id: &str) -> Result<ModelProgressStream, PlatformError> {
         let model = WhisperModel::from_str(model_id)
             .map_err(|_| PlatformError::model_not_found(model_id.to_string()))?;
 

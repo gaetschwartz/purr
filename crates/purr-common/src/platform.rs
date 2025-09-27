@@ -1,3 +1,4 @@
+use ambassador::delegatable_trait;
 /// Platform abstraction layer for client-only architecture
 /// This module provides a unified interface for platform-specific functionality
 use bytes::Bytes;
@@ -13,8 +14,11 @@ use std::{
     str::FromStr,
 };
 
-type TranscriptionStream =
+pub type TranscriptionStream =
     Pin<Box<dyn Stream<Item = Result<TranscriptionStatus, PlatformError>> + Send>>;
+
+pub type ModelProgressStream =
+    Pin<Box<dyn Stream<Item = Result<ModelOperationProgress, PlatformError>> + Send>>;
 // Note: tokio::sync primitives are used in platform implementations
 #[allow(unused_imports)]
 use tokio::sync::{Mutex, RwLock};
@@ -119,7 +123,7 @@ pub enum PlatformError {
 
     #[error(transparent)]
     #[diagnostic(transparent)]
-    Other(#[from] UnsupportedPlatformError),
+    UnsupportedPlatform(#[from] UnsupportedPlatformError),
 }
 
 impl PlatformError {
@@ -176,7 +180,7 @@ impl PlatformError {
     /// Create a new `PlatformError::Unsupported`Platform
     #[must_use]
     pub fn unsupported_platform() -> Self {
-        PlatformError::Other(UnsupportedPlatformError)
+        PlatformError::UnsupportedPlatform(UnsupportedPlatformError)
     }
 
     /// Create a new `PlatformError::ModelManagement`
@@ -644,12 +648,8 @@ pub struct DeviceInfo {
 ///
 /// All implementations must be thread-safe and use `tokio::sync` primitives
 /// for coordination between async operations. The trait requires Send + Sync.
-#[async_trait::async_trait]
+#[delegatable_trait]
 pub trait Platform: Send + Sync + 'static {
-    async fn new() -> Result<Self, PlatformError>
-    where
-        Self: Sized;
-
     // ========================================
     // File Processing Operations
     // ========================================
@@ -662,11 +662,11 @@ pub trait Platform: Send + Sync + 'static {
     ///
     /// # Returns
     /// A unique `FileId` that can be used for subsequent operations
-    async fn process_file(
+    fn process_file(
         &self,
         file_data: Bytes,
         file_path: &Path,
-    ) -> Result<FileId, PlatformError>;
+    ) -> impl std::future::Future<Output = Result<FileId, PlatformError>> + Send;
 
     /// Start transcription of processed file
     ///
@@ -676,16 +676,19 @@ pub trait Platform: Send + Sync + 'static {
     ///
     /// # Returns
     /// A stream of transcription status updates
-    async fn transcribe(
+    fn transcribe(
         &self,
         request: TranscriptionRequest,
-    ) -> Result<TranscriptionStream, PlatformError>;
+    ) -> impl std::future::Future<Output = Result<TranscriptionStream, PlatformError>> + Send;
 
     /// Clean up temporary files if any
     ///
     /// # Arguments
     /// * `file_id` - ID of file to clean up
-    async fn cleanup(&self, file_id: &str) -> Result<(), PlatformError>;
+    fn cleanup(
+        &self,
+        file_id: &str,
+    ) -> impl std::future::Future<Output = Result<(), PlatformError>> + Send;
 
     // ========================================
     // Model Management Operations
@@ -699,7 +702,9 @@ pub trait Platform: Send + Sync + 'static {
     /// # Platform Differences
     /// - **Desktop**: Scans local model directory, uses file system metadata
     /// - **Web**: Queries browser storage (IndexedDB/OPFS), checks cached models
-    async fn list_installed_models(&self) -> Result<Vec<ModelInfo>, PlatformError>;
+    fn list_installed_models(
+        &self,
+    ) -> impl std::future::Future<Output = Result<Vec<ModelInfo>, PlatformError>> + Send;
 
     /// List all models available for download/installation
     ///
@@ -710,7 +715,9 @@ pub trait Platform: Send + Sync + 'static {
     /// - **Desktop**: Returns full model catalog, can download any model
     /// - **Web**: May return filtered list based on browser capabilities,
     ///           WebGPU-optimized models preferred
-    async fn list_available_models(&self) -> Result<Vec<ModelInfo>, PlatformError>;
+    fn list_available_models(
+        &self,
+    ) -> impl std::future::Future<Output = Result<Vec<ModelInfo>, PlatformError>> + Send;
 
     /// Fetch and install a model by ID with progress tracking
     ///
@@ -729,13 +736,10 @@ pub trait Platform: Send + Sync + 'static {
     /// # Platform Differences
     /// - **Desktop**: Downloads to local file system, uses reqwest for HTTP
     /// - **Web**: Uses fetch API, stores in browser storage, handles CORS
-    async fn fetch_model(
+    fn fetch_model(
         &self,
         model_id: &str,
-    ) -> Result<
-        Pin<Box<dyn Stream<Item = Result<ModelOperationProgress, PlatformError>> + Send>>,
-        PlatformError,
-    >;
+    ) -> impl std::future::Future<Output = Result<ModelProgressStream, PlatformError>> + Send;
 
     /// Get detailed information about a specific model
     ///
@@ -744,7 +748,10 @@ pub trait Platform: Send + Sync + 'static {
     ///
     /// # Returns
     /// `ModelInfo` with current installation status and metadata
-    async fn get_model_info(&self, model_id: &str) -> Result<ModelInfo, PlatformError>;
+    fn get_model_info(
+        &self,
+        model_id: &str,
+    ) -> impl std::future::Future<Output = Result<ModelInfo, PlatformError>> + Send;
 
     /// Remove an installed model from the platform
     ///
@@ -754,7 +761,10 @@ pub trait Platform: Send + Sync + 'static {
     /// # Platform Differences
     /// - **Desktop**: Deletes model file from file system
     /// - **Web**: Removes from browser storage, clears cache entries
-    async fn remove_model(&self, model_id: &str) -> Result<(), PlatformError>;
+    fn remove_model(
+        &self,
+        model_id: &str,
+    ) -> impl std::future::Future<Output = Result<(), PlatformError>> + Send;
 
     /// Check if a specific model is currently installed
     ///
@@ -763,7 +773,10 @@ pub trait Platform: Send + Sync + 'static {
     ///
     /// # Returns
     /// True if model is installed and ready for use
-    async fn is_model_installed(&self, model_id: &str) -> Result<bool, PlatformError>;
+    fn is_model_installed(
+        &self,
+        model_id: &str,
+    ) -> impl std::future::Future<Output = Result<bool, PlatformError>> + Send;
 
     /// Get the local path or identifier for an installed model
     ///
@@ -776,7 +789,10 @@ pub trait Platform: Send + Sync + 'static {
     /// # Platform Differences
     /// - **Desktop**: Returns file system path to model file
     /// - **Web**: Returns storage key or blob URL for browser access
-    async fn get_model_path(&self, model_id: &str) -> Result<String, PlatformError>;
+    fn get_model_path(
+        &self,
+        model_id: &str,
+    ) -> impl std::future::Future<Output = Result<String, PlatformError>> + Send;
 
     /// List available devices for transcription
     ///
@@ -790,5 +806,7 @@ pub trait Platform: Send + Sync + 'static {
     /// # Implementation Notes
     /// - Memory and capability values should be set to None if not accurately determinable
     /// - Prefer conservative estimates over potentially incorrect values
-    async fn list_available_devices(&self) -> Result<Vec<DeviceInfo>, PlatformError>;
+    fn list_available_devices(
+        &self,
+    ) -> impl std::future::Future<Output = Result<Vec<DeviceInfo>, PlatformError>> + Send;
 }

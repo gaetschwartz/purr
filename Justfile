@@ -1,5 +1,6 @@
 # Default settings
 set positional-arguments := true
+export WINDOWS_TEST_ARGS := env("WINDOWS_TEST_ARGS", "--features cuda")
 
 # Colors for output
 RED := '\033[0;31m'
@@ -13,48 +14,54 @@ test_profile := "test"
 timeout_seconds := "300"
 
 # Run all tests using cargo nextest
+[macos]
 test *ARGS:
-    @echo -e "{{BLUE}}[INFO]{{NC}} Running tests with nextest..."
-    cargo nextest run {{ARGS}}
+    @echo "{{BLUE}}[INFO]{{NC}} Running tests with nextest..."
+    cargo nextest run --features metal {{ARGS}}
+
+[windows]
+test *ARGS:
+    @echo "{{BLUE}}[INFO]{{NC}} Running tests with nextest..."
+    cargo nextest run $WINDOWS_TEST_ARGS {{ARGS}}
 
 # Run tests for a specific crate
 test-crate crate *ARGS:
-    @echo -e "{{BLUE}}[INFO]{{NC}} Testing crate: {{crate}}"
+    @echo "{{BLUE}}[INFO]{{NC}} Testing crate: {{crate}}"
     cargo nextest run --package {{crate}} {{ARGS}}
 
 # Run tests with verbose output
 test-verbose:
-    @echo -e "{{BLUE}}[INFO]{{NC}} Running tests with verbose output..."
+    @echo "{{BLUE}}[INFO]{{NC}} Running tests with verbose output..."
     cargo nextest run --verbose
 
 # Run unit tests only
 test-unit:
-    @echo -e "{{BLUE}}[INFO]{{NC}} Running unit tests..."
+    @echo "{{BLUE}}[INFO]{{NC}} Running unit tests..."
     cargo nextest run --lib
 
 # Run integration tests only
 test-integration:
-    @echo -e "{{BLUE}}[INFO]{{NC}} Running integration tests..."
+    @echo "{{BLUE}}[INFO]{{NC}} Running integration tests..."
     cargo nextest run --test '*'
 
 # Run doctests
 test-doc:
-    @echo -e "{{BLUE}}[INFO]{{NC}} Running documentation tests..."
+    @echo "{{BLUE}}[INFO]{{NC}} Running documentation tests..."
     cargo test --doc --workspace
 
 # Generate coverage report with tarpaulin
 coverage *ARGS:
-    @echo -e "{{BLUE}}[INFO]{{NC}} Generating coverage report..."
+    @echo "{{BLUE}}[INFO]{{NC}} Generating coverage report..."
     cargo tarpaulin --out Html Xml --output-dir target/coverage --timeout {{timeout_seconds}} --workspace {{ARGS}}
 
 # Run benchmarks
 bench *ARGS:
-    @echo -e "{{BLUE}}[INFO]{{NC}} Running benchmarks..."
+    @echo "{{BLUE}}[INFO]{{NC}} Running benchmarks..."
     cargo bench {{ARGS}}
 
 # Check for flaky tests by running them multiple times
 test-flaky runs="5":
-    @echo -e "{{BLUE}}[INFO]{{NC}} Checking for flaky tests ({{runs}} runs)..."
+    @echo "{{BLUE}}[INFO]{{NC}} Checking for flaky tests ({{runs}} runs)..."
     @for i in $(seq 1 {{runs}}); do \
         echo -e "{{BLUE}}[INFO]{{NC}} Run $$i/{{runs}}"; \
         cargo nextest run --no-fail-fast || true; \
@@ -87,42 +94,42 @@ test-wasm:
 
 # Clean test artifacts and reports
 clean-tests:
-    @echo -e "{{BLUE}}[INFO]{{NC}} Cleaning test artifacts..."
+    @echo "{{BLUE}}[INFO]{{NC}} Cleaning test artifacts..."
     rm -rf target/coverage target/test-reports target/nextest
 
 # Install test dependencies
 install-test-deps:
-    @echo -e "{{BLUE}}[INFO]{{NC}} Installing test dependencies..."
+    @echo "{{BLUE}}[INFO]{{NC}} Installing test dependencies..."
     cargo install cargo-nextest --locked
     cargo install cargo-tarpaulin --locked
 
 # Run all test types in sequence
 test-all: test test-doc test-wasm
-    @echo -e "{{GREEN}}[SUCCESS]{{NC}} All tests completed!"
+    @echo "{{GREEN}}[SUCCESS]{{NC}} All tests completed!"
 
 # Run tests with coverage and save report
 test-with-coverage: test coverage
-    @echo -e "{{GREEN}}[SUCCESS]{{NC}} Tests with coverage completed!"
+    @echo "{{GREEN}}[SUCCESS]{{NC}} Tests with coverage completed!"
     @echo "Coverage reports available in target/coverage/"
 
 # Run tests with specific profile (test, test-opt, dev, release)
 test-profile profile *ARGS:
-    @echo -e "{{BLUE}}[INFO]{{NC}} Running tests with profile: {{profile}}"
+    @echo "{{BLUE}}[INFO]{{NC}} Running tests with profile: {{profile}}"
     cargo nextest run --cargo-profile {{profile}} {{ARGS}}
 
 # Quick test for CI/CD (fail fast, no capture)
 test-ci:
-    @echo -e "{{BLUE}}[INFO]{{NC}} Running CI tests (fail-fast mode)..."
+    @echo "{{BLUE}}[INFO]{{NC}} Running CI tests (fail-fast mode)..."
     cargo nextest run --fail-fast --status-level fail
 
 # Run tests with timeout
 test-timeout seconds="60" *ARGS:
-    @echo -e "{{BLUE}}[INFO]{{NC}} Running tests with {{seconds}}s timeout per test..."
+    @echo "{{BLUE}}[INFO]{{NC}} Running tests with {{seconds}}s timeout per test..."
     timeout {{seconds}} cargo nextest run {{ARGS}} || echo -e "{{YELLOW}}[WARNING]{{NC}} Tests timed out after {{seconds}} seconds"
 
 # List all available tests
 test-list *ARGS:
-    @echo -e "{{BLUE}}[INFO]{{NC}} Listing available tests..."
+    @echo "{{BLUE}}[INFO]{{NC}} Listing available tests..."
     cargo nextest list {{ARGS}}
 
 fetch-model model *ARGS:
@@ -154,3 +161,8 @@ trigger-nightly:
     @echo "{{BLUE}}[INFO]{{NC}} Triggering nightly build workflow..."
     gh workflow run build.yml -f nightly=true
     @echo "{{GREEN}}[SUCCESS]{{NC}} Nightly build triggered!"
+
+[macos]
+_cn *ARGS:
+    @echo "{{BLUE}}[INFO]{{NC}} Running tests with Metal support..."
+    cargo nextest run --features metal {{ARGS}}

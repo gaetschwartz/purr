@@ -8,15 +8,13 @@ use crate::transcription::{
 };
 use crate::worker::{TranscriptionConfig, TranscriptionWorker};
 use bytes::Bytes;
-use futures::Stream;
 use futures::StreamExt;
 use purr_common::platform::{
     DeviceInfo, DeviceType, FileId, FileSource, ModelInfo, ModelMetadata, ModelOperationProgress,
-    Platform, PlatformError, TranscriptionRequest, TranscriptionStatus,
+    ModelProgressStream, Platform, PlatformError, TranscriptionRequest, TranscriptionStream,
 };
 use std::collections::HashMap;
 use std::path::Path;
-use std::pin::Pin;
 use std::sync::Arc;
 use tokio::sync::{oneshot, Mutex, RwLock};
 use wasm_bindgen_futures;
@@ -40,28 +38,6 @@ pub struct WasmPlatformImpl {
 }
 
 impl WasmPlatformImpl {
-    /// Create a new `WebPlatform` instance
-    pub fn new() -> WebResult<Self> {
-        let storage = Arc::new(WebStorage::new());
-        let model_manager = Arc::new(WebModelManager::with_storage(storage.clone()));
-        let worker = Arc::new(TranscriptionWorker::new(model_manager.clone()));
-
-        let platform = Self {
-            storage,
-            model_manager,
-            worker,
-            sessions: RwLock::new(HashMap::new()),
-            initialized: RwLock::new(false),
-            config_mutex: Mutex::new(()),
-        };
-
-        // Initialize default models
-        // Defer initialization to first use to avoid async in constructor
-        // The platform will initialize when first needed
-
-        Ok(platform)
-    }
-
     /// Initialize default models available for web platform
     async fn initialize_default_models(&self) -> WebResult<()> {
         let default_models = vec![
@@ -174,14 +150,38 @@ impl WasmPlatformImpl {
     }
 }
 
-#[async_trait::async_trait]
-impl Platform for WasmPlatformImpl {
-    async fn new() -> Result<Self, PlatformError>
+impl WasmPlatformImpl {
+    /// Create a new `WebPlatform` instance
+    fn new_inner() -> WebResult<Self> {
+        let storage = Arc::new(WebStorage::new());
+        let model_manager = Arc::new(WebModelManager::with_storage(storage.clone()));
+        let worker = Arc::new(TranscriptionWorker::new(model_manager.clone()));
+
+        let platform = Self {
+            storage,
+            model_manager,
+            worker,
+            sessions: RwLock::new(HashMap::new()),
+            initialized: RwLock::new(false),
+            config_mutex: Mutex::new(()),
+        };
+
+        // Initialize default models
+        // Defer initialization to first use to avoid async in constructor
+        // The platform will initialize when first needed
+
+        Ok(platform)
+    }
+
+    pub fn new() -> Result<Self, PlatformError>
     where
         Self: Sized,
     {
-        Self::new().map_err(Self::convert_error)
+        Self::new_inner().map_err(Self::convert_error)
     }
+}
+
+impl Platform for WasmPlatformImpl {
     // ========================================
     // File Processing Operations
     // ========================================
@@ -222,10 +222,7 @@ impl Platform for WasmPlatformImpl {
     async fn transcribe(
         &self,
         request: TranscriptionRequest,
-    ) -> Result<
-        Pin<Box<dyn Stream<Item = Result<TranscriptionStatus, PlatformError>> + Send>>,
-        PlatformError,
-    > {
+    ) -> Result<TranscriptionStream, PlatformError> {
         self.ensure_initialized().await?;
 
         // Get file data
@@ -391,13 +388,7 @@ impl Platform for WasmPlatformImpl {
         Ok(available_models)
     }
 
-    async fn fetch_model(
-        &self,
-        model_id: &str,
-    ) -> Result<
-        Pin<Box<dyn Stream<Item = Result<ModelOperationProgress, PlatformError>> + Send>>,
-        PlatformError,
-    > {
+    async fn fetch_model(&self, model_id: &str) -> Result<ModelProgressStream, PlatformError> {
         self.ensure_initialized().await?;
 
         // Check if model is already downloaded

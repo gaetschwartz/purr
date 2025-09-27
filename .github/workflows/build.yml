@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       nightly:
-        description: 'Create nightly release'
+        description: "Create nightly release"
         required: false
         default: false
         type: boolean

@@ -19,7 +19,9 @@ fn test_missing_audio_file() {
 
 /// Test CLI transcription with all sample files
 #[rstest]
-fn slow_test_cli_transcribe_sample_files(#[files("../../samples/*")] sample_path: PathBuf) {
+#[timeout(Duration::from_secs(600))]
+#[tokio::test]
+async fn slow_test_cli_transcribe_sample_files(#[files("../../samples/*")] sample_path: PathBuf) {
     use purr_core::SyncTranscriptionResult;
     if !Path::new(&TINY_MODEL).exists() {
         panic!(
@@ -39,8 +41,9 @@ fn slow_test_cli_transcribe_sample_files(#[files("../../samples/*")] sample_path
         .arg("--temperature")
         .arg("0.0") // Deterministic results
         .arg("--model")
-        .arg(TINY_MODEL)
-        .timeout(Duration::from_secs(300)); // Allow up to 5 minutes
+        .arg(TINY_MODEL);
+
+    println!("Running command: {:?}", cmd);
 
     let output = cmd.output().unwrap();
 
@@ -75,7 +78,9 @@ enum OutputFormat {
 #[case(OutputFormat::Text)]
 #[case(OutputFormat::Json)]
 #[case(OutputFormat::Srt)]
-fn slow_test_cli_output_formats(#[case] format: OutputFormat) {
+#[timeout(Duration::from_secs(600))]
+#[tokio::test]
+async fn slow_test_cli_output_formats(#[case] format: OutputFormat) {
     let sample_path = Path::new("../../samples/jfk.wav");
     if !Path::new(&TINY_MODEL).exists() {
         panic!(
@@ -92,8 +97,7 @@ fn slow_test_cli_output_formats(#[case] format: OutputFormat) {
         .arg("--temperature")
         .arg("0.0") // Deterministic results
         .arg("--model")
-        .arg(TINY_MODEL)
-        .timeout(Duration::from_secs(300)); // Allow up to 5 minutes
+        .arg(TINY_MODEL);
 
     let output = cmd.output().unwrap();
 

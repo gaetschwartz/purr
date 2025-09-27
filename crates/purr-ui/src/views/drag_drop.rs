@@ -7,7 +7,7 @@ use dioxus::{
     html::{FileEngine, HasFileData},
     prelude::*,
 };
-use purr_common::platform::FileId;
+use purr_common::platform::{FileId, Platform as _};
 use std::sync::Arc;
 use tracing::{error, info};
 

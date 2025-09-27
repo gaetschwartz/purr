@@ -4,7 +4,7 @@ use crate::{
 };
 use dioxus::prelude::*;
 use futures::StreamExt;
-use purr_common::platform::{FileId, FileSource};
+use purr_common::platform::{FileId, FileSource, Platform as _};
 use tracing::{error, info};
 
 /// The Transcription page component that displays the transcription functionality

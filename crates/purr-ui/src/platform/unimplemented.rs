@@ -1,96 +1,88 @@
-use super::{Platform, PlatformError, TranscriptionRequest, TranscriptionStatus};
+#![allow(dead_code)]
+
+use super::{Platform, PlatformError, TranscriptionRequest};
 use bytes::Bytes;
-use futures::Stream;
-use std::collections::HashMap;
-use std::pin::Pin;
-use std::sync::{Arc, Mutex};
-use tracing::{error, info};
-use wasm_bindgen_futures::spawn_local;
+use purr_common::platform::TranscriptionStream;
+use std::path::Path;
 
 pub(super) type PlatformImpl = UnimplementedPlatformImpl;
 
 pub(super) struct UnimplementedPlatformImpl {}
 
-#[async_trait::async_trait]
+macro_rules! unsupported {
+    () => {
+        return Err(purr_common::platform::UnsupportedPlatformError.into())
+    };
+}
+
+impl UnimplementedPlatformImpl {
+    pub fn new() -> Result<Self, PlatformError> {
+        unsupported!()
+    }
+}
+
+#[allow(unused)]
 impl Platform for UnimplementedPlatformImpl {
     async fn process_file(
         &self,
         file_data: Bytes,
-        file_name: String,
-    ) -> Result<String, PlatformError> {
-        Err(PlatformError::Unsupported {
-            operation: "process_file in WASM".into(),
-        })
-    }
-
-    async fn new() -> Result<Self, PlatformError> {
-        Ok(Self {})
-    }
-
-    async fn list_installed_models(&self) -> Result<Vec<String>, PlatformError> {
-        Err(PlatformError::Unsupported {
-            operation: "list_installed_models in WASM".into(),
-        })
-    }
-
-    async fn list_available_devices(&self) -> Result<Vec<String>, PlatformError> {
-        Err(PlatformError::Unsupported {
-            operation: "list_available_devices in WASM".into(),
-        })
-    }
-
-    async fn list_available_models(&self) -> Result<HashMap<String, String>, PlatformError> {
-        Err(PlatformError::Unsupported {
-            operation: "list_available_models in WASM".into(),
-        })
-    }
-
-    async fn fetch_model(&self, model: &str) -> Result<(), PlatformError> {
-        Err(PlatformError::Unsupported {
-            operation: "download_model in WASM".into(),
-        })
-    }
-
-    async fn get_model_info(&self, model: &str) -> Result<String, PlatformError> {
-        Err(PlatformError::Unsupported {
-            operation: "get_model_info in WASM".into(),
-        })
-    }
-
-    async fn remove_model(&self, model: &str) -> Result<(), PlatformError> {
-        Err(PlatformError::Unsupported {
-            operation: "remove_model in WASM".into(),
-        })
-    }
-
-    async fn is_model_installed(&self, model: &str) -> Result<bool, PlatformError> {
-        Err(PlatformError::Unsupported {
-            operation: "is_model_installed in WASM".into(),
-        })
-    }
-
-    async fn get_model_path(&self, model: &str) -> Result<String, PlatformError> {
-        Err(PlatformError::Unsupported {
-            operation: "get_model_path in WASM".into(),
-        })
+        file_path: &Path,
+    ) -> Result<purr_common::platform::FileId, PlatformError> {
+        unsupported!()
     }
 
     async fn transcribe(
         &self,
-        file_id: String,
         request: TranscriptionRequest,
-    ) -> Result<
-        Pin<Box<dyn Stream<Item = Result<TranscriptionStatus, PlatformError>> + Send>>,
-        PlatformError,
-    > {
-        Err(PlatformError::Unsupported {
-            operation: "transcribe in WASM".into(),
-        })
+    ) -> Result<TranscriptionStream, PlatformError> {
+        unsupported!()
     }
 
     async fn cleanup(&self, file_id: &str) -> Result<(), PlatformError> {
-        Err(PlatformError::Unsupported {
-            operation: "cleanup in WASM".into(),
-        })
+        unsupported!()
+    }
+
+    async fn list_installed_models(
+        &self,
+    ) -> Result<Vec<purr_common::platform::ModelInfo>, PlatformError> {
+        unsupported!()
+    }
+
+    async fn list_available_models(
+        &self,
+    ) -> Result<Vec<purr_common::platform::ModelInfo>, PlatformError> {
+        unsupported!()
+    }
+
+    async fn fetch_model(
+        &self,
+        model_id: &str,
+    ) -> Result<purr_common::platform::ModelProgressStream, PlatformError> {
+        unsupported!()
+    }
+
+    async fn get_model_info(
+        &self,
+        model_id: &str,
+    ) -> Result<purr_common::platform::ModelInfo, PlatformError> {
+        unsupported!()
+    }
+
+    async fn remove_model(&self, model_id: &str) -> Result<(), PlatformError> {
+        unsupported!()
+    }
+
+    async fn is_model_installed(&self, model_id: &str) -> Result<bool, PlatformError> {
+        unsupported!()
+    }
+
+    async fn get_model_path(&self, model_id: &str) -> Result<String, PlatformError> {
+        unsupported!()
+    }
+
+    async fn list_available_devices(
+        &self,
+    ) -> Result<Vec<purr_common::platform::DeviceInfo>, PlatformError> {
+        unsupported!()
     }
 }

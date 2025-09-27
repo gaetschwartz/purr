@@ -1,8 +1,8 @@
-/// Platform abstraction layer for client-only architecture
-/// This module provides a unified interface for platform-specific functionality
+use ambassador::Delegate;
+use bytes::Bytes;
 pub use purr_common::platform::*;
-use std::sync::Arc;
-use tokio::sync::OnceCell;
+use std::path::Path;
+use std::sync::{Arc, LazyLock};
 
 /// Logging infrastructure
 pub mod logging;
@@ -20,13 +20,22 @@ mod unimplemented;
 #[cfg(not(any(feature = "desktop", all(feature = "web", target_arch = "wasm32"))))]
 use unimplemented as platform_impl;
 
-pub async fn get_platform() -> Result<&'static Arc<platform_impl::PlatformImpl>, PlatformError> {
-    static PLATFORM: OnceCell<Arc<platform_impl::PlatformImpl>> = OnceCell::const_new();
-    PLATFORM
-        .get_or_try_init(|| async move {
-            <platform_impl::PlatformImpl>::new()
-                .await
-                .map(|p| Arc::new(p))
+#[derive(Delegate)]
+#[delegate(Platform)]
+pub struct PlatformImpl {
+    inner: platform_impl::PlatformImpl,
+}
+
+impl PlatformImpl {
+    fn new() -> Result<Self, PlatformError> {
+        Ok(Self {
+            inner: platform_impl::PlatformImpl::new()?,
         })
-        .await
+    }
+}
+
+pub async fn get_platform() -> Result<&'static Arc<PlatformImpl>, &'static PlatformError> {
+    static PLATFORM: LazyLock<Result<Arc<PlatformImpl>, PlatformError>> =
+        LazyLock::new(|| PlatformImpl::new().map(Arc::new));
+    PLATFORM.as_ref()
 }
