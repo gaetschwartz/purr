@@ -274,7 +274,8 @@ jobs:
         run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
       - name: Deploy to Vercel
         run: |
-          vercel --yes --prod --token=${{ secrets.VERCEL_TOKEN }} --archive=tgz
+          cp res/vercel-config.json .vercel/output/config.json
+          vercel --yes --prod --token=${{ secrets.VERCEL_TOKEN }} --archive=tgz --prebuilt
 
   nightly-release:
     name: Create Nightly Release
