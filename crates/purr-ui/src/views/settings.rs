@@ -4,73 +4,21 @@ use crate::{
 };
 use dioxus::prelude::*;
 use purr_common::platform::{ModelInfo, Platform};
+use purr_common::settings::{
+    Settings as SettingsConfig, AudioFormat, AudioQuality, SampleRate, Theme, LogLevel,
+};
 
-/// Application settings state structure
-#[derive(Clone, PartialEq)]
-pub struct AppSettings {
-    // Model Settings
-    pub model_name: String,
-    pub temperature: f64,
-    pub max_tokens: u32,
-
-    // Audio Settings
-    pub sample_rate: String,
-    pub audio_quality: String,
-    pub file_format: String,
-
-    // UI Settings
-    pub theme: String,
-    pub compact_mode: bool,
-    pub language: String,
-
-    // Performance Settings
-    pub gpu_acceleration: bool,
-    pub concurrent_processing: bool,
-    pub max_concurrent_jobs: u32,
-
-    // Logging Settings
-    pub log_level: String,
-    pub enable_file_logging: bool,
-}
-
-impl Default for AppSettings {
-    fn default() -> Self {
-        Self {
-            // Model Settings
-            model_name: "whisper-1".to_string(),
-            temperature: 0.0,
-            max_tokens: 4096,
-
-            // Audio Settings
-            sample_rate: "16000".to_string(),
-            audio_quality: "high".to_string(),
-            file_format: "mp3".to_string(),
-
-            // UI Settings
-            theme: "light".to_string(),
-            compact_mode: false,
-            language: "en".to_string(),
-
-            // Performance Settings
-            gpu_acceleration: false,
-            concurrent_processing: true,
-            max_concurrent_jobs: 2,
-
-            // Logging Settings
-            log_level: "info".to_string(),
-            enable_file_logging: true,
-        }
-    }
-}
 
 /// The Settings page component with comprehensive configuration options
 #[component]
 pub fn Settings() -> Element {
     // Settings state
-    let mut settings = use_signal(AppSettings::default);
+    let mut settings = use_signal(SettingsConfig::default);
     let mut has_changes = use_signal(|| false);
-    let mut save_status: Signal<Option<SaveStatus>> = use_signal(|| None);
+    let mut save_status: Signal<SaveStatus> = use_signal(|| SaveStatus::Idle);
+    let mut is_loading = use_signal(|| true);
     let mut models = use_signal(|| Ok(Vec::<ModelInfo>::new()));
+    // Load models list
     use_future(move || async move {
         models.set(
             platform::get_platform()
@@ -81,24 +29,68 @@ pub fn Settings() -> Element {
         );
     });
 
+    // Load settings on mount
+    use_future(move || async move {
+        match platform::get_platform().await {
+            Ok(platform) => {
+                match platform.load_settings().await {
+                    Ok(loaded_settings) => {
+                        settings.set(loaded_settings);
+                        save_status.set(SaveStatus::Idle);
+                    }
+                    Err(err) => {
+                        tracing::warn!("Failed to load settings, using defaults: {}", err);
+                        save_status.set(SaveStatus::LoadError(format!("Failed to load settings: {}", err)));
+                    }
+                }
+            }
+            Err(err) => {
+                tracing::error!("Failed to get platform: {}", err);
+                save_status.set(SaveStatus::LoadError("Failed to initialize platform".to_string()));
+            }
+        }
+        is_loading.set(false);
+    });
+
     // Mark as changed when any setting is modified
     let mut mark_changed = move || {
         has_changes.set(true);
-        save_status.set(None);
+        save_status.set(SaveStatus::Idle);
     };
 
     // Save settings function
     let save_settings = move |_| {
-        // TODO: Implement actual persistence (localStorage, file, etc.)
-        save_status.set(Some(SaveStatus::Success));
-        has_changes.set(false);
+        let settings_copy = settings.read().clone();
+        save_status.set(SaveStatus::Saving);
+
+        spawn(async move {
+            match platform::get_platform().await {
+                Ok(platform) => {
+                    match platform.save_settings(&settings_copy).await {
+                        Ok(()) => {
+                            save_status.set(SaveStatus::Success);
+                            has_changes.set(false);
+                            tracing::info!("Settings saved successfully");
+                        }
+                        Err(err) => {
+                            tracing::error!("Failed to save settings: {}", err);
+                            save_status.set(SaveStatus::SaveError(format!("Failed to save settings: {}", err)));
+                        }
+                    }
+                }
+                Err(err) => {
+                    tracing::error!("Failed to get platform: {}", err);
+                    save_status.set(SaveStatus::SaveError("Failed to access platform".to_string()));
+                }
+            }
+        });
     };
 
     // Reset settings function
     let reset_settings = move |_| {
-        settings.set(AppSettings::default());
-        has_changes.set(false);
-        save_status.set(Some(SaveStatus::ResetToDefaults));
+        settings.set(SettingsConfig::default());
+        has_changes.set(true); // Mark as changed so user can save the reset
+        save_status.set(SaveStatus::ResetToDefaults);
     };
 
     rsx! {
@@ -122,7 +114,7 @@ pub fn Settings() -> Element {
                                 Select {
                                     label: "Theme",
                                     description: "Choose your preferred color scheme",
-                                    value: settings.read().theme.clone(),
+                                    value: settings.read().ui.theme.to_string().to_string(),
                                     options: vec![
                                         SelectOption {
                                             value: "light".to_string(),
@@ -137,16 +129,18 @@ pub fn Settings() -> Element {
                                             label: "System".to_string(),
                                         },
                                     ],
-                                    onchange: move |value| {
-                                        settings.with_mut(|s| s.theme = value);
-                                        mark_changed();
+                                    onchange: move |value: String| {
+                                        if let Some(theme) = Theme::from_string(&value) {
+                                            settings.with_mut(|s| s.ui.theme = theme);
+                                            mark_changed();
+                                        }
                                     },
                                 }
 
                                 Select {
                                     label: "Language",
                                     description: "Interface language",
-                                    value: settings.read().language.clone(),
+                                    value: settings.read().ui.language.clone(),
                                     options: purr_common::Language::VARIANTS
                                         .iter()
                                         .map(|lang| SelectOption {
@@ -154,8 +148,8 @@ pub fn Settings() -> Element {
                                             label: lang.name().to_string(),
                                         })
                                         .collect(),
-                                    onchange: move |value| {
-                                        settings.with_mut(|s| s.language = value);
+                                    onchange: move |value: String| {
+                                        settings.with_mut(|s| s.ui.language = value);
                                         mark_changed();
                                     },
                                 }
@@ -164,9 +158,9 @@ pub fn Settings() -> Element {
                             Toggle {
                                 label: "Compact Mode",
                                 description: "Use a more condensed interface layout",
-                                checked: settings.read().compact_mode,
+                                checked: settings.read().ui.compact_mode,
                                 onchange: move |value| {
-                                    settings.with_mut(|s| s.compact_mode = value);
+                                    settings.with_mut(|s| s.ui.compact_mode = value);
                                     mark_changed();
                                 },
                             }
@@ -184,7 +178,7 @@ pub fn Settings() -> Element {
                                             Select {
                                                 label: "Model",
                                                 description: "Choose the transcription model to use",
-                                                value: settings.read().model_name.clone(),
+                                                value: settings.read().model.model_name.clone(),
                                                 options: model_list
                                                     .iter()
                                                     .map(|model| SelectOption {
@@ -192,8 +186,8 @@ pub fn Settings() -> Element {
                                                         label: format!("{} ({})", model.name, ByteSize(model.size_bytes)),
                                                     })
                                                     .collect(),
-                                                onchange: move |value| {
-                                                    settings.with_mut(|s| s.model_name = value);
+                                                onchange: move |value: String| {
+                                                    settings.with_mut(|s| s.model.model_name = value);
                                                     mark_changed();
                                                 },
                                             }
@@ -207,11 +201,11 @@ pub fn Settings() -> Element {
                                 NumberInput {
                                     label: "Max Tokens",
                                     description: "Maximum number of tokens to generate",
-                                    value: settings.read().max_tokens,
+                                    value: settings.read().model.max_tokens,
                                     min: 256,
                                     max: 8192,
                                     onchange: move |value| {
-                                        settings.with_mut(|s| s.max_tokens = value);
+                                        settings.with_mut(|s| s.model.max_tokens = value);
                                         mark_changed();
                                     },
                                 }
@@ -220,12 +214,12 @@ pub fn Settings() -> Element {
                             Slider {
                                 label: "Temperature",
                                 description: "Controls randomness in output (0.0 = deterministic, 1.0 = creative)",
-                                value: settings.read().temperature,
+                                value: settings.read().model.temperature,
                                 min: 0.0,
                                 max: 1.0,
                                 step: 0.01,
                                 onchange: move |value| {
-                                    settings.with_mut(|s| s.temperature = value);
+                                    settings.with_mut(|s| s.model.temperature = value);
                                     mark_changed();
                                 },
                             }
@@ -240,7 +234,7 @@ pub fn Settings() -> Element {
                                 Select {
                                     label: "Sample Rate",
                                     description: "Audio sample rate in Hz",
-                                    value: settings.read().sample_rate.clone(),
+                                    value: settings.read().audio.sample_rate.to_hz_string().to_string(),
                                     options: vec![
                                         SelectOption {
                                             value: "8000".to_string(),
@@ -263,16 +257,18 @@ pub fn Settings() -> Element {
                                             label: "48 kHz".to_string(),
                                         },
                                     ],
-                                    onchange: move |value| {
-                                        settings.with_mut(|s| s.sample_rate = value);
-                                        mark_changed();
+                                    onchange: move |value: String| {
+                                        if let Some(sample_rate) = SampleRate::from_hz_string(&value) {
+                                            settings.with_mut(|s| s.audio.sample_rate = sample_rate);
+                                            mark_changed();
+                                        }
                                     },
                                 }
 
                                 Select {
                                     label: "Audio Quality",
                                     description: "Processing quality level",
-                                    value: settings.read().audio_quality.clone(),
+                                    value: settings.read().audio.quality.to_string().to_string(),
                                     options: vec![
                                         SelectOption {
                                             value: "low".to_string(),
@@ -291,16 +287,18 @@ pub fn Settings() -> Element {
                                             label: "Ultra (Slowest)".to_string(),
                                         },
                                     ],
-                                    onchange: move |value| {
-                                        settings.with_mut(|s| s.audio_quality = value);
-                                        mark_changed();
+                                    onchange: move |value: String| {
+                                        if let Some(quality) = AudioQuality::from_string(&value) {
+                                            settings.with_mut(|s| s.audio.quality = quality);
+                                            mark_changed();
+                                        }
                                     },
                                 }
 
                                 Select {
                                     label: "File Format",
                                     description: "Preferred audio file format",
-                                    value: settings.read().file_format.clone(),
+                                    value: settings.read().audio.file_format.to_extension().to_string(),
                                     options: vec![
                                         SelectOption {
                                             value: "mp3".to_string(),
@@ -319,9 +317,11 @@ pub fn Settings() -> Element {
                                             label: "OGG".to_string(),
                                         },
                                     ],
-                                    onchange: move |value| {
-                                        settings.with_mut(|s| s.file_format = value);
-                                        mark_changed();
+                                    onchange: move |value: String| {
+                                        if let Some(format) = AudioFormat::from_extension(&value) {
+                                            settings.with_mut(|s| s.audio.file_format = format);
+                                            mark_changed();
+                                        }
                                     },
                                 }
                             }
@@ -336,9 +336,9 @@ pub fn Settings() -> Element {
                                 Toggle {
                                     label: "GPU Acceleration",
                                     description: "Use GPU for faster transcription (requires compatible hardware)",
-                                    checked: settings.read().gpu_acceleration,
+                                    checked: settings.read().performance.gpu_acceleration,
                                     onchange: move |value| {
-                                        settings.with_mut(|s| s.gpu_acceleration = value);
+                                        settings.with_mut(|s| s.performance.gpu_acceleration = value);
                                         mark_changed();
                                     },
                                 }
@@ -346,22 +346,22 @@ pub fn Settings() -> Element {
                                 Toggle {
                                     label: "Concurrent Processing",
                                     description: "Process multiple audio files simultaneously",
-                                    checked: settings.read().concurrent_processing,
+                                    checked: settings.read().performance.concurrent_processing,
                                     onchange: move |value| {
-                                        settings.with_mut(|s| s.concurrent_processing = value);
+                                        settings.with_mut(|s| s.performance.concurrent_processing = value);
                                         mark_changed();
                                     },
                                 }
 
-                                if settings.read().concurrent_processing {
+                                if settings.read().performance.concurrent_processing {
                                     NumberInput {
                                         label: "Max Concurrent Jobs",
                                         description: "Maximum number of files to process simultaneously",
-                                        value: settings.read().max_concurrent_jobs,
+                                        value: settings.read().performance.max_concurrent_jobs,
                                         min: 1,
                                         max: 8,
                                         onchange: move |value| {
-                                            settings.with_mut(|s| s.max_concurrent_jobs = value);
+                                            settings.with_mut(|s| s.performance.max_concurrent_jobs = value);
                                             mark_changed();
                                         },
                                     }
@@ -378,7 +378,7 @@ pub fn Settings() -> Element {
                                 Select {
                                     label: "Log Level",
                                     description: "Minimum level of messages to log",
-                                    value: settings.read().log_level.clone(),
+                                    value: settings.read().logging.level.to_string().to_string(),
                                     options: vec![
                                         SelectOption {
                                             value: "error".to_string(),
@@ -401,18 +401,20 @@ pub fn Settings() -> Element {
                                             label: "Trace".to_string(),
                                         },
                                     ],
-                                    onchange: move |value| {
-                                        settings.with_mut(|s| s.log_level = value);
-                                        mark_changed();
+                                    onchange: move |value: String| {
+                                        if let Some(level) = LogLevel::from_string(&value) {
+                                            settings.with_mut(|s| s.logging.level = level);
+                                            mark_changed();
+                                        }
                                     },
                                 }
 
                                 Toggle {
                                     label: "File Logging",
                                     description: "Save logs to file for debugging",
-                                    checked: settings.read().enable_file_logging,
+                                    checked: settings.read().logging.enable_file_logging,
                                     onchange: move |value| {
-                                        settings.with_mut(|s| s.enable_file_logging = value);
+                                        settings.with_mut(|s| s.logging.enable_file_logging = value);
                                         mark_changed();
                                     },
                                 }
@@ -422,8 +424,11 @@ pub fn Settings() -> Element {
                         // Action buttons
                         div { class: "flex items-center justify-between pt-6 border-t border-gray-200",
                             div { class: "flex items-center space-x-4",
-                                if let Some(status) = &*save_status.read() {
-                                    span { class: status.class(), "{status}" }
+                                match &*save_status.read() {
+                                    SaveStatus::Idle => rsx! { },
+                                    status => rsx! {
+                                        span { class: status.class(), "{status}" }
+                                    }
                                 }
                             }
 
@@ -439,15 +444,18 @@ pub fn Settings() -> Element {
                                     r#type: "button",
                                     class: format!(
                                         "px-4 py-2 rounded-md shadow-sm text-sm font-medium focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500 {}",
-                                        if *has_changes.read() {
-                                            "bg-teal-600 text-white hover:bg-teal-700"
-                                        } else {
-                                            "bg-gray-300 text-gray-500 cursor-not-allowed"
+                                        match (&*save_status.read(), *has_changes.read()) {
+                                            (SaveStatus::Saving, _) => "bg-teal-400 text-white cursor-wait",
+                                            (_, true) => "bg-teal-600 text-white hover:bg-teal-700",
+                                            (_, false) => "bg-gray-300 text-gray-500 cursor-not-allowed",
                                         },
                                     ),
-                                    disabled: !*has_changes.read(),
+                                    disabled: !*has_changes.read() || matches!(*save_status.read(), SaveStatus::Saving),
                                     onclick: save_settings,
-                                    "Save Changes"
+                                    match *save_status.read() {
+                                        SaveStatus::Saving => "Saving...",
+                                        _ => "Save Changes",
+                                    }
                                 }
                             }
                         }
@@ -458,17 +466,25 @@ pub fn Settings() -> Element {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Hash)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum SaveStatus {
+    Idle,
+    Saving,
     Success,
     ResetToDefaults,
+    LoadError(String),
+    SaveError(String),
 }
 
 impl std::fmt::Display for SaveStatus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            SaveStatus::Idle => write!(f, ""),
+            SaveStatus::Saving => write!(f, "Saving settings..."),
             SaveStatus::Success => write!(f, "Settings saved successfully!"),
-            SaveStatus::ResetToDefaults => write!(f, "Settings reset to defaults."),
+            SaveStatus::ResetToDefaults => write!(f, "Settings reset to defaults. Click Save to persist changes."),
+            SaveStatus::LoadError(err) => write!(f, "Failed to load settings: {}", err),
+            SaveStatus::SaveError(err) => write!(f, "Failed to save settings: {}", err),
         }
     }
 }
@@ -476,8 +492,12 @@ impl std::fmt::Display for SaveStatus {
 impl SaveStatus {
     pub fn class(&self) -> &'static str {
         match self {
+            SaveStatus::Idle => "text-gray-600 text-sm",
+            SaveStatus::Saving => "text-blue-600 text-sm",
             SaveStatus::Success => "text-green-600 text-sm",
-            SaveStatus::ResetToDefaults => "text-blue-600 text-sm",
+            SaveStatus::ResetToDefaults => "text-orange-600 text-sm",
+            SaveStatus::LoadError(_) => "text-red-600 text-sm",
+            SaveStatus::SaveError(_) => "text-red-600 text-sm",
         }
     }
 }

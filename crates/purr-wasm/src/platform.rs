@@ -13,12 +13,15 @@ use purr_common::platform::{
     DeviceInfo, DeviceType, FileId, FileSource, ModelInfo, ModelMetadata, ModelOperationProgress,
     ModelProgressStream, Platform, PlatformError, TranscriptionRequest, TranscriptionStream,
 };
+use purr_common::settings::Settings;
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::{oneshot, Mutex, RwLock};
 use wasm_bindgen_futures;
-use web_sys::GpuAdapter;
+use wasm_bindgen::JsCast;
+use web_sys::{GpuAdapter, Storage};
+use js_sys::Error as JsError;
 
 pub type PlatformImpl = WasmPlatformImpl;
 /// Web platform implementation using WebAssembly and browser APIs
@@ -147,6 +150,61 @@ impl WasmPlatformImpl {
     /// Convert `WebError` to `PlatformError`
     fn convert_error(error: WebError) -> PlatformError {
         error.into()
+    }
+
+    /// Get browser localStorage
+    fn get_local_storage() -> Result<Storage, PlatformError> {
+        let window = web_sys::window()
+            .ok_or_else(|| PlatformError::settings_persistence("No window available".to_string()))?;
+        window
+            .local_storage()
+            .map_err(|e| {
+                PlatformError::settings_persistence(format!("Failed to access localStorage: {e:?}"))
+            })?
+            .ok_or_else(|| {
+                PlatformError::settings_persistence("localStorage not available".to_string())
+            })
+    }
+
+    /// Get localStorage value
+    fn get_storage_value(key: &str) -> Result<Option<String>, PlatformError> {
+        let storage = Self::get_local_storage()?;
+        storage
+            .get_item(key)
+            .map_err(|e| {
+                PlatformError::settings_persistence(format!(
+                    "Failed to get item '{}' from localStorage: {e:?}",
+                    key
+                ))
+            })
+    }
+
+    /// Set localStorage value with quota exceeded handling
+    fn set_storage_value(key: &str, value: &str) -> Result<(), PlatformError> {
+        let storage = Self::get_local_storage()?;
+        storage.set_item(key, value).map_err(|e| {
+            // Check if this is a quota exceeded error
+            let error_msg = if let Some(js_error) = e.dyn_ref::<JsError>() {
+                js_error.message().as_string().unwrap_or_default()
+            } else {
+                format!("{e:?}")
+            };
+
+            if error_msg.to_lowercase().contains("quota")
+                || error_msg.to_lowercase().contains("storage")
+                || error_msg.contains("22") // DOM_QUOTA_EXCEEDED_ERR
+            {
+                PlatformError::settings_persistence(format!(
+                    "localStorage quota exceeded. Please clear browser storage or reduce settings size: {}",
+                    error_msg
+                ))
+            } else {
+                PlatformError::settings_persistence(format!(
+                    "Failed to set item '{}' in localStorage: {}",
+                    key, error_msg
+                ))
+            }
+        })
     }
 }
 
@@ -578,5 +636,65 @@ impl Platform for WasmPlatformImpl {
         }
 
         Ok(devices)
+    }
+
+    // ========================================
+    // Settings Persistence Operations
+    // ========================================
+
+    async fn load_settings(&self) -> Result<Settings, PlatformError> {
+        const SETTINGS_KEY: &str = "purr-settings";
+
+        match Self::get_storage_value(SETTINGS_KEY)? {
+            Some(json_str) => {
+                // Try to parse stored settings
+                match serde_json::from_str(&json_str) {
+                    Ok(settings) => Ok(settings),
+                    Err(e) => {
+                        tracing::warn!("Failed to parse stored settings, using defaults: {}", e);
+                        // If parsing fails, fall back to default settings
+                        // This provides automatic recovery from corrupted settings
+                        Ok(Settings::default())
+                    }
+                }
+            }
+            None => {
+                // No settings found, return default settings
+                tracing::info!("No settings found in localStorage, using defaults");
+                Ok(Settings::default())
+            }
+        }
+    }
+
+    async fn save_settings(&self, settings: &Settings) -> Result<(), PlatformError> {
+        const SETTINGS_KEY: &str = "purr-settings";
+
+        // Validate settings before saving
+        let validation_errors = settings.validate();
+        if !validation_errors.is_empty() {
+            let error_messages: Vec<String> = validation_errors
+                .into_iter()
+                .map(|e| e.to_string())
+                .collect();
+            return Err(PlatformError::settings_persistence(format!(
+                "Invalid settings: {}",
+                error_messages.join(", ")
+            )));
+        }
+
+        // Serialize settings to JSON
+        let json_str = serde_json::to_string_pretty(settings).map_err(|e| {
+            PlatformError::settings_persistence(format!("Failed to serialize settings: {}", e))
+        })?;
+
+        // Save to localStorage with quota handling
+        Self::set_storage_value(SETTINGS_KEY, &json_str)?;
+
+        tracing::info!("Settings saved to localStorage successfully");
+        Ok(())
+    }
+
+    async fn get_settings_location(&self) -> Result<Option<String>, PlatformError> {
+        Ok(Some("localStorage:purr-settings".to_string()))
     }
 }

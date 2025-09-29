@@ -14,6 +14,8 @@ use std::{
     str::FromStr,
 };
 
+use crate::settings::Settings;
+
 pub type TranscriptionStream =
     Pin<Box<dyn Stream<Item = Result<TranscriptionStatus, PlatformError>> + Send>>;
 
@@ -117,6 +119,13 @@ pub enum PlatformError {
     #[error("Device detection error: {source}")]
     #[diagnostic(code(platform::device_detection))]
     DeviceDetection {
+        #[source]
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+
+    #[error("Settings persistence error: {source}")]
+    #[diagnostic(code(platform::settings_persistence))]
+    SettingsPersistence {
         #[source]
         source: Box<dyn std::error::Error + Send + Sync>,
     },
@@ -276,6 +285,14 @@ impl PlatformError {
         E: Into<Box<dyn std::error::Error + Send + Sync>>,
     {
         PlatformError::DeviceDetection { source: err.into() }
+    }
+
+    /// Create a new `PlatformError::SettingsPersistence`
+    pub fn settings_persistence<E>(err: E) -> Self
+    where
+        E: Into<Box<dyn std::error::Error + Send + Sync>>,
+    {
+        PlatformError::SettingsPersistence { source: err.into() }
     }
 }
 
@@ -809,4 +826,61 @@ pub trait Platform: Send + Sync + 'static {
     fn list_available_devices(
         &self,
     ) -> impl std::future::Future<Output = Result<Vec<DeviceInfo>, PlatformError>> + Send;
+
+    // ========================================
+    // Settings Persistence Operations
+    // ========================================
+
+    /// Load settings from persistent storage
+    ///
+    /// # Returns
+    /// Settings loaded from platform-specific storage, or default settings if none exist
+    ///
+    /// # Platform Differences
+    /// - **Desktop**: Loads from XDG-compliant config directory (e.g., `~/.config/purr/settings.json`)
+    /// - **Web**: Loads from browser localStorage or IndexedDB
+    ///
+    /// # Error Handling
+    /// - Returns default settings if no saved settings exist
+    /// - Returns `PlatformError::SettingsPersistence` for I/O or parsing errors
+    /// - Performs automatic migration for older settings versions
+    fn load_settings(
+        &self,
+    ) -> impl std::future::Future<Output = Result<Settings, PlatformError>> + Send;
+
+    /// Save settings to persistent storage
+    ///
+    /// # Arguments
+    /// * `settings` - Settings configuration to persist
+    ///
+    /// # Platform Differences
+    /// - **Desktop**: Saves to XDG-compliant config directory with atomic writes
+    /// - **Web**: Saves to browser localStorage or IndexedDB with transaction safety
+    ///
+    /// # Implementation Requirements
+    /// - MUST use atomic writes/transactions to prevent corruption
+    /// - MUST validate settings before saving
+    /// - MUST create parent directories if they don't exist (desktop)
+    /// - SHOULD backup existing settings before overwriting
+    fn save_settings(
+        &self,
+        settings: &Settings,
+    ) -> impl std::future::Future<Output = Result<(), PlatformError>> + Send;
+
+    /// Get the storage location for settings (for debugging and user information)
+    ///
+    /// # Returns
+    /// Platform-specific path or identifier where settings are stored
+    ///
+    /// # Platform Differences
+    /// - **Desktop**: Returns file system path (e.g., `/home/user/.config/purr/settings.json`)
+    /// - **Web**: Returns storage key or description (e.g., `localStorage:purr-settings`)
+    ///
+    /// # Implementation Notes
+    /// - This method is primarily for debugging and user information
+    /// - Should return a human-readable representation of the storage location
+    /// - May return `None` if the location is not deterministic or accessible
+    fn get_settings_location(
+        &self,
+    ) -> impl std::future::Future<Output = Result<Option<String>, PlatformError>> + Send;
 }

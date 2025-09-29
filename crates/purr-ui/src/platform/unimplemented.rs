@@ -3,6 +3,7 @@
 use super::{Platform, PlatformError, TranscriptionRequest};
 use bytes::Bytes;
 use purr_common::platform::TranscriptionStream;
+use purr_common::settings::Settings;
 use std::path::Path;
 
 pub(super) type PlatformImpl = UnimplementedPlatformImpl;
@@ -83,6 +84,18 @@ impl Platform for UnimplementedPlatformImpl {
     async fn list_available_devices(
         &self,
     ) -> Result<Vec<purr_common::platform::DeviceInfo>, PlatformError> {
+        unsupported!()
+    }
+
+    async fn load_settings(&self) -> Result<Settings, PlatformError> {
+        unsupported!()
+    }
+
+    async fn save_settings(&self, _settings: &Settings) -> Result<(), PlatformError> {
+        unsupported!()
+    }
+
+    async fn get_settings_location(&self) -> Result<Option<String>, PlatformError> {
         unsupported!()
     }
 }
