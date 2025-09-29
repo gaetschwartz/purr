@@ -26,3 +26,6 @@ pub use progress_bar::*;
 
 mod form;
 pub use form::*;
+
+mod theme_demo;
+pub use theme_demo::*;

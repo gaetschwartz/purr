@@ -1,6 +1,6 @@
 use crate::{
     components::{Icon, IconType},
-    Route,
+    main_app::Route,
 };
 use dioxus::prelude::*;
 
@@ -30,6 +30,15 @@ pub fn Navbar() -> Element {
 
                     // Navigation Icons
                     div { class: "flex items-center space-x-4",
+                        Link {
+                            to: Route::ThemeDemoRoute {},
+                            class: "p-2 rounded-lg text-gray-600 hover:text-teal-600 hover:bg-gray-100 transition-colors",
+                            title: "Theme Demo",
+                            onclick: move |_| {
+                                tracing::info!("Navigating to Theme Demo page");
+                            },
+                            Icon { icon_type: IconType::Settings }
+                        }
                         Link {
                             to: Route::Settings {},
                             class: "p-2 rounded-lg text-gray-600 hover:text-teal-600 hover:bg-gray-100 transition-colors",

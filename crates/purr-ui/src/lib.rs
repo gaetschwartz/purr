@@ -4,40 +4,22 @@ use dioxus::prelude::*;
 
 /// Define a components module that contains all shared components for our app.
 mod components;
+/// Custom hooks for state management and UI patterns
+pub mod hooks;
+/// Main application component
+mod main_app;
 /// Platform abstraction layer for client-only architecture
 pub mod platform;
+/// Theme system for managing colors and styling
+pub mod theme;
 /// Utilities module
 mod utils;
 /// Define a views module that contains the UI for all Layouts and Routes for our app.
 mod views;
 
-use purr_common::platform::FileId;
-use views::{Home, Logs, Navbar, Settings, Transcription};
+use main_app::MainApp;
+use theme::{BaseTheme, ColorTokens, CustomTheme, StorageType, Theme, ThemeProvider};
 
-/// The Route enum is used to define the structure of internal routes in our app. All route enums need to derive
-/// the [`Routable`] trait, which provides the necessary methods for the router to work.
-///
-/// Each variant represents a different URL pattern that can be matched by the router. If that pattern is matched,
-/// the components for that route will be rendered.
-#[derive(Debug, Clone, Routable, PartialEq)]
-#[rustfmt::skip]
-enum Route {
-    // The layout attribute defines a wrapper for all routes under the layout. Layouts are great for wrapping
-    // many routes with a common UI like a navbar.
-    #[layout(Navbar)]
-        // The route attribute defines the URL pattern that a specific route matches. If that pattern matches the URL,
-        // the component for that route will be rendered. The component name that is rendered defaults to the variant name.
-        #[route("/")]
-        Home {},
-        // The route attribute can include dynamic parameters that implement [`std::str::FromStr`] and [`std::fmt::Display`] with the `:` syntax.
-        // In this case, file_path will match any string like `/transcription/audio.mp3`.
-        #[route("/transcription/:file")]
-        Transcription { file: FileId },
-        #[route("/settings")]
-        Settings {},
-        #[route("/logs")]
-        Logs {},
-}
 
 // We can import assets in dioxus with the `asset!` macro. This macro takes a path to an asset relative to the crate root.
 // The macro returns an `Asset` type that will display as the path to the asset in the browser or a local path in desktop bundles.
@@ -46,25 +28,44 @@ const FAVICON: Asset = asset!("/assets/favicon.ico");
 const MAIN_CSS: Asset = asset!("/assets/styling/main.css");
 const TAILWIND_CSS: Asset = asset!("/assets/tailwind.css");
 
-/// App is the main component of our app. Components are the building blocks of dioxus apps. Each component is a function
-/// that takes some props and returns an Element. In this case, App takes no props because it is the root of our app.
-///
-/// Components should be annotated with `#[component]` to support props, better error messages, and autocomplete
+/// App is the main component of our app wrapped with theme provider.
+/// This component sets up the theme system with custom themes including Solarized.
 #[component]
 pub fn App() -> Element {
     // Log when the app renders
-    tracing::debug!("App component rendering");
+    tracing::debug!("App component rendering with theme system");
+
+    // Setup custom themes as specified
+    let solarized_theme = CustomTheme {
+        name: "solarized".to_string(),
+        base: BaseTheme::Light,
+        tokens: ColorTokens {
+            primary: "#268bd2".to_string(),
+            secondary: "#2aa198".to_string(),
+            background: "#fdf6e3".to_string(),
+            text: "#657b83".to_string(),
+            error: Some("#dc322f".to_string()),
+            warning: Some("#cb4b16".to_string()),
+            success: Some("#859900".to_string()),
+        },
+    };
+
+    let custom_themes = vec![solarized_theme];
 
     // The `rsx!` macro lets us define HTML inside of rust. It expands to an Element with all of our HTML inside.
     rsx! {
-        // In addition to element and text (which we will see later), rsx can contain other components. In this case,
-        // we are using the `document::Link` component to add a link to our favicon and main CSS file into the head of our app.
+        // Global document head elements
         document::Link { rel: "icon", href: FAVICON }
         document::Link { rel: "stylesheet", href: MAIN_CSS }
         document::Link { rel: "stylesheet", href: TAILWIND_CSS }
 
-        // The router component renders the route enum we defined above. It will handle synchronization of the URL and render
-        // the layouts and components for the active route.
-        Router::<Route> {}
+        // Wrap everything in ThemeProvider as specified
+        ThemeProvider {
+            default_theme: Theme::System,
+            storage_type: StorageType::LocalStorage,
+            storage_name: "theme".to_string(),
+            custom_themes: Some(custom_themes),
+            MainApp {}
+        }
     }
 }

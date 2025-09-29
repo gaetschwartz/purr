@@ -5389,6 +5389,7 @@ dependencies = [
  "getrandom 0.2.16",
  "gloo-file",
  "gloo-timers",
+ "indexmap 2.11.4",
  "js-sys",
  "miette",
  "pretty_assertions",

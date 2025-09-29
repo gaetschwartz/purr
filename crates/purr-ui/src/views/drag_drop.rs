@@ -1,6 +1,7 @@
 use crate::{
     components::{UploadState, UploadZone},
-    platform, Route,
+    main_app::Route,
+    platform,
 };
 use bytes::Bytes;
 use dioxus::{
