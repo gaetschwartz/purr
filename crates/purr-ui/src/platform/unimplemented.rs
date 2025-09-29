@@ -24,6 +24,8 @@ impl UnimplementedPlatformImpl {
 
 #[allow(unused)]
 impl Platform for UnimplementedPlatformImpl {
+    fn install_logging_hooks(&self) {}
+
     async fn process_file(
         &self,
         file_data: Bytes,

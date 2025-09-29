@@ -664,6 +664,7 @@ pub struct DeviceInfo {
 /// for coordination between async operations. The trait requires Send + Sync.
 #[delegatable_trait]
 pub trait Platform: Send + Sync + 'static {
+    fn install_logging_hooks(&self);
     // ========================================
     // File Processing Operations
     // ========================================

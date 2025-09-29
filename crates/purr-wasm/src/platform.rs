@@ -9,6 +9,7 @@ use crate::transcription::{
 use crate::worker::{TranscriptionConfig, TranscriptionWorker};
 use bytes::Bytes;
 use futures::StreamExt;
+use js_sys::Error as JsError;
 use purr_common::platform::{
     DeviceInfo, DeviceType, FileId, FileSource, ModelInfo, ModelMetadata, ModelOperationProgress,
     ModelProgressStream, Platform, PlatformError, TranscriptionRequest, TranscriptionStream,
@@ -18,10 +19,9 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::{oneshot, Mutex, RwLock};
-use wasm_bindgen_futures;
 use wasm_bindgen::JsCast;
+use wasm_bindgen_futures;
 use web_sys::{GpuAdapter, Storage};
-use js_sys::Error as JsError;
 
 pub type PlatformImpl = WasmPlatformImpl;
 /// Web platform implementation using WebAssembly and browser APIs
@@ -154,8 +154,9 @@ impl WasmPlatformImpl {
 
     /// Get browser localStorage
     fn get_local_storage() -> Result<Storage, PlatformError> {
-        let window = web_sys::window()
-            .ok_or_else(|| PlatformError::settings_persistence("No window available".to_string()))?;
+        let window = web_sys::window().ok_or_else(|| {
+            PlatformError::settings_persistence("No window available".to_string())
+        })?;
         window
             .local_storage()
             .map_err(|e| {
@@ -169,14 +170,12 @@ impl WasmPlatformImpl {
     /// Get localStorage value
     fn get_storage_value(key: &str) -> Result<Option<String>, PlatformError> {
         let storage = Self::get_local_storage()?;
-        storage
-            .get_item(key)
-            .map_err(|e| {
-                PlatformError::settings_persistence(format!(
-                    "Failed to get item '{}' from localStorage: {e:?}",
-                    key
-                ))
-            })
+        storage.get_item(key).map_err(|e| {
+            PlatformError::settings_persistence(format!(
+                "Failed to get item '{}' from localStorage: {e:?}",
+                key
+            ))
+        })
     }
 
     /// Set localStorage value with quota exceeded handling
@@ -240,6 +239,9 @@ impl WasmPlatformImpl {
 }
 
 impl Platform for WasmPlatformImpl {
+    fn install_logging_hooks(&self) {
+        // No-op for web platform as logging is handled by the host environment
+    }
     // ========================================
     // File Processing Operations
     // ========================================

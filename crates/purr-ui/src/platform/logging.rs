@@ -4,6 +4,7 @@
 //! in memory for real-time display in the logs viewer.
 
 use miette::IntoDiagnostic as _;
+use purr_common::platform::Platform as _;
 use serde::{Deserialize, Serialize};
 use serde_with::{DeserializeFromStr, SerializeDisplay};
 use std::{
@@ -21,6 +22,8 @@ use tracing_subscriber::{
     layer::{Context, Layer},
     registry::LookupSpan,
 };
+
+use crate::platform::get_platform;
 
 /// Maximum number of log entries to keep in memory
 const MAX_LOG_ENTRIES: usize = 10000;
@@ -394,10 +397,7 @@ pub fn init_logging_capture() -> miette::Result<()> {
 
     tracing::subscriber::set_global_default(subscriber).into_diagnostic()?;
 
-    #[cfg(feature = "desktop")]
-    {
-        purr_core::whisper::logging::install_logging_hooks();
-    }
+    get_platform().install_logging_hooks();
     // Log that initialization is complete
     tracing::info!("Log capture initialized successfully");
 

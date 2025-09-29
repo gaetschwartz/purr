@@ -48,6 +48,10 @@ impl DesktopPlatformImpl {
 }
 
 impl Platform for DesktopPlatformImpl {
+    fn install_logging_hooks(&self) {
+        purr_core::whisper::logging::install_logging_hooks();
+    }
+
     async fn process_file(
         &self,
         file_data: Bytes,
@@ -424,7 +428,10 @@ impl Platform for DesktopPlatformImpl {
 
             // If the file doesn't exist, return default settings
             if !settings_path.exists() {
-                info!("Settings file not found, using defaults: {}", settings_path.display());
+                info!(
+                    "Settings file not found, using defaults: {}",
+                    settings_path.display()
+                );
                 return Ok(Settings::default());
             }
 
@@ -432,23 +439,35 @@ impl Platform for DesktopPlatformImpl {
             let contents = tokio::fs::read_to_string(&settings_path)
                 .await
                 .map_err(|e| {
-                    error!("Failed to read settings file {}: {}", settings_path.display(), e);
+                    error!(
+                        "Failed to read settings file {}: {}",
+                        settings_path.display(),
+                        e
+                    );
                     PlatformError::settings_persistence(e)
                 })?;
 
             // Parse TOML content
-            let settings: Settings = toml::from_str(&contents)
-                .map_err(|e| {
-                    error!("Failed to parse settings file {}: {}", settings_path.display(), e);
-                    PlatformError::settings_persistence(e)
-                })?;
+            let settings: Settings = toml::from_str(&contents).map_err(|e| {
+                error!(
+                    "Failed to parse settings file {}: {}",
+                    settings_path.display(),
+                    e
+                );
+                PlatformError::settings_persistence(e)
+            })?;
 
-            info!("Successfully loaded settings from: {}", settings_path.display());
+            info!(
+                "Successfully loaded settings from: {}",
+                settings_path.display()
+            );
             Ok(settings)
         }
         #[cfg(not(feature = "desktop"))]
         {
-            Err(PlatformError::unsupported("Settings persistence not available on this platform"))
+            Err(PlatformError::unsupported(
+                "Settings persistence not available on this platform",
+            ))
         }
     }
 
@@ -461,19 +480,20 @@ impl Platform for DesktopPlatformImpl {
             debug!("Saving settings to: {}", settings_path.display());
 
             // Create the settings directory if it doesn't exist
-            tokio::fs::create_dir_all(settings_dir)
-                .await
-                .map_err(|e| {
-                    error!("Failed to create settings directory {}: {}", settings_dir.display(), e);
-                    PlatformError::settings_persistence(e)
-                })?;
+            tokio::fs::create_dir_all(settings_dir).await.map_err(|e| {
+                error!(
+                    "Failed to create settings directory {}: {}",
+                    settings_dir.display(),
+                    e
+                );
+                PlatformError::settings_persistence(e)
+            })?;
 
             // Serialize settings to TOML
-            let toml_content = toml::to_string_pretty(settings)
-                .map_err(|e| {
-                    error!("Failed to serialize settings to TOML: {}", e);
-                    PlatformError::settings_persistence(e)
-                })?;
+            let toml_content = toml::to_string_pretty(settings).map_err(|e| {
+                error!("Failed to serialize settings to TOML: {}", e);
+                PlatformError::settings_persistence(e)
+            })?;
 
             // Use atomic write pattern: write to temp file, then rename
             let temp_path = settings_path.with_extension("toml.tmp");
@@ -482,25 +502,38 @@ impl Platform for DesktopPlatformImpl {
             tokio::fs::write(&temp_path, &toml_content)
                 .await
                 .map_err(|e| {
-                    error!("Failed to write temporary settings file {}: {}", temp_path.display(), e);
+                    error!(
+                        "Failed to write temporary settings file {}: {}",
+                        temp_path.display(),
+                        e
+                    );
                     PlatformError::settings_persistence(e)
                 })?;
 
             // Atomically rename temp file to final location
             if let Err(e) = tokio::fs::rename(&temp_path, &settings_path).await {
-                error!("Failed to rename settings file from {} to {}: {}",
-                       temp_path.display(), settings_path.display(), e);
+                error!(
+                    "Failed to rename settings file from {} to {}: {}",
+                    temp_path.display(),
+                    settings_path.display(),
+                    e
+                );
                 // Clean up temp file on failure
                 let _ = tokio::fs::remove_file(&temp_path).await;
                 return Err(PlatformError::settings_persistence(e));
             }
 
-            info!("Successfully saved settings to: {}", settings_path.display());
+            info!(
+                "Successfully saved settings to: {}",
+                settings_path.display()
+            );
             Ok(())
         }
         #[cfg(not(feature = "desktop"))]
         {
-            Err(PlatformError::unsupported("Settings persistence not available on this platform"))
+            Err(PlatformError::unsupported(
+                "Settings persistence not available on this platform",
+            ))
         }
     }
 
@@ -559,17 +592,17 @@ impl DesktopPlatformImpl {
             directories::ProjectDirs::from("com", "purr", "purr")
                 .map(|proj_dirs| proj_dirs.config_dir().to_path_buf())
                 .ok_or_else(|| {
-                    PlatformError::settings_persistence(
-                        std::io::Error::new(
-                            std::io::ErrorKind::NotFound,
-                            "Could not determine config directory"
-                        )
-                    )
+                    PlatformError::settings_persistence(std::io::Error::new(
+                        std::io::ErrorKind::NotFound,
+                        "Could not determine config directory",
+                    ))
                 })
         }
         #[cfg(not(feature = "desktop"))]
         {
-            Err(PlatformError::unsupported("Settings persistence not available on this platform"))
+            Err(PlatformError::unsupported(
+                "Settings persistence not available on this platform",
+            ))
         }
     }
 
