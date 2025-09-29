@@ -35,8 +35,8 @@ impl PlatformImpl {
     }
 }
 
-pub async fn get_platform() -> Result<&'static Arc<PlatformImpl>, &'static PlatformError> {
+pub fn get_platform() -> &'static Arc<PlatformImpl> {
     static PLATFORM: LazyLock<Result<Arc<PlatformImpl>, PlatformError>> =
         LazyLock::new(|| PlatformImpl::new().map(Arc::new));
-    PLATFORM.as_ref()
+    PLATFORM.as_ref().expect("Failed to initialize platform")
 }

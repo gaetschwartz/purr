@@ -83,18 +83,7 @@ fn start_transcription_process(
 
     spawn(async move {
         // Get platform implementation
-        let platform = match platform::get_platform().await {
-            Ok(p) => p,
-            Err(e) => {
-                error!("Failed to get platform: {}", e);
-                status_signal.set(Some(TranscriptionStatus::InitFailed {
-                    component: "platform".to_string(),
-                    reason: e.to_string(),
-                    error_details: None,
-                }));
-                return;
-            }
-        };
+        let platform = platform::get_platform();
 
         let request = TranscriptionRequest {
             language: None,

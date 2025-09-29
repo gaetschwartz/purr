@@ -19,36 +19,23 @@ pub fn Settings() -> Element {
     let mut models = use_signal(|| Ok(Vec::<ModelInfo>::new()));
     // Load models list
     use_future(move || async move {
-        models.set(
-            platform::get_platform()
-                .await
-                .unwrap()
-                .list_installed_models()
-                .await,
-        );
+        models.set(platform::get_platform().list_installed_models().await);
     });
 
     // Load settings on mount
     use_future(move || async move {
-        match platform::get_platform().await {
-            Ok(platform) => match platform.load_settings().await {
-                Ok(loaded_settings) => {
-                    settings.set(loaded_settings);
-                    save_status.set(None);
-                }
-                Err(err) => {
-                    tracing::warn!("Failed to load settings, using defaults: {}", err);
-                    save_status.set(Some(SaveStatus::LoadError(format!(
-                        "Failed to load settings: {}",
-                        err
-                    ))));
-                }
-            },
+        let platform = platform::get_platform();
+        match platform.load_settings().await {
+            Ok(loaded_settings) => {
+                settings.set(loaded_settings);
+                save_status.set(None);
+            }
             Err(err) => {
-                tracing::error!("Failed to get platform: {}", err);
-                save_status.set(Some(SaveStatus::LoadError(
-                    "Failed to initialize platform".to_string(),
-                )));
+                tracing::warn!("Failed to load settings, using defaults: {}", err);
+                save_status.set(Some(SaveStatus::LoadError(format!(
+                    "Failed to load settings: {}",
+                    err
+                ))));
             }
         }
         is_loading.set(false);
@@ -66,26 +53,19 @@ pub fn Settings() -> Element {
         save_status.set(Some(SaveStatus::Saving));
 
         spawn(async move {
-            match platform::get_platform().await {
-                Ok(platform) => match platform.save_settings(&settings_copy).await {
-                    Ok(()) => {
-                        save_status.set(Some(SaveStatus::Success));
-                        has_changes.set(false);
-                        tracing::info!("Settings saved successfully");
-                    }
-                    Err(err) => {
-                        tracing::error!("Failed to save settings: {}", err);
-                        save_status.set(Some(SaveStatus::SaveError(format!(
-                            "Failed to save settings: {}",
-                            err
-                        ))));
-                    }
-                },
+            let platform = platform::get_platform();
+            match platform.save_settings(&settings_copy).await {
+                Ok(()) => {
+                    save_status.set(Some(SaveStatus::Success));
+                    has_changes.set(false);
+                    tracing::info!("Settings saved successfully");
+                }
                 Err(err) => {
-                    tracing::error!("Failed to get platform: {}", err);
-                    save_status.set(Some(SaveStatus::SaveError(
-                        "Failed to access platform".to_string(),
-                    )));
+                    tracing::error!("Failed to save settings: {}", err);
+                    save_status.set(Some(SaveStatus::SaveError(format!(
+                        "Failed to save settings: {}",
+                        err
+                    ))));
                 }
             }
         });
