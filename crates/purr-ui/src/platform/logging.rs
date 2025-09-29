@@ -10,7 +10,10 @@ use std::{
     borrow::Cow,
     collections::HashSet,
     fmt,
-    sync::{atomic, OnceLock},
+    sync::{
+        atomic::{self},
+        OnceLock,
+    },
     time::{SystemTime, UNIX_EPOCH},
 };
 use tracing::{Level, Subscriber};
@@ -253,13 +256,13 @@ pub fn get_logs_storage() -> &'static LogsStorage {
 }
 
 /// Custom tracing layer that captures logs for the UI
-pub struct LogsCaptureLayer;
+pub struct LogsCaptureLayer {}
 
 impl LogsCaptureLayer {
     /// Create a new logs capture layer
     #[must_use]
     pub fn new() -> Self {
-        Self
+        Self {}
     }
 }
 
@@ -278,7 +281,7 @@ where
 
         // Create a log entry
         let mut entry = LogEntry {
-            id: 0, // Will be set by storage
+            id: 0, // Will be set when adding to storage
             timestamp: SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .unwrap_or_default()

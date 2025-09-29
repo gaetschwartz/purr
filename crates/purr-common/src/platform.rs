@@ -21,9 +21,6 @@ pub type TranscriptionStream =
 
 pub type ModelProgressStream =
     Pin<Box<dyn Stream<Item = Result<ModelOperationProgress, PlatformError>> + Send>>;
-// Note: tokio::sync primitives are used in platform implementations
-#[allow(unused_imports)]
-use tokio::sync::{Mutex, RwLock};
 
 /// Platform-specific error types
 #[derive(Debug, thiserror::Error, Diagnostic)]

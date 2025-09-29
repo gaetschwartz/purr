@@ -5,9 +5,8 @@ use crate::{
 use dioxus::prelude::*;
 use purr_common::platform::{ModelInfo, Platform};
 use purr_common::settings::{
-    Settings as SettingsConfig, AudioFormat, AudioQuality, SampleRate, Theme, LogLevel,
+    AudioFormat, AudioQuality, LogLevel, SampleRate, Settings as SettingsConfig, Theme,
 };
-
 
 /// The Settings page component with comprehensive configuration options
 #[component]
@@ -15,7 +14,7 @@ pub fn Settings() -> Element {
     // Settings state
     let mut settings = use_signal(SettingsConfig::default);
     let mut has_changes = use_signal(|| false);
-    let mut save_status: Signal<SaveStatus> = use_signal(|| SaveStatus::Idle);
+    let mut save_status: Signal<Option<SaveStatus>> = use_signal(|| None);
     let mut is_loading = use_signal(|| true);
     let mut models = use_signal(|| Ok(Vec::<ModelInfo>::new()));
     // Load models list
@@ -32,21 +31,24 @@ pub fn Settings() -> Element {
     // Load settings on mount
     use_future(move || async move {
         match platform::get_platform().await {
-            Ok(platform) => {
-                match platform.load_settings().await {
-                    Ok(loaded_settings) => {
-                        settings.set(loaded_settings);
-                        save_status.set(SaveStatus::Idle);
-                    }
-                    Err(err) => {
-                        tracing::warn!("Failed to load settings, using defaults: {}", err);
-                        save_status.set(SaveStatus::LoadError(format!("Failed to load settings: {}", err)));
-                    }
+            Ok(platform) => match platform.load_settings().await {
+                Ok(loaded_settings) => {
+                    settings.set(loaded_settings);
+                    save_status.set(None);
                 }
-            }
+                Err(err) => {
+                    tracing::warn!("Failed to load settings, using defaults: {}", err);
+                    save_status.set(Some(SaveStatus::LoadError(format!(
+                        "Failed to load settings: {}",
+                        err
+                    ))));
+                }
+            },
             Err(err) => {
                 tracing::error!("Failed to get platform: {}", err);
-                save_status.set(SaveStatus::LoadError("Failed to initialize platform".to_string()));
+                save_status.set(Some(SaveStatus::LoadError(
+                    "Failed to initialize platform".to_string(),
+                )));
             }
         }
         is_loading.set(false);
@@ -55,32 +57,35 @@ pub fn Settings() -> Element {
     // Mark as changed when any setting is modified
     let mut mark_changed = move || {
         has_changes.set(true);
-        save_status.set(SaveStatus::Idle);
+        save_status.set(None);
     };
 
     // Save settings function
     let save_settings = move |_| {
         let settings_copy = settings.read().clone();
-        save_status.set(SaveStatus::Saving);
+        save_status.set(Some(SaveStatus::Saving));
 
         spawn(async move {
             match platform::get_platform().await {
-                Ok(platform) => {
-                    match platform.save_settings(&settings_copy).await {
-                        Ok(()) => {
-                            save_status.set(SaveStatus::Success);
-                            has_changes.set(false);
-                            tracing::info!("Settings saved successfully");
-                        }
-                        Err(err) => {
-                            tracing::error!("Failed to save settings: {}", err);
-                            save_status.set(SaveStatus::SaveError(format!("Failed to save settings: {}", err)));
-                        }
+                Ok(platform) => match platform.save_settings(&settings_copy).await {
+                    Ok(()) => {
+                        save_status.set(Some(SaveStatus::Success));
+                        has_changes.set(false);
+                        tracing::info!("Settings saved successfully");
                     }
-                }
+                    Err(err) => {
+                        tracing::error!("Failed to save settings: {}", err);
+                        save_status.set(Some(SaveStatus::SaveError(format!(
+                            "Failed to save settings: {}",
+                            err
+                        ))));
+                    }
+                },
                 Err(err) => {
                     tracing::error!("Failed to get platform: {}", err);
-                    save_status.set(SaveStatus::SaveError("Failed to access platform".to_string()));
+                    save_status.set(Some(SaveStatus::SaveError(
+                        "Failed to access platform".to_string(),
+                    )));
                 }
             }
         });
@@ -90,7 +95,7 @@ pub fn Settings() -> Element {
     let reset_settings = move |_| {
         settings.set(SettingsConfig::default());
         has_changes.set(true); // Mark as changed so user can save the reset
-        save_status.set(SaveStatus::ResetToDefaults);
+        save_status.set(Some(SaveStatus::ResetToDefaults));
     };
 
     rsx! {
@@ -425,10 +430,10 @@ pub fn Settings() -> Element {
                         div { class: "flex items-center justify-between pt-6 border-t border-gray-200",
                             div { class: "flex items-center space-x-4",
                                 match &*save_status.read() {
-                                    SaveStatus::Idle => rsx! { },
-                                    status => rsx! {
-                                        span { class: status.class(), "{status}" }
-                                    }
+                                    None => rsx! {},
+                                    Some(status) => rsx! {
+                                        span { class: "{status.text_color()} text-sm", "{status}" }
+                                    },
                                 }
                             }
 
@@ -445,15 +450,15 @@ pub fn Settings() -> Element {
                                     class: format!(
                                         "px-4 py-2 rounded-md shadow-sm text-sm font-medium focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500 {}",
                                         match (&*save_status.read(), *has_changes.read()) {
-                                            (SaveStatus::Saving, _) => "bg-teal-400 text-white cursor-wait",
+                                            (Some(SaveStatus::Saving), _) => "bg-teal-400 text-white cursor-wait",
                                             (_, true) => "bg-teal-600 text-white hover:bg-teal-700",
                                             (_, false) => "bg-gray-300 text-gray-500 cursor-not-allowed",
                                         },
                                     ),
-                                    disabled: !*has_changes.read() || matches!(*save_status.read(), SaveStatus::Saving),
+                                    disabled: !*has_changes.read() || matches!(*save_status.read(), Some(SaveStatus::Saving)),
                                     onclick: save_settings,
                                     match *save_status.read() {
-                                        SaveStatus::Saving => "Saving...",
+                                        Some(SaveStatus::Saving) => "Saving...",
                                         _ => "Save Changes",
                                     }
                                 }
@@ -468,7 +473,6 @@ pub fn Settings() -> Element {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum SaveStatus {
-    Idle,
     Saving,
     Success,
     ResetToDefaults,
@@ -479,10 +483,12 @@ pub enum SaveStatus {
 impl std::fmt::Display for SaveStatus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            SaveStatus::Idle => write!(f, ""),
             SaveStatus::Saving => write!(f, "Saving settings..."),
             SaveStatus::Success => write!(f, "Settings saved successfully!"),
-            SaveStatus::ResetToDefaults => write!(f, "Settings reset to defaults. Click Save to persist changes."),
+            SaveStatus::ResetToDefaults => write!(
+                f,
+                "Settings reset to defaults. Click Save to persist changes."
+            ),
             SaveStatus::LoadError(err) => write!(f, "Failed to load settings: {}", err),
             SaveStatus::SaveError(err) => write!(f, "Failed to save settings: {}", err),
         }
@@ -490,14 +496,13 @@ impl std::fmt::Display for SaveStatus {
 }
 
 impl SaveStatus {
-    pub fn class(&self) -> &'static str {
+    pub const fn text_color(&self) -> &'static str {
         match self {
-            SaveStatus::Idle => "text-gray-600 text-sm",
-            SaveStatus::Saving => "text-blue-600 text-sm",
-            SaveStatus::Success => "text-green-600 text-sm",
-            SaveStatus::ResetToDefaults => "text-orange-600 text-sm",
-            SaveStatus::LoadError(_) => "text-red-600 text-sm",
-            SaveStatus::SaveError(_) => "text-red-600 text-sm",
+            SaveStatus::Saving => "text-blue-600",
+            SaveStatus::Success => "text-green-600",
+            SaveStatus::ResetToDefaults => "text-orange-600",
+            SaveStatus::LoadError(_) => "text-red-600",
+            SaveStatus::SaveError(_) => "text-red-600",
         }
     }
 }
