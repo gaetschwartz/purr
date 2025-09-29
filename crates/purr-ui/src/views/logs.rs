@@ -1,56 +1,13 @@
 //! Logs viewer component for displaying application logs in real-time
 
-use crate::platform::logging::{get_logs_storage, LogEntry, LogExportFormat, SerdeTracingLevel};
+use crate::platform::logging::{
+    get_logs_storage, LogEntry, LogExportFormat, LogsQuery, SerdeTracingLevel,
+};
 use dioxus::prelude::*;
-use std::collections::HashSet;
+use std::{borrow::Cow, collections::HashSet};
 use strum::VariantArray as _;
 
 // Use LogEntry from the platform logging module
-
-/// Get logs from the storage system
-fn get_logs(
-    search_query: &str,
-    selected_levels: &HashSet<SerdeTracingLevel>,
-    max_display: usize,
-) -> Vec<LogEntry> {
-    let storage = get_logs_storage();
-
-    storage.get_filtered_entries(
-        search_query,
-        selected_levels,
-        &[], // No target filters for now
-        Some(max_display),
-    )
-}
-
-/// Generate some example logs for testing
-fn generate_example_logs() {
-    use std::thread;
-    use std::time::Duration;
-
-    // Spawn a background task to generate example logs
-    thread::spawn(|| {
-        let mut counter = 0;
-        loop {
-            counter += 1;
-
-            match counter % 4 {
-                0 => tracing::info!("Example info log #{}", counter),
-                1 => tracing::warn!(duration_ms = 150, "Example warning log #{}", counter),
-                2 => tracing::debug!(component = "ui", "Example debug log #{}", counter),
-                3 => tracing::error!(error_code = 500, "Example error log #{}", counter),
-                _ => {}
-            }
-
-            thread::sleep(Duration::from_secs(2));
-
-            // Stop after 20 logs to prevent infinite spam
-            if counter >= 20 {
-                break;
-            }
-        }
-    });
-}
 
 /// Log viewer settings and state
 #[derive(Clone, PartialEq)]
@@ -90,11 +47,9 @@ pub fn Logs() -> Element {
 
     // Initial load and setup
     use_effect(move || {
-        // Generate some example logs for testing
-        generate_example_logs();
-
         // Load initial logs
-        let initial_logs = get_logs("", &HashSet::new(), 1000);
+        let initial_logs =
+            get_logs_storage().get_filtered_entries(LogsQuery::new().with_limit(1000));
         logs.set(initial_logs);
     });
 
@@ -119,10 +74,11 @@ pub fn Logs() -> Element {
 
                 let current_state = state_clone.read();
                 if !current_state.paused && current_state.auto_refresh {
-                    let updated_logs = get_logs(
-                        &current_state.search_query,
-                        &current_state.selected_levels,
-                        current_state.max_display,
+                    let updated_logs = get_logs_storage().get_filtered_entries(
+                        LogsQuery::new()
+                            .with_search(&current_state.search_query)
+                            .with_level_filters(Cow::Borrowed(&current_state.selected_levels))
+                            .with_limit(current_state.max_display),
                     );
                     logs_clone.set(updated_logs);
                 }
@@ -564,9 +520,10 @@ fn export_logs(format: LogExportFormat, state: &Signal<LogsState>) {
 
     let exported_data = storage.export_logs(
         format,
-        &current_state.search_query,
-        level_filters,
-        &[], // No target filters for now
+        LogsQuery::new()
+            .with_search(&current_state.search_query)
+            .with_level_filters(Cow::Borrowed(level_filters))
+            .with_limit(current_state.max_display),
     );
 
     let (filename, _content_type) = match format {

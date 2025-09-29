@@ -7,6 +7,7 @@ use miette::IntoDiagnostic as _;
 use serde::{Deserialize, Serialize};
 use serde_with::{DeserializeFromStr, SerializeDisplay};
 use std::{
+    borrow::Cow,
     collections::HashSet,
     fmt,
     sync::{atomic, OnceLock},
@@ -183,25 +184,32 @@ impl LogsStorage {
     }
 
     /// Get filtered log entries
-    pub fn get_filtered_entries(
-        &self,
-        search_query: &str,
-        level_filters: &HashSet<SerdeTracingLevel>,
-        target_filters: &[String],
-        limit: Option<usize>,
-    ) -> Vec<LogEntry> {
+    pub fn get_filtered_entries(&self, query: LogsQuery) -> Vec<LogEntry> {
         let guard = scc::Guard::new();
         let filtered = self
             .entries
             .iter(&guard)
             .filter(|entry| {
-                entry.matches_search(search_query)
-                    && entry.matches_level(level_filters)
-                    && entry.matches_target(target_filters)
+                if let Some(search_query) = &query.search_query {
+                    if !entry.matches_search(search_query) {
+                        return false;
+                    }
+                }
+                if let Some(level_filters) = &query.level_filters {
+                    if !entry.matches_level(level_filters) {
+                        return false;
+                    }
+                }
+                if let Some(target_filters) = &query.target_filters {
+                    if !entry.matches_target(target_filters) {
+                        return false;
+                    }
+                }
+                true
             })
             .cloned();
 
-        if let Some(limit) = limit {
+        if let Some(limit) = query.limit {
             filtered.take(limit).collect()
         } else {
             filtered.collect()
@@ -403,14 +411,8 @@ pub enum LogExportFormat {
 
 impl LogsStorage {
     /// Export logs to a string in the specified format
-    pub fn export_logs(
-        &self,
-        format: LogExportFormat,
-        search_query: &str,
-        level_filters: &HashSet<SerdeTracingLevel>,
-        target_filters: &[String],
-    ) -> String {
-        let entries = self.get_filtered_entries(search_query, level_filters, target_filters, None);
+    pub fn export_logs(&self, format: LogExportFormat, query: LogsQuery) -> String {
+        let entries = self.get_filtered_entries(query);
 
         match format {
             LogExportFormat::Text => entries
@@ -444,6 +446,59 @@ impl LogsStorage {
                 csv
             }
         }
+    }
+}
+
+pub struct LogsQuery<'a> {
+    search_query: Option<String>,
+    level_filters: Option<Cow<'a, HashSet<SerdeTracingLevel>>>,
+    target_filters: Option<Vec<String>>,
+    limit: Option<usize>,
+}
+
+impl<'a> LogsQuery<'a> {
+    pub fn new() -> Self {
+        Self {
+            search_query: None,
+            level_filters: None,
+            target_filters: None,
+            limit: None,
+        }
+    }
+
+    pub fn with_search(mut self, query: impl Into<String>) -> Self {
+        self.search_query = Some(query.into());
+        self
+    }
+
+    pub fn with_level_filters(
+        mut self,
+        levels: impl Into<Cow<'a, HashSet<SerdeTracingLevel>>>,
+    ) -> Self {
+        self.level_filters = Some(levels.into());
+        self
+    }
+
+    pub fn with_target_filters(mut self, targets: Vec<String>) -> Self {
+        self.target_filters = Some(targets);
+        self
+    }
+
+    pub fn with_limit(mut self, limit: usize) -> Self {
+        self.limit = Some(limit);
+        self
+    }
+
+    pub fn query(&self) -> Option<&str> {
+        self.search_query.as_deref()
+    }
+
+    pub fn level_filters(&self) -> Option<&HashSet<SerdeTracingLevel>> {
+        self.level_filters.as_deref()
+    }
+
+    pub fn target_filters(&self) -> Option<&[String]> {
+        self.target_filters.as_deref()
     }
 }
 

@@ -7,9 +7,12 @@ edition = "2024"
 ambassador = "0.4.2"
 async-trait = "0.1.89"
 bytes = { version = "1.10.1", features = ["serde"] }
+clap = { version = "4.5.48", features = ["derive"], optional = true }
 const-str = { version = "0.7.0", features = ["all"] }
 futures = "0.3.31"
 miette = "7.6.0"
+paste = "1.0.15"
+phf = { version = "0.13.1", features = ["macros"] }
 serde = { version = "1.0.225", features = ["derive"] }
 serde_json = "1.0"
 thiserror = "2.0.16"
@@ -22,3 +25,4 @@ tempfile = "3.21"
 
 [features]
 default = []
+clap = ["dep:clap"]

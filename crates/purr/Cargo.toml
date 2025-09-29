@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 # Core library
 purr-core.workspace = true
+purr-common = { path = "../purr-common", features = ["clap"] }
 
 # CLI argument parsing
 clap = { version = "4.5", features = ["derive"] }
