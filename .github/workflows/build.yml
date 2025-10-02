@@ -25,6 +25,9 @@ jobs:
       fail-fast: false
       matrix:
         backend: ["none", cuda, vulkan]
+        include:
+          - backend: cuda
+            is_release: true  # Mark CUDA as the release variant for Linux
     steps:
       - uses: actions/checkout@v4
       - name: Install dependencies
@@ -90,22 +93,42 @@ jobs:
       - name: Build Binary${{ matrix.backend != 'none' && format(' - {0}', matrix.backend) || '' }}
         run: |
           cargo build -p purr --release ${{ matrix.backend != 'none' && format(' --features {0}', matrix.backend) || '' }}
-      #- name: Build Dioxus Desktop${{ matrix.backend != 'none' && format(' - {0}', matrix.backend) || '' }}
-      #  run: |
-      #   dx bundle --verbose -p purr-ui --release --platform desktop \
-      #     --out-dir dist-linux \
-      #     ${{ matrix.backend != 'none' && format(' --features {0}', matrix.backend) || '' }}
+      # - name: Build Dioxus Desktop${{ matrix.backend != 'none' && format(' - {0}', matrix.backend) || '' }}
+      #   run: |
+      #     dx bundle -p purr-ui --release --linux \
+      #       --out-dir dist-linux \
+      #       ${{ matrix.backend != 'none' && format(' --features {0}', matrix.backend) || '' }}
       - name: Build Dioxus web
         if: matrix.backend == 'none'
         run: |
           dx bundle --verbose -p purr-ui --release --web --out-dir dist-web
-      - name: Archive production artifacts
+      - name: Prepare Linux Artifacts
+        if: matrix.is_release == true
+        run: |
+          mkdir -p artifacts/linux
+          cp target/release/purr artifacts/linux/purr
+          # Include any required shared libraries or resources
+          if [ -f target/release/purr-ui ]; then
+            cp target/release/purr-ui artifacts/linux/
+          fi
+          # Add version info
+          echo "$(git describe --tags --always --dirty)" > artifacts/linux/VERSION
+      - name: Archive Linux Release Artifacts
+        if: matrix.is_release == true
         uses: actions/upload-artifact@v4
         with:
-          name: purr-linux${{ matrix.backend != 'none' && format('-{0}', matrix.backend) || '' }}
+          name: purr-linux-x64-cuda
+          path: artifacts/linux/
+          retention-days: 30
+      - name: Archive Linux Build Artifacts (Dev)
+        if: matrix.is_release != true
+        uses: actions/upload-artifact@v4
+        with:
+          name: purr-linux-dev${{ matrix.backend != 'none' && format('-{0}', matrix.backend) || '' }}
           path: |
             target/release/purr*
             dist-linux/
+          retention-days: 7
       - name: Archive web artifacts
         if: matrix.backend == 'none'
         uses: actions/upload-artifact@v4
@@ -120,6 +143,9 @@ jobs:
       fail-fast: false
       matrix:
         backend: ["none", "metal", "coreml", "metal,coreml"]
+        include:
+          - backend: "metal,coreml"
+            is_release: true  # Mark metal+coreml as the release variant for macOS
     steps:
       - uses: actions/checkout@v4
       - name: Install dependencies
@@ -151,16 +177,38 @@ jobs:
         run: |
           export CFLAGS="-march=armv8.2-a+noi8mm"
           export CXXFLAGS="-march=armv8.2-a+noi8mm"
-          dx bundle --verbose -p purr-ui --release --platform desktop \
+          dx bundle -p purr-ui --release --macos \
             --out-dir dist-macos \
             ${{ matrix.backend != 'none' && format('--features {0}', matrix.backend) || '' }}
-      - name: Archive production artifacts
+      - name: Prepare macOS Artifacts
+        if: matrix.is_release == true
+        run: |
+          mkdir -p artifacts/macos
+          cp target/release/purr artifacts/macos/purr
+          # If .app bundle exists, include it
+          if [ -d "dist-macos/Purr.app" ]; then
+            cp -r dist-macos/Purr.app artifacts/macos/
+            # Create a DMG for easier distribution
+            hdiutil create -volname "Purr" -srcfolder artifacts/macos/Purr.app -ov -format UDZO artifacts/macos/Purr.dmg || true
+          fi
+          # Add version info
+          echo "$(git describe --tags --always --dirty)" > artifacts/macos/VERSION
+      - name: Archive macOS Release Artifacts
+        if: matrix.is_release == true
         uses: actions/upload-artifact@v4
         with:
-          name: purr-macos${{ matrix.backend != 'none' && format('-{0}', matrix.backend) || '' }}
+          name: purr-macos-universal-metal-coreml
+          path: artifacts/macos/
+          retention-days: 30
+      - name: Archive macOS Build Artifacts (Dev)
+        if: matrix.is_release != true
+        uses: actions/upload-artifact@v4
+        with:
+          name: purr-macos-dev${{ matrix.backend != 'none' && format('-{0}', matrix.backend) || '' }}
           path: |
             target/release/purr*
             dist-macos/
+          retention-days: 7
 
   build-windows:
     defaults:
@@ -172,6 +220,9 @@ jobs:
       fail-fast: false
       matrix:
         backend: ["none", cuda, vulkan, "cuda,vulkan"]
+        include:
+          - backend: cuda
+            is_release: true  # Mark CUDA as the release variant for Windows (Vulkan fails to bundle)
     env:
       FFMPEG_DOWNLOAD_URL: https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-full-shared.7z
     steps:
@@ -248,14 +299,55 @@ jobs:
         # TODO: enable vulkan when fixed
         if: ! contains('vulkan', matrix.backend)
         run: |
-          dx bundle --verbose --trace -p purr-ui --release --windows --out-dir dist-windows ${{ matrix.backend != 'none' && format('--features {0}', matrix.backend) || '' }}
-      - name: Archive production artifacts
+          dx bundle -p purr-ui --release --windows --out-dir dist-windows ${{ matrix.backend != 'none' && format('--features {0}', matrix.backend) || '' }}
+      - name: Prepare Windows Artifacts
+        if: matrix.is_release == true
+        run: |
+          New-Item -ItemType Directory -Force -Path artifacts\windows
+
+          # Copy main executable
+          Copy-Item target\release\purr.exe artifacts\windows\purr.exe
+
+          # Copy any DLLs from target/release
+          Get-ChildItem target\release\*.dll | Copy-Item -Destination artifacts\windows\
+
+          # Copy CUDA runtime libraries if CUDA build
+          if ("${{ matrix.backend }}" -match "cuda") {
+            # Copy essential CUDA runtime DLLs
+            $cudaBinPath = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.9\bin"
+            if (Test-Path $cudaBinPath) {
+              Copy-Item "$cudaBinPath\cudart64_*.dll" artifacts\windows\ -ErrorAction SilentlyContinue
+              Copy-Item "$cudaBinPath\cublas64_*.dll" artifacts\windows\ -ErrorAction SilentlyContinue
+              Copy-Item "$cudaBinPath\cublasLt64_*.dll" artifacts\windows\ -ErrorAction SilentlyContinue
+            }
+          }
+
+          # Copy FFmpeg DLLs
+          Get-ChildItem .\ffmpeg\bin\*.dll | Copy-Item -Destination artifacts\windows\
+
+          # If MSI installer exists, include it
+          if (Test-Path "dist-windows\*.msi") {
+            Copy-Item dist-windows\*.msi artifacts\windows\
+          }
+
+          # Add version info
+          git describe --tags --always --dirty | Out-File -FilePath artifacts\windows\VERSION.txt -Encoding utf8
+      - name: Archive Windows Release Artifacts
+        if: matrix.is_release == true
         uses: actions/upload-artifact@v4
         with:
-          name: purr-windows${{ matrix.backend != 'none' && format('-{0}', matrix.backend) || '' }}
+          name: purr-windows-x64-cuda
+          path: artifacts/windows/
+          retention-days: 30
+      - name: Archive Windows Build Artifacts (Dev)
+        if: matrix.is_release != true
+        uses: actions/upload-artifact@v4
+        with:
+          name: purr-windows-dev${{ matrix.backend != 'none' && format('-{0}', matrix.backend) || '' }}
           path: |
             target/release/purr*
             dist-windows/
+          retention-days: 7
 
   deploy-vercel:
     name: Deploy to Vercel
@@ -351,7 +443,7 @@ jobs:
                   "labels": ["chore", "ci", "build", "deps"]
                 }
               ],
-              "template": "# Nightly Build - ${{ steps.date.outputs.date }}\n\n#{{CHANGELOG}}\n\n## 📊 Uncategorized Changes\n#{{UNCATEGORIZED}}\n\n---\n*This is an automated nightly build. It may be unstable.*",
+              "template": "# Nightly Build - ${{ steps.date.outputs.date }}\n\n#{{CHANGELOG}}\n\n## 📊 Uncategorized Changes\n#{{UNCATEGORIZED}}\n\n---\n*This is an automated nightly build. It may be unstable.*\n\n## 📦 Build Information\n- Linux: CUDA backend\n- macOS: Metal + CoreML backend\n- Windows: CUDA backend",
               "pr_template": "- #{{TITLE}} (#{{NUMBER}}) @#{{AUTHOR}}"
             }
           fromTag: ${{ steps.prev_tag.outputs.tag }}
@@ -359,17 +451,67 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Download all artifacts
+      - name: Download Linux Artifacts
         uses: actions/download-artifact@v4
         with:
-          path: ./artifacts
+          name: purr-linux-x64-cuda
+          path: ./release-artifacts/linux
 
-      - name: Package artifacts
+      - name: Download macOS Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: purr-macos-universal-metal-coreml
+          path: ./release-artifacts/macos
+
+      - name: Download Windows Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: purr-windows-x64-cuda
+          path: ./release-artifacts/windows
+
+      - name: Download Web Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: purr-web
+          path: ./release-artifacts/web
+
+      - name: Package Release Assets
         run: |
-          cd artifacts
-          for dir in */; do
-            tar czf "../${dir%/}.tar.gz" "$dir"
-          done
+          # Create organized release structure
+          mkdir -p release-assets
+
+          # Package Linux binary
+          cd release-artifacts/linux
+          chmod +x purr
+          tar czf ../../release-assets/purr-linux-x64-cuda.tar.gz purr VERSION
+          cd ../..
+
+          # Package macOS
+          cd release-artifacts/macos
+          if [ -f "Purr.dmg" ]; then
+            # If DMG exists, use it directly
+            cp Purr.dmg ../../release-assets/purr-macos-universal.dmg
+          else
+            # Otherwise package the binary
+            chmod +x purr
+            tar czf ../../release-assets/purr-macos-universal.tar.gz purr VERSION
+          fi
+          cd ../..
+
+          # Package Windows (create ZIP for Windows users)
+          cd release-artifacts/windows
+          # Use zip for Windows artifacts
+          zip -r ../../release-assets/purr-windows-x64-cuda.zip *
+          cd ../..
+
+          # Package Web
+          cd release-artifacts/web
+          tar czf ../../release-assets/purr-web.tar.gz *
+          cd ../..
+
+          # Generate checksums
+          cd release-assets
+          sha256sum * > SHA256SUMS.txt
           cd ..
 
       - name: Create Nightly Release
@@ -377,10 +519,35 @@ jobs:
         with:
           tag_name: nightly-${{ steps.date.outputs.date }}
           name: Nightly Build - ${{ steps.date.outputs.date }}
-          body: ${{ steps.changelog.outputs.changelog }}
+          body: |
+            ${{ steps.changelog.outputs.changelog }}
+
+            ## 📥 Download Instructions
+
+            ### Windows
+            Download `purr-windows-x64-cuda.zip` and extract all files to a folder. Requires NVIDIA GPU with CUDA support.
+
+            ### Linux
+            Download `purr-linux-x64-cuda.tar.gz` and extract:
+            ```bash
+            tar xzf purr-linux-x64-cuda.tar.gz
+            chmod +x purr
+            ./purr
+            ```
+            Requires NVIDIA GPU with CUDA support.
+
+            ### macOS
+            Download `purr-macos-universal.dmg` (or `.tar.gz` if DMG unavailable)
+            Optimized for Apple Silicon with Metal and CoreML support.
+
+            ### Web
+            Download `purr-web.tar.gz` for web deployment.
+
+            ### Checksums
+            Verify your download with `SHA256SUMS.txt`
           prerelease: true
           files: |
-            *.tar.gz
+            release-assets/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -397,3 +564,177 @@ jobs:
           fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  tagged-release:
+    name: Create Tagged Release
+    runs-on: ubuntu-latest
+    # Only run on version tags (e.g., v1.0.0, v2.1.3-beta)
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: [build-linux, build-macos, build-windows]
+    permissions:
+      contents: write
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get version from tag
+        id: version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          # Check if this is a prerelease
+          if [[ "$VERSION" == *"-"* ]]; then
+            echo "prerelease=true" >> $GITHUB_OUTPUT
+          else
+            echo "prerelease=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Generate Release Notes
+        id: changelog
+        uses: mikepenz/release-changelog-builder-action@v5
+        with:
+          configuration: |
+            {
+              "categories": [
+                {
+                  "title": "## 🚀 Features",
+                  "labels": ["feature", "feat", "enhancement"]
+                },
+                {
+                  "title": "## 🐛 Bug Fixes",
+                  "labels": ["fix", "bugfix", "bug"]
+                },
+                {
+                  "title": "## 🧪 Tests",
+                  "labels": ["test", "testing"]
+                },
+                {
+                  "title": "## 📚 Documentation",
+                  "labels": ["docs", "documentation"]
+                },
+                {
+                  "title": "## 🏗️ Refactoring",
+                  "labels": ["refactor", "refactoring"]
+                },
+                {
+                  "title": "## 🎨 Style",
+                  "labels": ["style"]
+                },
+                {
+                  "title": "## 🔧 Maintenance",
+                  "labels": ["chore", "ci", "build", "deps"]
+                },
+                {
+                  "title": "## ⚠️ Breaking Changes",
+                  "labels": ["breaking", "breaking-change"]
+                }
+              ],
+              "template": "# Release ${{ steps.version.outputs.version }}\n\n#{{CHANGELOG}}\n\n## 📦 Build Information\n- Linux: CUDA backend\n- macOS: Metal + CoreML backend\n- Windows: CUDA backend",
+              "pr_template": "- #{{TITLE}} (#{{NUMBER}}) @#{{AUTHOR}}"
+            }
+          toTag: ${{ github.ref }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download Linux Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: purr-linux-x64-cuda
+          path: ./release-artifacts/linux
+
+      - name: Download macOS Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: purr-macos-universal-metal-coreml
+          path: ./release-artifacts/macos
+
+      - name: Download Windows Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: purr-windows-x64-cuda
+          path: ./release-artifacts/windows
+
+      - name: Download Web Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: purr-web
+          path: ./release-artifacts/web
+
+      - name: Package Release Assets
+        run: |
+          mkdir -p release-assets
+          VERSION=${{ steps.version.outputs.version }}
+
+          # Package Linux binary
+          cd release-artifacts/linux
+          chmod +x purr
+          tar czf ../../release-assets/purr-${VERSION}-linux-x64-cuda.tar.gz purr VERSION
+          cd ../..
+
+          # Package macOS
+          cd release-artifacts/macos
+          if [ -f "Purr.dmg" ]; then
+            cp Purr.dmg ../../release-assets/purr-${VERSION}-macos-universal.dmg
+          else
+            chmod +x purr
+            tar czf ../../release-assets/purr-${VERSION}-macos-universal.tar.gz purr VERSION
+          fi
+          cd ../..
+
+          # Package Windows
+          cd release-artifacts/windows
+          zip -r ../../release-assets/purr-${VERSION}-windows-x64-cuda.zip *
+          cd ../..
+
+          # Package Web
+          cd release-artifacts/web
+          tar czf ../../release-assets/purr-${VERSION}-web.tar.gz *
+          cd ../..
+
+          # Generate checksums
+          cd release-assets
+          sha256sum * > SHA256SUMS.txt
+          cd ..
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Purr ${{ steps.version.outputs.version }}
+          body: |
+            ${{ steps.changelog.outputs.changelog }}
+
+            ## 📥 Installation
+
+            ### Windows
+            Download `purr-${{ steps.version.outputs.version }}-windows-x64-cuda.zip`
+            Extract all files and run `purr.exe`
+
+            Requirements: Windows 10/11 with NVIDIA GPU and CUDA support
+
+            ### Linux
+            ```bash
+            wget https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.version }}/purr-${{ steps.version.outputs.version }}-linux-x64-cuda.tar.gz
+            tar xzf purr-${{ steps.version.outputs.version }}-linux-x64-cuda.tar.gz
+            chmod +x purr
+            ./purr
+            ```
+            Requirements: Linux with NVIDIA GPU and CUDA support
+
+            ### macOS
+            Download `purr-${{ steps.version.outputs.version }}-macos-universal.dmg`
+            Mount the DMG and drag Purr to Applications
+
+            Requirements: macOS 11+ (optimized for Apple Silicon)
+
+            ### Web
+            Download `purr-${{ steps.version.outputs.version }}-web.tar.gz` for deployment
+
+            ## 🔒 Verification
+            Verify downloads using the provided `SHA256SUMS.txt`
+          prerelease: ${{ steps.version.outputs.prerelease == 'true' }}
+          files: |
+            release-assets/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
