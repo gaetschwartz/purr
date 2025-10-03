@@ -1,6 +1,6 @@
 [workspace]
 members = [
-  "crates/purr",
+  "crates/purr-cli",
   "crates/purr-common",
   "crates/purr-core",
   'crates/purr-app',

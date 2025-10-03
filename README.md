@@ -17,7 +17,7 @@ A high-performance audio transcription tool built with Rust, using OpenAI's Whis
 The project consists of two main crates:
 
 - **`purr-core`**: Core library with transcription functionality
-- **`purr`**: Command-line interface using the core library
+- **`purr-cli`**: Command-line interface using the core library
 
 ## Prerequisites
 
@@ -76,7 +76,7 @@ cd purr
 # Build the project
 cargo build --release
 
-# The binary will be at target/release/purr
+# The binary will be at target/release/purr-cli
 ```
 
 ### Running Tests
@@ -91,8 +91,8 @@ cargo test -- --nocapture
 # Run only core library tests
 cargo test -p purr-core
 
-# Run only CLI tests  
-cargo test -p purr
+# Run only CLI tests
+cargo test -p purr-cli
 ```
 
 ## Usage
@@ -101,35 +101,35 @@ cargo test -p purr
 
 ```bash
 # Transcribe an audio file
-./target/release/purr audio.wav
+./target/release/purr-cli audio.wav
 
 # Specify a model
-./target/release/purr audio.mp3 --model models/ggml-base.en.bin
+./target/release/purr-cli audio.mp3 --model models/ggml-base.en.bin
 
 # Specify language
-./target/release/purr audio.wav --language en
+./target/release/purr-cli audio.wav --language en
 ```
 
 ### Advanced Usage
 
 ```bash
 # JSON output with timestamps
-./target/release/purr audio.wav --output json --timestamps
+./target/release/purr-cli audio.wav --output json --timestamps
 
 # SRT subtitle format
-./target/release/purr audio.wav --output srt
+./target/release/purr-cli audio.wav --output srt
 
 # Disable GPU acceleration
-./target/release/purr audio.wav --no-gpu
+./target/release/purr-cli audio.wav --no-gpu
 
 # Set number of threads
-./target/release/purr audio.wav --threads 4
+./target/release/purr-cli audio.wav --threads 4
 
 # Verbose output
-./target/release/purr audio.wav --verbose
+./target/release/purr-cli audio.wav --verbose
 
 # All options combined
-./target/release/purr audio.wav \\
+./target/release/purr-cli audio.wav \\
   --model models/ggml-base.en.bin \\
   --language en \\
   --output json \\
@@ -142,7 +142,7 @@ cargo test -p purr
 ### CLI Options
 
 ```
-Usage: purr [OPTIONS] <AUDIO_FILE>
+Usage: purr-cli [OPTIONS] <AUDIO_FILE>
 
 Arguments:
   <AUDIO_FILE>  Path to the audio file to transcribe
@@ -212,7 +212,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 Use the `--verbose` flag to see detailed performance information:
 
 ```bash
-./target/release/purr audio.wav --verbose
+./target/release/purr-cli audio.wav --verbose
 ```
 
 This shows:

@@ -92,7 +92,7 @@ jobs:
           cargo install dioxus-cli --version ${{ env.DIOXUS_VERSION }} --locked
       - name: Build Binary${{ matrix.backend != 'none' && format(' - {0}', matrix.backend) || '' }}
         run: |
-          cargo build -p purr --release ${{ matrix.backend != 'none' && format(' --features {0}', matrix.backend) || '' }}
+          cargo build -p purr-cli --release ${{ matrix.backend != 'none' && format(' --features {0}', matrix.backend) || '' }}
       # - name: Build Dioxus Desktop${{ matrix.backend != 'none' && format(' - {0}', matrix.backend) || '' }}
       #   run: |
       #     dx bundle -p purr-app --release --linux \
@@ -106,7 +106,7 @@ jobs:
         if: matrix.is_release == true
         run: |
           mkdir -p artifacts/linux
-          cp target/release/purr artifacts/linux/purr
+          cp target/release/purr-cli artifacts/linux/purr-cli
           # Include any required shared libraries or resources
           if [ -f target/release/purr-app ]; then
             cp target/release/purr-app artifacts/linux/
@@ -126,7 +126,7 @@ jobs:
         with:
           name: purr-linux-dev${{ matrix.backend != 'none' && format('-{0}', matrix.backend) || '' }}
           path: |
-            target/release/purr*
+            target/release/purr-cli*
             dist-linux/
           retention-days: 7
       - name: Archive web artifacts
@@ -172,7 +172,7 @@ jobs:
         run: |
           export CFLAGS="-march=armv8.2-a+noi8mm"
           export CXXFLAGS="-march=armv8.2-a+noi8mm"
-          cargo build -p purr --release ${{ matrix.backend != 'none' && format('--features {0}', matrix.backend) || '' }}
+          cargo build -p purr-cli --release ${{ matrix.backend != 'none' && format('--features {0}', matrix.backend) || '' }}
       - name: Build Dioxus Desktop
         run: |
           export CFLAGS="-march=armv8.2-a+noi8mm"
@@ -184,7 +184,7 @@ jobs:
         if: matrix.is_release == true
         run: |
           mkdir -p artifacts/macos
-          cp target/release/purr artifacts/macos/purr
+          cp target/release/purr-cli artifacts/macos/purr-cli
           # If .app bundle exists, include it
           if [ -d "dist-macos/Purr.app" ]; then
             cp -r dist-macos/Purr.app artifacts/macos/
@@ -206,7 +206,7 @@ jobs:
         with:
           name: purr-macos-dev${{ matrix.backend != 'none' && format('-{0}', matrix.backend) || '' }}
           path: |
-            target/release/purr*
+            target/release/purr-cli*
             dist-macos/
           retention-days: 7
 
@@ -294,7 +294,7 @@ jobs:
         uses: microsoft/setup-msbuild@v2
       - name: Build binary${{ matrix.backend != 'none' && format(' - {0}', matrix.backend) || '' }}
         run: |
-          cargo build -p purr --release ${{ matrix.backend != 'none' && format('--features {0}', matrix.backend) || '' }}
+          cargo build -p purr-cli --release ${{ matrix.backend != 'none' && format('--features {0}', matrix.backend) || '' }}
       - name: Build Dioxus Desktop${{ matrix.backend != 'none' && format(' - {0}', matrix.backend) || '' }}
         # TODO: enable vulkan when fixed
         if: ! contains('vulkan', matrix.backend)
@@ -306,7 +306,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path artifacts\windows
 
           # Copy main executable
-          Copy-Item target\release\purr.exe artifacts\windows\purr.exe
+          Copy-Item target\release\purr-cli.exe artifacts\windows\purr-cli.exe
 
           # Copy any DLLs from target/release
           Get-ChildItem target\release\*.dll | Copy-Item -Destination artifacts\windows\
@@ -345,7 +345,7 @@ jobs:
         with:
           name: purr-windows-dev${{ matrix.backend != 'none' && format('-{0}', matrix.backend) || '' }}
           path: |
-            target/release/purr*
+            target/release/purr-cli*
             dist-windows/
           retention-days: 7
 
@@ -482,8 +482,8 @@ jobs:
 
           # Package Linux binary
           cd release-artifacts/linux
-          chmod +x purr
-          tar czf ../../release-assets/purr-linux-x64-cuda.tar.gz purr VERSION
+          chmod +x purr-cli
+          tar czf ../../release-assets/purr-linux-x64-cuda.tar.gz purr-cli VERSION
           cd ../..
 
           # Package macOS
@@ -493,8 +493,8 @@ jobs:
             cp Purr.dmg ../../release-assets/purr-macos-universal.dmg
           else
             # Otherwise package the binary
-            chmod +x purr
-            tar czf ../../release-assets/purr-macos-universal.tar.gz purr VERSION
+            chmod +x purr-cli
+            tar czf ../../release-assets/purr-macos-universal.tar.gz purr-cli VERSION
           fi
           cd ../..
 
@@ -669,8 +669,8 @@ jobs:
 
           # Package Linux binary
           cd release-artifacts/linux
-          chmod +x purr
-          tar czf ../../release-assets/purr-${VERSION}-linux-x64-cuda.tar.gz purr VERSION
+          chmod +x purr-cli
+          tar czf ../../release-assets/purr-${VERSION}-linux-x64-cuda.tar.gz purr-cli VERSION
           cd ../..
 
           # Package macOS
@@ -678,8 +678,8 @@ jobs:
           if [ -f "Purr.dmg" ]; then
             cp Purr.dmg ../../release-assets/purr-${VERSION}-macos-universal.dmg
           else
-            chmod +x purr
-            tar czf ../../release-assets/purr-${VERSION}-macos-universal.tar.gz purr VERSION
+            chmod +x purr-cli
+            tar czf ../../release-assets/purr-${VERSION}-macos-universal.tar.gz purr-cli VERSION
           fi
           cd ../..
 
