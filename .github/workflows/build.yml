@@ -27,7 +27,7 @@ jobs:
         backend: ["none", cuda, vulkan]
         include:
           - backend: cuda
-            is_release: true  # Mark CUDA as the release variant for Linux
+            is_release: true # Mark CUDA as the release variant for Linux
     steps:
       - uses: actions/checkout@v4
       - name: Install dependencies
@@ -145,7 +145,7 @@ jobs:
         backend: ["none", "metal", "coreml", "metal,coreml"]
         include:
           - backend: "metal,coreml"
-            is_release: true  # Mark metal+coreml as the release variant for macOS
+            is_release: true # Mark metal+coreml as the release variant for macOS
     steps:
       - uses: actions/checkout@v4
       - name: Install dependencies
@@ -222,7 +222,7 @@ jobs:
         backend: ["none", cuda, vulkan, "cuda,vulkan"]
         include:
           - backend: cuda
-            is_release: true  # Mark CUDA as the release variant for Windows (Vulkan fails to bundle)
+            is_release: true # Mark CUDA as the release variant for Windows (Vulkan fails to bundle)
     env:
       FFMPEG_DOWNLOAD_URL: https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-full-shared.7z
     steps:
@@ -279,6 +279,7 @@ jobs:
         with:
           toolchain: stable
           targets: wasm32-unknown-unknown
+          components: rustfmt
       - uses: Swatinem/rust-cache@v2
       - name: Cache Dioxus CLI
         id: cache-dx-windows
