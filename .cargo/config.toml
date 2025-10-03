@@ -5,6 +5,9 @@ rustflags = "-lc++ -l framework=Accelerate --cfg=web_sys_unstable_apis"
 linker = "C:\\msys64\\mingw64\\bin\\gcc.exe"
 # ar = "C:\\msys64\\mingw64\\bin\\ar.exe"
 
+[target.wasm32-unknown-unknown]
+rustflags = ["--cfg=web_sys_unstable_apis", "--cfg=getrandom_backend=\"wasm_js\""]
+
 [build]
 rustflags = ["--cfg=web_sys_unstable_apis"]
 

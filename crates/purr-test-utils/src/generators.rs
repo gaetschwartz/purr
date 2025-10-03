@@ -2,7 +2,6 @@
 
 use fake::{Dummy, Fake, Faker};
 use proptest::prelude::*;
-use rand::seq::SliceRandom;
 use std::time::Duration;
 
 /// Generate valid audio sample rates
@@ -132,13 +131,14 @@ pub struct AudioData {
 
 impl Dummy<Faker> for AudioData {
     fn dummy_with_rng<R: fake::Rng + ?Sized>(_: &Faker, rng: &mut R) -> Self {
-        let sample_rate = *[8000, 16000, 44100, 48000].choose(rng).unwrap();
-        let channels = rng.gen_range(1..=2);
-        let duration_secs = rng.gen_range(0.1..=10.0);
+        let sample_rates = [8000, 16000, 44100, 48000];
+        let sample_rate = sample_rates[rng.random_range(0..sample_rates.len())];
+        let channels = rng.random_range(1..=2);
+        let duration_secs = rng.random_range(0.1..=10.0);
         let num_samples = (sample_rate as f32 * duration_secs * f32::from(channels)) as usize;
 
         let samples: Vec<f32> = (0..num_samples)
-            .map(|_| rng.gen_range(-1.0..=1.0))
+            .map(|_| rng.random_range(-1.0..=1.0))
             .collect();
 
         AudioData {
@@ -161,8 +161,8 @@ pub struct TranscriptionResult {
 impl Dummy<Faker> for TranscriptionResult {
     fn dummy_with_rng<R: fake::Rng + ?Sized>(_: &Faker, rng: &mut R) -> Self {
         let text: String = fake::faker::lorem::en::Sentence(3..10).fake_with_rng(rng);
-        let confidence = rng.gen_range(0.0..=1.0);
-        let duration_ms = rng.gen_range(100..=10000);
+        let confidence = rng.random_range(0.0..=1.0);
+        let duration_ms = rng.random_range(100..=10000);
         let duration = Duration::from_millis(duration_ms);
 
         // Generate word-level timestamps
@@ -171,11 +171,11 @@ impl Dummy<Faker> for TranscriptionResult {
         let mut current_time = Duration::ZERO;
 
         for word in words {
-            let word_duration = Duration::from_millis(rng.gen_range(100..=500));
+            let word_duration = Duration::from_millis(rng.random_range(100..=500));
             let start = current_time;
             let end = current_time + word_duration;
             timestamps.push((start, end, word.to_string()));
-            current_time = end + Duration::from_millis(rng.gen_range(10..=100));
+            current_time = end + Duration::from_millis(rng.random_range(10..=100));
             // pause
         }
 
