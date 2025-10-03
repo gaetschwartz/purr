@@ -272,10 +272,8 @@ fn is_system_dark_mode() -> bool {
     #[cfg(feature = "web")]
     {
         if let Some(window) = window() {
-            if let Ok(media_query) = window.match_media("(prefers-color-scheme: dark)") {
-                if let Ok(Some(query)) = media_query {
-                    return query.matches();
-                }
+            if let Ok(Some(media_query)) = window.match_media("(prefers-color-scheme: dark)") {
+                return media_query.matches();
             }
         }
     }
