@@ -1,4 +1,4 @@
-/// Library exports for purr-ui
+/// Library exports for purr-app
 /// This allows both the WASM frontend and native server to use the same components
 use dioxus::prelude::*;
 

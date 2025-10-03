@@ -78,7 +78,7 @@ test-wasm:
 
     declare -A WASM_CRATES
     WASM_CRATES=(
-        #["purr-ui"]="--features web" 
+        #["purr-app"]="--features web"
         ["purr-web"]="--chrome --headless"
     )
     for crate in "${!WASM_CRATES[@]}"; do

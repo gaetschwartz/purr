@@ -58,8 +58,8 @@ post-test-delay = 0
 # Feature flags for different configurations
 [features]
 default = []
-web = ["purr-ui/web", "purr-web"]
-desktop = ["purr-ui/desktop", "purr-core"]
+web = ["purr-app/web", "purr-web"]
+desktop = ["purr-app/desktop", "purr-core"]
 benchmarks = ["purr-test-utils/benchmarks"]
 
 # Target-specific configurations

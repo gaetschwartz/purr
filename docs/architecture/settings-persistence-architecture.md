@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-This document outlines the architecture for implementing settings persistence in the purr-ui application. The design provides a shared Settings structure in `purr-common` that can be serialized/deserialized and persisted across both desktop and web platforms through the Platform trait abstraction.
+This document outlines the architecture for implementing settings persistence in the purr-app application. The design provides a shared Settings structure in `purr-common` that can be serialized/deserialized and persisted across both desktop and web platforms through the Platform trait abstraction.
 
 ## Goals
 
@@ -17,7 +17,7 @@ This document outlines the architecture for implementing settings persistence in
 
 ```
 ┌─────────────────┐
-│   purr-ui       │
+│   purr-app      │
 │   Settings      │
 │   Component     │
 └────────┬────────┘
@@ -504,7 +504,7 @@ pub trait Platform: Send + Sync + 'static {
 ### 3. Desktop Implementation
 
 ```rust
-// crates/purr-ui/src/platform/desktop.rs (additions)
+// crates/purr-app/src/platform/desktop.rs (additions)
 
 use directories::ProjectDirs;
 use std::fs;
@@ -691,7 +691,7 @@ impl PlatformImpl {
 Update the Settings component to use the new persistence layer:
 
 ```rust
-// crates/purr-ui/src/views/settings.rs (key changes)
+// crates/purr-app/src/views/settings.rs (key changes)
 
 use purr_common::settings::{Settings, Theme, SampleRate, AudioQuality, AudioFormat, LogLevel};
 
@@ -763,7 +763,7 @@ async fn apply_settings(settings: &Settings) {
 ### 1. Transcription Integration
 
 ```rust
-// crates/purr-ui/src/views/transcription.rs
+// crates/purr-app/src/views/transcription.rs
 
 async fn start_transcription_process(
     file_id: FileId,
@@ -797,7 +797,7 @@ async fn start_transcription_process(
 ### 2. Theme Application
 
 ```rust
-// crates/purr-ui/src/utils/theme.rs
+// crates/purr-app/src/utils/theme.rs
 
 pub fn apply_theme(theme: Theme) {
     let document = web_sys::window()
@@ -836,7 +836,7 @@ pub fn apply_theme(theme: Theme) {
 ### 3. Logging Configuration
 
 ```rust
-// crates/purr-ui/src/platform/logging.rs
+// crates/purr-app/src/platform/logging.rs
 
 pub fn configure_logging(settings: &LoggingSettings) {
     use tracing_subscriber::EnvFilter;

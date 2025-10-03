@@ -3,7 +3,7 @@ members = [
   "crates/purr",
   "crates/purr-common",
   "crates/purr-core",
-  'crates/purr-ui',
+  'crates/purr-app',
   "crates/purr-wasm",
   "crates/purr-test-utils",
 ]

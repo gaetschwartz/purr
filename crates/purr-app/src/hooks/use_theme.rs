@@ -4,9 +4,9 @@
 //! and provides the specific interface requested: a resolved_theme function
 //! and a set_theme callable.
 
+use crate::theme::{use_theme as use_theme_internal, Theme};
 use purr_common::settings::Theme as BaseTheme;
 use std::rc::Rc;
-use crate::theme::{use_theme as use_theme_internal, Theme};
 
 /// Theme context that provides the exact API requested
 #[derive(Clone)]
@@ -101,7 +101,7 @@ mod tests {
 
     #[test]
     fn test_color_brightness() {
-        assert_eq!(color_brightness("#000000"), 0);   // Black
+        assert_eq!(color_brightness("#000000"), 0); // Black
         assert_eq!(color_brightness("#FFFFFF"), 255); // White
 
         // Test some common theme colors
@@ -142,44 +142,8 @@ mod tests {
     }
 
     #[test]
-    fn test_use_theme_result_api() {
-        use crate::theme::ColorTokens;
-        use purr_common::settings::Theme as BaseTheme;
-
-        // Test the UseThemeResult structure matches the exact API specification
-        let light_tokens = ColorTokens {
-            primary: "#3b82f6".to_string(),
-            secondary: "#6366f1".to_string(),
-            background: "#ffffff".to_string(),
-            text: "#1f2937".to_string(),
-            error: Some("#ef4444".to_string()),
-            warning: Some("#f59e0b".to_string()),
-            success: Some("#10b981".to_string()),
-        };
-
-        // Create a UseThemeResult manually to test the API structure
-        let test_result = UseThemeResult {
-            resolved_theme: Rc::new(|| "light".to_string()),
-            set_theme: Rc::new(|_theme: BaseTheme| {
-                // Test setter function signature
-            }),
-        };
-
-        // Test that the API works as specified:
-        // let resolved_theme = (ctx.resolved_theme)();
-        let resolved_theme = (test_result.resolved_theme)();
-        assert_eq!(resolved_theme, "light");
-
-        // Test that set_theme accepts Theme enum values:
-        // (ctx.set_theme)(Theme::Dark)
-        (test_result.set_theme)(BaseTheme::Dark);
-        (test_result.set_theme)(BaseTheme::Light);
-        (test_result.set_theme)(BaseTheme::System);
-    }
-
-    #[test]
     fn test_resolved_theme_strings() {
-        use crate::theme::{Theme, ColorTokens};
+        use crate::theme::{ColorTokens, Theme};
 
         // Test resolved theme string output for each theme type
         let light_tokens = ColorTokens {

@@ -5300,6 +5300,51 @@ dependencies = [
 ]
 
 [[package]]
+name = "purr-app"
+version = "0.1.0"
+dependencies = [
+ "ambassador",
+ "async-trait",
+ "bytes",
+ "cached",
+ "chrono",
+ "const-str 0.7.0",
+ "dioxus",
+ "directories",
+ "futures",
+ "getrandom 0.3.3",
+ "gloo-file",
+ "gloo-timers",
+ "indexmap 2.11.4",
+ "js-sys",
+ "miette",
+ "pretty_assertions",
+ "purr-common",
+ "purr-core",
+ "purr-wasm",
+ "rfd",
+ "rstest",
+ "scc",
+ "serde",
+ "serde-wasm-bindgen",
+ "serde_json",
+ "serde_with",
+ "strum",
+ "tempfile",
+ "thiserror 2.0.17",
+ "tokio",
+ "toml 0.9.7",
+ "toml_edit 0.23.6",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "wasm-bindgen-test",
+ "web-sys",
+]
+
+[[package]]
 name = "purr-common"
 version = "0.1.0"
 dependencies = [
@@ -5384,51 +5429,6 @@ dependencies = [
  "wasm-bindgen-test",
  "web-sys",
  "wgpu",
-]
-
-[[package]]
-name = "purr-ui"
-version = "0.1.0"
-dependencies = [
- "ambassador",
- "async-trait",
- "bytes",
- "cached",
- "chrono",
- "const-str 0.7.0",
- "dioxus",
- "directories",
- "futures",
- "getrandom 0.3.3",
- "gloo-file",
- "gloo-timers",
- "indexmap 2.11.4",
- "js-sys",
- "miette",
- "pretty_assertions",
- "purr-common",
- "purr-core",
- "purr-wasm",
- "rfd",
- "rstest",
- "scc",
- "serde",
- "serde-wasm-bindgen",
- "serde_json",
- "serde_with",
- "strum",
- "tempfile",
- "thiserror 2.0.17",
- "tokio",
- "toml 0.9.7",
- "toml_edit 0.23.6",
- "tracing",
- "tracing-subscriber",
- "uuid",
- "wasm-bindgen",
- "wasm-bindgen-futures",
- "wasm-bindgen-test",
- "web-sys",
 ]
 
 [[package]]

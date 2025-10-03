@@ -95,21 +95,21 @@ jobs:
           cargo build -p purr --release ${{ matrix.backend != 'none' && format(' --features {0}', matrix.backend) || '' }}
       # - name: Build Dioxus Desktop${{ matrix.backend != 'none' && format(' - {0}', matrix.backend) || '' }}
       #   run: |
-      #     dx bundle -p purr-ui --release --linux \
+      #     dx bundle -p purr-app --release --linux \
       #       --out-dir dist-linux \
       #       ${{ matrix.backend != 'none' && format(' --features {0}', matrix.backend) || '' }}
       - name: Build Dioxus web
         if: matrix.backend == 'none'
         run: |
-          dx bundle --verbose -p purr-ui --release --web --out-dir dist-web
+          dx bundle --verbose -p purr-app --release --web --out-dir dist-web
       - name: Prepare Linux Artifacts
         if: matrix.is_release == true
         run: |
           mkdir -p artifacts/linux
           cp target/release/purr artifacts/linux/purr
           # Include any required shared libraries or resources
-          if [ -f target/release/purr-ui ]; then
-            cp target/release/purr-ui artifacts/linux/
+          if [ -f target/release/purr-app ]; then
+            cp target/release/purr-app artifacts/linux/
           fi
           # Add version info
           echo "$(git describe --tags --always --dirty)" > artifacts/linux/VERSION
@@ -177,7 +177,7 @@ jobs:
         run: |
           export CFLAGS="-march=armv8.2-a+noi8mm"
           export CXXFLAGS="-march=armv8.2-a+noi8mm"
-          dx bundle -p purr-ui --release --macos \
+          dx bundle -p purr-app --release --macos \
             --out-dir dist-macos \
             ${{ matrix.backend != 'none' && format('--features {0}', matrix.backend) || '' }}
       - name: Prepare macOS Artifacts
@@ -299,7 +299,7 @@ jobs:
         # TODO: enable vulkan when fixed
         if: ! contains('vulkan', matrix.backend)
         run: |
-          dx bundle -p purr-ui --release --windows --out-dir dist-windows ${{ matrix.backend != 'none' && format('--features {0}', matrix.backend) || '' }}
+          dx bundle -p purr-app --release --windows --out-dir dist-windows ${{ matrix.backend != 'none' && format('--features {0}', matrix.backend) || '' }}
       - name: Prepare Windows Artifacts
         if: matrix.is_release == true
         run: |
