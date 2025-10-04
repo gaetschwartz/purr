@@ -1,5 +1,5 @@
 # Default settings
-set positional-arguments := true
+set windows-shell := ["powershell.exe", "-NoLogo", "-Command"]
 export WINDOWS_TEST_ARGS := env("WINDOWS_TEST_ARGS", "--features cuda")
 
 # Colors for output
@@ -166,3 +166,8 @@ trigger-nightly:
 _cn *ARGS:
     @echo "{{BLUE}}[INFO]{{NC}} Running tests with Metal support..."
     cargo nextest run --features metal {{ARGS}}
+
+[windows]
+dx-build *ARGS:
+    $env:CARGO_TARGET_DIR="{{invocation_directory()}}\t" ; \
+    dx build -p purr-app --release --desktop --profile r {{ARGS}}

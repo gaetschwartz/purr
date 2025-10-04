@@ -297,10 +297,10 @@ jobs:
         run: |
           cargo build -p purr-cli --release ${{ matrix.backend != 'none' && format('--features {0}', matrix.backend) || '' }}
       - name: Build Dioxus Desktop${{ matrix.backend != 'none' && format(' - {0}', matrix.backend) || '' }}
-        # TODO: enable vulkan when fixed
-        if: ! contains('vulkan', matrix.backend)
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}\t
         run: |
-          dx bundle -p purr-app --release --windows --out-dir dist-windows ${{ matrix.backend != 'none' && format('--features {0}', matrix.backend) || '' }}
+          dx bundle -p purr-app --profile r --windows --out-dir dist-windows ${{ matrix.backend != 'none' && format('--features {0}', matrix.backend) || '' }}
       - name: Prepare Windows Artifacts
         if: matrix.is_release == true
         run: |

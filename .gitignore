@@ -1,4 +1,6 @@
 target/
+# target but shorter
+t/
 models/
 whisper.cpp/
 node_modules/
