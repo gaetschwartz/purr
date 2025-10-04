@@ -171,3 +171,8 @@ _cn *ARGS:
 dx-build *ARGS:
     $env:CARGO_TARGET_DIR="{{invocation_directory()}}\t" ; \
     dx build -p purr-app --release --desktop --profile r {{ARGS}}
+
+[windows]
+dx-bundle *ARGS:
+    $env:CARGO_TARGET_DIR="{{invocation_directory()}}\t" ; \
+    dx bundle -p purr-app --release --desktop --profile r {{ARGS}}

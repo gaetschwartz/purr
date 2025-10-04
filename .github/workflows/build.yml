@@ -298,9 +298,9 @@ jobs:
           cargo build -p purr-cli --release ${{ matrix.backend != 'none' && format('--features {0}', matrix.backend) || '' }}
       - name: Build Dioxus Desktop${{ matrix.backend != 'none' && format(' - {0}', matrix.backend) || '' }}
         env:
-          CARGO_TARGET_DIR: D:\a\pt\
+          CARGO_TARGET_DIR: D:\t\
         run: |
-          dx bundle -p purr-app --profile r --windows --out-dir dist-windows ${{ matrix.backend != 'none' && format('--features {0}', matrix.backend) || '' }}
+          dx bundle --verbose --trace -p purr-app --release --profile r --windows --out-dir dist-windows ${{ matrix.backend != 'none' && format('--features {0}', matrix.backend) || '' }}
       - name: Prepare Windows Artifacts
         if: matrix.is_release == true
         run: |
