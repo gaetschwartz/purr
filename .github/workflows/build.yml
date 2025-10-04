@@ -106,7 +106,7 @@ jobs:
         if: matrix.is_release == true
         run: |
           mkdir -p artifacts/linux
-          cp target/release/purr-cli artifacts/linux/purr-cli
+          cp target/release/purr artifacts/linux/purr
           # Include any required shared libraries or resources
           if [ -f target/release/purr-app ]; then
             cp target/release/purr-app artifacts/linux/
@@ -126,7 +126,7 @@ jobs:
         with:
           name: purr-linux-dev${{ matrix.backend != 'none' && format('-{0}', matrix.backend) || '' }}
           path: |
-            target/release/purr-cli*
+            target/release/purr*
             dist-linux/
           retention-days: 7
       - name: Archive web artifacts
@@ -184,7 +184,7 @@ jobs:
         if: matrix.is_release == true
         run: |
           mkdir -p artifacts/macos
-          cp target/release/purr-cli artifacts/macos/purr-cli
+          cp target/release/purr artifacts/macos/purr
           # If .app bundle exists, include it
           if [ -d "dist-macos/Purr.app" ]; then
             cp -r dist-macos/Purr.app artifacts/macos/
@@ -206,7 +206,7 @@ jobs:
         with:
           name: purr-macos-dev${{ matrix.backend != 'none' && format('-{0}', matrix.backend) || '' }}
           path: |
-            target/release/purr-cli*
+            target/release/purr*
             dist-macos/
           retention-days: 7
 
@@ -307,7 +307,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path artifacts\windows
 
           # Copy main executable
-          Copy-Item target\release\purr-cli.exe artifacts\windows\purr-cli.exe
+          Copy-Item target\release\purr.exe artifacts\windows\purr.exe
 
           # Copy any DLLs from target/release
           Get-ChildItem target\release\*.dll | Copy-Item -Destination artifacts\windows\
@@ -346,7 +346,7 @@ jobs:
         with:
           name: purr-windows-dev${{ matrix.backend != 'none' && format('-{0}', matrix.backend) || '' }}
           path: |
-            target/release/purr-cli*
+            target/release/purr*
             dist-windows/
           retention-days: 7
 
@@ -483,8 +483,8 @@ jobs:
 
           # Package Linux binary
           cd release-artifacts/linux
-          chmod +x purr-cli
-          tar czf ../../release-assets/purr-linux-x64-cuda.tar.gz purr-cli VERSION
+          chmod +x purr
+          tar czf ../../release-assets/purr-linux-x64-cuda.tar.gz purr VERSION
           cd ../..
 
           # Package macOS
@@ -494,8 +494,8 @@ jobs:
             cp Purr.dmg ../../release-assets/purr-macos-universal.dmg
           else
             # Otherwise package the binary
-            chmod +x purr-cli
-            tar czf ../../release-assets/purr-macos-universal.tar.gz purr-cli VERSION
+            chmod +x purr
+            tar czf ../../release-assets/purr-macos-universal.tar.gz purr VERSION
           fi
           cd ../..
 
@@ -670,8 +670,8 @@ jobs:
 
           # Package Linux binary
           cd release-artifacts/linux
-          chmod +x purr-cli
-          tar czf ../../release-assets/purr-${VERSION}-linux-x64-cuda.tar.gz purr-cli VERSION
+          chmod +x purr
+          tar czf ../../release-assets/purr-${VERSION}-linux-x64-cuda.tar.gz purr VERSION
           cd ../..
 
           # Package macOS
@@ -679,8 +679,8 @@ jobs:
           if [ -f "Purr.dmg" ]; then
             cp Purr.dmg ../../release-assets/purr-${VERSION}-macos-universal.dmg
           else
-            chmod +x purr-cli
-            tar czf ../../release-assets/purr-${VERSION}-macos-universal.tar.gz purr-cli VERSION
+            chmod +x purr
+            tar czf ../../release-assets/purr-${VERSION}-macos-universal.tar.gz purr VERSION
           fi
           cd ../..
 

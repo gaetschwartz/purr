@@ -3,6 +3,10 @@ name = "purr-cli"
 version = "0.1.0"
 edition = "2021"
 
+[[bin]]
+name = "purr"
+path = "src/main.rs"
+
 [dependencies]
 # Core library
 purr-core.workspace = true

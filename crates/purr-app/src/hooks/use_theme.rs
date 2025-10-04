@@ -25,7 +25,7 @@ pub struct UseThemeResult {
 ///
 /// Example usage:
 /// ```rust,no_run
-/// use purr_ui::hooks::use_theme;
+/// use purr_app::hooks::use_theme;
 /// use purr_common::settings::Theme;
 ///
 /// // In a Dioxus component context:

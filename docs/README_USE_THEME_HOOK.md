@@ -17,7 +17,7 @@ The `use_theme` hook provides a simplified interface for theme management functi
 First, make sure your app is wrapped with the `ThemeProvider`:
 
 ```rust
-use purr_ui::theme::{ThemeProvider, Theme, StorageType, CustomTheme, BaseTheme, ColorTokens};
+use purr_app::theme::{ThemeProvider, Theme, StorageType, CustomTheme, BaseTheme, ColorTokens};
 
 #[component]
 pub fn App() -> Element {
@@ -53,7 +53,7 @@ pub fn App() -> Element {
 ### Using the Hook
 
 ```rust
-use purr_ui::hooks::use_theme;
+use purr_app::hooks::use_theme;
 use purr_common::settings::Theme;
 
 #[component]
