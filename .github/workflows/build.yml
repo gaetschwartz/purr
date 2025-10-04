@@ -250,7 +250,7 @@ jobs:
           triplet: x64-windows-release
           token: ${{ github.token }}
       - name: Install cuda
-        if: matrix.backend == 'cuda'
+        if: contains('cuda', matrix.backend)
         run: |
           choco install -r cuda --version 12.9.1.576
           $CUDA_PATH = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.9\"
@@ -265,15 +265,15 @@ jobs:
           Add-Content $env:GITHUB_ENV "CUDA_LIB_PATH=${CUDA_PATH}\lib\x64"
           Add-Content $env:GITHUB_PATH "${CUDA_PATH}\bin"
       - name: Install Vulkan SDK
-        if: matrix.backend == 'vulkan'
+        if: contains('vulkan', matrix.backend)
         run: |
           $VulkanSDKVersion = "1.4.313.2"
           $VulkanSDKUrl = "https://sdk.lunarg.com/sdk/download/${VulkanSDKVersion}/windows/vulkansdk-windows-X64-${VulkanSDKVersion}.exe"
           Invoke-WebRequest -Uri ${VulkanSDKUrl} -OutFile VulkanSDK-Installer.exe
           Start-Process -Wait -FilePath .\VulkanSDK-Installer.exe -ArgumentList "--accept-licenses --default-answer --confirm-command install --root C:\VulkanSDK\${VulkanSDKVersion} --no-shortcuts --no-start-menu --no-desktop-icon --no-update-check"
-          $env:VULKAN_SDK = "C:\VulkanSDK\${VulkanSDKVersion}"
-          Add-Content $env:GITHUB_ENV "VULKAN_SDK=$env:VULKAN_SDK"
-          Add-Content $env:GITHUB_PATH "$env:VULKAN_SDK\Bin"
+          $VULKAN_SDK = "C:\VulkanSDK\${VulkanSDKVersion}"
+          Add-Content $env:GITHUB_ENV "VULKAN_SDK=${VULKAN_SDK}"
+          Add-Content $env:GITHUB_PATH "${VULKAN_SDK}\Bin"
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
         with:
