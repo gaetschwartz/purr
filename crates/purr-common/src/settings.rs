@@ -130,7 +130,7 @@ pub enum AudioFormat {
 }
 
 /// Application color themes
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Theme {
     /// Light color scheme
     Light,
@@ -312,23 +312,225 @@ impl AudioFormat {
 }
 
 impl Theme {
-    /// Convert to string representation
-    pub fn to_string(&self) -> &'static str {
-        match self {
-            Theme::Light => "light",
-            Theme::Dark => "dark",
-            Theme::System => "system",
+    /// Detect the current system theme preference
+    ///
+    /// # Platform Support
+    /// - **Windows**: Uses Windows Registry to check for dark mode
+    /// - **macOS**: Uses NSUserDefaults to check appearance
+    /// - **Linux**: Checks XDG desktop portal or GTK settings
+    /// - **Web**: Uses prefers-color-scheme media query
+    pub fn detect_system_preference() -> Self {
+        #[cfg(target_os = "windows")]
+        {
+            Self::detect_windows_theme()
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            Self::detect_macos_theme()
+        }
+
+        #[cfg(target_os = "linux")]
+        {
+            Self::detect_linux_theme()
+        }
+
+        #[cfg(all(target_arch = "wasm32", feature = "web"))]
+        {
+            Self::detect_web_theme()
+        }
+
+        #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux", all(target_arch = "wasm32", feature = "web"))))]
+        {
+            // Fallback for unsupported platforms
+            Self::Light
         }
     }
 
-    /// Parse from string representation
-    pub fn from_string(theme: &str) -> Option<Self> {
-        match theme {
-            "light" => Some(Theme::Light),
-            "dark" => Some(Theme::Dark),
-            "system" => Some(Theme::System),
-            _ => None,
+    /// Resolve theme to concrete Light or Dark (handles System)
+    pub fn resolve(&self) -> Self {
+        match self {
+            Self::Light => Self::Light,
+            Self::Dark => Self::Dark,
+            Self::System => Self::detect_system_preference(),
         }
+    }
+
+    /// Convert to storage string
+    pub fn to_storage_string(&self) -> &'static str {
+        match self {
+            Self::Light => "light",
+            Self::Dark => "dark",
+            Self::System => "system",
+        }
+    }
+
+    /// Parse from storage string
+    pub fn from_storage_string(s: &str) -> Self {
+        match s {
+            "dark" => Self::Dark,
+            "system" => Self::System,
+            _ => Self::Light,
+        }
+    }
+
+    // Platform-specific detection methods
+
+    #[cfg(target_os = "windows")]
+    fn detect_windows_theme() -> Self {
+        use windows::Win32::System::Registry::{
+            RegOpenKeyExW, RegQueryValueExW, HKEY, HKEY_CURRENT_USER, KEY_READ, REG_VALUE_TYPE,
+        };
+        use windows::core::w;
+
+        unsafe {
+            let subkey = w!("Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize");
+            let value_name = w!("AppsUseLightTheme");
+
+            let mut hkey: HKEY = HKEY::default();
+
+            // Open registry key
+            if RegOpenKeyExW(HKEY_CURRENT_USER, subkey, 0, KEY_READ, &mut hkey).is_ok() {
+                let mut buffer = [0u8; 4];
+                let mut buffer_size = buffer.len() as u32;
+                let mut value_type = REG_VALUE_TYPE::default();
+
+                // Query value
+                if RegQueryValueExW(
+                    hkey,
+                    value_name,
+                    None,
+                    Some(&mut value_type),
+                    Some(buffer.as_mut_ptr()),
+                    Some(&mut buffer_size),
+                )
+                .is_ok()
+                {
+                    let value = u32::from_le_bytes(buffer);
+                    return if value == 0 { Self::Dark } else { Self::Light };
+                }
+            }
+        }
+
+        // Fallback to light if detection fails
+        Self::Light
+    }
+
+    #[cfg(target_os = "macos")]
+    fn detect_macos_theme() -> Self {
+        use cocoa::appkit::NSAppearance;
+        use cocoa::base::{id, nil};
+        use cocoa::foundation::{NSAutoreleasePool, NSString};
+        use objc::runtime::Object;
+        use objc::{class, msg_send, sel, sel_impl};
+
+        unsafe {
+            let _pool = NSAutoreleasePool::new(nil);
+
+            // Get effective appearance
+            let appearance: id = msg_send![class!(NSAppearance), currentDrawingAppearance];
+            if appearance != nil {
+                let name: id = msg_send![appearance, name];
+                let name_str = NSString::UTF8String(name);
+                let name_cstr = std::ffi::CStr::from_ptr(name_str);
+
+                if let Ok(name_string) = name_cstr.to_str() {
+                    if name_string.contains("Dark") {
+                        return Self::Dark;
+                    }
+                }
+            }
+        }
+
+        Self::Light
+    }
+
+    #[cfg(target_os = "linux")]
+    fn detect_linux_theme() -> Self {
+        // Method 1: Try GTK settings
+        if let Some(theme) = Self::detect_linux_gtk_theme() {
+            return theme;
+        }
+
+        // Method 2: Try environment variables
+        if let Some(theme) = Self::detect_linux_env_vars() {
+            return theme;
+        }
+
+        // Fallback
+        Self::Light
+    }
+
+    #[cfg(target_os = "linux")]
+    fn detect_linux_gtk_theme() -> Option<Self> {
+        use std::fs;
+
+        // Try to read GTK settings file
+        // ~/.config/gtk-3.0/settings.ini or ~/.config/gtk-4.0/settings.ini
+        if let Some(config_dir) = dirs::config_dir() {
+            for version in ["gtk-4.0", "gtk-3.0"] {
+                let settings_path = config_dir.join(version).join("settings.ini");
+                if let Ok(contents) = fs::read_to_string(&settings_path) {
+                    // Look for gtk-application-prefer-dark-theme=1
+                    for line in contents.lines() {
+                        if line.trim().starts_with("gtk-application-prefer-dark-theme") {
+                            if line.contains("=1") || line.contains("=true") {
+                                return Some(Self::Dark);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        None
+    }
+
+    #[cfg(target_os = "linux")]
+    fn detect_linux_env_vars() -> Option<Self> {
+        // Check GTK_THEME environment variable
+        if let Ok(gtk_theme) = std::env::var("GTK_THEME") {
+            if gtk_theme.to_lowercase().contains("dark") {
+                return Some(Self::Dark);
+            }
+        }
+
+        None
+    }
+
+    #[cfg(all(target_arch = "wasm32", feature = "web"))]
+    fn detect_web_theme() -> Self {
+        use web_sys::window;
+
+        if let Some(window) = window() {
+            if let Ok(Some(media_query)) = window.match_media("(prefers-color-scheme: dark)") {
+                return if media_query.matches() {
+                    Self::Dark
+                } else {
+                    Self::Light
+                };
+            }
+        }
+
+        Self::Light
+    }
+
+    /// Convert to string representation (deprecated, use to_storage_string)
+    #[deprecated(since = "0.1.0", note = "Use to_storage_string instead")]
+    pub fn to_string(&self) -> &'static str {
+        self.to_storage_string()
+    }
+
+    /// Parse from string representation (deprecated, use from_storage_string)
+    #[deprecated(since = "0.1.0", note = "Use from_storage_string instead")]
+    pub fn from_string(theme: &str) -> Option<Self> {
+        Some(Self::from_storage_string(theme))
+    }
+}
+
+impl std::fmt::Display for Theme {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.to_storage_string())
     }
 }
 
@@ -569,8 +771,8 @@ mod tests {
         assert_eq!(AudioQuality::from_string("high"), Some(AudioQuality::High));
 
         // Test Theme
-        assert_eq!(Theme::Dark.to_string(), "dark");
-        assert_eq!(Theme::from_string("dark"), Some(Theme::Dark));
+        assert_eq!(Theme::Dark.to_storage_string(), "dark");
+        assert_eq!(Theme::from_storage_string("dark"), Theme::Dark);
 
         // Test LogLevel
         assert_eq!(LogLevel::Info.to_string(), "info");

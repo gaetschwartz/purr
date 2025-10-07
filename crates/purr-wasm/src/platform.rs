@@ -699,4 +699,18 @@ impl Platform for WasmPlatformImpl {
     async fn get_settings_location(&self) -> Result<Option<String>, PlatformError> {
         Ok(Some("localStorage:purr-settings".to_string()))
     }
+
+    // ========================================
+    // Theme Storage Implementation
+    // ========================================
+
+    async fn load_theme_setting(&self, storage_key: &str) -> Result<Option<String>, PlatformError> {
+        // Load theme from localStorage
+        Self::get_storage_value(storage_key)
+    }
+
+    async fn save_theme_setting(&self, storage_key: &str, theme: &str) -> Result<(), PlatformError> {
+        // Save theme to localStorage
+        Self::set_storage_value(storage_key, theme)
+    }
 }

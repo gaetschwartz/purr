@@ -420,133 +420,137 @@ impl Platform for DesktopPlatformImpl {
     // ========================================
 
     async fn load_settings(&self) -> Result<Settings, PlatformError> {
-        #[cfg(feature = "desktop")]
-        {
-            let settings_path = Self::get_settings_file_path()?;
+        let settings_path = Self::get_settings_file_path()?;
 
-            debug!("Loading settings from: {}", settings_path.display());
+        debug!("Loading settings from: {}", settings_path.display());
 
-            // If the file doesn't exist, return default settings
-            if !settings_path.exists() {
-                info!(
-                    "Settings file not found, using defaults: {}",
-                    settings_path.display()
-                );
-                return Ok(Settings::default());
-            }
+        // If the file doesn't exist, return default settings
+        if !settings_path.exists() {
+            info!(
+                "Settings file not found, using defaults: {}",
+                settings_path.display()
+            );
+            return Ok(Settings::default());
+        }
 
-            // Read the settings file
-            let contents = tokio::fs::read_to_string(&settings_path)
-                .await
-                .map_err(|e| {
-                    error!(
-                        "Failed to read settings file {}: {}",
-                        settings_path.display(),
-                        e
-                    );
-                    PlatformError::settings_persistence(e)
-                })?;
-
-            // Parse TOML content
-            let settings: Settings = toml::from_str(&contents).map_err(|e| {
+        // Read the settings file
+        let contents = tokio::fs::read_to_string(&settings_path)
+            .await
+            .map_err(|e| {
                 error!(
-                    "Failed to parse settings file {}: {}",
+                    "Failed to read settings file {}: {}",
                     settings_path.display(),
                     e
                 );
                 PlatformError::settings_persistence(e)
             })?;
 
-            info!(
-                "Successfully loaded settings from: {}",
-                settings_path.display()
+        // Parse TOML content
+        let settings: Settings = toml::from_str(&contents).map_err(|e| {
+            error!(
+                "Failed to parse settings file {}: {}",
+                settings_path.display(),
+                e
             );
-            Ok(settings)
-        }
-        #[cfg(not(feature = "desktop"))]
-        {
-            Err(PlatformError::unsupported(
-                "Settings persistence not available on this platform",
-            ))
-        }
+            PlatformError::settings_persistence(e)
+        })?;
+
+        info!(
+            "Successfully loaded settings from: {}",
+            settings_path.display()
+        );
+        Ok(settings)
     }
 
     async fn save_settings(&self, settings: &Settings) -> Result<(), PlatformError> {
-        #[cfg(feature = "desktop")]
-        {
-            let settings_path = Self::get_settings_file_path()?;
-            let settings_dir = settings_path.parent().unwrap();
+        let settings_path = Self::get_settings_file_path()?;
+        let settings_dir = settings_path.parent().unwrap();
 
-            debug!("Saving settings to: {}", settings_path.display());
+        debug!("Saving settings to: {}", settings_path.display());
 
-            // Create the settings directory if it doesn't exist
-            tokio::fs::create_dir_all(settings_dir).await.map_err(|e| {
-                error!(
-                    "Failed to create settings directory {}: {}",
-                    settings_dir.display(),
-                    e
-                );
-                PlatformError::settings_persistence(e)
-            })?;
-
-            // Serialize settings to TOML
-            let toml_content = toml::to_string_pretty(settings).map_err(|e| {
-                error!("Failed to serialize settings to TOML: {}", e);
-                PlatformError::settings_persistence(e)
-            })?;
-
-            // Use atomic write pattern: write to temp file, then rename
-            let temp_path = settings_path.with_extension("toml.tmp");
-
-            // Write to temporary file
-            tokio::fs::write(&temp_path, &toml_content)
-                .await
-                .map_err(|e| {
-                    error!(
-                        "Failed to write temporary settings file {}: {}",
-                        temp_path.display(),
-                        e
-                    );
-                    PlatformError::settings_persistence(e)
-                })?;
-
-            // Atomically rename temp file to final location
-            if let Err(e) = tokio::fs::rename(&temp_path, &settings_path).await {
-                error!(
-                    "Failed to rename settings file from {} to {}: {}",
-                    temp_path.display(),
-                    settings_path.display(),
-                    e
-                );
-                // Clean up temp file on failure
-                let _ = tokio::fs::remove_file(&temp_path).await;
-                return Err(PlatformError::settings_persistence(e));
-            }
-
-            info!(
-                "Successfully saved settings to: {}",
-                settings_path.display()
+        // Create the settings directory if it doesn't exist
+        tokio::fs::create_dir_all(settings_dir).await.map_err(|e| {
+            error!(
+                "Failed to create settings directory {}: {}",
+                settings_dir.display(),
+                e
             );
-            Ok(())
+            PlatformError::settings_persistence(e)
+        })?;
+
+        // Serialize settings to TOML
+        let toml_content = toml::to_string_pretty(settings).map_err(|e| {
+            error!("Failed to serialize settings to TOML: {}", e);
+            PlatformError::settings_persistence(e)
+        })?;
+
+        // Use atomic write pattern: write to temp file, then rename
+        let temp_path = settings_path.with_extension("toml.tmp");
+
+        // Write to temporary file
+        tokio::fs::write(&temp_path, &toml_content)
+            .await
+            .map_err(|e| {
+                error!(
+                    "Failed to write temporary settings file {}: {}",
+                    temp_path.display(),
+                    e
+                );
+                PlatformError::settings_persistence(e)
+            })?;
+
+        // Atomically rename temp file to final location
+        if let Err(e) = tokio::fs::rename(&temp_path, &settings_path).await {
+            error!(
+                "Failed to rename settings file from {} to {}: {}",
+                temp_path.display(),
+                settings_path.display(),
+                e
+            );
+            // Clean up temp file on failure
+            let _ = tokio::fs::remove_file(&temp_path).await;
+            return Err(PlatformError::settings_persistence(e));
         }
-        #[cfg(not(feature = "desktop"))]
-        {
-            Err(PlatformError::unsupported(
-                "Settings persistence not available on this platform",
-            ))
-        }
+
+        info!(
+            "Successfully saved settings to: {}",
+            settings_path.display()
+        );
+        Ok(())
     }
 
     async fn get_settings_location(&self) -> Result<Option<String>, PlatformError> {
-        #[cfg(feature = "desktop")]
-        {
-            let settings_path = Self::get_settings_file_path()?;
-            Ok(Some(settings_path.to_string_lossy().to_string()))
-        }
-        #[cfg(not(feature = "desktop"))]
-        {
-            Ok(None)
-        }
+        let settings_path = Self::get_settings_file_path()?;
+        Ok(Some(settings_path.to_string_lossy().to_string()))
+    }
+
+    // ========================================
+    // Theme Storage Implementation
+    // ========================================
+
+    async fn load_theme_setting(&self, _storage_key: &str) -> Result<Option<String>, PlatformError> {
+        // Load settings and extract theme
+        let settings = self.load_settings().await?;
+        let theme_str = settings.ui.theme.to_storage_string();
+
+        debug!("Loaded theme setting: {}", theme_str);
+        Ok(Some(theme_str.to_string()))
+    }
+
+    async fn save_theme_setting(&self, _storage_key: &str, theme: &str) -> Result<(), PlatformError> {
+        debug!("Saving theme setting: {}", theme);
+
+        // Load current settings
+        let mut settings = self.load_settings().await?;
+
+        // Update theme using from_storage_string
+        settings.ui.theme = purr_common::settings::Theme::from_storage_string(theme);
+
+        // Save settings atomically
+        self.save_settings(&settings).await?;
+
+        info!("Theme setting saved successfully: {}", theme);
+        Ok(())
     }
 }
 
@@ -587,23 +591,14 @@ impl DesktopPlatformImpl {
 
     /// Get the settings directory path using XDG-compliant directories
     fn get_settings_dir() -> Result<PathBuf, PlatformError> {
-        #[cfg(feature = "desktop")]
-        {
-            directories::ProjectDirs::from("com", "purr", "purr")
-                .map(|proj_dirs| proj_dirs.config_dir().to_path_buf())
-                .ok_or_else(|| {
-                    PlatformError::settings_persistence(std::io::Error::new(
-                        std::io::ErrorKind::NotFound,
-                        "Could not determine config directory",
-                    ))
-                })
-        }
-        #[cfg(not(feature = "desktop"))]
-        {
-            Err(PlatformError::unsupported(
-                "Settings persistence not available on this platform",
-            ))
-        }
+        directories::ProjectDirs::from("com", "purr", "purr")
+            .map(|proj_dirs| proj_dirs.config_dir().to_path_buf())
+            .ok_or_else(|| {
+                PlatformError::settings_persistence(std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    "Could not determine config directory",
+                ))
+            })
     }
 
     /// Get the full path to the settings file

@@ -18,7 +18,7 @@ mod utils;
 mod views;
 
 use main_app::MainApp;
-use theme::{BaseTheme, ColorTokens, CustomTheme, StorageType, Theme, ThemeProvider};
+use theme::{ColorTokens, CustomTheme, StorageType, Theme, ThemeProvider};
 
 
 // We can import assets in dioxus with the `asset!` macro. This macro takes a path to an asset relative to the crate root.
@@ -38,7 +38,7 @@ pub fn App() -> Element {
     // Setup custom themes as specified
     let solarized_theme = CustomTheme {
         name: "solarized".to_string(),
-        base: BaseTheme::Light,
+        base: Some(Theme::Light),
         tokens: ColorTokens {
             primary: "#268bd2".to_string(),
             secondary: "#2aa198".to_string(),

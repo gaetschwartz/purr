@@ -100,4 +100,12 @@ impl Platform for UnimplementedPlatformImpl {
     async fn get_settings_location(&self) -> Result<Option<String>, PlatformError> {
         unsupported!()
     }
+
+    async fn load_theme_setting(&self, _storage_key: &str) -> Result<Option<String>, PlatformError> {
+        unsupported!()
+    }
+
+    async fn save_theme_setting(&self, _storage_key: &str, _theme: &str) -> Result<(), PlatformError> {
+        unsupported!()
+    }
 }

@@ -4,7 +4,7 @@
 //! and layout, separate from the theme provider wrapper.
 
 use crate::{
-    components::{Icon, IconType, ThemeEditor},
+    components::ThemeEditor,
     views::{Home, Logs, NavBarState, Navbar, Settings, Transcription},
 };
 use dioxus::prelude::*;

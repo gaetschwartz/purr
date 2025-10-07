@@ -881,4 +881,48 @@ pub trait Platform: Send + Sync + 'static {
     fn get_settings_location(
         &self,
     ) -> impl std::future::Future<Output = Result<Option<String>, PlatformError>> + Send;
+
+    // ========================================
+    // Theme Storage Operations
+    // ========================================
+
+    /// Load theme setting from platform-specific storage
+    ///
+    /// # Arguments
+    /// * `storage_key` - Key name for storage
+    ///
+    /// # Returns
+    /// Theme name as string ("light", "dark", "system", or "custom:name"), or None if not set
+    ///
+    /// # Platform Differences
+    /// - **Desktop**: Reads from Settings in XDG config directory
+    /// - **Web**: Reads from localStorage
+    ///
+    /// # Implementation Notes
+    /// - Returns None if no theme has been saved yet (first run)
+    /// - Does not fall back to default theme - that's handled by ThemeProvider
+    fn load_theme_setting(
+        &self,
+        storage_key: &str,
+    ) -> impl std::future::Future<Output = Result<Option<String>, PlatformError>> + Send;
+
+    /// Save theme setting to platform-specific storage
+    ///
+    /// # Arguments
+    /// * `storage_key` - Key name for storage
+    /// * `theme` - Theme name to save ("light", "dark", "system", or "custom:name")
+    ///
+    /// # Platform Differences
+    /// - **Desktop**: Saves to Settings in XDG config directory (atomic write)
+    /// - **Web**: Saves to localStorage
+    ///
+    /// # Implementation Requirements
+    /// - MUST use atomic writes to prevent corruption
+    /// - MUST validate theme string before saving
+    /// - Settings save should be independent of main settings save
+    fn save_theme_setting(
+        &self,
+        storage_key: &str,
+        theme: &str,
+    ) -> impl std::future::Future<Output = Result<(), PlatformError>> + Send;
 }

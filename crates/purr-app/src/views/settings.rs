@@ -122,7 +122,7 @@ pub fn Settings() -> Element {
                                 Select {
                                     label: "Theme",
                                     description: "Choose your preferred color scheme",
-                                    value: settings.read().ui.theme.to_string().to_string(),
+                                    value: settings.read().ui.theme.to_storage_string().to_string(),
                                     options: vec![
                                         SelectOption {
                                             value: "light".to_string(),
@@ -138,10 +138,9 @@ pub fn Settings() -> Element {
                                         },
                                     ],
                                     onchange: move |value: String| {
-                                        if let Some(theme) = Theme::from_string(&value) {
-                                            settings.with_mut(|s| s.ui.theme = theme);
-                                            mark_changed();
-                                        }
+                                        let theme = Theme::from_storage_string(&value);
+                                        settings.with_mut(|s| s.ui.theme = theme);
+                                        mark_changed();
                                     },
                                 }
 
