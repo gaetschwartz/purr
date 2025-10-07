@@ -1,19 +1,16 @@
-//! Theme demonstration component
-//!
-//! This component showcases the theme system functionality with
-//! theme switching controls and color token display.
-
-use crate::theme::{use_theme, use_set_theme, Theme};
+use crate::theme::{use_set_theme, use_theme, Theme};
 use dioxus::prelude::*;
 
-/// Theme demonstration component
+/// Theme component
 #[component]
-pub fn ThemeDemo() -> Element {
+pub fn ThemeEditor() -> Element {
     let theme_ctx = use_theme();
     let set_theme = use_set_theme();
 
     // Find solarized theme from available custom themes
-    let solarized_theme = theme_ctx.custom_themes.iter()
+    let solarized_theme = theme_ctx
+        .custom_themes
+        .iter()
         .find(|t| t.name == "solarized")
         .map(|_| Theme::Custom("solarized".to_string()));
 
@@ -26,9 +23,7 @@ pub fn ThemeDemo() -> Element {
                     style: "color: var(--color-primary);",
                     "Theme System Demo"
                 }
-                p {
-                    class: "text-lg",
-                    style: "color: var(--color-text);",
+                p { class: "text-lg", style: "color: var(--color-text);",
                     "Explore different themes and see how colors change dynamically."
                 }
             }
@@ -50,35 +45,35 @@ pub fn ThemeDemo() -> Element {
                         theme: Theme::Light,
                         label: "Light",
                         current: theme_ctx.current_theme.clone(),
-                        set_theme: set_theme.clone()
+                        set_theme: set_theme.clone(),
                     }
                     ThemeButton {
                         theme: Theme::Dark,
                         label: "Dark",
                         current: theme_ctx.current_theme.clone(),
-                        set_theme: set_theme.clone()
+                        set_theme: set_theme.clone(),
                     }
                     ThemeButton {
                         theme: Theme::System,
                         label: "System",
                         current: theme_ctx.current_theme.clone(),
-                        set_theme: set_theme.clone()
+                        set_theme: set_theme.clone(),
                     }
                     if let Some(solarized) = solarized_theme {
                         ThemeButton {
                             theme: solarized,
                             label: "Solarized",
                             current: theme_ctx.current_theme.clone(),
-                            set_theme: set_theme.clone()
+                            set_theme: set_theme.clone(),
                         }
                     }
                 }
 
                 // Current theme info
-                div { class: "mt-4 p-4 rounded",
+                div {
+                    class: "mt-4 p-4 rounded",
                     style: "background-color: var(--color-secondary); opacity: 0.1;",
-                    p {
-                        style: "color: var(--color-text);",
+                    p { style: "color: var(--color-text);",
                         "Current theme: "
                         strong { "{theme_ctx.current_theme.to_string()}" }
                     }
@@ -100,29 +95,29 @@ pub fn ThemeDemo() -> Element {
                     ColorToken {
                         name: "Primary",
                         color: theme_ctx.color_tokens.primary.clone(),
-                        description: "Main brand color for buttons, links, and accents"
+                        description: "Main brand color for buttons, links, and accents",
                     }
                     ColorToken {
                         name: "Secondary",
                         color: theme_ctx.color_tokens.secondary.clone(),
-                        description: "Secondary color for less prominent elements"
+                        description: "Secondary color for less prominent elements",
                     }
                     ColorToken {
                         name: "Background",
                         color: theme_ctx.color_tokens.background.clone(),
-                        description: "Main background color for pages and containers"
+                        description: "Main background color for pages and containers",
                     }
                     ColorToken {
                         name: "Text",
                         color: theme_ctx.color_tokens.text.clone(),
-                        description: "Primary text color for readable content"
+                        description: "Primary text color for readable content",
                     }
 
                     if let Some(ref error_color) = theme_ctx.color_tokens.error {
                         ColorToken {
                             name: "Error",
                             color: error_color.clone(),
-                            description: "Color for error states and messages"
+                            description: "Color for error states and messages",
                         }
                     }
 
@@ -130,7 +125,7 @@ pub fn ThemeDemo() -> Element {
                         ColorToken {
                             name: "Warning",
                             color: warning_color.clone(),
-                            description: "Color for warning states and messages"
+                            description: "Color for warning states and messages",
                         }
                     }
 
@@ -138,7 +133,7 @@ pub fn ThemeDemo() -> Element {
                         ColorToken {
                             name: "Success",
                             color: success_color.clone(),
-                            description: "Color for success states and messages"
+                            description: "Color for success states and messages",
                         }
                     }
                 }
@@ -224,7 +219,12 @@ pub fn ThemeDemo() -> Element {
 
 /// Theme button component
 #[component]
-fn ThemeButton(theme: Theme, label: String, current: Theme, set_theme: Option<Callback<Theme>>) -> Element {
+fn ThemeButton(
+    theme: Theme,
+    label: String,
+    current: Theme,
+    set_theme: Option<Callback<Theme>>,
+) -> Element {
     let is_active = theme == current;
 
     let handle_click = move |_| {
@@ -237,11 +237,7 @@ fn ThemeButton(theme: Theme, label: String, current: Theme, set_theme: Option<Ca
         button {
             class: format!(
                 "px-4 py-2 rounded font-medium border-2 transition-all {}",
-                if is_active {
-                    "ring-2 ring-offset-2"
-                } else {
-                    ""
-                }
+                if is_active { "ring-2 ring-offset-2" } else { "" },
             ),
             style: format!(
                 "border-color: var(--color-primary); {} {}",
@@ -250,11 +246,7 @@ fn ThemeButton(theme: Theme, label: String, current: Theme, set_theme: Option<Ca
                 } else {
                     "background-color: transparent; color: var(--color-primary);"
                 },
-                if is_active {
-                    "ring-color: var(--color-primary);"
-                } else {
-                    ""
-                }
+                if is_active { "ring-color: var(--color-primary);" } else { "" },
             ),
             onclick: handle_click,
             "{label}"
@@ -266,7 +258,11 @@ fn ThemeButton(theme: Theme, label: String, current: Theme, set_theme: Option<Ca
 #[component]
 fn ColorToken(name: String, color: String, description: String) -> Element {
     // Calculate contrast color for text
-    let text_color = if is_light_color(&color) { "#000000" } else { "#ffffff" };
+    let text_color = if is_light_color(&color) {
+        "#000000"
+    } else {
+        "#ffffff"
+    };
 
     rsx! {
         div {

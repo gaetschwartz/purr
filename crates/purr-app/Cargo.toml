@@ -1,8 +1,8 @@
 [package]
 name = "purr-app"
 version = "0.1.0"
-authors = ["Gaëtan S. <>"]
-edition = "2021"
+authors = ["Gaëtan Schwartz"]
+edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -79,6 +79,8 @@ ambassador = "0.4.2"
 
 # Theme system dependencies
 indexmap = "2.0"
+kdl = "6.5.0"
+serde-kdl = { git = "https://github.com/gaetschwartz/serde-kdl", version = "0.1.0", features = ["macros"] }
 
 [features]
 default = ["desktop"]

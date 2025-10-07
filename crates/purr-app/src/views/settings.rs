@@ -1,6 +1,10 @@
 use crate::{
-    components::{Card, NumberInput, Section, Select, SelectOption, Slider, Toggle},
+    components::{
+        Card, Icon, IconType, NumberInput, Section, Select, SelectOption, Slider, Toggle,
+    },
+    main_app::Route,
     platform,
+    views::NavBarState,
 };
 use dioxus::prelude::*;
 use purr_common::platform::{ModelInfo, Platform};
@@ -17,6 +21,25 @@ pub fn Settings() -> Element {
     let mut save_status: Signal<Option<SaveStatus>> = use_signal(|| None);
     let mut is_loading = use_signal(|| true);
     let mut models = use_signal(|| Ok(Vec::<ModelInfo>::new()));
+    let mut navbar_state = use_context::<NavBarState>();
+    use_effect(move || {
+        navbar_state.title.set("Settings".to_string());
+        navbar_state.show_back.set(true);
+        navbar_state.top_right.set(Some(
+            rsx! {
+                Link {
+                    to: Route::Logs {},
+                    class: "p-2 rounded-lg text-gray-600 hover:text-teal-600 hover:bg-gray-100 transition-colors",
+                    title: "Logs",
+                    onclick: move |_| {
+                        tracing::info!("Navigating to Logs page");
+                    },
+                    Icon { icon_type: IconType::Logs }
+                }
+            }
+        ));
+    });
+
     // Load models list
     use_future(move || async move {
         models.set(platform::get_platform().list_installed_models().await);
@@ -82,7 +105,7 @@ pub fn Settings() -> Element {
         div { class: "main-content",
             div { class: "content-container",
                 // Page header
-                div { class: "mb-8",
+                div { class: "mb-8 ml-8",
                     h1 { class: "text-3xl font-bold text-gradient mb-2", "Settings" }
                     p { class: "text-gray-600", "Configure your Purr transcription experience" }
                 }
@@ -138,16 +161,6 @@ pub fn Settings() -> Element {
                                         mark_changed();
                                     },
                                 }
-                            }
-
-                            Toggle {
-                                label: "Compact Mode",
-                                description: "Use a more condensed interface layout",
-                                checked: settings.read().ui.compact_mode,
-                                onchange: move |value| {
-                                    settings.with_mut(|s| s.ui.compact_mode = value);
-                                    mark_changed();
-                                },
                             }
                         }
 

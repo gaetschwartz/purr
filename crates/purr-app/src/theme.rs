@@ -8,7 +8,7 @@
 
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::{borrow::Cow, collections::HashMap};
 
 #[cfg(feature = "web")]
 use web_sys::window;
@@ -27,7 +27,7 @@ pub enum Theme {
 }
 
 /// Storage type for theme persistence
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum StorageType {
     /// Browser localStorage (web only)
     LocalStorage,
@@ -108,9 +108,9 @@ pub struct ThemeContext {
 #[component]
 pub fn ThemeProvider(props: ThemeProviderProps) -> Element {
     // Clone props values we need to use in effects
-    let storage_type = props.storage_type.clone();
-    let storage_name = props.storage_name.clone();
-    let default_theme = props.default_theme.clone();
+    let storage_type = props.storage_type;
+    let storage_name = props.storage_name;
+    let default_theme = props.default_theme;
     let custom_themes = props.custom_themes.clone().unwrap_or_default();
 
     // Initialize theme state
@@ -125,7 +125,9 @@ pub fn ThemeProvider(props: ThemeProviderProps) -> Element {
             let storage_type = storage_type.clone();
             let storage_name = storage_name.clone();
             spawn(async move {
-                if let Some(stored_theme) = load_theme_from_storage(&storage_type, &storage_name).await {
+                if let Some(stored_theme) =
+                    load_theme_from_storage(&storage_type, &storage_name).await
+                {
                     theme_state.set(stored_theme);
                 }
             });
@@ -152,9 +154,8 @@ pub fn ThemeProvider(props: ThemeProviderProps) -> Element {
     });
 
     // Compute current color tokens
-    let color_tokens = use_memo(move || {
-        compute_color_tokens(&theme_state.read(), &custom_themes_state.read())
-    });
+    let color_tokens =
+        use_memo(move || compute_color_tokens(&theme_state.read(), &custom_themes_state.read()));
 
     // Create theme context
     let theme_context = ThemeContext {
@@ -168,9 +169,7 @@ pub fn ThemeProvider(props: ThemeProviderProps) -> Element {
 
     rsx! {
         // Apply CSS custom properties for theming
-        style {
-            {format_css_variables(&color_tokens.read())}
-        }
+        style { {format_css_variables(&color_tokens.read())} }
 
         // Render children
         {props.children}
@@ -244,11 +243,11 @@ fn compute_color_tokens(theme: &Theme, custom_themes: &[CustomTheme]) -> ColorTo
 /// Get default light theme color tokens
 fn get_light_color_tokens() -> ColorTokens {
     ColorTokens {
-        primary: "#3b82f6".to_string(),      // Blue-500
-        secondary: "#6366f1".to_string(),    // Indigo-500
-        background: "#ffffff".to_string(),   // White
-        text: "#1f2937".to_string(),         // Gray-800
-        error: Some("#ef4444".to_string()),  // Red-500
+        primary: "#3b82f6".to_string(),       // Blue-500
+        secondary: "#6366f1".to_string(),     // Indigo-500
+        background: "#ffffff".to_string(),    // White
+        text: "#1f2937".to_string(),          // Gray-800
+        error: Some("#ef4444".to_string()),   // Red-500
         warning: Some("#f59e0b".to_string()), // Amber-500
         success: Some("#10b981".to_string()), // Emerald-500
     }
@@ -257,11 +256,11 @@ fn get_light_color_tokens() -> ColorTokens {
 /// Get default dark theme color tokens
 fn get_dark_color_tokens() -> ColorTokens {
     ColorTokens {
-        primary: "#60a5fa".to_string(),      // Blue-400
-        secondary: "#818cf8".to_string(),    // Indigo-400
-        background: "#111827".to_string(),   // Gray-900
-        text: "#f9fafb".to_string(),         // Gray-50
-        error: Some("#f87171".to_string()),  // Red-400
+        primary: "#60a5fa".to_string(),       // Blue-400
+        secondary: "#818cf8".to_string(),     // Indigo-400
+        background: "#111827".to_string(),    // Gray-900
+        text: "#f9fafb".to_string(),          // Gray-50
+        error: Some("#f87171".to_string()),   // Red-400
         warning: Some("#fbbf24".to_string()), // Amber-400
         success: Some("#34d399".to_string()), // Emerald-400
     }
@@ -336,7 +335,11 @@ async fn load_theme_from_storage(storage_type: &StorageType, _storage_name: &str
 }
 
 /// Save theme to storage
-async fn save_theme_to_storage(storage_type: &StorageType, _storage_name: &str, _theme: &Theme) -> Result<(), String> {
+async fn save_theme_to_storage(
+    storage_type: &StorageType,
+    _storage_name: &str,
+    _theme: &Theme,
+) -> Result<(), String> {
     match storage_type {
         StorageType::LocalStorage => {
             #[cfg(feature = "web")]
@@ -344,7 +347,8 @@ async fn save_theme_to_storage(storage_type: &StorageType, _storage_name: &str, 
                 if let Some(window) = window() {
                     if let Ok(Some(storage)) = window.local_storage() {
                         if let Ok(theme_str) = serde_json::to_string(_theme) {
-                            return storage.set_item(_storage_name, &theme_str)
+                            return storage
+                                .set_item(_storage_name, &theme_str)
                                 .map_err(|e| format!("Failed to save theme: {:?}", e));
                         }
                     }
@@ -367,12 +371,12 @@ async fn save_theme_to_storage(storage_type: &StorageType, _storage_name: &str, 
 
 impl Theme {
     /// Convert theme to string representation
-    pub fn to_string(&self) -> String {
+    pub fn as_string(&self) -> Cow<'static, str> {
         match self {
-            Theme::Light => "light".to_string(),
-            Theme::Dark => "dark".to_string(),
-            Theme::System => "system".to_string(),
-            Theme::Custom(name) => format!("custom:{}", name),
+            Theme::Light => "light".into(),
+            Theme::Dark => "dark".into(),
+            Theme::System => "system".into(),
+            Theme::Custom(name) => format!("custom:{}", name).into(),
         }
     }
 
@@ -382,16 +386,15 @@ impl Theme {
             "light" => Some(Theme::Light),
             "dark" => Some(Theme::Dark),
             "system" => Some(Theme::System),
-            s if s.starts_with("custom:") => {
-                let name = &s[7..]; // Remove "custom:" prefix
-                // Check if the custom theme exists in the provided list
-                if custom_themes.iter().any(|t| t.name == name) {
+            s => {
+                if let Some(name) = s.strip_prefix("custom:")
+                    && custom_themes.iter().any(|t| t.name == name)
+                {
                     Some(Theme::Custom(name.to_string()))
                 } else {
                     None
                 }
             }
-            _ => None,
         }
     }
 
@@ -401,13 +404,19 @@ impl Theme {
     }
 
     /// Get the name of the theme
-    pub fn name(&self) -> String {
+    pub fn name(&self) -> Cow<'_, str> {
         match self {
-            Theme::Light => "Light".to_string(),
-            Theme::Dark => "Dark".to_string(),
-            Theme::System => "System".to_string(),
-            Theme::Custom(name) => name.clone(),
+            Theme::Light => "Light".into(),
+            Theme::Dark => "Dark".into(),
+            Theme::System => "System".into(),
+            Theme::Custom(name) => name.into(),
         }
+    }
+}
+
+impl std::fmt::Display for Theme {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_string())
     }
 }
 
@@ -472,11 +481,7 @@ impl ColorTokens {
 
 impl CustomTheme {
     /// Create a new custom theme
-    pub fn new(
-        name: impl Into<String>,
-        base: BaseTheme,
-        tokens: ColorTokens,
-    ) -> Self {
+    pub fn new(name: impl Into<String>, base: BaseTheme, tokens: ColorTokens) -> Self {
         Self {
             name: name.into(),
             base,
@@ -570,24 +575,31 @@ mod tests {
 
     #[test]
     fn test_theme_string_conversion() {
-        assert_eq!(Theme::Light.to_string(), "light");
-        assert_eq!(Theme::Dark.to_string(), "dark");
-        assert_eq!(Theme::System.to_string(), "system");
+        assert_eq!(Theme::Light.as_string(), "light");
+        assert_eq!(Theme::Dark.as_string(), "dark");
+        assert_eq!(Theme::System.as_string(), "system");
 
         let _custom_theme = CustomTheme::light("Test", ColorTokens::new("", "", "", ""));
         let theme = Theme::Custom("Test".to_string());
-        assert_eq!(theme.to_string(), "custom:Test");
+        assert_eq!(theme.as_string(), "custom:Test");
     }
 
     #[test]
     fn test_theme_from_string() {
-        let custom_themes = vec![
-            CustomTheme::light("Test", ColorTokens::new("", "", "", "")),
-        ];
+        let custom_themes = vec![CustomTheme::light("Test", ColorTokens::new("", "", "", ""))];
 
-        assert_eq!(Theme::from_string("light", &custom_themes), Some(Theme::Light));
-        assert_eq!(Theme::from_string("dark", &custom_themes), Some(Theme::Dark));
-        assert_eq!(Theme::from_string("system", &custom_themes), Some(Theme::System));
+        assert_eq!(
+            Theme::from_string("light", &custom_themes),
+            Some(Theme::Light)
+        );
+        assert_eq!(
+            Theme::from_string("dark", &custom_themes),
+            Some(Theme::Dark)
+        );
+        assert_eq!(
+            Theme::from_string("system", &custom_themes),
+            Some(Theme::System)
+        );
 
         let custom = Theme::from_string("custom:Test", &custom_themes);
         assert!(custom.is_some());
@@ -596,8 +608,8 @@ mod tests {
 
     #[test]
     fn test_color_tokens_map() {
-        let tokens = ColorTokens::new("#ff0000", "#00ff00", "#0000ff", "#ffffff")
-            .with_error("#red");
+        let tokens =
+            ColorTokens::new("#ff0000", "#00ff00", "#0000ff", "#ffffff").with_error("#red");
 
         let map = tokens.to_map();
         assert_eq!(map.get("primary"), Some(&"#ff0000".to_string()));
@@ -642,17 +654,15 @@ mod tests {
     #[test]
     fn test_theme_provider_structure() {
         // Test ThemeProvider props structure matches specification
-        let custom_themes = vec![
-            CustomTheme::light("test", ColorTokens::new("", "", "", ""))
-        ];
+        let custom_themes = vec![CustomTheme::light("test", ColorTokens::new("", "", "", ""))];
 
         // This tests that we can create ThemeProviderProps with the required fields
         // The actual component test would require a test harness
         let _props_structure_test = (
-            Theme::System,                    // default_theme
-            StorageType::LocalStorage,        // storage_type
-            "theme".to_string(),             // storage_name
-            Some(custom_themes),             // custom_themes
+            Theme::System,             // default_theme
+            StorageType::LocalStorage, // storage_type
+            "theme".to_string(),       // storage_name
+            Some(custom_themes),       // custom_themes
         );
 
         // Test that Theme context has required fields

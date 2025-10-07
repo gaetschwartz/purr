@@ -1,7 +1,10 @@
 //! Logs viewer component for displaying application logs in real-time
 
-use crate::platform::logging::{
-    get_logs_storage, LogEntry, LogExportFormat, LogsQuery, SerdeTracingLevel,
+use crate::{
+    platform::logging::{
+        LogEntry, LogExportFormat, LogsQuery, SerdeTracingLevel, get_logs_storage,
+    },
+    views::NavBarState,
 };
 use dioxus::prelude::*;
 use std::{borrow::Cow, collections::HashSet};
@@ -44,6 +47,12 @@ impl Default for LogsState {
 pub fn Logs() -> Element {
     let mut state = use_signal(LogsState::default);
     let mut logs = use_signal(Vec::<LogEntry>::new);
+    let mut navbar_state = use_context::<NavBarState>();
+    use_effect(move || {
+        navbar_state.title.set("Logs".to_string());
+        navbar_state.show_back.set(true);
+        navbar_state.top_right.set(None);
+    });
 
     // Initial load and setup
     use_effect(move || {
@@ -434,7 +443,10 @@ fn LogLevelButton(
             SerdeTracingLevel::TRACE => ("bg-gray-500 hover:bg-gray-600", "text-white"),
         }
     } else {
-        ("bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 border border-gray-300 dark:border-gray-600", "text-gray-700 dark:text-gray-300")
+        (
+            "bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 border border-gray-300 dark:border-gray-600",
+            "text-gray-700 dark:text-gray-300",
+        )
     };
 
     let level_text = level.to_string();
@@ -500,6 +512,15 @@ fn ExportDropdown(state: Signal<LogsState>) -> Element {
                         button {
                             class: "block w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors",
                             onclick: move |_| {
+                                export_logs(LogExportFormat::Kdl, &state);
+                                show_dropdown.set(false);
+                            },
+                            "😻 Export as KDL"
+                        }
+
+                        button {
+                            class: "block w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors",
+                            onclick: move |_| {
                                 export_logs(LogExportFormat::Csv, &state);
                                 show_dropdown.set(false);
                             },
@@ -530,6 +551,7 @@ fn export_logs(format: LogExportFormat, state: &Signal<LogsState>) {
         LogExportFormat::Text => ("logs.txt", "text/plain"),
         LogExportFormat::Json => ("logs.json", "application/json"),
         LogExportFormat::Csv => ("logs.csv", "text/csv"),
+        LogExportFormat::Kdl => ("logs.kdl", "text/kdl"),
     };
 
     // Use platform-specific export
@@ -578,7 +600,7 @@ async fn save_file_desktop(
 #[cfg(all(feature = "web", target_arch = "wasm32"))]
 fn save_file_web(filename: &str, content_type: &str, content: &str) -> Result<(), miette::Report> {
     use wasm_bindgen::JsCast;
-    use web_sys::{window, Blob, BlobPropertyBag, HtmlElement, Url};
+    use web_sys::{Blob, BlobPropertyBag, HtmlElement, Url, window};
 
     let window = window().ok_or_else(|| miette::miette!("No window object"))?;
     let document = window

@@ -4,8 +4,8 @@
 //! and layout, separate from the theme provider wrapper.
 
 use crate::{
-    components::ThemeDemo,
-    views::{Home, Logs, Navbar, Settings, Transcription},
+    components::{Icon, IconType, ThemeEditor},
+    views::{Home, Logs, NavBarState, Navbar, Settings, Transcription},
 };
 use dioxus::prelude::*;
 use purr_common::platform::FileId;
@@ -21,10 +21,10 @@ pub enum Route {
         Transcription { file: FileId },
         #[route("/settings")]
         Settings {},
-        #[route("/logs")]
-        Logs {},
-        #[route("/theme-demo")]
-        ThemeDemoRoute {},
+            #[route("/settings/theme")]
+            ThemeRoute {},
+            #[route("/settings/logs")]
+            Logs {},
 }
 
 /// Main application component (without theme provider)
@@ -35,6 +35,11 @@ pub enum Route {
 pub fn MainApp() -> Element {
     // Log when the app renders
     tracing::debug!("MainApp component rendering");
+    let _ = use_context_provider(|| NavBarState {
+        title: Signal::new("Purr".to_string()),
+        show_back: Signal::new(false),
+        top_right: Signal::new(None),
+    });
 
     rsx! {
         // The router component renders the route enum we defined above
@@ -44,8 +49,8 @@ pub fn MainApp() -> Element {
 
 /// Theme demo route component
 #[component]
-fn ThemeDemoRoute() -> Element {
+fn ThemeRoute() -> Element {
     rsx! {
-        ThemeDemo {}
+        ThemeEditor {}
     }
 }

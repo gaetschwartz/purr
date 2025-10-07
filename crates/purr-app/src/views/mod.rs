@@ -12,7 +12,7 @@ mod home;
 pub use home::Home;
 
 mod navbar;
-pub use navbar::Navbar;
+pub use navbar::{NavBarState, Navbar};
 
 mod drag_drop;
 pub use drag_drop::DragDropZone;

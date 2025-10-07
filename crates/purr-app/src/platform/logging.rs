@@ -12,8 +12,8 @@ use std::{
     collections::HashSet,
     fmt,
     sync::{
-        atomic::{self},
         OnceLock,
+        atomic::{self},
     },
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -371,7 +371,7 @@ impl tracing::field::Visit for LogFieldVisitor<'_> {
 /// Initialize the logging capture layer
 /// This should be called during application startup
 pub fn init_logging_capture() -> miette::Result<()> {
-    use tracing_subscriber::{prelude::*, EnvFilter, Registry};
+    use tracing_subscriber::{EnvFilter, Registry, prelude::*};
 
     // Create the logs capture layer
     let logs_layer = LogsCaptureLayer::new();
@@ -410,6 +410,7 @@ pub enum LogExportFormat {
     Text,
     Json,
     Csv,
+    Kdl,
 }
 
 impl LogsStorage {
@@ -432,6 +433,7 @@ impl LogsStorage {
                 .collect::<Vec<_>>()
                 .join("\n"),
             LogExportFormat::Json => serde_json::to_string_pretty(&entries).unwrap_or_default(),
+            LogExportFormat::Kdl => serde_kdl::to_string(&entries).unwrap_or_default(),
             LogExportFormat::Csv => {
                 let mut csv = String::new();
                 csv.push_str("Timestamp,Level,Target,Message,File,Line\n");
