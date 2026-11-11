@@ -5,11 +5,11 @@ edition = "2021"
 
 [dependencies]
 # Whisper.cpp bindings
-whisper-rs = { version = "0.15.0", default-features = false, features = [
+whisper-rs = { version = "0.16.0", default-features = false, features = [
   "tracing_backend",
   "raw-api",
 ] }
-ffmpeg-next = { version = "8.0", features = ["codec", "format"] }
+ffmpeg-next = { version = "9.0", features = ["codec", "format"] }
 
 # FFmpeg bindings for audio processing
 # Async runtime
@@ -29,9 +29,9 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 directories = "6.0"
 
 # HTTP client for model downloading
-reqwest = { version = "0.12", features = ["stream"] }
+reqwest = { version = "0.13", features = ["stream"] }
 futures-util = "0.3"
-strum = { version = "0.27.2", features = ["derive"] }
+strum = { version = "0.28.0", features = ["derive"] }
 tokio-stream = "0.1.17"
 miette = { version = "7.6.0", features = ["fancy"] }
 serde_with = "3.14.1"
@@ -40,10 +40,10 @@ url = "2.5"
 
 [dev-dependencies]
 tempfile = "3.21"
-rstest = "0.26"
+rstest = "0.28"
 pretty_assertions = "1.4.1"
 axum = "0.8"
-axum-test = "18.1"
+axum-test = "21.1"
 tower = "0.5"
 tokio-util = { version = "0.7", features = ["io"] }
 

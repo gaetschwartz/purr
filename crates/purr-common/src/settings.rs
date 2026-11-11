@@ -340,7 +340,12 @@ impl Theme {
             Self::detect_web_theme()
         }
 
-        #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux", all(target_arch = "wasm32", feature = "web"))))]
+        #[cfg(not(any(
+            target_os = "windows",
+            target_os = "macos",
+            target_os = "linux",
+            all(target_arch = "wasm32", feature = "web")
+        )))]
         {
             // Fallback for unsupported platforms
             Self::Light
@@ -379,7 +384,7 @@ impl Theme {
     #[cfg(target_os = "windows")]
     fn detect_windows_theme() -> Self {
         use windows::Win32::System::Registry::{
-            RegOpenKeyExW, RegQueryValueExW, HKEY, HKEY_CURRENT_USER, KEY_READ, REG_VALUE_TYPE,
+            HKEY, HKEY_CURRENT_USER, KEY_READ, REG_VALUE_TYPE, RegOpenKeyExW, RegQueryValueExW,
         };
         use windows::core::w;
 
@@ -390,7 +395,7 @@ impl Theme {
             let mut hkey: HKEY = HKEY::default();
 
             // Open registry key
-            if RegOpenKeyExW(HKEY_CURRENT_USER, subkey, 0, KEY_READ, &mut hkey).is_ok() {
+            if RegOpenKeyExW(HKEY_CURRENT_USER, subkey, Some(0), KEY_READ, &mut hkey).is_ok() {
                 let mut buffer = [0u8; 4];
                 let mut buffer_size = buffer.len() as u32;
                 let mut value_type = REG_VALUE_TYPE::default();
@@ -750,13 +755,21 @@ mod tests {
         // Test invalid temperature
         settings.model.temperature = 2.0;
         let errors = settings.validate();
-        assert!(errors.iter().any(|e| matches!(e, SettingsError::InvalidTemperature { .. })));
+        assert!(
+            errors
+                .iter()
+                .any(|e| matches!(e, SettingsError::InvalidTemperature { .. }))
+        );
 
         // Fix temperature and test invalid max_tokens
         settings.model.temperature = 0.5;
         settings.model.max_tokens = 0;
         let errors = settings.validate();
-        assert!(errors.iter().any(|e| matches!(e, SettingsError::InvalidMaxTokens { .. })));
+        assert!(
+            errors
+                .iter()
+                .any(|e| matches!(e, SettingsError::InvalidMaxTokens { .. }))
+        );
     }
 
     #[test]
@@ -764,7 +777,10 @@ mod tests {
         // Test SampleRate
         assert_eq!(SampleRate::Hz16000.to_hz_string(), "16000");
         assert_eq!(SampleRate::Hz16000.to_hz(), 16000);
-        assert_eq!(SampleRate::from_hz_string("16000"), Some(SampleRate::Hz16000));
+        assert_eq!(
+            SampleRate::from_hz_string("16000"),
+            Some(SampleRate::Hz16000)
+        );
 
         // Test AudioQuality
         assert_eq!(AudioQuality::High.to_string(), "high");

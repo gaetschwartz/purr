@@ -435,7 +435,7 @@ async fn test_http_timeout_handling() {
 /// Create a mock HTTP server that serves audio files
 async fn create_mock_server() -> TestServer {
     let router = Router::new().route("/audio/{filename}", get(serve_audio));
-    TestServer::new(router).expect("Failed to create test server")
+    TestServer::new(router)
 }
 
 /// Handler to serve audio files from the samples directory

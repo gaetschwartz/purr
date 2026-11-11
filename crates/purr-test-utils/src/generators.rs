@@ -130,7 +130,7 @@ pub struct AudioData {
 }
 
 impl Dummy<Faker> for AudioData {
-    fn dummy_with_rng<R: fake::Rng + ?Sized>(_: &Faker, rng: &mut R) -> Self {
+    fn dummy_with_rng<R: fake::RngExt + ?Sized>(_: &Faker, rng: &mut R) -> Self {
         let sample_rates = [8000, 16000, 44100, 48000];
         let sample_rate = sample_rates[rng.random_range(0..sample_rates.len())];
         let channels = rng.random_range(1..=2);
@@ -159,7 +159,7 @@ pub struct TranscriptionResult {
 }
 
 impl Dummy<Faker> for TranscriptionResult {
-    fn dummy_with_rng<R: fake::Rng + ?Sized>(_: &Faker, rng: &mut R) -> Self {
+    fn dummy_with_rng<R: fake::RngExt + ?Sized>(_: &Faker, rng: &mut R) -> Self {
         let text: String = fake::faker::lorem::en::Sentence(3..10).fake_with_rng(rng);
         let confidence = rng.random_range(0.0..=1.0);
         let duration_ms = rng.random_range(100..=10000);
@@ -200,7 +200,7 @@ pub struct ComputeOperation {
 
 #[cfg(target_arch = "wasm32")]
 impl Dummy<Faker> for ComputeOperation {
-    fn dummy_with_rng<R: fake::Rng + ?Sized>(_: &Faker, rng: &mut R) -> Self {
+    fn dummy_with_rng<R: fake::RngExt + ?Sized>(_: &Faker, rng: &mut R) -> Self {
         let operations = [
             "data[index] = data[index] * 2.0;",
             "data[index] = sqrt(data[index]);",

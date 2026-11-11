@@ -21,7 +21,7 @@ use std::sync::Arc;
 use tokio::sync::{oneshot, Mutex, RwLock};
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures;
-use web_sys::{GpuAdapter, Storage};
+use web_sys::Storage;
 
 pub type PlatformImpl = WasmPlatformImpl;
 /// Web platform implementation using WebAssembly and browser APIs
@@ -591,11 +591,9 @@ impl Platform for WasmPlatformImpl {
                     .await
                     .map_err(|e| format!("Failed to get WebGPU adapter: {e:?}"))?;
 
-                if adapter.is_undefined() {
+                let Some(adapter) = adapter.into_option() else {
                     return Err("No WebGPU adapter found".to_string());
-                }
-
-                let adapter = GpuAdapter::from(adapter);
+                };
                 let info = adapter.info();
                 let vendor = info.vendor();
                 let device = info.device();
@@ -709,7 +707,11 @@ impl Platform for WasmPlatformImpl {
         Self::get_storage_value(storage_key)
     }
 
-    async fn save_theme_setting(&self, storage_key: &str, theme: &str) -> Result<(), PlatformError> {
+    async fn save_theme_setting(
+        &self,
+        storage_key: &str,
+        theme: &str,
+    ) -> Result<(), PlatformError> {
         // Save theme to localStorage
         Self::set_storage_value(storage_key, theme)
     }
