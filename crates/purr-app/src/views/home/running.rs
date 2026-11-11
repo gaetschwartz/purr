@@ -8,7 +8,7 @@ use crate::{
         progress_bar::{Progress, ProgressBar},
         spinner::Spinner,
     },
-    hooks::use_models::use_models,
+    hooks::{leave_guard::use_leave_guard, use_models::use_models},
     platform::IS_WEB,
     transcribe::{
         engine::Planned,
@@ -32,6 +32,7 @@ const TICK: Duration = Duration::from_millis(500);
 pub fn Running(record: RunRecord) -> Element {
     let session = use_transcribe_session();
     let models = use_models();
+    use_leave_guard();
     let mut now = use_signal(now_ms);
     use_future(move || async move {
         loop {
