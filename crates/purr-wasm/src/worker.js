@@ -687,7 +687,10 @@ function processAudioSamples(samples, formatInfo) {
 
 // Normalize audio to prevent clipping while preserving dynamics
 function normalizeAudio(samples) {
-    const maxValue = Math.max(...samples.map(Math.abs));
+    let maxValue = 0;
+    for (const sample of samples) {
+        maxValue = Math.max(maxValue, Math.abs(sample));
+    }
 
     if (maxValue === 0) {
         console.warn('Audio contains only silence');

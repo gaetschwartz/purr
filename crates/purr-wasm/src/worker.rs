@@ -17,7 +17,7 @@ use tokio_stream::wrappers::UnboundedReceiverStream;
 use uuid::Uuid;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::spawn_local;
-use web_sys::{MessageEvent, Worker};
+use web_sys::{MessageEvent, Worker, WorkerOptions, WorkerType};
 
 /// Pinned model the worker hands to transformers.js
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -272,7 +272,9 @@ impl TranscriptionWorker {
             spawn_local(async move {
                 // Create web worker pointing to our worker.js
                 // Use relative path from the web app's perspective
-                let worker = match Worker::new("./worker.js") {
+                let options = WorkerOptions::new();
+                options.set_type(WorkerType::Module);
+                let worker = match Worker::new_with_options("./worker.js", &options) {
                     Ok(w) => w,
                     Err(e) => {
                         tracing::error!("Failed to create worker: {:?}", e);

@@ -42,6 +42,8 @@ web-sys = { version = "0.3", features = [
   "Cache",
   "CacheStorage",
   "Worker",
+  "WorkerOptions",
+  "WorkerType",
   "MessageEvent",
   "ErrorEvent",
   "DedicatedWorkerGlobalScope",

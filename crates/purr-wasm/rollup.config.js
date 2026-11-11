@@ -6,8 +6,7 @@ export default {
   input: 'src/worker.js',
   output: {
     file: 'dist/worker.js',
-    format: 'iife',
-    name: 'PurrWorker',
+    format: 'es',
     sourcemap: true
   },
   plugins: [
