@@ -20,7 +20,7 @@ pub fn SettingsLoadBanner() -> Element {
     };
 
     rsx! {
-        div { class: "content settings-load-banner",
+        div { class: "content", style: "padding-bottom:0",
             Banner {
                 tone: BannerTone::Bad,
                 title: "Your settings could not be read",
