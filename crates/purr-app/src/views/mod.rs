@@ -8,5 +8,6 @@ pub mod logs;
 pub mod models;
 pub mod not_found;
 pub mod settings;
+pub mod settings_load_banner;
 pub mod shell;
 pub mod transcription;

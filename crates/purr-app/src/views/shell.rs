@@ -4,7 +4,7 @@ use crate::{
         icon::{Icon, IconName, IconSize},
     },
     main_app::{NavSection, Route},
-    views::about::AboutSheet,
+    views::{about::AboutSheet, settings_load_banner::SettingsLoadBanner},
 };
 use dioxus::prelude::*;
 use std::rc::Rc;
@@ -124,6 +124,7 @@ pub fn Shell() -> Element {
                     class: "scroller",
                     tabindex: "-1",
                     onmounted: move |event: MountedEvent| main_area.set(Some(event.data())),
+                    SettingsLoadBanner {}
                     Outlet::<Route> {}
                 }
                 nav { class: "tabbar glass g1", aria_label: "Purr",

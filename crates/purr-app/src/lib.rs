@@ -34,6 +34,7 @@ use components::{
 };
 use hooks::use_models::use_models_provider;
 use main_app::MainApp;
+use settings_store::{status::LoadState, use_settings_store_provider};
 use shortcuts::use_shortcut_provider;
 
 const FAVICON: Asset = asset!("/assets/icons/purr-mark.svg");
@@ -105,43 +106,47 @@ pub fn App() -> Element {
     }
 
     let toasts = use_toast_provider();
-    use_appearance_provider(toasts);
+    let settings = use_settings_store_provider(toasts);
+    use_appearance_provider(settings);
     use_models_provider();
     use_layer_host_provider();
     use_shortcut_provider();
+    let loading = settings.load_state() == LoadState::Loading;
 
     rsx! {
         Head {}
         div { class: "app",
             Ambient {}
-            ErrorBoundary {
-                handle_error: |errors: ErrorContext| {
-                    let message = errors.error().map(|error| error.to_string());
-                    rsx! {
-                    div { class: "scroller",
-                        div { class: "content",
-                            h1 { class: "lt", "Something went wrong" }
-                            Banner {
-                                tone: BannerTone::Bad,
-                                title: "A part of Purr stopped working",
-                                role: "alert",
-                                actions: rsx! {
-                                    Button {
-                                        variant: ButtonVariant::Primary,
-                                        icon: IconName::Retry,
-                                        onclick: move |_| errors.clear_errors(),
-                                        "Try again"
+            if !loading {
+                ErrorBoundary {
+                    handle_error: |errors: ErrorContext| {
+                        let message = errors.error().map(|error| error.to_string());
+                        rsx! {
+                        div { class: "scroller",
+                            div { class: "content",
+                                h1 { class: "lt", "Something went wrong" }
+                                Banner {
+                                    tone: BannerTone::Bad,
+                                    title: "A part of Purr stopped working",
+                                    role: "alert",
+                                    actions: rsx! {
+                                        Button {
+                                            variant: ButtonVariant::Primary,
+                                            icon: IconName::Retry,
+                                            onclick: move |_| errors.clear_errors(),
+                                            "Try again"
+                                        }
+                                    },
+                                    if let Some(message) = message {
+                                        "{message}"
                                     }
-                                },
-                                if let Some(message) = message {
-                                    "{message}"
                                 }
                             }
                         }
-                    }
-                    }
-                },
-                MainApp {}
+                        }
+                    },
+                    MainApp {}
+                }
             }
             LayerOutlet {}
             ToastRegion {}
