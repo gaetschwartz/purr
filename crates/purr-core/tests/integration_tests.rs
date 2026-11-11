@@ -14,7 +14,13 @@ async fn test_transcription_config() {
         .with_sample_rate(16000);
 
     assert_eq!(config.language, Some("en".into()));
-    assert!(!config.use_gpu);
+    assert_eq!(
+        config.accel.mode,
+        purr_core::accel::config::AccelMode::Force {
+            backend: purr_core::accel::backend::AccelBackend::Cpu,
+            allow_fallback: false,
+        }
+    );
     assert_eq!(config.num_threads, Some(2));
     assert_eq!(config.sample_rate, 16000);
 }

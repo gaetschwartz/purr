@@ -3,9 +3,14 @@ use clap::builder::{
     Styles,
     styling::{AnsiColor, Effects, Style},
 };
-use clap::{Parser, Subcommand};
+use clap::{
+    Parser, Subcommand,
+    builder::{PossibleValue, TypedValueParser},
+    error::ErrorKind,
+};
 use purr_common::Language;
-use std::path::PathBuf;
+use purr_core::accel::{backend::AccelBackend, config::AccelConfig};
+use std::{ffi::OsStr, path::PathBuf, str::FromStr as _};
 
 const ABOUT: &str = "😸 Transcribe audio files and URLs using Whisper AI";
 #[derive(Parser, Debug)]
@@ -33,7 +38,35 @@ pub struct Cli {
     #[arg(long)]
     pub translate: bool,
 
-    /// Disable GPU acceleration
+    /// Acceleration backend. `auto` tries the priority list from best to worst, moving to the
+    /// next backend when one is unavailable or fails (the CPU is the last resort). A named
+    /// backend is forced: there is no fallback, and it is an error if it cannot be used
+    /// (see --accel-fallback). Run `purr sys` to see what this build supports
+    #[arg(
+        long,
+        value_name = "BACKEND",
+        value_parser = AccelChoiceParser,
+        conflicts_with = "no_gpu"
+    )]
+    pub accel: Option<AccelChoice>,
+
+    /// With --accel BACKEND: when it is unavailable or fails, fall back to the priority list
+    /// instead of failing
+    #[arg(long, requires = "accel", conflicts_with = "no_gpu")]
+    pub accel_fallback: bool,
+
+    /// Priority order for `auto` and --accel-fallback, best first, comma separated
+    /// (e.g. vulkan,cuda). The CPU is appended when absent
+    #[arg(
+        long,
+        value_name = "BACKENDS",
+        value_delimiter = ',',
+        value_parser = AccelBackendParser,
+        conflicts_with = "no_gpu"
+    )]
+    pub accel_priority: Vec<AccelBackend>,
+
+    /// Disable GPU acceleration (same as --accel cpu)
     #[arg(long)]
     pub no_gpu: bool,
 
@@ -153,6 +186,118 @@ pub enum OutputFormat {
     Txt,
 }
 
+/// Value of `--accel`
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AccelChoice {
+    Auto,
+    Backend(AccelBackend),
+}
+
+fn backend_names() -> impl Iterator<Item = &'static str> {
+    AccelBackend::ALL
+        .iter()
+        .map(|backend| <&'static str>::from(*backend))
+}
+
+fn parse_backend(
+    cmd: &clap::Command,
+    arg: Option<&clap::Arg>,
+    value: &OsStr,
+    extra: &[&'static str],
+) -> Result<AccelBackend, clap::Error> {
+    let text = value
+        .to_str()
+        .ok_or_else(|| clap::Error::new(ErrorKind::InvalidUtf8).with_cmd(cmd))?;
+    AccelBackend::from_str(text).map_err(|_unknown| {
+        let expected = extra
+            .iter()
+            .copied()
+            .chain(backend_names())
+            .collect::<Vec<_>>()
+            .join(", ");
+        let name = arg.map_or_else(|| "backend".to_owned(), ToString::to_string);
+        cmd.clone().error(
+            ErrorKind::InvalidValue,
+            format!("invalid value '{text}' for '{name}'\n  [possible values: {expected}]"),
+        )
+    })
+}
+
+fn possible_backends(extra: &'static [&'static str]) -> Box<dyn Iterator<Item = PossibleValue>> {
+    Box::new(
+        extra
+            .iter()
+            .copied()
+            .chain(backend_names())
+            .map(PossibleValue::new),
+    )
+}
+
+#[derive(Clone)]
+struct AccelBackendParser;
+
+impl TypedValueParser for AccelBackendParser {
+    type Value = AccelBackend;
+
+    fn parse_ref(
+        &self,
+        cmd: &clap::Command,
+        arg: Option<&clap::Arg>,
+        value: &OsStr,
+    ) -> Result<Self::Value, clap::Error> {
+        parse_backend(cmd, arg, value, &[])
+    }
+
+    fn possible_values(&self) -> Option<Box<dyn Iterator<Item = PossibleValue> + '_>> {
+        Some(possible_backends(&[]))
+    }
+}
+
+#[derive(Clone)]
+struct AccelChoiceParser;
+
+impl TypedValueParser for AccelChoiceParser {
+    type Value = AccelChoice;
+
+    fn parse_ref(
+        &self,
+        cmd: &clap::Command,
+        arg: Option<&clap::Arg>,
+        value: &OsStr,
+    ) -> Result<Self::Value, clap::Error> {
+        if value == "auto" {
+            return Ok(AccelChoice::Auto);
+        }
+        parse_backend(cmd, arg, value, &["auto"]).map(AccelChoice::Backend)
+    }
+
+    fn possible_values(&self) -> Option<Box<dyn Iterator<Item = PossibleValue> + '_>> {
+        Some(possible_backends(&["auto"]))
+    }
+}
+
+impl Cli {
+    /// Acceleration settings from `--accel`, `--accel-fallback`, `--accel-priority` and
+    /// `--no-gpu`.
+    pub fn accel_config(&self) -> AccelConfig {
+        let config = if self.no_gpu {
+            AccelConfig::cpu_only()
+        } else {
+            match self.accel {
+                None | Some(AccelChoice::Auto) => AccelConfig::default(),
+                Some(AccelChoice::Backend(backend)) => {
+                    AccelConfig::forced(backend, self.accel_fallback)
+                }
+            }
+        };
+        if self.accel_priority.is_empty() {
+            config
+        } else {
+            config.with_priority(self.accel_priority.clone())
+        }
+    }
+}
+
 pub trait TranscriptionConfigWithCliExt {
     fn with_cli_options(self, cli: &Cli) -> Self;
 }
@@ -167,7 +312,7 @@ impl TranscriptionConfigWithCliExt for purr_core::TranscriptionConfig {
             .with_sample_rate(cli.sample_rate)
             .with_chunk_overlap(cli.chunk_overlap)
             .with_chunk_size(cli.chunk_size)
-            .without_gpu(cli.no_gpu)
+            .with_accel(cli.accel_config())
             .with_http_timeout(cli.http_timeout)
             .with_http_connect_timeout(cli.http_connect_timeout)
             .apply_output_format(|f| {
@@ -263,6 +408,84 @@ mod tests {
             });
             assert_eq!(opts.lang.code(), *code);
         }
+    }
+
+    fn accel_of(args: &[&str]) -> AccelConfig {
+        let args = ["purr", "audio.wav"]
+            .into_iter()
+            .chain(args.iter().copied());
+        Cli::try_parse_from(args).unwrap().accel_config()
+    }
+
+    fn parse_error(args: &[&str]) -> ErrorKind {
+        let args = ["purr", "audio.wav"]
+            .into_iter()
+            .chain(args.iter().copied());
+        Cli::try_parse_from(args).unwrap_err().kind()
+    }
+
+    #[test]
+    fn accel_defaults_to_auto() {
+        assert_eq!(accel_of(&[]), AccelConfig::default());
+        assert_eq!(accel_of(&["--accel", "auto"]), AccelConfig::default());
+    }
+
+    #[test]
+    fn named_accel_is_forced_without_fallback() {
+        assert_eq!(
+            accel_of(&["--accel", "vulkan"]),
+            AccelConfig::forced(AccelBackend::Vulkan, false)
+        );
+    }
+
+    #[test]
+    fn accel_fallback_allows_fallback_for_a_forced_backend() {
+        assert_eq!(
+            accel_of(&["--accel", "cuda", "--accel-fallback"]),
+            AccelConfig::forced(AccelBackend::Cuda, true)
+        );
+    }
+
+    #[test]
+    fn no_gpu_forces_the_cpu() {
+        assert_eq!(accel_of(&["--no-gpu"]), AccelConfig::cpu_only());
+    }
+
+    #[test]
+    fn accel_priority_overrides_the_priority_list() {
+        assert_eq!(
+            accel_of(&["--accel-priority", "vulkan,cuda"]).priority,
+            [AccelBackend::Vulkan, AccelBackend::Cuda]
+        );
+    }
+
+    #[test]
+    fn accel_fallback_needs_a_forced_backend() {
+        assert_eq!(
+            parse_error(&["--accel-fallback"]),
+            ErrorKind::MissingRequiredArgument
+        );
+    }
+
+    #[test]
+    fn no_gpu_conflicts_with_the_accel_flags() {
+        assert_eq!(
+            parse_error(&["--no-gpu", "--accel", "cuda"]),
+            ErrorKind::ArgumentConflict
+        );
+        assert_eq!(
+            parse_error(&["--no-gpu", "--accel-priority", "cuda"]),
+            ErrorKind::ArgumentConflict
+        );
+    }
+
+    #[test]
+    fn unknown_accel_backend_is_rejected() {
+        assert_eq!(parse_error(&["--accel", "tpu"]), ErrorKind::InvalidValue);
+        assert_eq!(
+            parse_error(&["--accel-priority", "cuda,tpu"]),
+            ErrorKind::InvalidValue
+        );
     }
 
     #[test]

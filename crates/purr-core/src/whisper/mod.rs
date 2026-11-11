@@ -1,14 +1,12 @@
+pub mod loader;
 pub mod logging;
 pub mod streaming;
 pub mod sync;
 
 use serde::{Deserialize, Serialize};
 use std::future::Future;
-use tokio::task;
-use tracing::info;
-use whisper_rs::{WhisperContext, WhisperContextParameters};
 
-use crate::{ModelManager, TranscriptionConfig, WhisperError, error::Result};
+use crate::{TranscriptionConfig, accel::report::AccelReport, error::Result};
 
 pub trait TranscriptionResult {}
 
@@ -65,6 +63,9 @@ pub struct SyncTranscriptionResult {
 
     /// Transcription statistics
     pub stats: TranscriptionStats,
+
+    /// Acceleration backend the transcription ran on
+    pub accel: AccelReport,
 }
 
 impl TranscriptionResult for SyncTranscriptionResult {}
@@ -124,37 +125,6 @@ pub struct StreamingChunk {
 
     /// Final statistics (only present on the very last chunk)
     pub final_stats: Option<TranscriptionStats>,
-}
-
-/// Load the Whisper model
-pub(crate) async fn load_model(
-    config: &TranscriptionConfig,
-    model_manager: &ModelManager,
-) -> Result<WhisperContext> {
-    // Determine model path
-    let model_path = if let Some(path) = &config.model_path {
-        path.clone()
-    } else {
-        // Try to find a default model
-        model_manager.find_default_model().await?
-    };
-
-    if config.verbose {
-        info!("Loading Whisper model: {}", model_path.display());
-    } else {
-        info!("Loading model...");
-    }
-
-    // Setup context parameters
-    let mut params = WhisperContextParameters::default();
-    params.use_gpu(config.use_gpu);
-
-    // Load the model in a blocking task since it's a synchronous operation
-    let model_path_str = model_path.to_string_lossy().to_string();
-    task::spawn_blocking(move || WhisperContext::new_with_params(&model_path_str, params))
-        .await
-        .map_err(WhisperError::from)?
-        .map_err(WhisperError::from)
 }
 
 pub trait WhisperTranscriber {

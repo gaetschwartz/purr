@@ -1,8 +1,10 @@
 use crate::{
     AudioStream, ModelManager, TranscriptionConfig,
+    accel::report::AccelReport,
     error::TranscriptionError,
     whisper::{
-        StreamingChunk, TranscriptionResult, TranscriptionStats, WhisperTranscriber, load_model,
+        StreamingChunk, TranscriptionResult, TranscriptionStats, WhisperTranscriber,
+        loader::load_model,
     },
 };
 use futures::{Stream, StreamExt};
@@ -15,10 +17,11 @@ use std::{
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use tracing::{debug, warn};
-use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperState};
+use whisper_rs::{FullParams, SamplingStrategy, WhisperState};
 
 pub struct StreamWhisperTranscriber {
-    context: WhisperContext,
+    state: WhisperState,
+    accel: AccelReport,
     config: Arc<TranscriptionConfig>,
 }
 
@@ -54,40 +57,45 @@ impl WhisperTranscriber for StreamWhisperTranscriber {
         let model_manager = ModelManager::new()?;
 
         // Load the model (which may involve async model discovery)
-        let context = load_model(&config, &model_manager).await?;
+        let loaded = load_model(&config, &model_manager).await?;
 
-        Ok(Self { context, config })
+        Ok(Self {
+            state: loaded.state,
+            accel: loaded.accel,
+            config,
+        })
     }
 
     async fn transcribe(self, input: AudioStream) -> crate::Result<StreamingTranscription> {
         let (tx, rx) = mpsc::unbounded_channel();
+        let Self {
+            state,
+            accel,
+            config,
+        } = self;
 
         // Spawn background task to process audio stream
         tokio::spawn(async move {
-            let mut transcriber = self;
-            if let Err(e) = transcriber.process_audio_stream(input, tx.clone()).await {
+            if let Err(e) = Self::process_audio_stream(state, config, input, tx.clone()).await {
                 let _ = tx.send(Err(e));
             }
         });
 
         Ok(StreamingTranscription {
             stream: Box::pin(UnboundedReceiverStream::new(rx)),
+            accel,
         })
     }
 }
 
 impl StreamingState {
-    fn new(context: &WhisperContext, config: Arc<TranscriptionConfig>) -> crate::Result<Self> {
-        let whisper_state = context.create_state().map_err(|e| {
-            crate::WhisperError::from(TranscriptionError::StateCreation { source: e })
-        })?;
-
+    fn new(whisper_state: WhisperState, config: &TranscriptionConfig) -> Self {
         // Stream processing configuration - optimized for performance vs quality balance
         // 4-second chunks with minimal overlap for better performance
         let chunk_size = (config.sample_rate as f32 * config.chunk_size) as usize; // 4 seconds at 16kHz - good for beam search quality
         let context_size = (config.sample_rate as f32 * config.chunk_overlap) as usize; // 0.5 seconds overlap for context continuity
 
-        Ok(Self {
+        Self {
             audio_buffer: VecDeque::new(),
             context_buffer: Vec::new(),
             whisper_state,
@@ -96,7 +104,7 @@ impl StreamingState {
             window_start_time: 0.0,
             chunk_size,
             context_size,
-        })
+        }
     }
 
     fn add_audio(&mut self, samples: &[f32]) {
@@ -139,12 +147,13 @@ impl StreamingState {
 
 impl StreamWhisperTranscriber {
     async fn process_audio_stream(
-        &mut self,
+        state: WhisperState,
+        config: Arc<TranscriptionConfig>,
         mut input: AudioStream,
         tx: mpsc::UnboundedSender<crate::Result<StreamingChunk>>,
     ) -> crate::Result<()> {
         let processing_start = std::time::Instant::now();
-        let mut streaming_state = StreamingState::new(&self.context, self.config.clone())?;
+        let mut streaming_state = StreamingState::new(state, &config);
         let mut is_stream_complete = false;
 
         debug!("Starting progressive audio stream processing");
@@ -184,13 +193,13 @@ impl StreamWhisperTranscriber {
                             is_stream_complete && streaming_state.audio_buffer.is_empty();
 
                         // Process the audio chunk through whisper
-                        match self
-                            .process_audio_chunk(
-                                &mut streaming_state,
-                                processing_buffer,
-                                is_final_chunk,
-                            )
-                            .await
+                        match Self::process_audio_chunk(
+                            &config,
+                            &mut streaming_state,
+                            processing_buffer,
+                            is_final_chunk,
+                        )
+                        .await
                         {
                             Ok(Some(chunk)) => {
                                 debug!(
@@ -246,7 +255,7 @@ impl StreamWhisperTranscriber {
     }
 
     async fn process_audio_chunk(
-        &mut self,
+        config: &TranscriptionConfig,
         streaming_state: &mut StreamingState,
         audio_buffer: Vec<f32>,
         is_final_chunk: bool,
@@ -257,7 +266,7 @@ impl StreamWhisperTranscriber {
 
         // Create whisper processing parameters with proper sampling strategy
         // Match whisper.cpp's "4 threads, 1 processors, 5 beams + best of 5" quality
-        let beam_size = self.config.beam_size.unwrap_or(5) as i32;
+        let beam_size = config.beam_size.unwrap_or(5) as i32;
         let mut params = if beam_size > 1 {
             FullParams::new(SamplingStrategy::BeamSearch {
                 beam_size,
@@ -268,11 +277,11 @@ impl StreamWhisperTranscriber {
         };
 
         // Configure parameters for streaming (based on whisper.cpp)
-        params.set_language(self.config.language.as_deref());
-        params.set_translate(self.config.translate);
-        params.set_temperature(self.config.temperature);
+        params.set_language(config.language.as_deref());
+        params.set_translate(config.translate);
+        params.set_temperature(config.temperature);
 
-        if let Some(threads) = self.config.num_threads {
+        if let Some(threads) = config.num_threads {
             params.set_n_threads(threads as i32);
         }
 
@@ -387,6 +396,15 @@ impl StreamWhisperTranscriber {
 
 pub struct StreamingTranscription {
     stream: Pin<Box<dyn Stream<Item = Result<StreamingChunk, crate::WhisperError>> + Send>>,
+    accel: AccelReport,
+}
+
+impl StreamingTranscription {
+    /// Acceleration backend the transcription runs on
+    #[must_use]
+    pub const fn accel(&self) -> &AccelReport {
+        &self.accel
+    }
 }
 
 impl Stream for StreamingTranscription {

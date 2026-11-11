@@ -2,6 +2,11 @@
 
 use std::path::PathBuf;
 
+use crate::accel::{
+    backend::AccelBackend,
+    report::{AccelAttempt, AttemptOutcome, UnavailableReason},
+};
+
 // ========================================
 // Dedicated Error Types for Transparent Wrapper Pattern
 // ========================================
@@ -98,6 +103,36 @@ pub enum TranscriptionError {
         #[source]
         source: whisper_rs::WhisperError,
     },
+}
+
+/// Acceleration backend selection errors
+#[derive(Debug, thiserror::Error, miette::Diagnostic)]
+pub enum AccelerationError {
+    #[error(
+        "{} acceleration was requested but is unavailable: {reason}; choose another backend or allow falling back",
+        backend.pretty_name()
+    )]
+    #[diagnostic(code(whisper::accel::unavailable))]
+    Unavailable {
+        backend: AccelBackend,
+        reason: UnavailableReason,
+    },
+
+    #[error(
+        "No acceleration backend could load the model: {}",
+        describe_attempts(attempts)
+    )]
+    #[diagnostic(code(whisper::accel::exhausted))]
+    Exhausted { attempts: Vec<AccelAttempt> },
+}
+
+fn describe_attempts(attempts: &[AccelAttempt]) -> String {
+    attempts
+        .iter()
+        .filter(|attempt| matches!(attempt.outcome, AttemptOutcome::Failed(_)))
+        .map(|attempt| format!("{}: {}", attempt.backend.pretty_name(), attempt.outcome))
+        .collect::<Vec<_>>()
+        .join("; ")
 }
 
 /// Audio processing related errors
@@ -205,6 +240,13 @@ pub enum WhisperError {
     Transcription {
         #[from]
         source: TranscriptionError,
+    },
+
+    #[error("Acceleration error: {source}")]
+    #[diagnostic(code(whisper::accel::error))]
+    Acceleration {
+        #[from]
+        source: AccelerationError,
     },
 
     #[error("Tracing/logging error: {source}")]

@@ -382,7 +382,7 @@ impl Platform for DesktopPlatformImpl {
                 description: Some(device.description),
                 device_type: match device.tpe {
                     dev::DeviceType::Cpu => DeviceType::Cpu,
-                    dev::DeviceType::Gpu => DeviceType::Gpu,
+                    dev::DeviceType::Gpu | dev::DeviceType::Igpu => DeviceType::Gpu,
                     dev::DeviceType::Accel => DeviceType::Accel,
                     dev::DeviceType::Unknown => DeviceType::Unknown,
                 },

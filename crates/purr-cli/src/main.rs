@@ -10,9 +10,9 @@ use miette::IntoDiagnostic as _;
 use owo_colors::OwoColorize as _;
 use purr_core::{
     ModelManager, StreamingTranscription, TranscriptionConfig, WhisperModel,
-    dev::{FeatureStatus, WhisperGpuBackend},
-    install_logging_hooks, is_file_path, is_valid_url, list_devices, transcribe_file_stream,
-    transcribe_file_sync, transcribe_url_stream, transcribe_url_sync,
+    accel::backend::AccelBackend, dev::FeatureStatus, install_logging_hooks, is_file_path,
+    is_valid_url, list_devices, transcribe_file_stream, transcribe_file_sync,
+    transcribe_url_stream, transcribe_url_sync,
 };
 use purr_core::{
     SystemInfo,
@@ -98,11 +98,6 @@ async fn main_impl() -> miette::Result<()> {
 
     // Print startup info
     info!("{}", "Whisper UI - Audio Transcription".blue().bold());
-    if config.use_gpu {
-        info!("GPU acceleration: {}", "enabled".green());
-    } else {
-        info!("GPU acceleration: {}", "disabled".red());
-    }
     if let Some(lang) = &config.language {
         info!("Language: {lang}");
     }
@@ -575,28 +570,39 @@ async fn handle_sys_command(_verbosity: Verbosity) -> miette::Result<()> {
 
     fn feature_status(feature: &FeatureStatus) -> String {
         match feature {
-            FeatureStatus::Disabled => "Disabled".yellow().to_string(),
-            FeatureStatus::EnabledButNotAvailable => "Enabled but not available".red().to_string(),
-            FeatureStatus::Available(_) => "Enabled".green().to_string(),
+            FeatureStatus::Disabled => "Not built".yellow().to_string(),
+            FeatureStatus::EnabledButNotAvailable => {
+                "Built, but no usable device".red().to_string()
+            }
+            FeatureStatus::Available(_) => "Available".green().to_string(),
         }
     }
 
-    println!("{}", "Backends:".blue().bold());
+    println!(
+        "{}",
+        "Acceleration backends (default priority order, best first):"
+            .blue()
+            .bold()
+    );
     println!();
-    let mut gpu_backends = WhisperGpuBackend::ALL
+    let longest = AccelBackend::DEFAULT_PRIORITY
         .iter()
-        .map(|b| (b.pretty_name(), &sys.backends[b]))
-        .collect::<Vec<_>>();
-    gpu_backends.sort_by(|a, b| a.1.cmp(b.1));
-    let longest = gpu_backends
-        .iter()
-        .map(|(name, _)| name.len())
+        .map(|b| b.pretty_name().len())
         .max()
         .unwrap_or(0);
 
-    for (name, status) in gpu_backends {
-        println!("  * {:longest$} - {}", name, feature_status(status));
+    for backend in AccelBackend::DEFAULT_PRIORITY {
+        let status = sys
+            .backends
+            .get(backend)
+            .unwrap_or(&FeatureStatus::Disabled);
+        println!(
+            "  * {:longest$} - {}",
+            backend.pretty_name(),
+            feature_status(status)
+        );
     }
+    println!();
 
     println!("{}", "Devices:".blue().bold());
     println!();
@@ -625,6 +631,8 @@ async fn handle_sys_command(_verbosity: Verbosity) -> miette::Result<()> {
                         format_args!("({})", "CPU".green()).dimmed().to_string(),
                     purr_core::dev::DeviceType::Gpu =>
                         format_args!("({})", "GPU".blue()).dimmed().to_string(),
+                    purr_core::dev::DeviceType::Igpu =>
+                        format_args!("({})", "iGPU".blue()).dimmed().to_string(),
                     purr_core::dev::DeviceType::Accel =>
                         format_args!("({})", "Accel".yellow()).dimmed().to_string(),
                     purr_core::dev::DeviceType::Unknown =>
@@ -948,6 +956,7 @@ fn handle_output(result: purr_core::SyncTranscriptionResult, cli: &Cli) -> miett
         println!("Segments: {}", result.stats.segment_count);
         println!("Words: {}", result.stats.word_count);
         println!("Words per minute: {:.1}", result.stats.words_per_minute());
+        println!("Acceleration: {}", result.accel.selected.pretty_name());
     }
 
     Ok(())

@@ -2,20 +2,22 @@
 
 use crate::{
     ModelManager,
+    accel::report::AccelReport,
     audio::AudioData,
     config::TranscriptionConfig,
     error::{Result, TranscriptionError, WhisperError},
     whisper::{
         SyncTranscriptionResult, TranscriptionSegment, TranscriptionStats, WhisperTranscriber,
-        load_model,
+        loader::load_model,
     },
 };
 use tracing::warn;
-use whisper_rs::{FullParams, SamplingStrategy, WhisperContext};
+use whisper_rs::{FullParams, SamplingStrategy, WhisperState};
 
 /// Whisper transcriber
 pub struct SyncWhisperTranscriber {
-    context: WhisperContext,
+    state: WhisperState,
+    accel: AccelReport,
     config: TranscriptionConfig,
 }
 
@@ -29,9 +31,13 @@ impl WhisperTranscriber for SyncWhisperTranscriber {
         let model_manager = ModelManager::new()?;
 
         // Load the model (which may involve async model discovery)
-        let context = load_model(&config_clone, &model_manager).await?;
+        let loaded = load_model(&config_clone, &model_manager).await?;
 
-        Ok(Self { context, config })
+        Ok(Self {
+            state: loaded.state,
+            accel: loaded.accel,
+            config,
+        })
     }
 
     /// Transcribe audio data
@@ -79,11 +85,7 @@ impl SyncWhisperTranscriber {
         params.set_print_special(false); // Disable special token printing
         params.set_print_realtime(false); // Disable real-time printing
 
-        // Create a state for processing
-        let mut state = self
-            .context
-            .create_state()
-            .map_err(|e| WhisperError::from(TranscriptionError::StateCreation { source: e }))?;
+        let state = &mut self.state;
 
         // Run transcription using state.full()
         state
@@ -148,6 +150,7 @@ impl SyncWhisperTranscriber {
             processing_time,
             audio_duration: audio_data.duration,
             stats,
+            accel: self.accel.clone(),
         })
     }
 }

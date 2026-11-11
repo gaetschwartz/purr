@@ -119,8 +119,17 @@ cargo test -p purr-cli
 # SRT subtitle format
 ./target/release/purr-cli audio.wav --output srt
 
-# Disable GPU acceleration
+# Disable GPU acceleration (same as --accel cpu)
 ./target/release/purr-cli audio.wav --no-gpu
+
+# Force a backend: no fallback, an error if it is unavailable or fails
+./target/release/purr-cli audio.wav --accel cuda
+
+# Prefer a backend but fall back to the priority list (ending in the CPU)
+./target/release/purr-cli audio.wav --accel vulkan --accel-fallback
+
+# Change the priority list used by the default `--accel auto`
+./target/release/purr-cli audio.wav --accel-priority vulkan,cuda
 
 # Set number of threads
 ./target/release/purr-cli audio.wav --threads 4
@@ -150,7 +159,14 @@ Arguments:
 Options:
   -m, --model <MODEL>              Path to the Whisper model file
   -l, --language <LANGUAGE>        Language code (e.g., en, es, fr)
-      --no-gpu                     Disable GPU acceleration
+      --accel <BACKEND>            auto (default), cuda, hip, coreml, metal, sycl, vulkan or cpu.
+                                   auto walks the priority list best to worst and falls back
+                                   when a backend is unavailable or fails; a named backend is
+                                   forced and is an error if it cannot be used
+      --accel-fallback             With --accel <BACKEND>: fall back to the priority list instead
+      --accel-priority <BACKENDS>  Priority list, best first, comma separated; cpu is appended when absent
+                                   [default: cuda,hip,coreml,metal,sycl,vulkan,cpu]
+      --no-gpu                     Disable GPU acceleration (same as --accel cpu)
   -t, --threads <THREADS>          Number of threads to use
   -o, --output <OUTPUT>            Output format [default: text] [possible values: text, json, srt]
       --timestamps                 Include timestamps in output (text format only)

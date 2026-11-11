@@ -5,6 +5,10 @@ use std::{collections::HashMap, ffi::CStr};
 use serde::{Deserialize, Serialize};
 use whisper_rs::whisper_rs_sys::{self, ggml_backend_dev_caps, ggml_backend_dev_count};
 
+use crate::accel::{
+    backend::AccelBackend, inventory::Inventory, plan::locate, report::UnavailableReason,
+};
+
 /// GPU device information
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Device {
@@ -13,7 +17,9 @@ pub struct Device {
     pub description: String, // Optional description field
     pub vram_free: usize,
     pub vram_total: usize,
-    pub tpe: DeviceType, // Type of GPU (e.g., "Vulkan", "CUDA")
+    pub tpe: DeviceType,
+    /// Backend owning the device; `None` for ggml backends purr does not select between (BLAS).
+    pub backend: Option<AccelBackend>,
     #[serde(with = "serde_ggml_backend_dev_caps")]
     pub caps: Option<ggml_backend_dev_caps>, // Optional capabilities
 }
@@ -22,7 +28,7 @@ pub struct Device {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SystemInfo {
     #[serde(flatten)]
-    pub backends: HashMap<WhisperGpuBackend, FeatureStatus>,
+    pub backends: HashMap<AccelBackend, FeatureStatus>,
     pub system_info: SystemCapabilities,
     pub devices: Vec<Device>,
 }
@@ -31,22 +37,24 @@ impl SystemInfo {
     /// Check system capabilities and available GPU devices
     #[must_use]
     pub fn get() -> Self {
-        let devices = list_devices();
+        let inventory = Inventory::detect();
 
         Self {
-            backends: WhisperGpuBackend::ALL
+            backends: AccelBackend::ALL
                 .iter()
                 .map(|backend| {
-                    let status = if backend.is_enabled() {
-                        FeatureStatus::Available(None) // VRAM not determined here
-                    } else {
-                        FeatureStatus::Disabled
+                    let status = match locate(*backend, &inventory) {
+                        Ok(_) => FeatureStatus::Available(None),
+                        Err(UnavailableReason::NoDevice) => FeatureStatus::EnabledButNotAvailable,
+                        Err(
+                            UnavailableReason::NotBuilt | UnavailableReason::NotBuiltOrNoDevice,
+                        ) => FeatureStatus::Disabled,
                     };
                     (*backend, status)
                 })
                 .collect(),
             system_info: SystemCapabilities::get(),
-            devices,
+            devices: inventory.devices,
         }
     }
 }
@@ -61,14 +69,19 @@ pub enum FeatureStatus {
 impl SystemInfo {
     /// Returns devices capable of acceleration
     pub fn devices_can_accelerate(&self) -> impl Iterator<Item = &Device> {
-        self.devices
-            .iter()
-            .filter(|d| d.tpe == DeviceType::Gpu || d.tpe == DeviceType::Accel)
+        self.devices.iter().filter(|d| {
+            matches!(
+                d.tpe,
+                DeviceType::Gpu | DeviceType::Igpu | DeviceType::Accel
+            )
+        })
     }
 
     /// Returns devices capable of GPU acceleration
     pub fn gpus(&self) -> impl Iterator<Item = &Device> {
-        self.devices.iter().filter(|d| d.tpe == DeviceType::Gpu)
+        self.devices
+            .iter()
+            .filter(|d| matches!(d.tpe, DeviceType::Gpu | DeviceType::Igpu))
     }
 
     /// Returns Accelerator devices (e.g., TPU, NPU)
@@ -128,6 +141,9 @@ pub fn list_devices() -> Vec<Device> {
             whisper_rs::whisper_rs_sys::ggml_backend_dev_type_GGML_BACKEND_DEVICE_TYPE_GPU => {
                 DeviceType::Gpu
             }
+            whisper_rs::whisper_rs_sys::ggml_backend_dev_type_GGML_BACKEND_DEVICE_TYPE_IGPU => {
+                DeviceType::Igpu
+            }
             whisper_rs::whisper_rs_sys::ggml_backend_dev_type_GGML_BACKEND_DEVICE_TYPE_ACCEL => {
                 DeviceType::Accel
             }
@@ -144,10 +160,24 @@ pub fn list_devices() -> Vec<Device> {
             vram_free: props.memory_free,
             vram_total: props.memory_total,
             caps: Some(props.caps),
+            backend: backend_of(device),
             tpe,
         });
     }
     devices
+}
+
+fn backend_of(device: whisper_rs::whisper_rs_sys::ggml_backend_dev_t) -> Option<AccelBackend> {
+    let reg = unsafe { whisper_rs::whisper_rs_sys::ggml_backend_dev_backend_reg(device) };
+    if reg.is_null() {
+        return None;
+    }
+    let name = unsafe { whisper_rs::whisper_rs_sys::ggml_backend_reg_name(reg) };
+    if name.is_null() {
+        return None;
+    }
+    let name = unsafe { CStr::from_ptr(name) }.to_string_lossy();
+    AccelBackend::from_ggml_registry_name(&name)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, strum::FromRepr, PartialEq, Eq)]
@@ -155,67 +185,9 @@ pub fn list_devices() -> Vec<Device> {
 pub enum DeviceType {
     Cpu = 0,
     Gpu = 1,
-    Accel = 2,
+    Igpu = 2,
+    Accel = 3,
     Unknown = 255,
-}
-
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    serde_with::SerializeDisplay,
-    serde_with::DeserializeFromStr,
-    PartialEq,
-    Eq,
-    Hash,
-    strum::EnumString,
-    strum::Display,
-    strum::IntoStaticStr,
-    strum::VariantArray,
-    strum::VariantNames,
-)]
-pub enum WhisperGpuBackend {
-    #[strum(serialize = "vulkan")]
-    Vulkan,
-    #[strum(serialize = "cuda")]
-    Cuda,
-    #[cfg(target_os = "macos")]
-    #[strum(serialize = "metal")]
-    Metal,
-    #[cfg(target_os = "macos")]
-    #[strum(serialize = "coreml")]
-    CoreML,
-}
-
-impl WhisperGpuBackend {
-    /// All possible backends
-    pub const ALL: &'static [Self] = <Self as strum::VariantArray>::VARIANTS;
-
-    /// Check if a backend is enabled at compile time
-    #[must_use]
-    pub fn is_enabled(&self) -> bool {
-        match self {
-            Self::Vulkan => cfg!(feature = "vulkan"),
-            Self::Cuda => cfg!(feature = "cuda"),
-            #[cfg(target_os = "macos")]
-            WhisperGpuBackend::Metal => cfg!(feature = "metal"),
-            #[cfg(target_os = "macos")]
-            WhisperGpuBackend::CoreML => cfg!(feature = "coreml"),
-        }
-    }
-
-    /// Pretty name of the backend
-    #[must_use]
-    pub fn pretty_name(&self) -> &'static str {
-        match self {
-            Self::Vulkan => "Vulkan",
-            Self::Cuda => "CUDA",
-            #[cfg(target_os = "macos")]
-            WhisperGpuBackend::Metal => "Metal",
-            #[cfg(target_os = "macos")]
-            WhisperGpuBackend::CoreML => "CoreML",
-        }
-    }
 }
 
 mod serde_ggml_backend_dev_caps {

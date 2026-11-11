@@ -2,6 +2,7 @@
 //!
 //! This library provides audio transcription functionality using whisper.cpp and `FFmpeg`.
 
+pub mod accel;
 pub mod audio;
 pub mod config;
 pub mod dev;

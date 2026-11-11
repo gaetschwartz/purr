@@ -6,6 +6,11 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use crate::accel::{
+    backend::AccelBackend,
+    config::{AccelConfig, AccelMode},
+};
+
 /// Configuration for transcription operations
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TranscriptionConfig {
@@ -18,8 +23,8 @@ pub struct TranscriptionConfig {
     /// Translate to English (like whisper.cpp --translate flag)
     pub translate: bool,
 
-    /// Use GPU acceleration if available
-    pub use_gpu: bool,
+    /// Acceleration backend selection and fallback
+    pub accel: AccelConfig,
 
     /// Number of threads to use
     pub num_threads: Option<usize>,
@@ -74,7 +79,7 @@ impl Default for TranscriptionConfig {
             model_path: None, // Will use default model
             language: None,   // Auto-detect
             translate: false,
-            use_gpu: true,
+            accel: AccelConfig::default(),
             num_threads: None,  // Use system default
             sample_rate: 16000, // Whisper's preferred sample rate
             max_duration: None,
@@ -125,17 +130,24 @@ impl TranscriptionConfig {
         self
     }
 
-    /// Enable or disable GPU acceleration
+    /// Set the acceleration backend selection
     #[must_use]
-    pub fn with_gpu(mut self, use_gpu: bool) -> Self {
-        self.use_gpu = use_gpu;
+    pub fn with_accel(mut self, accel: AccelConfig) -> Self {
+        self.accel = accel;
         self
     }
 
-    /// Disable GPU acceleration
+    /// `true` selects automatic backend choice with fallback, `false` forces the CPU
     #[must_use]
-    pub fn without_gpu(mut self, no_gpu: bool) -> Self {
-        self.use_gpu = !no_gpu;
+    pub fn with_gpu(mut self, use_gpu: bool) -> Self {
+        self.accel.mode = if use_gpu {
+            AccelMode::Auto
+        } else {
+            AccelMode::Force {
+                backend: AccelBackend::Cpu,
+                allow_fallback: false,
+            }
+        };
         self
     }
 
@@ -246,5 +258,34 @@ impl OutputFormat {
     pub fn with_confidence(mut self, include: bool) -> Self {
         self.include_confidence = include;
         self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn accelerates_automatically_by_default() {
+        assert_eq!(TranscriptionConfig::new().accel.mode, AccelMode::Auto);
+    }
+
+    #[test]
+    fn disabling_gpu_forces_the_cpu_without_fallback() {
+        assert_eq!(
+            TranscriptionConfig::new()
+                .with_gpu(false)
+                .accel
+                .attempt_order(),
+            [AccelBackend::Cpu]
+        );
+    }
+
+    #[test]
+    fn enabling_gpu_restores_automatic_mode_and_keeps_the_priority() {
+        let accel = AccelConfig::cpu_only().with_priority(vec![AccelBackend::Vulkan]);
+        let config = TranscriptionConfig::new().with_accel(accel).with_gpu(true);
+        assert_eq!(config.accel.mode, AccelMode::Auto);
+        assert_eq!(config.accel.priority, [AccelBackend::Vulkan]);
     }
 }
