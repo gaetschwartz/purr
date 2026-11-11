@@ -15,7 +15,10 @@ on:
         type: boolean
 
 env:
-  DIOXUS_VERSION: 0.7.0-rc.0
+  DIOXUS_VERSION: 0.8.0-alpha.3
+  VCPKG_COMMIT: efecf268f3a3ec78f4bf1f0c36759bdb23c6f653
+  VCPKG_FFMPEG: ffmpeg[core,avcodec,avformat,swresample]
+  VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/.vcpkg-cache,readwrite
 
 jobs:
   build-linux:
@@ -34,10 +37,24 @@ jobs:
         run: |
           sudo apt update
           sudo apt install -y --no-install-recommends clang curl pkg-config gcc ca-certificates openssl libssl-dev cmake libc6-dev make wget fuse libfuse2 \
-            libavcodec-dev libavformat-dev libavutil-dev libavfilter-dev libavdevice-dev libswscale-dev libswresample-dev \
+            nasm autoconf automake libtool \
             llvm \
             libgtk-3-dev libglib2.0-dev libcairo2-dev libpango1.0-dev libgdk-pixbuf2.0-dev libatk1.0-dev \
             libjavascriptcoregtk-4.1-dev libsoup-3.0-dev libwebkit2gtk-4.1-dev libxdo-dev
+      - name: Cache vcpkg binaries
+        uses: actions/cache@v4
+        with:
+          path: .vcpkg-cache
+          key: vcpkg-ffmpeg-${{ runner.os }}-${{ env.VCPKG_COMMIT }}
+      - name: Install FFmpeg (static)
+        run: |
+          VCPKG_DIR="${VCPKG_INSTALLATION_ROOT:-$RUNNER_TEMP/vcpkg}"
+          [ -d "$VCPKG_DIR/.git" ] || git clone https://github.com/microsoft/vcpkg "$VCPKG_DIR"
+          git -C "$VCPKG_DIR" fetch --quiet origin "$VCPKG_COMMIT"
+          git -C "$VCPKG_DIR" checkout --quiet "$VCPKG_COMMIT"
+          "$VCPKG_DIR/bootstrap-vcpkg.sh" -disableMetrics
+          "$VCPKG_DIR/vcpkg" install "$VCPKG_FFMPEG:x64-linux"
+          echo "PKG_CONFIG_PATH=$VCPKG_DIR/installed/x64-linux/lib/pkgconfig" >> "$GITHUB_ENV"
       - name: Install cuda
         if: matrix.backend == 'cuda'
         run: |
@@ -92,7 +109,7 @@ jobs:
           cargo install dioxus-cli --version ${{ env.DIOXUS_VERSION }} --locked
       - name: Build Binary${{ matrix.backend != 'none' && format(' - {0}', matrix.backend) || '' }}
         run: |
-          cargo build -p purr-cli --release ${{ matrix.backend != 'none' && format(' --features {0}', matrix.backend) || '' }}
+          RUSTFLAGS='-C link-arg=-Wl,-rpath,$ORIGIN/lib --cfg=web_sys_unstable_apis' cargo build -p purr-cli --release --features static-ffmpeg${{ matrix.backend != 'none' && format(',{0}', matrix.backend) || '' }}
       # - name: Build Dioxus Desktop${{ matrix.backend != 'none' && format(' - {0}', matrix.backend) || '' }}
       #   run: |
       #     dx bundle -p purr-app --release --linux \
@@ -107,7 +124,10 @@ jobs:
         run: |
           mkdir -p artifacts/linux
           cp target/release/purr artifacts/linux/purr
-          # Include any required shared libraries or resources
+          if [ "${{ matrix.backend }}" = "cuda" ]; then
+            mkdir -p artifacts/linux/lib
+            ldd target/release/purr | awk '/lib(cudart|cublas|cublasLt)\.so/ { print $3 }' | xargs -r -I{} cp -L {} artifacts/linux/lib/
+          fi
           if [ -f target/release/purr-app ]; then
             cp target/release/purr-app artifacts/linux/
           fi
@@ -151,7 +171,21 @@ jobs:
       - name: Install dependencies
         run: |
           brew uninstall cmake || true
-          brew install ffmpeg cmake
+          brew install cmake nasm autoconf automake libtool pkg-config
+      - name: Cache vcpkg binaries
+        uses: actions/cache@v4
+        with:
+          path: .vcpkg-cache
+          key: vcpkg-ffmpeg-${{ runner.os }}-${{ env.VCPKG_COMMIT }}
+      - name: Install FFmpeg (static)
+        run: |
+          VCPKG_DIR="${VCPKG_INSTALLATION_ROOT:-$RUNNER_TEMP/vcpkg}"
+          [ -d "$VCPKG_DIR/.git" ] || git clone https://github.com/microsoft/vcpkg "$VCPKG_DIR"
+          git -C "$VCPKG_DIR" fetch --quiet origin "$VCPKG_COMMIT"
+          git -C "$VCPKG_DIR" checkout --quiet "$VCPKG_COMMIT"
+          "$VCPKG_DIR/bootstrap-vcpkg.sh" -disableMetrics
+          "$VCPKG_DIR/vcpkg" install "$VCPKG_FFMPEG:arm64-osx"
+          echo "PKG_CONFIG_PATH=$VCPKG_DIR/installed/arm64-osx/lib/pkgconfig" >> "$GITHUB_ENV"
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -172,14 +206,14 @@ jobs:
         run: |
           export CFLAGS="-march=armv8.2-a+noi8mm"
           export CXXFLAGS="-march=armv8.2-a+noi8mm"
-          cargo build -p purr-cli --release ${{ matrix.backend != 'none' && format('--features {0}', matrix.backend) || '' }}
+          cargo build -p purr-cli --release --features static-ffmpeg${{ matrix.backend != 'none' && format(',{0}', matrix.backend) || '' }}
       - name: Build Dioxus Desktop
         run: |
           export CFLAGS="-march=armv8.2-a+noi8mm"
           export CXXFLAGS="-march=armv8.2-a+noi8mm"
           dx bundle -p purr-app --release --macos \
             --out-dir dist-macos \
-            ${{ matrix.backend != 'none' && format('--features {0}', matrix.backend) || '' }}
+            --features static-ffmpeg${{ matrix.backend != 'none' && format(',{0}', matrix.backend) || '' }}
       - name: Prepare macOS Artifacts
         if: matrix.is_release == true
         run: |
@@ -223,32 +257,31 @@ jobs:
         include:
           - backend: cuda
             is_release: true # Mark CUDA as the release variant for Windows (Vulkan fails to bundle)
-    env:
-      FFMPEG_DOWNLOAD_URL: https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-full-shared.7z
     steps:
       - uses: actions/checkout@v4
       - name: Install dependencies
         run: |
           $VCINSTALLDIR = $(& "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath)
           Add-Content $env:GITHUB_ENV "LIBCLANG_PATH=${VCINSTALLDIR}\VC\Tools\LLVM\x64\bin`n"
-          Invoke-WebRequest "${env:FFMPEG_DOWNLOAD_URL}" -OutFile ffmpeg-release-full-shared.7z
-          7z x ffmpeg-release-full-shared.7z
-          mkdir ffmpeg
-          mv ffmpeg-*/* ffmpeg/
-          Add-Content $env:GITHUB_ENV "FFMPEG_DIR=${pwd}\ffmpeg`n"
-          Add-Content $env:GITHUB_PATH "${pwd}\ffmpeg\bin`n"
           choco install -y cmake
           choco install -y visualstudio2022buildtools
           choco install -y visualstudio2022-workload-vctools
           choco install -y llvm
           choco install -y windows-sdk-10.0
-      - name: vcpkg build
-        uses: johnwason/vcpkg-action@v7
-        id: vcpkg
+      - name: Cache vcpkg binaries
+        uses: actions/cache@v4
         with:
-          pkgs: ffmpeg[avcodec,avformat]
-          triplet: x64-windows-release
-          token: ${{ github.token }}
+          path: .vcpkg-cache
+          key: vcpkg-ffmpeg-${{ runner.os }}-${{ env.VCPKG_COMMIT }}
+      - name: Install FFmpeg (static)
+        run: |
+          $vcpkg = $env:VCPKG_INSTALLATION_ROOT
+          git -C $vcpkg fetch --quiet origin $env:VCPKG_COMMIT
+          git -C $vcpkg checkout --quiet $env:VCPKG_COMMIT
+          & "$vcpkg\bootstrap-vcpkg.bat" -disableMetrics
+          & "$vcpkg\vcpkg.exe" install "$($env:VCPKG_FFMPEG):x64-windows-static-md"
+          Add-Content $env:GITHUB_ENV "VCPKG_ROOT=$vcpkg"
+          Add-Content $env:GITHUB_ENV "VCPKGRS_TRIPLET=x64-windows-static-md"
       - name: Install cuda
         if: contains(matrix.backend, 'cuda')
         run: |
@@ -295,12 +328,12 @@ jobs:
         uses: microsoft/setup-msbuild@v2
       - name: Build binary${{ matrix.backend != 'none' && format(' - {0}', matrix.backend) || '' }}
         run: |
-          cargo build -p purr-cli --release ${{ matrix.backend != 'none' && format('--features {0}', matrix.backend) || '' }}
+          cargo build -p purr-cli --release --features static-ffmpeg${{ matrix.backend != 'none' && format(',{0}', matrix.backend) || '' }}
       - name: Build Dioxus Desktop${{ matrix.backend != 'none' && format(' - {0}', matrix.backend) || '' }}
         env:
           CARGO_TARGET_DIR: D:\t\
         run: |
-          dx bundle --verbose --trace -p purr-app --release --profile r --windows --out-dir dist-windows ${{ matrix.backend != 'none' && format('--features {0}', matrix.backend) || '' }}
+          dx bundle --verbose --trace -p purr-app --release --profile r --windows --out-dir dist-windows --features static-ffmpeg${{ matrix.backend != 'none' && format(',{0}', matrix.backend) || '' }}
       - name: Prepare Windows Artifacts
         if: matrix.is_release == true
         run: |
@@ -322,9 +355,6 @@ jobs:
               Copy-Item "$cudaBinPath\cublasLt64_*.dll" artifacts\windows\ -ErrorAction SilentlyContinue
             }
           }
-
-          # Copy FFmpeg DLLs
-          Get-ChildItem .\ffmpeg\bin\*.dll | Copy-Item -Destination artifacts\windows\
 
           # If MSI installer exists, include it
           if (Test-Path "dist-windows\*.msi") {
@@ -484,7 +514,7 @@ jobs:
           # Package Linux binary
           cd release-artifacts/linux
           chmod +x purr
-          tar czf ../../release-assets/purr-linux-x64-cuda.tar.gz purr VERSION
+          tar czf ../../release-assets/purr-linux-x64-cuda.tar.gz *
           cd ../..
 
           # Package macOS
@@ -535,7 +565,7 @@ jobs:
             chmod +x purr
             ./purr
             ```
-            Requires NVIDIA GPU with CUDA support.
+            Keep the `lib` folder next to `purr`. Requires an NVIDIA GPU with CUDA support and the NVIDIA driver.
 
             ### macOS
             Download `purr-macos-universal.dmg` (or `.tar.gz` if DMG unavailable)
