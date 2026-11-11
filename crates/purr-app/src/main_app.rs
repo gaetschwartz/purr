@@ -1,6 +1,7 @@
 //! Routing: every view renders inside the [`Shell`] layout.
 
 use crate::platform::logging::apply_saved_log_level;
+use crate::settings_store::use_settings;
 use crate::views::{
     history::History, home::Home, logs::Logs, models::Models, not_found::NotFound,
     settings::Settings, shell::Shell, transcription::Transcription,
@@ -63,7 +64,9 @@ impl NavSection {
 #[component]
 pub fn MainApp() -> Element {
     use_context_provider(|| UploadNames(Signal::new(HashMap::new())));
-    use_future(apply_saved_log_level);
+    let settings = use_settings();
+    let log_level = use_memo(move || settings.with(|settings| settings.logging.level.clone()));
+    use_effect(move || apply_saved_log_level(&log_level.read()));
 
     rsx! {
         Router::<Route> {}

@@ -450,18 +450,13 @@ pub fn apply_log_level(level: &LogLevel) -> miette::Result<()> {
         .into_diagnostic()
 }
 
-/// Applies the log level saved in the settings, unless `RUST_LOG` overrides it.
-pub async fn apply_saved_log_level() {
+/// Applies the log level chosen in the settings, unless `RUST_LOG` overrides it.
+pub fn apply_saved_log_level(level: &LogLevel) {
     if std::env::var_os("RUST_LOG").is_some() {
         return;
     }
-    match get_platform().load_settings().await {
-        Ok(settings) => {
-            if let Err(error) = apply_log_level(&settings.logging.level) {
-                tracing::warn!("Could not apply the saved log level: {error}");
-            }
-        }
-        Err(error) => tracing::warn!("Could not read the saved log level: {error}"),
+    if let Err(error) = apply_log_level(level) {
+        tracing::warn!("Could not apply the saved log level: {error}");
     }
 }
 
