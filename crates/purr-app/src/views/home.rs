@@ -5,6 +5,7 @@ mod engine_notice;
 mod failed;
 mod first_run;
 mod model_notice;
+mod no_webgpu;
 mod recent;
 mod result;
 mod running;
@@ -12,7 +13,8 @@ mod start;
 
 use crate::{
     components::{page::Page, spinner::Spinner},
-    hooks::use_models::use_models,
+    hooks::use_models::{GpuSupport, use_models},
+    platform::IS_WEB,
     transcribe::{run::RunOutcome, session::use_transcribe_session},
 };
 use dioxus::prelude::*;
@@ -34,6 +36,12 @@ pub fn Home() -> Element {
             RunOutcome::Failed(failure) => rsx! {
                 failed::Failed { record, failure }
             },
+        };
+    }
+
+    if IS_WEB && *models.gpu.read() == GpuSupport::Unavailable {
+        return rsx! {
+            no_webgpu::NoWebGpu {}
         };
     }
 

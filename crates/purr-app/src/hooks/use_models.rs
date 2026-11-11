@@ -54,9 +54,15 @@ pub struct ModelsHandle {
     pub(super) tasks: Signal<HashMap<String, Task>>,
     pub(super) toasts: Toasts,
     refresh: Signal<u32>,
+    gpu_check: Signal<u32>,
 }
 
 impl ModelsHandle {
+    /// Looks for the graphics card again; [`Self::gpu`] changes when the answer differs.
+    pub fn recheck_gpu(mut self) {
+        self.gpu_check += 1;
+    }
+
     /// Reloads the model list, for example after a download finished.
     pub fn refresh(mut self) {
         self.refresh += 1;
@@ -216,6 +222,7 @@ struct Sources {
     gpu: Signal<GpuSupport>,
     online: Signal<bool>,
     refresh: Signal<u32>,
+    gpu_check: Signal<u32>,
     handle: ModelsHandle,
 }
 
@@ -224,6 +231,7 @@ fn create_sources(toasts: Toasts) -> Sources {
     let gpu = Signal::new(GpuSupport::Checking);
     let online = Signal::new(true);
     let refresh = Signal::new(0u32);
+    let gpu_check = Signal::new(0u32);
     let handle = ModelsHandle {
         models: models.into(),
         gpu: gpu.into(),
@@ -232,12 +240,14 @@ fn create_sources(toasts: Toasts) -> Sources {
         tasks: Signal::new(HashMap::new()),
         toasts,
         refresh,
+        gpu_check,
     };
     Sources {
         models,
         gpu,
         online,
         refresh,
+        gpu_check,
         handle,
     }
 }
@@ -251,10 +261,12 @@ pub fn use_models_provider() -> ModelsHandle {
         mut gpu,
         mut online,
         refresh,
+        gpu_check,
         handle,
     } = use_hook(|| Runtime::current().in_scope(ScopeId::ROOT, || create_sources(toasts)));
 
-    use_future(move || async move {
+    use_resource(move || async move {
+        gpu_check();
         let platform = platform::get_platform();
         let support = match platform.list_available_devices().await {
             Ok(devices) => devices
