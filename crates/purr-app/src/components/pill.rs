@@ -13,10 +13,14 @@ pub fn Pill(
     #[props(default)] disabled: bool,
     onclick: EventHandler<MouseEvent>,
 ) -> Element {
+    let full = detail
+        .as_ref()
+        .map_or_else(|| value.clone(), |detail| format!("{value} · {detail}"));
     rsx! {
         button {
             id,
             class: "pill",
+            title: full,
             r#type: "button",
             aria_haspopup: "dialog",
             aria_expanded: expanded,
