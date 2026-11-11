@@ -2,7 +2,8 @@
 //! Uses `IndexedDB` for persistent storage
 
 use crate::error::{StorageError, WebError, WebResult, format_js_error};
-use js_sys::{Array, Promise, Uint8Array};
+use crate::idb::{self, FILES, METADATA};
+use js_sys::{Array, Uint8Array};
 use purr_common::platform::FileId;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -10,8 +11,8 @@ use std::sync::Arc;
 use tokio::sync::{RwLock, oneshot};
 use uuid::Uuid;
 use wasm_bindgen::prelude::*;
-use wasm_bindgen_futures::{JsFuture, spawn_local};
-use web_sys::IdbDatabase;
+use wasm_bindgen_futures::spawn_local;
+use web_sys::{IdbDatabase, IdbObjectStore, IdbTransactionMode};
 
 /// File metadata
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -50,6 +51,12 @@ enum IndexedDBCommand {
     },
 }
 
+fn reply<T>(response: oneshot::Sender<WebResult<T>>, result: WebResult<T>) {
+    if response.send(result).is_err() {
+        tracing::debug!("A storage request finished after its caller left");
+    }
+}
+
 /// Web storage using `IndexedDB`
 #[derive(Debug)]
 pub struct WebStorage {
@@ -75,10 +82,10 @@ impl WebStorage {
                         match result {
                             Ok(database) => {
                                 db = Some(database);
-                                let _ = response.send(Ok(()));
+                                reply(response, Ok(()));
                             }
                             Err(e) => {
-                                let _ = response.send(Err(e));
+                                reply(response, Err(e));
                             }
                         }
                     }
@@ -95,7 +102,7 @@ impl WebStorage {
                                 js_error: "Database not available".to_owned(),
                             }))
                         };
-                        let _ = response.send(result);
+                        reply(response, result);
                     }
                     IndexedDBCommand::GetFile { file_id, response } => {
                         let result = if let Some(ref database) = db {
@@ -105,7 +112,7 @@ impl WebStorage {
                                 js_error: "Database not available".to_owned(),
                             }))
                         };
-                        let _ = response.send(result);
+                        reply(response, result);
                     }
                     IndexedDBCommand::DeleteFile { file_id, response } => {
                         let result = if let Some(ref database) = db {
@@ -115,7 +122,7 @@ impl WebStorage {
                                 js_error: "Database not available".to_owned(),
                             }))
                         };
-                        let _ = response.send(result);
+                        reply(response, result);
                     }
                     IndexedDBCommand::LoadMetadata { response } => {
                         let result = if let Some(ref database) = db {
@@ -125,7 +132,7 @@ impl WebStorage {
                                 js_error: "Database not available".to_owned(),
                             }))
                         };
-                        let _ = response.send(result);
+                        reply(response, result);
                     }
                 }
             }
@@ -344,363 +351,100 @@ impl WebStorage {
         data: &[u8],
         metadata: &FileMetadata,
     ) -> WebResult<()> {
-        // Store file data
-        let transaction = db
-            .transaction_with_str_and_mode("files", web_sys::IdbTransactionMode::Readwrite)
-            .map_err(|e| StorageError::TransactionCreationFailed {
+        let files_store = Self::store(db, FILES, IdbTransactionMode::Readwrite)?;
+        let array = Uint8Array::from(data);
+        let file_request = files_store
+            .put_with_key(&array.into(), &JsValue::from_str(file_id))
+            .map_err(|e| StorageError::FileStoreFailed {
                 js_error: format_js_error(e),
             })?;
+        idb::settle(&file_request, "store upload").await?;
 
-        let files_store = transaction.object_store("files").map_err(|e| {
-            StorageError::ObjectStoreAccessFailed {
+        let metadata_store = Self::store(db, METADATA, IdbTransactionMode::Readwrite)?;
+        let serialized = serde_wasm_bindgen::to_value(metadata)
+            .map_err(|_e| StorageError::MetadataSerializationFailed)?;
+        let metadata_request = metadata_store
+            .put_with_key(&serialized, &JsValue::from_str(file_id))
+            .map_err(|e| StorageError::MetadataStoreFailed {
+                js_error: format_js_error(e),
+            })?;
+        idb::settle(&metadata_request, "store upload details").await?;
+        Ok(())
+    }
+
+    fn store(db: &IdbDatabase, name: &str, mode: IdbTransactionMode) -> WebResult<IdbObjectStore> {
+        let transaction = db.transaction_with_str_and_mode(name, mode).map_err(|e| {
+            StorageError::TransactionCreationFailed {
                 js_error: format_js_error(e),
             }
         })?;
-
-        // Convert bytes to Uint8Array
-        let array = Uint8Array::new_with_length(data.len() as u32);
-        array.copy_from(data);
-
-        let file_request = files_store
-            .put_with_key(&array.into(), &JsValue::from_str(file_id))
-            .map_err(|e| {
-                WebError::from(StorageError::FileStoreFailed {
-                    js_error: format_js_error(e),
-                })
-            })?;
-
-        // Create a promise wrapper for the request
-        let promise = Promise::new(&mut |resolve, reject| {
-            let success_closure = Closure::once(move |_event: web_sys::Event| {
-                resolve
-                    .call1(&JsValue::undefined(), &JsValue::undefined())
-                    .unwrap();
-            });
-
-            let error_closure = Closure::once(move |_event: web_sys::Event| {
-                reject
-                    .call1(
-                        &JsValue::undefined(),
-                        &JsValue::from_str("Failed to store file"),
-                    )
-                    .unwrap();
-            });
-
-            file_request.set_onsuccess(Some(success_closure.as_ref().unchecked_ref()));
-            file_request.set_onerror(Some(error_closure.as_ref().unchecked_ref()));
-
-            success_closure.forget();
-            error_closure.forget();
-        });
-
-        JsFuture::from(promise).await.map_err(|e| {
-            WebError::from(StorageError::FileStorageOperationFailed {
+        Ok(transaction
+            .object_store(name)
+            .map_err(|e| StorageError::ObjectStoreAccessFailed {
                 js_error: format_js_error(e),
-            })
-        })?;
-
-        // Store metadata
-        let metadata_transaction = db
-            .transaction_with_str_and_mode("metadata", web_sys::IdbTransactionMode::Readwrite)
-            .map_err(|e| {
-                WebError::from(StorageError::MetadataTransactionFailed {
-                    js_error: format!("{e:?}"),
-                })
-            })?;
-
-        let metadata_store = metadata_transaction.object_store("metadata").map_err(|e| {
-            WebError::from(StorageError::MetadataStoreAccessFailed {
-                js_error: format!("{e:?}"),
-            })
-        })?;
-
-        let serialized = serde_wasm_bindgen::to_value(metadata)
-            .map_err(|_e| WebError::from(StorageError::MetadataSerializationFailed))?;
-
-        let metadata_request = metadata_store
-            .put_with_key(&serialized, &JsValue::from_str(file_id))
-            .map_err(|e| {
-                WebError::from(StorageError::MetadataStoreFailed {
-                    js_error: format_js_error(e),
-                })
-            })?;
-
-        // Create a promise wrapper for the request
-        let promise = Promise::new(&mut |resolve, reject| {
-            let success_closure = Closure::once(move |_event: web_sys::Event| {
-                resolve
-                    .call1(&JsValue::undefined(), &JsValue::undefined())
-                    .unwrap();
-            });
-
-            let error_closure = Closure::once(move |_event: web_sys::Event| {
-                reject
-                    .call1(
-                        &JsValue::undefined(),
-                        &JsValue::from_str("Failed to store metadata"),
-                    )
-                    .unwrap();
-            });
-
-            metadata_request.set_onsuccess(Some(success_closure.as_ref().unchecked_ref()));
-            metadata_request.set_onerror(Some(error_closure.as_ref().unchecked_ref()));
-
-            success_closure.forget();
-            error_closure.forget();
-        });
-
-        JsFuture::from(promise).await.map_err(|e| {
-            WebError::from(StorageError::MetadataStorageOperationFailed {
-                js_error: format_js_error(e),
-            })
-        })?;
-
-        Ok(())
+            })?)
     }
 
     /// Get file data from `IndexedDB`
     async fn get_file_internal(db: &IdbDatabase, file_id: &str) -> WebResult<Option<Vec<u8>>> {
-        let transaction = db.transaction_with_str("files").map_err(|_| {
-            WebError::from(StorageError::TransactionCreationFailed {
-                js_error: "Transaction creation failed".to_owned(),
-            })
-        })?;
-
-        let object_store = transaction.object_store("files").map_err(|_| {
-            WebError::from(StorageError::ObjectStoreAccessFailed {
-                js_error: "Command send failed".to_owned(),
-            })
-        })?;
-
+        let object_store = Self::store(db, FILES, IdbTransactionMode::Readonly)?;
         let request = object_store.get(&JsValue::from_str(file_id)).map_err(|e| {
-            WebError::from(StorageError::GetRequestFailed {
+            StorageError::GetRequestFailed {
                 js_error: format_js_error(e),
-            })
+            }
         })?;
-
-        // Create a promise wrapper for the request
-        let promise = Promise::new(&mut |resolve, reject| {
-            let success_closure = Closure::once(move |event: web_sys::Event| {
-                let target = event.target().unwrap();
-                let request: web_sys::IdbRequest = target.dyn_into().unwrap();
-                resolve
-                    .call1(&JsValue::undefined(), &request.result().unwrap())
-                    .unwrap();
-            });
-
-            let error_closure = Closure::once(move |_event: web_sys::Event| {
-                reject
-                    .call1(
-                        &JsValue::undefined(),
-                        &JsValue::from_str("Failed to get file"),
-                    )
-                    .unwrap();
-            });
-
-            request.set_onsuccess(Some(success_closure.as_ref().unchecked_ref()));
-            request.set_onerror(Some(error_closure.as_ref().unchecked_ref()));
-
-            success_closure.forget();
-            error_closure.forget();
-        });
-
-        let result = JsFuture::from(promise).await.map_err(|_| {
-            WebError::from(StorageError::GetOperationFailed {
-                js_error: "Get operation failed".to_owned(),
-            })
-        })?;
-
+        let result = idb::settle(&request, "read upload").await?;
         if result.is_undefined() {
             return Ok(None);
         }
-
-        // Convert Uint8Array back to Vec<u8>
         let array: Uint8Array = result
             .dyn_into()
-            .map_err(|_| WebError::from(StorageError::DataFormatInvalid))?;
-
-        let mut data = vec![0u8; array.length() as usize];
-        array.copy_to(&mut data);
-
-        Ok(Some(data))
+            .map_err(|_| StorageError::DataFormatInvalid)?;
+        Ok(Some(array.to_vec()))
     }
 
     /// Delete file and metadata from `IndexedDB`
     async fn delete_file_internal(db: &IdbDatabase, file_id: &str) -> WebResult<()> {
-        // Delete file data
-        let file_transaction = db
-            .transaction_with_str_and_mode("files", web_sys::IdbTransactionMode::Readwrite)
-            .map_err(|_| {
-                WebError::from(StorageError::TransactionCreationFailed {
-                    js_error: "Transaction creation failed".to_owned(),
-                })
-            })?;
-
-        let files_store = file_transaction.object_store("files").map_err(|_| {
-            WebError::from(StorageError::ObjectStoreAccessFailed {
-                js_error: "Command send failed".to_owned(),
-            })
-        })?;
-
+        let files_store = Self::store(db, FILES, IdbTransactionMode::Readwrite)?;
         let file_request = files_store
             .delete(&JsValue::from_str(file_id))
-            .map_err(|e| {
-                WebError::from(StorageError::DeleteOperationFailed {
-                    js_error: format_js_error(e),
-                })
-            })?;
-
-        // Create a promise wrapper for the request
-        let promise = Promise::new(&mut |resolve, reject| {
-            let success_closure = Closure::once(move |_event: web_sys::Event| {
-                resolve
-                    .call1(&JsValue::undefined(), &JsValue::undefined())
-                    .unwrap();
-            });
-
-            let error_closure = Closure::once(move |_event: web_sys::Event| {
-                reject
-                    .call1(
-                        &JsValue::undefined(),
-                        &JsValue::from_str("Failed to delete file"),
-                    )
-                    .unwrap();
-            });
-
-            file_request.set_onsuccess(Some(success_closure.as_ref().unchecked_ref()));
-            file_request.set_onerror(Some(error_closure.as_ref().unchecked_ref()));
-
-            success_closure.forget();
-            error_closure.forget();
-        });
-
-        JsFuture::from(promise).await.map_err(|e| {
-            WebError::from(StorageError::FileDeletionFailed {
+            .map_err(|e| StorageError::DeleteOperationFailed {
                 js_error: format_js_error(e),
-            })
-        })?;
-
-        // Delete metadata
-        let metadata_transaction = db
-            .transaction_with_str_and_mode("metadata", web_sys::IdbTransactionMode::Readwrite)
-            .map_err(|e| {
-                WebError::from(StorageError::MetadataTransactionFailed {
-                    js_error: format!("{e:?}"),
-                })
             })?;
+        idb::settle(&file_request, "delete upload").await?;
 
-        let metadata_store = metadata_transaction.object_store("metadata").map_err(|e| {
-            WebError::from(StorageError::MetadataStoreAccessFailed {
-                js_error: format!("{e:?}"),
-            })
-        })?;
-
+        let metadata_store = Self::store(db, METADATA, IdbTransactionMode::Readwrite)?;
         let metadata_request = metadata_store
             .delete(&JsValue::from_str(file_id))
-            .map_err(|e| {
-                WebError::from(StorageError::MetadataDeleteFailed {
-                    js_error: format!("{e:?}"),
-                })
-            })?;
-
-        // Create a promise wrapper for the request
-        let promise = Promise::new(&mut |resolve, reject| {
-            let success_closure = Closure::once(move |_event: web_sys::Event| {
-                resolve
-                    .call1(&JsValue::undefined(), &JsValue::undefined())
-                    .unwrap();
-            });
-
-            let error_closure = Closure::once(move |_event: web_sys::Event| {
-                reject
-                    .call1(
-                        &JsValue::undefined(),
-                        &JsValue::from_str("Failed to delete metadata"),
-                    )
-                    .unwrap();
-            });
-
-            metadata_request.set_onsuccess(Some(success_closure.as_ref().unchecked_ref()));
-            metadata_request.set_onerror(Some(error_closure.as_ref().unchecked_ref()));
-
-            success_closure.forget();
-            error_closure.forget();
-        });
-
-        JsFuture::from(promise).await.map_err(|e| {
-            WebError::from(StorageError::MetadataDeletionFailed {
+            .map_err(|e| StorageError::MetadataDeleteFailed {
                 js_error: format_js_error(e),
-            })
-        })?;
-
+            })?;
+        idb::settle(&metadata_request, "delete upload details").await?;
         Ok(())
     }
 
     /// Load all metadata from `IndexedDB`
     async fn load_metadata_internal(db: &IdbDatabase) -> WebResult<HashMap<String, FileMetadata>> {
-        let transaction = db.transaction_with_str("metadata").map_err(|_| {
-            WebError::from(StorageError::TransactionCreationFailed {
-                js_error: "Transaction creation failed".to_owned(),
-            })
-        })?;
-
-        let object_store = transaction.object_store("metadata").map_err(|_| {
-            WebError::from(StorageError::ObjectStoreAccessFailed {
-                js_error: "Command send failed".to_owned(),
-            })
-        })?;
-
-        let request = object_store.get_all().map_err(|e| {
-            WebError::from(StorageError::GetAllRequestFailed {
+        let object_store = Self::store(db, METADATA, IdbTransactionMode::Readonly)?;
+        let request = object_store
+            .get_all()
+            .map_err(|e| StorageError::GetAllRequestFailed {
                 js_error: format_js_error(e),
-            })
-        })?;
-
-        // Create a promise wrapper for the request
-        let promise = Promise::new(&mut |resolve, reject| {
-            let success_closure = Closure::once(move |event: web_sys::Event| {
-                let target = event.target().unwrap();
-                let request: web_sys::IdbRequest = target.dyn_into().unwrap();
-                resolve
-                    .call1(&JsValue::undefined(), &request.result().unwrap())
-                    .unwrap();
-            });
-
-            let error_closure = Closure::once(move |_event: web_sys::Event| {
-                reject
-                    .call1(
-                        &JsValue::undefined(),
-                        &JsValue::from_str("Failed to get all metadata"),
-                    )
-                    .unwrap();
-            });
-
-            request.set_onsuccess(Some(success_closure.as_ref().unchecked_ref()));
-            request.set_onerror(Some(error_closure.as_ref().unchecked_ref()));
-
-            success_closure.forget();
-            error_closure.forget();
-        });
-
-        let result = JsFuture::from(promise).await.map_err(|e| {
-            WebError::from(StorageError::GetAllOperationFailed {
-                js_error: format_js_error(e),
-            })
-        })?;
-
+            })?;
+        let result = idb::settle(&request, "read upload details").await?;
         let array: Array = result
             .dyn_into()
-            .map_err(|_| WebError::from(StorageError::ArrayFormatInvalid))?;
+            .map_err(|_| StorageError::ArrayFormatInvalid)?;
 
         let mut metadata_map = HashMap::new();
-
-        for i in 0..array.length() {
-            let item = array.get(i);
-            if let Ok(metadata) = serde_wasm_bindgen::from_value::<FileMetadata>(item) {
-                metadata_map.insert(metadata.id.clone(), metadata);
+        for item in array.iter() {
+            match serde_wasm_bindgen::from_value::<FileMetadata>(item) {
+                Ok(metadata) => {
+                    metadata_map.insert(metadata.id.clone(), metadata);
+                }
+                Err(error) => tracing::warn!("Skipped unreadable upload details: {error}"),
             }
         }
-
         Ok(metadata_map)
     }
 }

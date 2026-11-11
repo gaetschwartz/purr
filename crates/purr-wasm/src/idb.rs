@@ -194,8 +194,12 @@ pub async fn settle(request: &IdbRequest, action: &'static str) -> WebResult<JsV
     };
     request.set_onsuccess(Some(on_success.as_ref().unchecked_ref()));
     request.set_onerror(Some(on_failure.as_ref().unchecked_ref()));
-    rx.await
-        .map_err(|e| WebError::indexeddb(action, JsValue::from_str(&e.to_string())))?
+    let outcome = rx
+        .await
+        .map_err(|e| WebError::indexeddb(action, JsValue::from_str(&e.to_string())))?;
+    request.set_onsuccess(None);
+    request.set_onerror(None);
+    outcome
 }
 
 /// Waits until `transaction` is committed.
@@ -233,6 +237,11 @@ pub async fn committed(transaction: &IdbTransaction, action: &'static str) -> We
     transaction.set_oncomplete(Some(on_complete.as_ref().unchecked_ref()));
     transaction.set_onabort(Some(on_abort.as_ref().unchecked_ref()));
     transaction.set_onerror(Some(on_abort.as_ref().unchecked_ref()));
-    rx.await
-        .map_err(|e| WebError::indexeddb(action, JsValue::from_str(&e.to_string())))?
+    let outcome = rx
+        .await
+        .map_err(|e| WebError::indexeddb(action, JsValue::from_str(&e.to_string())))?;
+    transaction.set_oncomplete(None);
+    transaction.set_onabort(None);
+    transaction.set_onerror(None);
+    outcome
 }
