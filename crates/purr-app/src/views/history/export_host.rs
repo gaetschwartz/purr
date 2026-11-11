@@ -2,7 +2,7 @@ use crate::{
     components::{button::Button, export_menu::ExportSheet, sheet::Sheet},
     history::export_source::export_source,
     platform::{self, Platform as _, PlatformError},
-    transcribe::export_format::ExportFormat,
+    settings_store::use_settings,
 };
 use dioxus::prelude::*;
 use purr_common::history::entry::{HistoryId, HistoryRecord};
@@ -18,7 +18,8 @@ fn describe(error: &PlatformError) -> String {
 /// Loads a saved transcription and opens the export sheet on it; nothing is re-run.
 #[component]
 pub fn ExportHost(id: HistoryId, on_close: EventHandler<()>) -> Element {
-    let mut format = use_signal(|| ExportFormat::Txt);
+    let settings = use_settings();
+    let mut format = use_signal(|| settings.peek().ui.export_format);
     let record = use_resource(move || {
         let id = id.clone();
         async move {

@@ -3,17 +3,15 @@
 pub enum SettingsSection {
     Appearance,
     Transcription,
-    Audio,
     Performance,
     Logging,
     About,
 }
 
 impl SettingsSection {
-    const ALL: [Self; 6] = [
+    const ALL: [Self; 5] = [
         Self::Appearance,
         Self::Transcription,
-        Self::Audio,
         Self::Performance,
         Self::Logging,
         Self::About,
@@ -30,7 +28,7 @@ impl SettingsSection {
 
     const fn desktop_only(self) -> bool {
         match self {
-            Self::Audio | Self::Performance => true,
+            Self::Performance => true,
             Self::Appearance | Self::Transcription | Self::Logging | Self::About => false,
         }
     }
@@ -41,7 +39,6 @@ impl SettingsSection {
         match self {
             Self::Appearance => "Appearance",
             Self::Transcription => "Transcription",
-            Self::Audio => "Audio",
             Self::Performance => "Performance",
             Self::Logging => "Logging",
             Self::About => "About",
@@ -54,7 +51,6 @@ impl SettingsSection {
         match self {
             Self::Appearance => "s-appearance",
             Self::Transcription => "s-transcription",
-            Self::Audio => "s-audio",
             Self::Performance => "s-performance",
             Self::Logging => "s-logging",
             Self::About => "s-about",
@@ -64,26 +60,19 @@ impl SettingsSection {
 
 #[cfg(test)]
 mod tests {
-    use super::SettingsSection::{About, Appearance, Audio, Logging, Performance, Transcription};
+    use super::SettingsSection::{About, Appearance, Logging, Performance, Transcription};
     use super::*;
 
     #[test]
     fn the_desktop_shows_every_section_in_page_order() {
         assert_eq!(
             SettingsSection::visible(false),
-            [
-                Appearance,
-                Transcription,
-                Audio,
-                Performance,
-                Logging,
-                About
-            ]
+            [Appearance, Transcription, Performance, Logging, About]
         );
     }
 
     #[test]
-    fn the_browser_leaves_out_audio_and_performance() {
+    fn the_browser_leaves_out_performance() {
         assert_eq!(
             SettingsSection::visible(true),
             [Appearance, Transcription, Logging, About]

@@ -2,14 +2,13 @@
 
 mod about;
 mod appearance;
-mod audio;
 mod browser_panel;
 mod changes;
 mod logging;
 mod performance;
 mod saved_tick;
 mod section_nav;
-mod sections;
+pub mod sections;
 mod system_list;
 mod system_panel;
 mod system_rows;
@@ -28,7 +27,6 @@ use crate::{
 };
 use about::AboutSection;
 use appearance::AppearanceSection;
-use audio::AudioSection;
 use dioxus::prelude::*;
 use logging::LoggingSection;
 use performance::PerformanceSection;
@@ -68,14 +66,13 @@ pub fn Settings() -> Element {
                     tone: BannerTone::Info,
                     icon: IconName::Window,
                     title: "You're using Purr in the browser",
-                    "The browser manages audio decoding and the GPU, so audio, performance and log file settings live only in the desktop app."
+                    "The browser manages audio decoding and the GPU, so the performance and decoding settings live only in the desktop app."
                 }
             }
             div { class: "settings",
                 AppearanceSection {}
                 TranscriptionSection {}
                 if !IS_WEB {
-                    AudioSection {}
                     PerformanceSection {}
                 }
                 LoggingSection {}
@@ -89,7 +86,7 @@ pub fn Settings() -> Element {
                 tone: DialogTone::Destructive,
                 on_confirm: reset_settings,
                 on_cancel: move |()| reset_open.set(false),
-                "Theme, language, model choice, performance and logging go back to their defaults. Downloaded models and your history stay."
+                "Theme, language, model choice, export format, performance and logging go back to their defaults. Downloaded models and your history stay."
             }
         }
     }

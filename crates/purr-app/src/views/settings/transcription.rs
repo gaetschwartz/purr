@@ -5,8 +5,8 @@ use crate::{
         icon::IconName,
         language_picker::LanguagePill,
         model_picker::ModelPill,
+        segmented::{Segment, Segmented},
         slider::Slider,
-        stepper::Stepper,
         switch::Switch,
         toast::use_toasts,
     },
@@ -14,17 +14,18 @@ use crate::{
     settings_store::use_settings,
 };
 use dioxus::prelude::*;
+use purr_common::export_format::ExportFormat;
 
-/// Spoken language, model, translation and decoding options.
+/// Spoken language, model, translation, decoding and export options.
 #[component]
 pub fn TranscriptionSection() -> Element {
     let settings = use_settings();
     let toasts = use_toasts();
-    let (translate, temperature, max_tokens) = settings.with(|settings| {
+    let (translate, temperature, export_format) = settings.with(|settings| {
         (
             settings.model.translate,
             settings.model.temperature,
-            settings.model.max_tokens,
+            settings.ui.export_format,
         )
     });
     let temperature_text = format!("{temperature:.1}");
@@ -65,6 +66,24 @@ pub fn TranscriptionSection() -> Element {
                         }
                     },
                 }
+                Item {
+                    icon: IconName::Share,
+                    tile: TileColor::Teal,
+                    title: "Export format",
+                    subtitle: "The format Export offers first.",
+                    stackable: true,
+                    control: rsx! {
+                        Segmented {
+                            label: "Export format",
+                            value: export_format,
+                            segments: ExportFormat::ALL
+                                .into_iter()
+                                .map(|format| Segment::new(format, format.short_name()))
+                                .collect::<Vec<_>>(),
+                            onchange: move |format| report(toasts, settings.update(|s| s.ui.export_format = format)),
+                        }
+                    },
+                }
                 if !IS_WEB {
                     Item {
                         icon: IconName::Thermometer,
@@ -82,22 +101,6 @@ pub fn TranscriptionSection() -> Element {
                             ends: ("0".to_owned(), "1".to_owned()),
                             onchange: move |value| report(toasts, settings.update(|s| s.model.temperature = value)),
                         }
-                    }
-                    Item {
-                        icon: IconName::Hash,
-                        tile: TileColor::Gray,
-                        title: "Maximum tokens",
-                        subtitle: "Maximum number of tokens to generate.",
-                        control: rsx! {
-                            Stepper {
-                                label: "Maximum tokens",
-                                value: max_tokens,
-                                min: 256,
-                                max: 8192,
-                                step: 256,
-                                onchange: move |value| report(toasts, settings.update(|s| s.model.max_tokens = value)),
-                            }
-                        },
                     }
                 }
             }

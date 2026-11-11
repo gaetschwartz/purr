@@ -102,12 +102,12 @@ mod tests {
     #[test]
     fn invalid_stored_values_are_a_failure() {
         let mut stored = Settings::default();
-        stored.performance.max_concurrent_jobs = 0;
+        stored.performance.threads = Some(0);
         assert_eq!(
             accept_loaded(Ok(stored)),
-            Err(LoadFailure::Invalid(vec![
-                SettingsError::InvalidConcurrentJobs { value: 0 }
-            ]))
+            Err(LoadFailure::Invalid(vec![SettingsError::InvalidThreads {
+                value: 0
+            }]))
         );
     }
 
@@ -118,7 +118,10 @@ mod tests {
             apply_change(&current, |settings| settings.model.model_name.clear()),
             Err(UpdateError::Invalid(vec![SettingsError::EmptyModelName]))
         );
-        let changed = apply_change(&current, |settings| settings.model.max_tokens = 512);
-        assert_eq!(changed.map(|settings| settings.model.max_tokens), Ok(512));
+        let changed = apply_change(&current, |settings| settings.performance.threads = Some(4));
+        assert_eq!(
+            changed.map(|settings| settings.performance.threads),
+            Ok(Some(4))
+        );
     }
 }

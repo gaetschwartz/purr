@@ -1,80 +1,13 @@
 //! The transcript as plain text, SubRip, WebVTT or JSON.
 
 use crate::utils::file_kind::file_stem;
-use purr_common::platform::TranscriptSegment;
+use purr_common::{export_format::ExportFormat, platform::TranscriptSegment};
 use serde::Serialize;
 
-/// A file format the transcript can be exported in.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum ExportFormat {
-    Txt,
-    Srt,
-    Vtt,
-    Json,
-}
-
-impl ExportFormat {
-    /// Every format, in menu order.
-    pub const ALL: [Self; 4] = [Self::Txt, Self::Srt, Self::Vtt, Self::Json];
-
-    /// What the format is, in plain words.
-    #[must_use]
-    pub const fn label(self) -> &'static str {
-        match self {
-            Self::Txt => "Plain text",
-            Self::Srt => "Subtitles",
-            Self::Vtt => "Web subtitles",
-            Self::Json => "Data",
-        }
-    }
-
-    /// The short name shown next to the label.
-    #[must_use]
-    pub const fn short_name(self) -> &'static str {
-        match self {
-            Self::Txt => "TXT",
-            Self::Srt => "SRT",
-            Self::Vtt => "VTT",
-            Self::Json => "JSON",
-        }
-    }
-
-    /// One sentence on when to pick it.
-    #[must_use]
-    pub const fn description(self) -> &'static str {
-        match self {
-            Self::Txt => "Plain text, one line per segment.",
-            Self::Srt => "Subtitles for video players and editors.",
-            Self::Vtt => "Subtitles for web video.",
-            Self::Json => "Segments with start and end times, for scripts and other apps.",
-        }
-    }
-
-    #[must_use]
-    pub const fn extension(self) -> &'static str {
-        match self {
-            Self::Txt => "txt",
-            Self::Srt => "srt",
-            Self::Vtt => "vtt",
-            Self::Json => "json",
-        }
-    }
-
-    #[must_use]
-    pub const fn content_type(self) -> &'static str {
-        match self {
-            Self::Txt => "text/plain;charset=utf-8",
-            Self::Srt => "application/x-subrip;charset=utf-8",
-            Self::Vtt => "text/vtt;charset=utf-8",
-            Self::Json => "application/json;charset=utf-8",
-        }
-    }
-
-    /// The name to save the export of `audio_file_name` under.
-    #[must_use]
-    pub fn file_name(self, audio_file_name: &str) -> String {
-        format!("{}.{}", file_stem(audio_file_name), self.extension())
-    }
+/// The name to save the export of `audio_file_name` under.
+#[must_use]
+pub fn export_file_name(format: ExportFormat, audio_file_name: &str) -> String {
+    format!("{}.{}", file_stem(audio_file_name), format.extension())
 }
 
 /// What an export describes besides the segments.
@@ -281,9 +214,12 @@ mod tests {
     #[test]
     fn export_names_replace_the_audio_extension() {
         assert_eq!(
-            ExportFormat::Vtt.file_name("WhatsApp Ptt 2026.ogg"),
+            export_file_name(ExportFormat::Vtt, "WhatsApp Ptt 2026.ogg"),
             "WhatsApp Ptt 2026.vtt"
         );
-        assert_eq!(ExportFormat::Json.file_name(".ogg"), "transcript.json");
+        assert_eq!(
+            export_file_name(ExportFormat::Json, ".ogg"),
+            "transcript.json"
+        );
     }
 }

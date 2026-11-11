@@ -19,7 +19,7 @@ use purr_common::{accel::AccelSelection, platform::Platform as _};
 
 const THREAD_LIMIT_WITHOUT_PROBE: u32 = 64;
 
-/// Acceleration, the backend, threads and concurrency; desktop only.
+/// Acceleration, the backend and threads; desktop only.
 #[component]
 pub fn PerformanceSection() -> Element {
     let settings = use_settings();
@@ -30,15 +30,13 @@ pub fn PerformanceSection() -> Element {
             .await
             .map_err(|error| error.to_string())
     });
-    let (gpu, backend, fallback, threads, concurrent, jobs) = settings.with(|settings| {
+    let (gpu, backend, fallback, threads) = settings.with(|settings| {
         let performance = &settings.performance;
         (
             performance.gpu_acceleration,
             performance.accel_backend,
             performance.accel_fallback,
             performance.threads,
-            performance.concurrent_processing,
-            performance.max_concurrent_jobs,
         )
     });
     let probed = (*system.read()).clone();
@@ -126,35 +124,6 @@ pub fn PerformanceSection() -> Element {
                             },
                         }
                     },
-                }
-                Item {
-                    icon: IconName::Stack,
-                    tile: TileColor::Purple,
-                    title: "Process files concurrently",
-                    subtitle: "Run more than one transcription at a time. Uses more memory.",
-                    control: rsx! {
-                        Switch {
-                            label: "Process files concurrently",
-                            checked: concurrent,
-                            onchange: move |value| report(toasts, settings.update(|s| s.performance.concurrent_processing = value)),
-                        }
-                    },
-                }
-                if concurrent {
-                    Item {
-                        icon: IconName::Hash,
-                        tile: TileColor::Purple,
-                        title: "Maximum concurrent jobs",
-                        control: rsx! {
-                            Stepper {
-                                label: "Maximum concurrent jobs",
-                                value: jobs,
-                                min: 1,
-                                max: 8,
-                                onchange: move |value| report(toasts, settings.update(|s| s.performance.max_concurrent_jobs = value)),
-                            }
-                        },
-                    }
                 }
             }
         }

@@ -1,5 +1,6 @@
 pub mod accel;
 pub mod audio_overview;
+pub mod export_format;
 pub mod history;
 pub mod platform;
 pub mod settings;
