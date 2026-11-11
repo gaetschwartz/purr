@@ -11,6 +11,9 @@ pub mod export;
 /// Logging infrastructure
 pub mod logging;
 
+/// Text, JSON and CSV files made of captured logs
+pub mod log_export;
+
 /// Re-export the appropriate platform implementation
 #[cfg(feature = "desktop")]
 #[path = "desktop.rs"]

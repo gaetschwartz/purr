@@ -4,7 +4,7 @@ use super::{
     toast::use_toasts,
 };
 use crate::{
-    platform::export::{TextFile, copy_to_clipboard, save_text_file},
+    platform::export::{SaveOutcome, TextFile, copy_to_clipboard, save_text_file},
     transcript::{Transcript, clock_time},
 };
 use dioxus::prelude::*;
@@ -41,9 +41,14 @@ pub fn TranscriptPanel(transcript: Transcript, complete: bool, file_stem: String
                 })
                 .await;
                 match saved {
-                    Ok(()) => toasts.success("Text file saved", file_name),
-                    Err(error) => toasts.error("Couldn't save the text file", error.to_string()),
-                };
+                    Ok(SaveOutcome::Saved) => {
+                        toasts.success("Text file saved", file_name);
+                    }
+                    Ok(SaveOutcome::Cancelled) => {}
+                    Err(error) => {
+                        toasts.error("Couldn't save the text file", error.to_string());
+                    }
+                }
             });
         }
     };
@@ -60,9 +65,14 @@ pub fn TranscriptPanel(transcript: Transcript, complete: bool, file_stem: String
                 })
                 .await;
                 match saved {
-                    Ok(()) => toasts.success("Subtitles saved", file_name),
-                    Err(error) => toasts.error("Couldn't save the subtitles", error.to_string()),
-                };
+                    Ok(SaveOutcome::Saved) => {
+                        toasts.success("Subtitles saved", file_name);
+                    }
+                    Ok(SaveOutcome::Cancelled) => {}
+                    Err(error) => {
+                        toasts.error("Couldn't save the subtitles", error.to_string());
+                    }
+                }
             });
         }
     };

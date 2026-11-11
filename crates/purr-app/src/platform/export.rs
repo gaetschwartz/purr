@@ -9,9 +9,16 @@ pub struct TextFile<'a> {
     pub content: &'a str,
 }
 
+/// What became of a save request.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SaveOutcome {
+    Saved,
+    Cancelled,
+}
+
 /// Saves the file through the browser's download mechanism.
 #[cfg(purr_web)]
-pub async fn save_text_file(file: TextFile<'_>) -> miette::Result<()> {
+pub async fn save_text_file(file: TextFile<'_>) -> miette::Result<SaveOutcome> {
     use miette::miette;
     use wasm_bindgen::JsCast as _;
     use web_sys::{Blob, BlobPropertyBag, HtmlElement, Url};
@@ -46,12 +53,12 @@ pub async fn save_text_file(file: TextFile<'_>) -> miette::Result<()> {
             tracing::warn!("Could not release the download: {error:?}");
         }
     });
-    Ok(())
+    Ok(SaveOutcome::Saved)
 }
 
-/// Asks where to save the file and writes it there.
+/// Asks where to save the file and writes it there; closing the dialog cancels.
 #[cfg(all(feature = "desktop", not(purr_web)))]
-pub async fn save_text_file(file: TextFile<'_>) -> miette::Result<()> {
+pub async fn save_text_file(file: TextFile<'_>) -> miette::Result<SaveOutcome> {
     use miette::IntoDiagnostic as _;
 
     let Some(handle) = rfd::AsyncFileDialog::new()
@@ -59,18 +66,18 @@ pub async fn save_text_file(file: TextFile<'_>) -> miette::Result<()> {
         .save_file()
         .await
     else {
-        return Ok(());
+        return Ok(SaveOutcome::Cancelled);
     };
     tokio::fs::write(handle.path(), file.content)
         .await
         .into_diagnostic()?;
     tracing::info!("File saved to: {}", handle.path().display());
-    Ok(())
+    Ok(SaveOutcome::Saved)
 }
 
 /// Saving files is not available without a desktop or web platform.
 #[cfg(not(any(purr_web, feature = "desktop")))]
-pub async fn save_text_file(_file: TextFile<'_>) -> miette::Result<()> {
+pub async fn save_text_file(_file: TextFile<'_>) -> miette::Result<SaveOutcome> {
     Err(miette::miette!(
         "Saving files is not supported on this platform"
     ))
