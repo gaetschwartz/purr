@@ -220,6 +220,39 @@ async fn run_preload(
         return;
     }
 
+    let verified_first = match model_cache::is_installed(&spec).await {
+        Ok(true) => {
+            if tx
+                .send(Ok(ModelOperationProgress::Installing {
+                    model_id: model_id.clone(),
+                }))
+                .is_err()
+            {
+                return;
+            }
+            if let Err(error) = model_cache::verify(&spec).await {
+                if tx
+                    .send(Ok(fail("verification", error.to_string())))
+                    .is_err()
+                {
+                    tracing::warn!("Verification of {model_id} failed after its listener left");
+                }
+                return;
+            }
+            true
+        }
+        Ok(false) => false,
+        Err(error) => {
+            if tx
+                .send(Ok(fail("verification", error.to_string())))
+                .is_err()
+            {
+                tracing::warn!("Checking {model_id} failed after its listener left");
+            }
+            return;
+        }
+    };
+
     let request = WorkerRequest::LoadModel {
         request_id: worker.next_request_id(),
         model: WorkerModel::from(&spec),
@@ -248,13 +281,19 @@ async fn run_preload(
                     PreloadStep::Ignored => continue,
                     PreloadStep::Failed(message) => Ok(fail("download", message)),
                     PreloadStep::Loaded => {
-                        if tx
-                            .send(Ok(ModelOperationProgress::Installing { model_id: model_id.clone() }))
-                            .is_err()
+                        if !verified_first
+                            && tx
+                                .send(Ok(ModelOperationProgress::Installing { model_id: model_id.clone() }))
+                                .is_err()
                         {
                             return;
                         }
-                        match model_cache::verify(&spec).await {
+                        let verified = if verified_first {
+                            Ok(())
+                        } else {
+                            model_cache::verify(&spec).await
+                        };
+                        match verified {
                             Ok(()) => Ok(ModelOperationProgress::Completed {
                                 model_id: model_id.clone(),
                                 local_path: PathBuf::from(model_cache::location(&spec)),

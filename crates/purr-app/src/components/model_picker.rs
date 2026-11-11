@@ -52,6 +52,7 @@ pub fn ModelPicker(
     let mut download = use_signal(|| DownloadState::Idle);
     let mut task = use_signal(|| None::<dioxus::core::Task>);
     let mut remove_error = use_signal(|| None::<String>);
+    let mut verified = use_signal(|| false);
     let gpu = models.gpu.read().clone();
 
     let list = models.models.read().clone();
@@ -97,6 +98,7 @@ pub fn ModelPicker(
         move |_| {
             let id = id.clone();
             download.set(DownloadState::Starting);
+            verified.set(false);
             let handle = spawn(async move {
                 match platform::get_platform().fetch_model(&id).await {
                     Ok(mut stream) => {
@@ -117,6 +119,7 @@ pub fn ModelPicker(
                                     download.set(DownloadState::Verifying);
                                 }
                                 Ok(ModelOperationProgress::Completed { .. }) => {
+                                    verified.set(true);
                                     download.set(DownloadState::Idle);
                                     models.refresh();
                                     break;
@@ -186,6 +189,12 @@ pub fn ModelPicker(
                                 Button {
                                     variant: ButtonVariant::Secondary,
                                     size: ButtonSize::Small,
+                                    onclick: download_model.clone(),
+                                    "Verify files"
+                                }
+                                Button {
+                                    variant: ButtonVariant::Secondary,
+                                    size: ButtonSize::Small,
                                     onclick: remove_model,
                                     "Remove download"
                                 }
@@ -202,7 +211,7 @@ pub fn ModelPicker(
                         }
                     },
                     DownloadState::Starting => rsx! {
-                        p { class: "text-sm text-gray-600 dark:text-gray-300", role: "status", "Starting the download..." }
+                        p { class: "text-sm text-gray-600 dark:text-gray-300", role: "status", "Starting..." }
                     },
                     DownloadState::Downloading { loaded, total, speed_bps } => {
                         let total = total.unwrap_or(model.size_bytes).max(1);
@@ -232,7 +241,12 @@ pub fn ModelPicker(
                 }
 
                 if let DownloadState::Failed(message) = download.read().clone() {
-                    p { class: "text-sm text-red-600 dark:text-red-400", role: "alert", "Download failed: {message}" }
+                    p { class: "text-sm text-red-600 dark:text-red-400", role: "alert", "The model could not be installed: {message}" }
+                }
+                if verified() && model.is_installed {
+                    p { class: "text-sm text-green-700 dark:text-green-400", role: "status",
+                        "All files match their published checksums."
+                    }
                 }
                 if let Some(message) = remove_error() {
                     p { class: "text-sm text-red-600 dark:text-red-400", role: "alert", "Could not remove the model: {message}" }

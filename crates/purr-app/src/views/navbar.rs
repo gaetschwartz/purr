@@ -18,42 +18,46 @@ pub fn Navbar() -> Element {
     let route: Route = use_route();
 
     rsx! {
-        // Navigation header
-        nav { class: "navbar",
-            div { class: "max-w-7xl mx-auto px-4 sm:px-6 lg:px-8",
-                div { class: "flex justify-between items-center h-16",
-                    if *state.show_back.read() {
-                        // Back button
-                        Link {
-                            to: route.parent().unwrap_or(Route::Home {}),
-                            class: "p-2 rounded-lg text-gray-600 dark:text-gray-300 hover:text-teal-600 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors",
-                            title: "Back",
-                            aria_label: "Back",
-                            onclick: move |_| {
-                                tracing::info!("Navigating back to Home page");
-                            },
-                            Icon { icon_type: IconType::BackArrow }
+        div {
+            ondragover: move |event| event.prevent_default(),
+            ondrop: move |event| event.prevent_default(),
+            // Navigation header
+            nav { class: "navbar",
+                div { class: "max-w-7xl mx-auto px-4 sm:px-6 lg:px-8",
+                    div { class: "flex justify-between items-center h-16",
+                        if *state.show_back.read() {
+                            // Back button
+                            Link {
+                                to: route.parent().unwrap_or(Route::Home {}),
+                                class: "p-2 rounded-lg text-gray-600 dark:text-gray-300 hover:text-teal-600 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors",
+                                title: "Back",
+                                aria_label: "Back",
+                                onclick: move |_| {
+                                    tracing::info!("Navigating back to Home page");
+                                },
+                                Icon { icon_type: IconType::BackArrow }
+                            }
+                        } else {
+                            div { class: "w-10" } // Placeholder to keep title centered
                         }
-                    } else {
-                        div { class: "w-10" } // Placeholder to keep title centered
-                    }
-                    // Logo
-                    div { class: "flex-shrink-0 flex items-center",
-                        Link {
-                            to: Route::Home {},
-                            class: "flex items-center space-x-2 text-xl font-bold text-gray-900 dark:text-gray-100 hover:text-teal-600 transition-colors",
-                            Icon { icon_type: IconType::Logo }
-                            span { "{title}" }
+                        // Logo
+                        div { class: "flex-shrink-0 flex items-center",
+                            Link {
+                                to: Route::Home {},
+                                class: "flex items-center space-x-2 text-xl font-bold text-gray-900 dark:text-gray-100 hover:text-teal-600 transition-colors",
+                                Icon { icon_type: IconType::Logo }
+                                span { "{title}" }
+                            }
                         }
-                    }
 
-                    // Navigation Icons
-                    div { class: "flex items-center space-x-4", {state.top_right} }
+                        // Navigation Icons
+                        div { class: "flex items-center space-x-4", {state.top_right} }
+                    }
                 }
             }
-        }
 
-        div { class: "pt-16", Outlet::<Route> {} }
+            div { class: "pt-16", Outlet::<Route> {} }
+        }
     }
 }
 

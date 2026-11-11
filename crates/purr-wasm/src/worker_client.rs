@@ -17,7 +17,7 @@ use tokio::sync::mpsc;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::{JsCast as _, JsValue};
 use wasm_bindgen_futures::spawn_local;
-use web_sys::{ErrorEvent, MessageEvent, Worker, WorkerOptions, WorkerType};
+use web_sys::{MessageEvent, Worker, WorkerOptions, WorkerType};
 
 enum WorkerSignal {
     Event(WorkerEvent),
@@ -126,10 +126,32 @@ impl Drop for RequestEvents {
     }
 }
 
+/// Describes a worker `error` event. Script load failures arrive as plain events without a message.
+fn describe_error_event(event: &JsValue, script: &str) -> String {
+    let read = |key: &str| Reflect::get(event, &JsValue::from_str(key)).ok();
+    match read("message")
+        .and_then(|value| value.as_string())
+        .filter(|message| !message.is_empty())
+    {
+        Some(message) => {
+            let file = read("filename")
+                .and_then(|value| value.as_string())
+                .unwrap_or_default();
+            let line = read("lineno")
+                .and_then(|value| value.as_f64())
+                .unwrap_or_default();
+            format!("{message} ({file}:{line})")
+        }
+        None => format!(
+            "the worker script {script} could not be loaded or crashed; check your connection and reload the page"
+        ),
+    }
+}
+
 struct LiveWorker {
     worker: Worker,
     _on_message: Closure<dyn FnMut(MessageEvent)>,
-    _on_error: Closure<dyn FnMut(ErrorEvent)>,
+    _on_error: Closure<dyn FnMut(JsValue)>,
     _on_message_error: Closure<dyn FnMut(MessageEvent)>,
 }
 
@@ -179,13 +201,8 @@ impl LiveWorker {
 
         let sender = input.clone();
         let script = url.to_owned();
-        let on_error = Closure::<dyn FnMut(ErrorEvent)>::new(move |event: ErrorEvent| {
-            let message = event.message();
-            let detail = if message.is_empty() {
-                format!("the worker script {script} failed to load or run")
-            } else {
-                format!("{message} ({}:{})", event.filename(), event.lineno())
-            };
+        let on_error = Closure::<dyn FnMut(JsValue)>::new(move |event: JsValue| {
+            let detail = describe_error_event(&event, &script);
             if sender
                 .send(Input::FromWorker(WorkerSignal::Crashed(detail)))
                 .is_err()

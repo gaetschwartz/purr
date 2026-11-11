@@ -48,7 +48,7 @@ pub fn Card(props: CardProps) -> Element {
         }
     };
 
-    let padding_classes = if props.padding { "p-8" } else { "" };
+    let padding_classes = if props.padding { "p-4 sm:p-8" } else { "" };
 
     let full_classes = format!(
         "{} {} {} {}",

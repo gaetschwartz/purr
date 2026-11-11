@@ -122,9 +122,29 @@ async fn run_transcription(
         Ok(stream) => stream,
         Err(e) => {
             error!("Failed to start transcription: {e}");
+            let error_message = match &e {
+                platform::PlatformError::ModelNotFound { model_id } => format!(
+                    "The selected model \"{model_id}\" is not available in this app. Choose another one in Settings."
+                ),
+                platform::PlatformError::FileProcessing { .. }
+                | platform::PlatformError::Transcription { .. }
+                | platform::PlatformError::AudioProcessing { .. }
+                | platform::PlatformError::Initialization { .. }
+                | platform::PlatformError::Io { .. }
+                | platform::PlatformError::Unsupported { .. }
+                | platform::PlatformError::ModelManagement { .. }
+                | platform::PlatformError::ModelDownloadFailed { .. }
+                | platform::PlatformError::ModelInstallationFailed { .. }
+                | platform::PlatformError::InvalidModelMetadata { .. }
+                | platform::PlatformError::ModelVerificationFailed { .. }
+                | platform::PlatformError::StorageQuotaExceeded { .. }
+                | platform::PlatformError::DeviceDetection { .. }
+                | platform::PlatformError::SettingsPersistence { .. }
+                | platform::PlatformError::UnsupportedPlatform(_) => e.to_string(),
+            };
             status.set(Some(TranscriptionStatus::Error {
                 context: "Transcription".to_owned(),
-                error_message: e.to_string(),
+                error_message,
             }));
             return;
         }
