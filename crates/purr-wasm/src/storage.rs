@@ -12,7 +12,7 @@ use tokio::sync::{RwLock, oneshot};
 use uuid::Uuid;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::spawn_local;
-use web_sys::{IdbDatabase, IdbObjectStore, IdbTransactionMode};
+use web_sys::{IdbDatabase, IdbObjectStore, IdbTransaction, IdbTransactionMode};
 
 /// File metadata
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -179,9 +179,9 @@ impl WebStorage {
             response: response_tx,
         };
 
-        self.command_sender.send(command).map_err(|_| {
+        self.command_sender.send(command).map_err(|error| {
             WebError::from(StorageError::ObjectStoreAccessFailed {
-                js_error: "Command send failed".to_owned(),
+                js_error: format!("the storage task has stopped: {error}"),
             })
         })?;
 
@@ -212,9 +212,9 @@ impl WebStorage {
             response: response_tx,
         };
 
-        self.command_sender.send(command).map_err(|_| {
+        self.command_sender.send(command).map_err(|error| {
             WebError::from(StorageError::ObjectStoreAccessFailed {
-                js_error: "Command send failed".to_owned(),
+                js_error: format!("the storage task has stopped: {error}"),
             })
         })?;
 
@@ -243,9 +243,9 @@ impl WebStorage {
             response: response_tx,
         };
 
-        self.command_sender.send(command).map_err(|_| {
+        self.command_sender.send(command).map_err(|error| {
             WebError::from(StorageError::ObjectStoreAccessFailed {
-                js_error: "Command send failed".to_owned(),
+                js_error: format!("the storage task has stopped: {error}"),
             })
         })?;
 
@@ -291,9 +291,9 @@ impl WebStorage {
             response: response_tx,
         };
 
-        self.command_sender.send(command).map_err(|_| {
+        self.command_sender.send(command).map_err(|error| {
             WebError::from(StorageError::ObjectStoreAccessFailed {
-                js_error: "Command send failed".to_owned(),
+                js_error: format!("the storage task has stopped: {error}"),
             })
         })?;
 
@@ -317,9 +317,9 @@ impl WebStorage {
             response: response_tx,
         };
 
-        self.command_sender.send(command).map_err(|_| {
+        self.command_sender.send(command).map_err(|error| {
             WebError::from(StorageError::ObjectStoreAccessFailed {
-                js_error: "Command send failed".to_owned(),
+                js_error: format!("the storage task has stopped: {error}"),
             })
         })?;
 
@@ -344,40 +344,41 @@ impl WebStorage {
         crate::idb::connect().await
     }
 
-    /// Store file data and metadata in `IndexedDB`
+    /// Store file data and metadata in `IndexedDB`, in one transaction
     async fn store_file_internal(
         db: &IdbDatabase,
         file_id: &str,
         data: &[u8],
         metadata: &FileMetadata,
     ) -> WebResult<()> {
-        let files_store = Self::store(db, FILES, IdbTransactionMode::Readwrite)?;
+        let transaction = Self::writable(db)?;
+        let key = JsValue::from_str(file_id);
         let array = Uint8Array::from(data);
-        let file_request = files_store
-            .put_with_key(&array.into(), &JsValue::from_str(file_id))
+        Self::object_store(&transaction, FILES)?
+            .put_with_key(&array.into(), &key)
             .map_err(|e| StorageError::FileStoreFailed {
                 js_error: format_js_error(e),
             })?;
-        idb::settle(&file_request, "store upload").await?;
-
-        let metadata_store = Self::store(db, METADATA, IdbTransactionMode::Readwrite)?;
         let serialized = serde_wasm_bindgen::to_value(metadata)
             .map_err(|_e| StorageError::MetadataSerializationFailed)?;
-        let metadata_request = metadata_store
-            .put_with_key(&serialized, &JsValue::from_str(file_id))
+        Self::object_store(&transaction, METADATA)?
+            .put_with_key(&serialized, &key)
             .map_err(|e| StorageError::MetadataStoreFailed {
                 js_error: format_js_error(e),
             })?;
-        idb::settle(&metadata_request, "store upload details").await?;
-        Ok(())
+        idb::committed(&transaction, "store upload").await
     }
 
-    fn store(db: &IdbDatabase, name: &str, mode: IdbTransactionMode) -> WebResult<IdbObjectStore> {
-        let transaction = db.transaction_with_str_and_mode(name, mode).map_err(|e| {
-            StorageError::TransactionCreationFailed {
+    fn writable(db: &IdbDatabase) -> WebResult<IdbTransaction> {
+        let stores = Array::of2(&JsValue::from_str(FILES), &JsValue::from_str(METADATA));
+        Ok(db
+            .transaction_with_str_sequence_and_mode(&stores, IdbTransactionMode::Readwrite)
+            .map_err(|e| StorageError::TransactionCreationFailed {
                 js_error: format_js_error(e),
-            }
-        })?;
+            })?)
+    }
+
+    fn object_store(transaction: &IdbTransaction, name: &str) -> WebResult<IdbObjectStore> {
         Ok(transaction
             .object_store(name)
             .map_err(|e| StorageError::ObjectStoreAccessFailed {
@@ -385,9 +386,18 @@ impl WebStorage {
             })?)
     }
 
+    fn store(db: &IdbDatabase, name: &str) -> WebResult<IdbObjectStore> {
+        let transaction =
+            db.transaction_with_str(name)
+                .map_err(|e| StorageError::TransactionCreationFailed {
+                    js_error: format_js_error(e),
+                })?;
+        Self::object_store(&transaction, name)
+    }
+
     /// Get file data from `IndexedDB`
     async fn get_file_internal(db: &IdbDatabase, file_id: &str) -> WebResult<Option<Vec<u8>>> {
-        let object_store = Self::store(db, FILES, IdbTransactionMode::Readonly)?;
+        let object_store = Self::store(db, FILES)?;
         let request = object_store.get(&JsValue::from_str(file_id)).map_err(|e| {
             StorageError::GetRequestFailed {
                 js_error: format_js_error(e),
@@ -399,33 +409,30 @@ impl WebStorage {
         }
         let array: Uint8Array = result
             .dyn_into()
-            .map_err(|_| StorageError::DataFormatInvalid)?;
+            .map_err(|_not_bytes| StorageError::DataFormatInvalid)?;
         Ok(Some(array.to_vec()))
     }
 
-    /// Delete file and metadata from `IndexedDB`
+    /// Delete file and metadata from `IndexedDB`, in one transaction
     async fn delete_file_internal(db: &IdbDatabase, file_id: &str) -> WebResult<()> {
-        let files_store = Self::store(db, FILES, IdbTransactionMode::Readwrite)?;
-        let file_request = files_store
-            .delete(&JsValue::from_str(file_id))
+        let transaction = Self::writable(db)?;
+        let key = JsValue::from_str(file_id);
+        Self::object_store(&transaction, FILES)?
+            .delete(&key)
             .map_err(|e| StorageError::DeleteOperationFailed {
                 js_error: format_js_error(e),
             })?;
-        idb::settle(&file_request, "delete upload").await?;
-
-        let metadata_store = Self::store(db, METADATA, IdbTransactionMode::Readwrite)?;
-        let metadata_request = metadata_store
-            .delete(&JsValue::from_str(file_id))
+        Self::object_store(&transaction, METADATA)?
+            .delete(&key)
             .map_err(|e| StorageError::MetadataDeleteFailed {
                 js_error: format_js_error(e),
             })?;
-        idb::settle(&metadata_request, "delete upload details").await?;
-        Ok(())
+        idb::committed(&transaction, "delete upload").await
     }
 
     /// Load all metadata from `IndexedDB`
     async fn load_metadata_internal(db: &IdbDatabase) -> WebResult<HashMap<String, FileMetadata>> {
-        let object_store = Self::store(db, METADATA, IdbTransactionMode::Readonly)?;
+        let object_store = Self::store(db, METADATA)?;
         let request = object_store
             .get_all()
             .map_err(|e| StorageError::GetAllRequestFailed {
@@ -434,7 +441,7 @@ impl WebStorage {
         let result = idb::settle(&request, "read upload details").await?;
         let array: Array = result
             .dyn_into()
-            .map_err(|_| StorageError::ArrayFormatInvalid)?;
+            .map_err(|_not_array| StorageError::ArrayFormatInvalid)?;
 
         let mut metadata_map = HashMap::new();
         for item in array.iter() {

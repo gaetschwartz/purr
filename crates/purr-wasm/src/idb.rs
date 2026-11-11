@@ -157,6 +157,15 @@ pub async fn connect() -> WebResult<IdbDatabase> {
     Ok(kept)
 }
 
+/// Detaches the handlers it guards when dropped, so a late event never reaches a dropped closure.
+struct Detach<F: Fn()>(F);
+
+impl<F: Fn()> Drop for Detach<F> {
+    fn drop(&mut self) {
+        (self.0)();
+    }
+}
+
 /// Waits for `request` and returns its result.
 pub async fn settle(request: &IdbRequest, action: &'static str) -> WebResult<JsValue> {
     let (tx, rx) = oneshot::channel::<WebResult<JsValue>>();
@@ -194,12 +203,12 @@ pub async fn settle(request: &IdbRequest, action: &'static str) -> WebResult<JsV
     };
     request.set_onsuccess(Some(on_success.as_ref().unchecked_ref()));
     request.set_onerror(Some(on_failure.as_ref().unchecked_ref()));
-    let outcome = rx
-        .await
-        .map_err(|e| WebError::indexeddb(action, JsValue::from_str(&e.to_string())))?;
-    request.set_onsuccess(None);
-    request.set_onerror(None);
-    outcome
+    let _detach = Detach(|| {
+        request.set_onsuccess(None);
+        request.set_onerror(None);
+    });
+    rx.await
+        .map_err(|e| WebError::indexeddb(action, JsValue::from_str(&e.to_string())))?
 }
 
 /// Waits until `transaction` is committed.
@@ -237,11 +246,11 @@ pub async fn committed(transaction: &IdbTransaction, action: &'static str) -> We
     transaction.set_oncomplete(Some(on_complete.as_ref().unchecked_ref()));
     transaction.set_onabort(Some(on_abort.as_ref().unchecked_ref()));
     transaction.set_onerror(Some(on_abort.as_ref().unchecked_ref()));
-    let outcome = rx
-        .await
-        .map_err(|e| WebError::indexeddb(action, JsValue::from_str(&e.to_string())))?;
-    transaction.set_oncomplete(None);
-    transaction.set_onabort(None);
-    transaction.set_onerror(None);
-    outcome
+    let _detach = Detach(|| {
+        transaction.set_oncomplete(None);
+        transaction.set_onabort(None);
+        transaction.set_onerror(None);
+    });
+    rx.await
+        .map_err(|e| WebError::indexeddb(action, JsValue::from_str(&e.to_string())))?
 }
