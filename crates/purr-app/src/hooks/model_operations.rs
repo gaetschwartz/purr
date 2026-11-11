@@ -34,7 +34,9 @@ fn describe(models: ModelsHandle, id: &str) -> (String, Option<u64>) {
 fn failure(models: ModelsHandle, kind: ModelFailureKind, message: String) -> DownloadFailure {
     let offline = !*models.online.peek();
     let kind = match kind {
-        ModelFailureKind::Other if offline => ModelFailureKind::Network,
+        ModelFailureKind::Integrity | ModelFailureKind::Other if offline => {
+            ModelFailureKind::Network
+        }
         ModelFailureKind::Network | ModelFailureKind::Integrity | ModelFailureKind::Other => kind,
     };
     DownloadFailure { kind, message }
