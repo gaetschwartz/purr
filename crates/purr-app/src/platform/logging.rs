@@ -311,7 +311,7 @@ impl tracing::field::Visit for LogFieldVisitor<'_> {
 
     fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
         if field.name() == "message" {
-            self.entry.message = value.to_owned();
+            value.clone_into(&mut self.entry.message);
         } else {
             self.entry
                 .fields
