@@ -8,7 +8,7 @@ use crate::{
 use purr_common::{
     accel::{
         AccelBackend, AccelSelection, BackendReport, BackendStatus, BackendUnavailable, CpuReport,
-        LastRun, PassedReason, SystemReport,
+        LastRun, SystemReport,
     },
     platform::{DeviceInfo, DeviceType},
 };
@@ -245,7 +245,7 @@ pub fn backend_options(report: Option<&SystemReport>) -> Vec<(AccelSelection, St
 #[cfg(test)]
 mod tests {
     use super::*;
-    use purr_common::accel::{CpuFeature, PassedOver};
+    use purr_common::accel::{CpuFeature, PassedOver, PassedReason};
 
     fn device(name: &str, kind: DeviceType, memory: Option<usize>) -> DeviceInfo {
         DeviceInfo {

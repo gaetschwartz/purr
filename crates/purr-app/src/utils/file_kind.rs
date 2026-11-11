@@ -53,6 +53,7 @@ pub fn may_contain_audio(content_type: &str, file_name: &str) -> bool {
 }
 
 /// The MIME type to serve an audio file of this name as.
+#[cfg(any(test, all(feature = "desktop", not(purr_web))))]
 #[must_use]
 pub fn audio_mime(file_name: &str) -> &'static str {
     let extension = file_name
