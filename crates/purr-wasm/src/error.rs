@@ -231,7 +231,11 @@ pub enum AudioError {
     #[diagnostic(code(purr::web::audio::empty))]
     Empty,
 
-    #[error("Audio file too large: {file_size} bytes exceeds the limit of {max_size} bytes")]
+    #[error(
+        "The audio file is too large ({} MB). The limit is {} MB.",
+        .file_size.div_ceil(1_048_576),
+        .max_size / 1_048_576
+    )]
     #[diagnostic(code(purr::web::audio::too_large))]
     TooLarge { file_size: u64, max_size: u64 },
 

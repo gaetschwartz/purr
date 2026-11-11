@@ -116,6 +116,11 @@ pub enum WorkerEvent {
     Transcribing {
         request_id: RequestId,
     },
+    /// The language Whisper recognised when none was requested.
+    LanguageDetected {
+        request_id: RequestId,
+        language: String,
+    },
     /// Live text of one segment; `text` is everything decoded for it so far.
     Segment {
         request_id: RequestId,
@@ -151,6 +156,7 @@ impl WorkerEvent {
             | Self::ModelFileDone { request_id, .. }
             | Self::ModelReady { request_id }
             | Self::Transcribing { request_id }
+            | Self::LanguageDetected { request_id, .. }
             | Self::Segment { request_id, .. }
             | Self::Segments { request_id, .. }
             | Self::Completed { request_id, .. } => Some(*request_id),
@@ -189,6 +195,7 @@ impl WorkerEvent {
                 | Self::ModelFileDone { .. }
                 | Self::ModelReady { .. }
                 | Self::Transcribing { .. }
+                | Self::LanguageDetected { .. }
                 | Self::Segment { .. }
                 | Self::Segments { .. }
                 | Self::Completed { .. },
@@ -324,6 +331,23 @@ mod tests {
                 text: " Et un grand bravo".to_owned(),
                 start_time: 0.0,
                 end_time: 2.5,
+            }
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn parses_the_detected_language() -> Result<(), serde_json::Error> {
+        let event = parse(&json!({
+            "type": "LanguageDetected",
+            "request_id": 4,
+            "language": "fr",
+        }))?;
+        assert_eq!(
+            event,
+            WorkerEvent::LanguageDetected {
+                request_id: RequestId::new(4),
+                language: "fr".to_owned(),
             }
         );
         Ok(())

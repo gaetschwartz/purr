@@ -67,6 +67,9 @@ impl TranscriptionMapper {
             }
             WorkerEvent::ModelReady { .. } => None,
             WorkerEvent::Transcribing { .. } => Some(TranscriptionStatus::Transcribing),
+            WorkerEvent::LanguageDetected { language, .. } => {
+                Some(TranscriptionStatus::LanguageDetected { language })
+            }
             WorkerEvent::Segment {
                 chunk_index,
                 text,
@@ -148,6 +151,7 @@ impl PreloadMapper {
             WorkerEvent::ModelReady { .. } => PreloadStep::Loaded,
             WorkerEvent::Failed { message, .. } => PreloadStep::Failed(message),
             WorkerEvent::Transcribing { .. }
+            | WorkerEvent::LanguageDetected { .. }
             | WorkerEvent::Segment { .. }
             | WorkerEvent::Segments { .. }
             | WorkerEvent::Completed { .. } => PreloadStep::Ignored,
@@ -228,6 +232,21 @@ mod tests {
         assert_eq!(
             mapper.map(WorkerEvent::Transcribing { request_id: ID }),
             Some(TranscriptionStatus::Transcribing)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn detected_language_is_reported() -> Result<(), Box<dyn std::error::Error>> {
+        let mut mapper = TranscriptionMapper::new(&tiny()?);
+        assert_eq!(
+            mapper.map(WorkerEvent::LanguageDetected {
+                request_id: ID,
+                language: "fr".to_owned(),
+            }),
+            Some(TranscriptionStatus::LanguageDetected {
+                language: "fr".to_owned()
+            })
         );
         Ok(())
     }

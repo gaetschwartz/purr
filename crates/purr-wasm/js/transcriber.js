@@ -1,5 +1,6 @@
 import { WhisperTextStreamer } from "@huggingface/transformers";
 import { emit } from "./events.js";
+import { detectLanguage } from "./language.js";
 
 const SAMPLE_RATE = 16000;
 const CHUNK_LENGTH_S = 30;
@@ -64,6 +65,7 @@ function createStreamer(transcriber, requestId, segments) {
 
 export async function transcribe(transcriber, request) {
     const { request_id: requestId, audio, language, translate, english_only: englishOnly } = request;
+    const startedAt = performance.now();
     const segments = [];
     const streamer = createStreamer(transcriber, requestId, segments);
 
@@ -78,13 +80,13 @@ export async function transcribe(transcriber, request) {
     };
     if (!englishOnly) {
         options.task = translate ? "translate" : "transcribe";
-        if (language) {
-            options.language = language;
+        options.language = language ?? (await detectLanguage(transcriber, audio));
+        if (!language) {
+            emit({ type: "LanguageDetected", request_id: requestId, language: options.language });
         }
     }
 
     const audioDuration = audio.length / SAMPLE_RATE;
-    const startedAt = performance.now();
     const output = await transcriber(audio, options);
     const processingTime = (performance.now() - startedAt) / 1000;
 
