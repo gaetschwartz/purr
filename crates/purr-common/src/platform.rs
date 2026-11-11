@@ -327,6 +327,8 @@ pub enum ProcessingStatus {
 pub struct TranscriptionRequest {
     /// File to transcribe (bytes, path, or uploaded file ID)
     pub file: FileSource,
+    /// The model to transcribe with, as listed by [`Platform::list_available_models`]
+    pub model: ModelId,
     /// Optional language (auto-detect if None)
     pub language: Option<String>,
     /// Whether to translate to English
@@ -468,6 +470,30 @@ impl FromStr for FileId {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(Self::new(s.to_owned()))
+    }
+}
+
+/// The id of a model in the platform's catalog, as [`ModelInfo::id`] carries it.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct ModelId(String);
+
+impl ModelId {
+    /// Wraps a catalog id.
+    #[must_use]
+    pub fn new(id: impl Into<String>) -> Self {
+        Self(id.into())
+    }
+
+    /// The id as the catalog spells it.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::fmt::Display for ModelId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
     }
 }
 

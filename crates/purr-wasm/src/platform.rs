@@ -407,15 +407,9 @@ impl Platform for WasmPlatformImpl {
         };
         audio::validate_size(bytes.len()).map_err(WebError::from)?;
 
-        let settings = self.load_settings().await?;
-        let spec = self
-            .model_manager
-            .model(&settings.model.model_name)?
-            .clone();
+        let spec = self.model_manager.model(request.model.as_str())?.clone();
         let model_cached = self.model_manager.is_model_installed(&spec.id).await?;
-        let language = request
-            .language
-            .or_else(|| settings.ui.transcription_language().map(str::to_owned));
+        let language = request.language;
 
         tracing::info!(
             "Transcribing {} bytes with {} ({}), language {:?}",

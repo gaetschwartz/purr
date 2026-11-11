@@ -65,23 +65,13 @@ impl Platform for DesktopPlatformImpl {
         use std::io::Write;
         use uuid::Uuid;
 
-        // Generate unique file ID
-        let file_id =
-            Uuid::new_v3(&Uuid::NAMESPACE_URL, file_path.to_string_lossy().as_bytes()).into();
-        let file_path = self.temp_dir.join(&file_id);
+        let file_id: FileId = Uuid::new_v4().to_string().into();
+        let stored = self.temp_dir.join(&file_id);
+        info!("Storing {} as {}", file_path.display(), stored.display());
 
-        info!(
-            "Processing file {} with ID: {}",
-            file_path.display(),
-            file_id
-        );
-
-        // Write file data to temp location
-        let mut file = File::create(&file_path).map_err(PlatformError::io)?;
+        let mut file = File::create(&stored).map_err(PlatformError::io)?;
         file.write_all(&file_data).map_err(PlatformError::io)?;
         file.flush().map_err(PlatformError::io)?;
-
-        info!("File saved to: {:?}", file_path);
         Ok(file_id)
     }
 
@@ -89,91 +79,37 @@ impl Platform for DesktopPlatformImpl {
         &self,
         request: TranscriptionRequest,
     ) -> Result<TranscriptionStream, PlatformError> {
-        use futures::SinkExt;
-        use futures::channel::mpsc;
-        use purr_core::{TranscriptionConfig, transcribe_file_stream};
-
-        // Create a channel for status updates
-        let (mut tx, rx) = mpsc::channel(10);
-        let tmp_dir = self.temp_dir.clone();
-
-        tokio::spawn(async move {
-            let start_time = std::time::Instant::now();
-
-            // Send starting status
-            let _ = tx.send(Ok(TranscriptionStatus::Starting)).await;
-            info!("Starting transcription for {}", request.file);
-
-            // Create transcription configuration
-            let mut config = TranscriptionConfig::new().with_translate(request.translate);
-            if let Some(language) = request.language {
-                config = config.with_language(language);
+        let audio_path = match &request.file {
+            FileSource::Bytes(bytes) => {
+                return Err(PlatformError::unsupported(format!(
+                    "transcribing {} bytes held in memory; save them to a file first",
+                    bytes.len()
+                )));
             }
+            FileSource::Path(path) => path.clone(),
+            FileSource::Uploaded(file_id) => self.temp_dir.join(file_id),
+        };
+        let manager = &self.model_manager;
+        let model = lookup(manager, request.model.as_str())?;
+        let installed = manager
+            .is_model_downloaded(model)
+            .await
+            .map_err(PlatformError::model_management)?;
+        if !installed {
+            return Err(PlatformError::model_not_found(request.model.to_string()));
+        }
+        let config = purr_core::TranscriptionConfig::new()
+            .with_translate(request.translate)
+            .with_model_path(manager.get_model_path(model))
+            .with_opt_language(request.language);
+        info!(
+            "Transcribing {} with {}",
+            audio_path.display(),
+            request.model
+        );
 
-            // Send processing audio status
-            let _ = tx.send(Ok(TranscriptionStatus::ProcessingAudio)).await;
-
-            let audio_path = match &request.file {
-                FileSource::Bytes(_) => panic!("Bytes source not supported in desktop platform"),
-                FileSource::Path(path) => path,
-                FileSource::Uploaded(file_id) => &tmp_dir.join(file_id),
-            };
-            // Start transcription
-            match transcribe_file_stream(audio_path, config).await {
-                Ok(mut stream) => {
-                    let mut word_count = 0;
-                    let mut audio_duration = 0.0f32;
-
-                    // Process streaming chunks
-                    while let Some(chunk_result) = stream.next().await {
-                        match chunk_result {
-                            Ok(chunk) => {
-                                word_count += chunk.text.split_whitespace().count();
-
-                                // Send progress update
-                                let _ = tx
-                                    .send(Ok(TranscriptionStatus::InProgress {
-                                        chunk_index: chunk.chunk_index,
-                                        text: chunk.text,
-                                        start_time: chunk.start,
-                                        end_time: chunk.end,
-                                    }))
-                                    .await;
-
-                                // Check for final stats
-                                if let Some(stats) = chunk.final_stats {
-                                    audio_duration = stats.audio_duration;
-                                    word_count = stats.word_count;
-                                    break;
-                                }
-                            }
-                            Err(e) => {
-                                error!("Transcription error: {}", e);
-                                let _ = tx.send(Err(PlatformError::transcription(e))).await;
-                                return;
-                            }
-                        }
-                    }
-
-                    // Send completion status
-                    let processing_time = start_time.elapsed().as_secs_f64();
-                    let _ = tx
-                        .send(Ok(TranscriptionStatus::Completed {
-                            processing_time,
-                            audio_duration,
-                            word_count,
-                        }))
-                        .await;
-
-                    info!("Transcription completed in {:.2}s", processing_time);
-                }
-                Err(e) => {
-                    error!("Failed to start transcription: {}", e);
-                    let _ = tx.send(Err(PlatformError::transcription(e))).await;
-                }
-            }
-        });
-
+        let (tx, rx) = mpsc::channel(32);
+        tokio::spawn(run_transcription(audio_path, config, model.size_bytes, tx));
         Ok(Box::pin(rx))
     }
 
@@ -474,6 +410,106 @@ impl<S: Stream + Unpin> Stream for CancelOnDrop<S> {
 }
 
 type ProgressSender = mpsc::Sender<Result<ModelOperationProgress, PlatformError>>;
+
+type StatusSender = mpsc::Sender<Result<TranscriptionStatus, PlatformError>>;
+
+/// Sends `status`; `false` once the listener is gone, which is how a transcription is cancelled.
+async fn report(tx: &mut StatusSender, status: Result<TranscriptionStatus, PlatformError>) -> bool {
+    if tx.send(status).await.is_ok() {
+        true
+    } else {
+        info!("The transcription listener is gone; stopping");
+        false
+    }
+}
+
+/// Runs one transcription, reporting on `tx` until it ends or the receiver is dropped.
+///
+/// Dropping the core stream stops Whisper after the chunk it is working on; a model load that
+/// already started finishes first.
+async fn run_transcription(
+    audio_path: PathBuf,
+    config: purr_core::TranscriptionConfig,
+    model_bytes: u64,
+    mut tx: StatusSender,
+) {
+    let started = Instant::now();
+    if !report(&mut tx, Ok(TranscriptionStatus::Starting)).await {
+        return;
+    }
+    let loading = TranscriptionStatus::LoadingModel {
+        loaded_bytes: 0,
+        total_bytes: model_bytes,
+    };
+    if !report(&mut tx, Ok(loading)).await {
+        return;
+    }
+    let mut stream = match purr_core::transcribe_file_stream(&audio_path, config).await {
+        Ok(stream) => stream,
+        Err(error) => {
+            error!("Failed to start transcription: {error}");
+            report(&mut tx, Err(PlatformError::transcription(error))).await;
+            return;
+        }
+    };
+    if !report(&mut tx, Ok(TranscriptionStatus::Transcribing)).await {
+        return;
+    }
+
+    let mut language_reported = false;
+    let mut word_count = 0;
+    let mut audio_duration = 0.0_f32;
+    let mut last_end = 0.0_f64;
+    while let Some(next) = stream.next().await {
+        let chunk = match next {
+            Ok(chunk) => chunk,
+            Err(error) => {
+                error!("Transcription error: {error}");
+                report(&mut tx, Err(PlatformError::transcription(error))).await;
+                return;
+            }
+        };
+        if !language_reported && let Some(language) = chunk.language.clone() {
+            language_reported = true;
+            if !report(
+                &mut tx,
+                Ok(TranscriptionStatus::LanguageDetected { language }),
+            )
+            .await
+            {
+                return;
+            }
+        }
+        word_count += chunk.text.split_whitespace().count();
+        last_end = last_end.max(chunk.end);
+        if let Some(stats) = &chunk.final_stats {
+            audio_duration = stats.audio_duration;
+        }
+        let progress = TranscriptionStatus::InProgress {
+            chunk_index: chunk.chunk_index,
+            text: chunk.text,
+            start_time: chunk.start,
+            end_time: chunk.end,
+        };
+        if !report(&mut tx, Ok(progress)).await {
+            return;
+        }
+    }
+
+    let processing_time = started.elapsed().as_secs_f64();
+    let completed = TranscriptionStatus::Completed {
+        processing_time,
+        audio_duration: if audio_duration > 0.0 {
+            audio_duration
+        } else {
+            last_end as f32
+        },
+        word_count,
+    };
+    if report(&mut tx, Ok(completed)).await {
+        info!("Transcription completed in {processing_time:.2}s");
+    }
+}
 
 fn failure_kind(error: &WhisperError) -> ModelFailureKind {
     let network = matches!(

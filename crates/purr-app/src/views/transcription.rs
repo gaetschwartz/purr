@@ -26,6 +26,7 @@ pub fn Transcription(file: FileId) -> Element {
     let mut language = use_signal(|| None::<String>);
     let mut attempt = use_signal(|| 0u32);
     let mut cancelled = use_signal(|| false);
+    let settings = crate::settings_store::use_settings();
 
     let file_for_run = file.clone();
     use_resource(move || {
@@ -38,7 +39,7 @@ pub fn Transcription(file: FileId) -> Element {
             status.set(None);
             transcript.set(Transcript::default());
             language.set(None);
-            run_transcription(file_id, status, transcript, language).await;
+            run_transcription(file_id, settings.peek(), status, transcript, language).await;
         }
     });
 
@@ -122,13 +123,15 @@ pub fn Transcription(file: FileId) -> Element {
 /// Streams the transcription of `file_id` into the signals until it ends or the caller drops it.
 async fn run_transcription(
     file_id: FileId,
+    settings: purr_common::settings::Settings,
     mut status: Signal<Option<TranscriptionStatus>>,
     mut transcript: Signal<Transcript>,
     mut language: Signal<Option<String>>,
 ) {
     info!("Starting transcription for file ID: {file_id}");
     let request = TranscriptionRequest {
-        language: None,
+        model: purr_common::platform::ModelId::new(settings.model.model_name.clone()),
+        language: settings.ui.transcription_language().map(str::to_owned),
         translate: false,
         file: FileSource::Uploaded(file_id.clone()),
     };
