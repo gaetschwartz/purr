@@ -348,36 +348,6 @@ type FilterHandle = reload::Handle<EnvFilter, Registry>;
 
 static FILTER_HANDLE: OnceLock<FilterHandle> = OnceLock::new();
 
-const NO_LEVEL_APPLIED: u8 = 0;
-
-static APPLIED_LEVEL: atomic::AtomicU8 = atomic::AtomicU8::new(NO_LEVEL_APPLIED);
-
-const fn level_code(level: &LogLevel) -> u8 {
-    match level {
-        LogLevel::Error => 1,
-        LogLevel::Warn => 2,
-        LogLevel::Info => 3,
-        LogLevel::Debug => 4,
-        LogLevel::Trace => 5,
-    }
-}
-
-const fn level_from_code(code: u8) -> Option<LogLevel> {
-    match code {
-        1 => Some(LogLevel::Error),
-        2 => Some(LogLevel::Warn),
-        3 => Some(LogLevel::Info),
-        4 => Some(LogLevel::Debug),
-        5 => Some(LogLevel::Trace),
-        NO_LEVEL_APPLIED | 6..=u8::MAX => None,
-    }
-}
-
-/// The level last set with [`apply_log_level`], if one was set since the application started.
-pub fn applied_log_level() -> Option<LogLevel> {
-    level_from_code(APPLIED_LEVEL.load(atomic::Ordering::Acquire))
-}
-
 /// Initialize the logging capture layer
 /// This should be called during application startup
 pub fn init_logging_capture() -> miette::Result<()> {
@@ -424,9 +394,7 @@ pub fn apply_log_level(level: &LogLevel) -> miette::Result<()> {
         .ok_or_else(|| miette::miette!("Logging has not been initialized"))?;
     handle
         .reload(EnvFilter::new(level.to_string()))
-        .into_diagnostic()?;
-    APPLIED_LEVEL.store(level_code(level), atomic::Ordering::Release);
-    Ok(())
+        .into_diagnostic()
 }
 
 /// Whether `RUST_LOG` decides the log level instead of the saved settings.
@@ -471,20 +439,6 @@ mod tests {
 
     fn ids(storage: &LogsStorage) -> Vec<u64> {
         storage.snapshot().iter().map(|entry| entry.id).collect()
-    }
-
-    #[test]
-    fn every_level_survives_its_code() {
-        for level in [
-            LogLevel::Error,
-            LogLevel::Warn,
-            LogLevel::Info,
-            LogLevel::Debug,
-            LogLevel::Trace,
-        ] {
-            assert_eq!(level_from_code(level_code(&level)), Some(level));
-        }
-        assert_eq!(level_from_code(NO_LEVEL_APPLIED), None);
     }
 
     #[test]

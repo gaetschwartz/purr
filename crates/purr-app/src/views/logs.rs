@@ -15,10 +15,8 @@ mod window;
 use crate::{
     components::page::Page,
     main_app::Route,
-    platform::{
-        get_platform,
-        logging::{applied_log_level, env_overrides_log_level, get_logs_storage},
-    },
+    platform::logging::{env_overrides_log_level, get_logs_storage},
+    settings_store::use_settings,
     utils::delay::sleep,
 };
 use announce::{Announcer, POLL_MS};
@@ -29,7 +27,7 @@ use filter::LevelFilter;
 use follow::{DISPOSE_WATCHER, FollowMode, ScrollEvent, WATCHER};
 use list::LogList;
 use model::LogsModel;
-use purr_common::{platform::Platform as _, settings::LogLevel};
+use purr_common::settings::LogLevel;
 use std::{cell::Cell, rc::Rc, time::Duration};
 use toolbar::LogToolbar;
 
@@ -71,7 +69,8 @@ pub fn Logs() -> Element {
     let mut model = use_signal(|| LogsModel::new(Rc::new(storage.snapshot())));
     let mut follow = use_signal(FollowMode::default);
     let mut announcement = use_signal(String::new);
-    let settings = use_resource(|| async { get_platform().load_settings().await });
+    let settings = use_settings();
+    let level = use_memo(move || settings.with(|s| s.logging.level.clone()));
     let watcher = use_hook(|| document::eval(WATCHER));
 
     let sync = use_callback({
@@ -148,20 +147,10 @@ pub fn Logs() -> Element {
         document::eval(DISPOSE_WATCHER);
     });
 
-    let saved_level = match &*settings.read() {
-        Some(Ok(settings)) => Some(settings.logging.level.clone()),
-        Some(Err(_)) | None => None,
-    };
-    let subtitle = match (applied_log_level(), env_overrides_log_level(), saved_level) {
-        (Some(level), _, _) | (None, false, Some(level)) => recorded_at(&level),
-        (None, true, _) => {
-            "Recorded at the level RUST_LOG sets. Logs stay on this device.".to_owned()
-        }
-        (None, false, None) => "Logs stay on this device.".to_owned(),
-    };
-    let settings_error = match &*settings.read() {
-        Some(Err(error)) => Some(error.to_string()),
-        Some(Ok(_)) | None => None,
+    let subtitle = if env_overrides_log_level() {
+        "Recorded at the level RUST_LOG sets. Logs stay on this device.".to_owned()
+    } else {
+        recorded_at(&level.read())
     };
 
     let model_now = model.read();
@@ -212,11 +201,6 @@ pub fn Logs() -> Element {
                 "{summary} File names appear in logs; transcript text never does. "
                 Link { to: Route::Settings {}, "Change the log level in Settings" }
                 "."
-            }
-            if let Some(error) = settings_error {
-                p { class: "foot", style: "padding-left:16px",
-                    "Couldn't read the log level setting: {error}"
-                }
             }
             div {
                 class: "sr",
