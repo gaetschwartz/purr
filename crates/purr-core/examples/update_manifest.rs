@@ -10,7 +10,7 @@ use purr_core::model::digest::Sha256Digest;
 use purr_core::model::manifest::{Manifest, Source};
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -174,7 +174,12 @@ async fn main() -> miette::Result<()> {
 
         let mut unlisted: Vec<&str> = tree
             .keys()
-            .filter(|path| path.ends_with(".bin") && !listed.contains(*path))
+            .filter(|path| {
+                Path::new(path)
+                    .extension()
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("bin"))
+                    && !listed.contains(*path)
+            })
             .map(String::as_str)
             .collect();
         unlisted.sort_unstable();

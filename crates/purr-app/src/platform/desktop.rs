@@ -9,14 +9,15 @@ use purr_common::platform::{
 };
 use purr_common::settings::Settings;
 use purr_core::dev;
-use purr_core::model::{ModelManager, WhisperModel};
+use purr_core::model::ModelManager;
+use purr_core::model::attributes::ModelLanguage;
+use purr_core::model::registry::ModelSpec;
 use std::{
     path::{Path, PathBuf},
-    str::FromStr,
     sync::Arc,
 };
 use tokio::sync::Mutex;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info};
 
 pub type PlatformImpl = DesktopPlatformImpl;
 
@@ -31,19 +32,11 @@ impl DesktopPlatformImpl {
         // Ensure temp directory exists
         let _ = std::fs::create_dir_all(&temp_dir);
 
-        // Initialize model manager (will create XDG-compliant directories)
-        let model_manager = ModelManager::new().map_or_else(
-            |err| {
-                warn!("Failed to initialize model manager: {}", err);
-                // Create a fallback model manager with temp directory
-                Arc::new(Mutex::new(ModelManager::default()))
-            },
-            |mm| Arc::new(Mutex::new(mm)),
-        );
+        let model_manager = ModelManager::new().map_err(PlatformError::model_management)?;
 
         Ok(Self {
             temp_dir,
-            model_manager,
+            model_manager: Arc::new(Mutex::new(model_manager)),
         })
     }
 }
@@ -194,58 +187,31 @@ impl Platform for DesktopPlatformImpl {
             .await
             .map_err(PlatformError::model_management)?;
 
-        let mut model_infos = Vec::new();
-        for model in downloaded_models {
-            let model_path = manager.get_model_path(model);
-            let metadata = self.create_model_metadata(&model);
-
-            let mut model_info = ModelInfo::new(
-                model.as_str().to_owned(),
-                model.as_str().to_owned(),
-                model.description().to_owned(),
-                model.size(),
-                true,
-                metadata,
-            );
-            model_info.mark_installed(model_path);
-            model_infos.push(model_info);
-        }
-
-        Ok(model_infos)
+        Ok(downloaded_models
+            .into_iter()
+            .map(|model| model_info(&manager, model, true))
+            .collect())
     }
 
     async fn list_available_models(&self) -> Result<Vec<ModelInfo>, PlatformError> {
         let mut model_infos = Vec::new();
         let manager = self.model_manager.lock().await;
 
-        for &model in WhisperModel::all_models() {
-            let is_installed = manager.is_model_downloaded(model).await;
-            let model_path = is_installed.then(|| manager.get_model_path(model));
-
-            let metadata = self.create_model_metadata(&model);
-
-            let mut model_info = ModelInfo::new(
-                model.as_str().to_owned(),
-                model.as_str().to_owned(),
-                model.description().to_owned(),
-                model.size(),
-                is_installed,
-                metadata,
-            );
-
-            if let Some(path) = model_path {
-                model_info.mark_installed(path);
-            }
-
-            model_infos.push(model_info);
+        for model in manager.registry().models() {
+            let is_installed = manager
+                .is_model_downloaded(model)
+                .await
+                .map_err(PlatformError::model_management)?;
+            model_infos.push(model_info(&manager, model, is_installed));
         }
 
         Ok(model_infos)
     }
 
     async fn fetch_model(&self, model_id: &str) -> Result<ModelProgressStream, PlatformError> {
-        let model = WhisperModel::from_str(model_id)
-            .map_err(|_| PlatformError::model_not_found(model_id.to_owned()))?;
+        let guard = self.model_manager.lock().await;
+        let model = lookup_shared(&guard, model_id)?;
+        drop(guard);
 
         let manager = Arc::clone(&self.model_manager);
         let model_id = model_id.to_owned();
@@ -262,20 +228,33 @@ impl Platform for DesktopPlatformImpl {
             let manager = manager.lock().await;
 
             // Check if already installed
-            if manager.is_model_downloaded(model).await {
-                let model_path = manager.get_model_path(model);
-                let _ = tx
-                    .send(Ok(ModelOperationProgress::Completed {
-                        model_id: model_id.clone(),
-                        local_path: model_path,
-                    }))
-                    .await;
-                return;
+            match manager.is_model_downloaded(&model).await {
+                Ok(true) => {
+                    let model_path = manager.get_model_path(&model);
+                    let _ = tx
+                        .send(Ok(ModelOperationProgress::Completed {
+                            model_id: model_id.clone(),
+                            local_path: model_path,
+                        }))
+                        .await;
+                    return;
+                }
+                Ok(false) => {}
+                Err(e) => {
+                    let _ = tx
+                        .send(Ok(ModelOperationProgress::Failed {
+                            model_id: model_id.clone(),
+                            operation: "model_check".to_owned(),
+                            error_message: e.to_string(),
+                        }))
+                        .await;
+                    return;
+                }
             }
 
             // Download with progress
             match manager
-                .download_model_with_progress(model, |downloaded, total| {
+                .download_model_with_progress(&model, |downloaded, total| {
                     let progress = ModelOperationProgress::Downloading {
                         model_id: model_id.clone(),
                         bytes_downloaded: downloaded,
@@ -311,36 +290,19 @@ impl Platform for DesktopPlatformImpl {
     }
 
     async fn get_model_info(&self, model_id: &str) -> Result<ModelInfo, PlatformError> {
-        let model = WhisperModel::from_str(model_id)
-            .map_err(|_| PlatformError::model_not_found(model_id.to_owned()))?;
-
         let manager = self.model_manager.lock().await;
-        let is_installed = manager.is_model_downloaded(model).await;
-        let model_path = is_installed.then(|| manager.get_model_path(model));
+        let model = lookup(&manager, model_id)?;
+        let is_installed = manager
+            .is_model_downloaded(model)
+            .await
+            .map_err(PlatformError::model_management)?;
 
-        let metadata = self.create_model_metadata(&model);
-
-        let mut model_info = ModelInfo::new(
-            model.as_str().to_owned(),
-            model.as_str().to_owned(),
-            model.description().to_owned(),
-            model.size(),
-            is_installed,
-            metadata,
-        );
-
-        if let Some(path) = model_path {
-            model_info.mark_installed(path);
-        }
-
-        Ok(model_info)
+        Ok(model_info(&manager, model, is_installed))
     }
 
     async fn remove_model(&self, model_id: &str) -> Result<(), PlatformError> {
-        let model = WhisperModel::from_str(model_id)
-            .map_err(|_| PlatformError::model_not_found(model_id.to_owned()))?;
-
         let manager = self.model_manager.lock().await;
+        let model = lookup(&manager, model_id)?;
         manager
             .delete_model(model)
             .await
@@ -350,19 +312,22 @@ impl Platform for DesktopPlatformImpl {
     }
 
     async fn is_model_installed(&self, model_id: &str) -> Result<bool, PlatformError> {
-        let model = WhisperModel::from_str(model_id)
-            .map_err(|_| PlatformError::model_not_found(model_id.to_owned()))?;
-
         let manager = self.model_manager.lock().await;
-        Ok(manager.is_model_downloaded(model).await)
+        let model = lookup(&manager, model_id)?;
+        manager
+            .is_model_downloaded(model)
+            .await
+            .map_err(PlatformError::model_management)
     }
 
     async fn get_model_path(&self, model_id: &str) -> Result<String, PlatformError> {
-        let model = WhisperModel::from_str(model_id)
-            .map_err(|_| PlatformError::model_not_found(model_id.to_owned()))?;
-
         let manager = self.model_manager.lock().await;
-        if !manager.is_model_downloaded(model).await {
+        let model = lookup(&manager, model_id)?;
+        let is_installed = manager
+            .is_model_downloaded(model)
+            .await
+            .map_err(PlatformError::model_management)?;
+        if !is_installed {
             return Err(PlatformError::model_not_found(model_id.to_owned()));
         }
 
@@ -554,41 +519,58 @@ impl Platform for DesktopPlatformImpl {
     }
 }
 
+fn lookup<'a>(manager: &'a ModelManager, model_id: &str) -> Result<&'a ModelSpec, PlatformError> {
+    manager
+        .registry()
+        .get(model_id)
+        .map_err(|err| PlatformError::model_not_found(err.model_name))
+}
+
+fn lookup_shared(manager: &ModelManager, model_id: &str) -> Result<Arc<ModelSpec>, PlatformError> {
+    manager
+        .registry()
+        .get_shared(model_id)
+        .map_err(|err| PlatformError::model_not_found(err.model_name))
+}
+
+fn model_info(manager: &ModelManager, model: &ModelSpec, is_installed: bool) -> ModelInfo {
+    let mut info = ModelInfo::new(
+        model.id.clone(),
+        model.id.clone(),
+        model.description.clone(),
+        model.size_bytes,
+        is_installed,
+        model_metadata(model),
+    );
+    if is_installed {
+        info.mark_installed(manager.get_model_path(model));
+    }
+    info
+}
+
+fn model_metadata(model: &ModelSpec) -> ModelMetadata {
+    let language_support = match model.language {
+        ModelLanguage::Multilingual => "multilingual",
+        ModelLanguage::EnglishOnly => "en-only",
+    };
+    let mut metadata = ModelMetadata::new(
+        "ggml".to_owned(),
+        "whisper".to_owned(),
+        language_support.to_owned(),
+        "v1".to_owned(),
+    )
+    .with_download_url(model.url())
+    .with_quantization(model.quantization.to_string());
+    metadata
+        .platform_specific
+        .insert("sha256".to_owned(), model.sha256.to_string());
+    metadata
+        .platform_specific
+        .insert("family".to_owned(), model.family.to_string());
+    metadata
+}
+
 impl DesktopPlatformImpl {
-    /// Helper method to create model metadata for `WhisperModel`
-    fn create_model_metadata(&self, model: &WhisperModel) -> ModelMetadata {
-        ModelMetadata::new(
-            "ggml".to_owned(),
-            "whisper".to_owned(),
-            if model.as_str().contains(".en") {
-                "en-only".to_owned()
-            } else {
-                "multilingual".to_owned()
-            },
-            "v1".to_owned(),
-        )
-        .with_download_url(Self::get_model_download_url(model))
-        .with_quantization(if model.as_str().contains("q5_1") {
-            "q5_1".to_owned()
-        } else if model.as_str().contains("q8_0") {
-            "q8_0".to_owned()
-        } else if model.as_str().contains("q5_0") {
-            "q5_0".to_owned()
-        } else {
-            "fp16".to_owned()
-        })
-    }
-
-    /// Helper method to get download URL for a model (since `get_url` is private)
-    fn get_model_download_url(model: &WhisperModel) -> String {
-        let base_url = if model.as_str().contains("tdrz") {
-            "https://huggingface.co/akashmjn/tinydiarize-whisper.cpp/resolve/main"
-        } else {
-            "https://huggingface.co/ggerganov/whisper.cpp/resolve/main"
-        };
-        format!("{}/ggml-{}.bin", base_url, model.as_str())
-    }
-
     /// Get the settings directory path using XDG-compliant directories
     fn get_settings_dir() -> Result<PathBuf, PlatformError> {
         directories::ProjectDirs::from("com", "purr", "purr")

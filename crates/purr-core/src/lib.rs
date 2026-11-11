@@ -20,7 +20,7 @@ pub use audio::{AudioChunk, AudioProcessor, AudioStream};
 pub use config::TranscriptionConfig;
 pub use dev::{Device, SystemInfo, list_devices};
 pub use error::{Result, WhisperError};
-pub use model::{ModelManager, WhisperModel};
+pub use model::ModelManager;
 use reqwest::IntoUrl;
 use tokio::try_join;
 use tracing::debug;

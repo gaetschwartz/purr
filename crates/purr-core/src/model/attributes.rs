@@ -1,7 +1,7 @@
 //! Typed attributes describing a Whisper model.
 
 use serde_with::{DeserializeFromStr, SerializeDisplay};
-use strum::{Display, EnumMessage, EnumString};
+use strum::{Display, EnumString};
 
 /// Model size class. Declaration order is ascending size and drives group ordering.
 #[derive(
@@ -15,27 +15,42 @@ use strum::{Display, EnumMessage, EnumString};
     Hash,
     Display,
     EnumString,
-    EnumMessage,
     SerializeDisplay,
     DeserializeFromStr,
 )]
 pub enum ModelFamily {
-    #[strum(serialize = "tiny", message = "fastest, lowest accuracy")]
+    #[strum(serialize = "tiny")]
     Tiny,
-    #[strum(serialize = "base", message = "good balance of speed and accuracy")]
+    #[strum(serialize = "base")]
     Base,
-    #[strum(serialize = "small", message = "good accuracy")]
+    #[strum(serialize = "small")]
     Small,
-    #[strum(serialize = "medium", message = "high accuracy")]
+    #[strum(serialize = "medium")]
     Medium,
-    #[strum(serialize = "large-v1", message = "highest accuracy, original large")]
+    #[strum(serialize = "large-v1")]
     LargeV1,
-    #[strum(serialize = "large-v2", message = "highest accuracy, improved large")]
+    #[strum(serialize = "large-v2")]
     LargeV2,
-    #[strum(serialize = "large-v3", message = "most accurate")]
+    #[strum(serialize = "large-v3")]
     LargeV3,
-    #[strum(serialize = "large-v3-turbo", message = "faster large model")]
+    #[strum(serialize = "large-v3-turbo")]
     LargeV3Turbo,
+}
+
+impl ModelFamily {
+    #[must_use]
+    pub const fn summary(self) -> &'static str {
+        match self {
+            Self::Tiny => "fastest, lowest accuracy",
+            Self::Base => "good balance of speed and accuracy",
+            Self::Small => "good accuracy",
+            Self::Medium => "high accuracy",
+            Self::LargeV1 => "highest accuracy, original large model",
+            Self::LargeV2 => "highest accuracy, improved large model",
+            Self::LargeV3 => "most accurate",
+            Self::LargeV3Turbo => "faster large model",
+        }
+    }
 }
 
 /// Languages a model can transcribe.
@@ -98,11 +113,19 @@ pub enum Quantization {
     Hash,
     Display,
     EnumString,
-    EnumMessage,
     SerializeDisplay,
     DeserializeFromStr,
 )]
 pub enum ModelFeature {
-    #[strum(serialize = "tdrz", message = "speaker turn detection (TinyDiarize)")]
+    #[strum(serialize = "tdrz")]
     Tdrz,
+}
+
+impl ModelFeature {
+    #[must_use]
+    pub const fn summary(self) -> &'static str {
+        match self {
+            Self::Tdrz => "speaker turn detection (TinyDiarize)",
+        }
+    }
 }

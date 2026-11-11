@@ -2,42 +2,20 @@ use axum::{Router, http::StatusCode, routing::get};
 use axum_test::TestServer;
 use purr_core::WhisperError;
 use purr_core::error::{ConfigurationError, ModelIntegrityError};
-use purr_core::model::digest::{Sha256Digest, Sha256Hasher};
 use purr_core::model::download::download_verified;
-use purr_core::model::registry::{ModelSpec, Registry};
+use purr_core::model::registry::ModelSpec;
 use std::error::Error;
 use std::path::PathBuf;
 use tempfile::TempDir;
 
-const REVISION: &str = "5359861c739e955e79d9a303bcbc70fb988958b1";
-
-fn fixture_bytes() -> Vec<u8> {
-    (0..300_000u32).map(|i| (i % 251) as u8).collect()
-}
-
-fn digest_of(bytes: &[u8]) -> Sha256Digest {
-    let mut hasher = Sha256Hasher::new();
-    hasher.update(bytes);
-    hasher.finalize()
-}
+mod common;
+use common::{digest_of, fixture_bytes, fixture_registry};
 
 fn fixture_spec(bytes: &[u8]) -> Result<ModelSpec, Box<dyn Error>> {
-    let json = serde_json::json!({
-        "schema": 1,
-        "preferred": ["fixture"],
-        "sources": [{"id": "main", "repo": "owner/repo", "revision": REVISION}],
-        "models": [{
-            "id": "fixture", "source": "main", "filename": "ggml-fixture.bin",
-            "family": "tiny", "language": "multilingual", "quantization": "fp16",
-            "features": [], "size_bytes": bytes.len(), "sha256": digest_of(bytes).to_string(),
-            "description": "Fixture"
-        }],
-    });
-    let registry = Registry::from_json(&json.to_string())?;
-    Ok(registry.get("fixture")?.clone())
+    Ok(fixture_registry(bytes)?.get("fixture")?.clone())
 }
 
-async fn serve(content: Vec<u8>) -> Result<TestServer, Box<dyn Error>> {
+fn serve(content: Vec<u8>) -> TestServer {
     let mut tampered = content.clone();
     if let Some(first) = tampered.first_mut() {
         *first ^= 0xFF;
@@ -53,7 +31,7 @@ async fn serve(content: Vec<u8>) -> Result<TestServer, Box<dyn Error>> {
         .route("/short", get(move || async move { short }))
         .route("/long", get(move || async move { long }))
         .route("/missing", get(|| async { StatusCode::NOT_FOUND }));
-    Ok(TestServer::builder().http_transport().build(router))
+    TestServer::builder().http_transport().build(router)
 }
 
 fn url(server: &TestServer, path: &str) -> Result<String, Box<dyn Error>> {
@@ -84,7 +62,7 @@ impl Destination {
 async fn verified_download_publishes_the_file_and_reports_progress() -> Result<(), Box<dyn Error>> {
     let content = fixture_bytes();
     let spec = fixture_spec(&content)?;
-    let server = serve(content.clone()).await?;
+    let server = serve(content.clone());
     let destination = Destination::new()?;
 
     let mut reports = Vec::new();
@@ -114,7 +92,7 @@ async fn checksum_mismatch_is_rejected_and_cleaned_up() -> Result<(), Box<dyn Er
     if let Some(first) = tampered.first_mut() {
         *first ^= 0xFF;
     }
-    let server = serve(content).await?;
+    let server = serve(content);
     let destination = Destination::new()?;
 
     let result = download_verified(
@@ -149,7 +127,7 @@ async fn checksum_mismatch_is_rejected_and_cleaned_up() -> Result<(), Box<dyn Er
 async fn truncated_body_is_rejected_and_cleaned_up() -> Result<(), Box<dyn Error>> {
     let content = fixture_bytes();
     let spec = fixture_spec(&content)?;
-    let server = serve(content.clone()).await?;
+    let server = serve(content.clone());
     let destination = Destination::new()?;
 
     let result = download_verified(
@@ -184,7 +162,7 @@ async fn truncated_body_is_rejected_and_cleaned_up() -> Result<(), Box<dyn Error
 async fn oversized_body_is_aborted_and_cleaned_up() -> Result<(), Box<dyn Error>> {
     let content = fixture_bytes();
     let spec = fixture_spec(&content)?;
-    let server = serve(content.clone()).await?;
+    let server = serve(content.clone());
     let destination = Destination::new()?;
 
     let result =
@@ -213,7 +191,7 @@ async fn oversized_body_is_aborted_and_cleaned_up() -> Result<(), Box<dyn Error>
 async fn http_error_status_leaves_no_files() -> Result<(), Box<dyn Error>> {
     let content = fixture_bytes();
     let spec = fixture_spec(&content)?;
-    let server = serve(content).await?;
+    let server = serve(content);
     let destination = Destination::new()?;
 
     let result = download_verified(

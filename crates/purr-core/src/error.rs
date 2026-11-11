@@ -14,11 +14,8 @@ use crate::accel::{
 
 /// Error for unknown Whisper model names
 #[derive(Debug, thiserror::Error, miette::Diagnostic)]
-#[error("Unknown Whisper model: {model_name}")]
-#[diagnostic(
-    code(whisper::config::unknown_model),
-    help("Use 'models list --available' to see the available models")
-)]
+#[error("Unknown Whisper model: {model_name} (see 'models list --available')")]
+#[diagnostic(code(whisper::config::unknown_model))]
 pub struct UnknownModelError {
     pub model_name: String,
 }

@@ -147,6 +147,14 @@ impl Registry {
             .ok_or_else(|| UnknownModelError::new(id))
     }
 
+    pub fn get_shared(&self, id: &str) -> Result<Arc<ModelSpec>, UnknownModelError> {
+        self.models
+            .iter()
+            .find(|model| model.id == id)
+            .map(Arc::clone)
+            .ok_or_else(|| UnknownModelError::new(id))
+    }
+
     /// Recommended model for users who have not chosen one.
     #[must_use]
     pub fn default_model(&self) -> &ModelSpec {
