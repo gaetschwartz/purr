@@ -9,7 +9,7 @@ whisper-rs = { version = "0.16.0", default-features = false, features = [
   "tracing_backend",
   "raw-api",
 ] }
-ffmpeg-next = { version = "9.0", features = ["codec", "format"] }
+ffmpeg-next = { version = "9.0", features = ["codec", "format", "software-resampling"], default-features = false }
 
 # FFmpeg bindings for audio processing
 # Async runtime
