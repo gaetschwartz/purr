@@ -64,6 +64,9 @@ pub struct UiSettings {
     pub compact_mode: bool,
     /// Language spoken in the audio as a Whisper language code, or `auto` to detect it
     pub language: String,
+    /// Replace the translucent glass surfaces with solid ones
+    #[serde(default)]
+    pub reduce_transparency: bool,
 }
 
 impl UiSettings {
@@ -199,9 +202,10 @@ impl Default for AudioSettings {
 impl Default for UiSettings {
     fn default() -> Self {
         Self {
-            theme: Theme::Light,
+            theme: Theme::System,
             compact_mode: false,
             language: "auto".to_owned(),
+            reduce_transparency: false,
         }
     }
 }
@@ -825,6 +829,33 @@ mod tests {
         assert_eq!(settings.model.model_name, "whisper-large");
         assert_eq!(settings.model.temperature, 0.2);
         assert_eq!(settings.model.max_tokens, 8192);
+    }
+
+    #[test]
+    fn ui_settings_saved_before_reduce_transparency_still_load() {
+        let saved = r#"{"theme":"Dark","compact_mode":false,"language":"fr"}"#;
+        let ui: UiSettings = serde_json::from_str(saved).unwrap();
+        assert_eq!(
+            ui,
+            UiSettings {
+                theme: Theme::Dark,
+                compact_mode: false,
+                language: "fr".to_owned(),
+                reduce_transparency: false,
+            }
+        );
+    }
+
+    #[test]
+    fn builder_keeps_reduce_transparency() {
+        let settings = SettingsBuilder::new()
+            .ui(UiSettings {
+                reduce_transparency: true,
+                ..UiSettings::default()
+            })
+            .build()
+            .unwrap();
+        assert!(settings.ui.reduce_transparency);
     }
 
     #[test]
