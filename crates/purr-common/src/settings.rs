@@ -73,14 +73,6 @@ pub struct UiSettings {
     pub export_format: ExportFormat,
 }
 
-impl UiSettings {
-    /// The language to force while transcribing, `None` when it should be detected
-    #[must_use]
-    pub fn transcription_language(&self) -> Option<&str> {
-        Some(self.language.as_str()).filter(|code| *code != "auto")
-    }
-}
-
 /// Performance and optimization settings
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PerformanceSettings {
@@ -247,11 +239,6 @@ impl Settings {
         errors
     }
 
-    /// Check if settings are valid (no validation errors)
-    pub fn is_valid(&self) -> bool {
-        self.validate().is_empty()
-    }
-
     /// Brings settings read from schema version `from_version` up to [`CURRENT_VERSION`].
     ///
     /// Version 1 saved `gpu_acceleration` as off without anything reading it, so it moves to
@@ -307,16 +294,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn transcription_language_is_none_only_for_auto() {
-        let mut ui = UiSettings::default();
-        assert_eq!(ui.transcription_language(), None);
-        ui.language = "fr".to_owned();
-        assert_eq!(ui.transcription_language(), Some("fr"));
-    }
-
-    #[test]
     fn default_settings_are_valid() {
-        assert!(Settings::default().is_valid());
+        assert_eq!(Settings::default().validate(), []);
     }
 
     #[test]
@@ -423,7 +402,7 @@ log_file_path = "C:/logs/purr.log"
         assert_eq!(settings.performance.threads, None);
         assert_eq!(settings.ui.export_format, ExportFormat::Txt);
         assert_eq!(settings.logging.level, LogLevel::Info);
-        assert!(settings.is_valid());
+        assert_eq!(settings.validate(), []);
     }
 
     #[test]

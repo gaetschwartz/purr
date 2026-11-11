@@ -84,12 +84,6 @@ impl Run {
         }
     }
 
-    /// Whether the language is being detected rather than forced.
-    #[must_use]
-    pub const fn detects_language(&self) -> bool {
-        self.detect_language
-    }
-
     /// Folds one status update in at `now_ms`.
     pub fn apply(&mut self, status: &TranscriptionStatus, now_ms: f64) {
         self.transcript.apply(status);

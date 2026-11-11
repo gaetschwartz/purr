@@ -156,7 +156,6 @@ h1[tabindex="-1"]:focus{outline:none}
 .brand-mark{flex:none;width:32px;height:32px;border-radius:28%;display:grid;place-items:center;background:linear-gradient(135deg,#7A7CFF,#4146D6);color:#fff}
 .brand-mark svg.i{width:80%;height:80%;stroke-width:1.8}
 .brand-mark.lg{width:52px;height:52px}
-.nav-label{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--fg-3);padding:14px 10px 6px}
 .nav-item{display:flex;align-items:center;gap:10px;height:36px;padding:0 10px;border-radius:10px;color:var(--fg);font-size:14px;font-weight:500;width:100%;text-align:left;text-decoration:none;transition:background .2s}
 .nav-item svg{color:var(--fg-2)}
 .nav-item:hover{background:var(--fill-hover)}
@@ -313,7 +312,6 @@ button.item:focus-visible,a.item:focus-visible{outline-offset:-2.5px;border-radi
 .ctl{display:flex;align-items:center;gap:10px;flex:none;max-width:60%}
 .group-f{font-size:12.5px;color:var(--fg-3);margin:8px 16px 0;line-height:1.45}
 .ic.indigo{background:#5856D6}.ic.blue{background:#0A7AFF}.ic.teal{background:#0E9AA7}.ic.orange{background:#E97A10}.ic.green{background:#2AA556}.ic.gray{background:#7C7E8C}.ic.pink{background:#D9416C}.ic.purple{background:#9150D8}.ic.red{background:#E0383E}
-.disabled-block{opacity:.45;pointer-events:none}
 
 /* ---------- Progress and spinner ---------- */
 .bar{height:6px;border-radius:9px;background:var(--fill-2);overflow:hidden}
@@ -357,7 +355,7 @@ kbd{font-family:var(--font);font-size:12px;font-weight:600;padding:2px 7px;borde
 @keyframes fadein{from{opacity:0}to{opacity:1}}
 .popover{position:absolute;width:340px;max-width:calc(100% - 24px);max-height:min(460px,70%);display:flex;flex-direction:column;border-radius:20px;padding:6px;
   overflow-y:auto;scrollbar-width:thin;transform-origin:top left;animation:popin .38s var(--ease-spring)}
-.popover.placing{visibility:hidden;animation:none}
+.popover:not([data-placed]){visibility:hidden;animation:none}
 @keyframes popin{from{opacity:0;transform:scale(.94) translateY(-4px)}to{opacity:1;transform:none}}
 .popover>*{flex:none}
 .popover.glass::before,.sheet.glass::before{inset:0}

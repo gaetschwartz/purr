@@ -232,7 +232,7 @@ pub fn matches(shortcut: &Shortcut, press: &KeyPress) -> bool {
     let got = press.chord;
     !press.modal_open
         && (shortcut.in_inputs || !press.in_editable)
-        && !(shortcut.off_controls && press.on_control)
+        && (!shortcut.off_controls || !press.on_control)
         && wanted.key == got.key
         && wanted.primary == got.primary
         && wanted.alt == got.alt

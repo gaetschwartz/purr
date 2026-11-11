@@ -85,7 +85,6 @@ mark.cur{background:var(--accent);color:#fff}
 .para p{margin:0 0 14px}
 
 /* ---------- Result ---------- */
-.res-head{display:flex;gap:16px;align-items:center}
 .metas{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13px;color:var(--fg-2)}
 .metas span{display:inline-flex;align-items:center;gap:6px}
 .metas svg{width:15px;height:15px;color:var(--fg-3)}
@@ -199,9 +198,7 @@ mark.cur{background:var(--accent);color:#fff}
   .sys .be{grid-column:1/-1;margin-bottom:-6px}
   .loglist{max-height:none}
   .log{grid-template-columns:98px minmax(0,1fr);gap:4px 10px;padding:8px 14px} .log .lv{grid-row:1;grid-column:2} .log .m{grid-column:1/-1}
-  .hrow .act-btns .hide-sm{display:none}
   .filecard{padding:14px;gap:12px}
-  .res-head .fileicon{display:none}
   .welcome{padding:20px}
   .welcome h2{font-size:24px}
 }

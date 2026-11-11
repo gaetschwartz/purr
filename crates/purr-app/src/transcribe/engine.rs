@@ -154,7 +154,7 @@ pub fn fallback_notice(requested: AccelPolicy, ran: &LastRun) -> Option<EngineNo
                 .iter()
                 .find(|passed| passed.backend == backend)
                 .cloned()
-                .unwrap_or(PassedOver {
+                .unwrap_or_else(|| PassedOver {
                     backend,
                     reason: PassedReason::Failed("it could not be used".to_owned()),
                 });

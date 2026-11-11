@@ -410,7 +410,7 @@ pub fn filter_directives(level: &LogLevel) -> String {
         LogLevel::Error | LogLevel::Warn | LogLevel::Info => level.to_string(),
         LogLevel::Debug | LogLevel::Trace => LogLevel::Info.to_string(),
     };
-    let mut directives = level.to_string().to_owned();
+    let mut directives = String::from(level.to_string());
     for target in FRAMEWORK_TARGETS {
         directives.push(',');
         directives.push_str(target);

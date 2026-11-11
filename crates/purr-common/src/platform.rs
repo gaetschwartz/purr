@@ -333,22 +333,6 @@ impl std::fmt::Display for UnsupportedPlatformError {
     }
 }
 
-/// Status updates for file processing operations
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub enum ProcessingStatus {
-    InProgress {
-        bytes_processed: usize,
-    },
-    Completed {
-        total_bytes: usize,
-        file_id: String,
-    },
-    Error {
-        operation: String,
-        error_message: String,
-    },
-}
-
 /// Transcription request parameters
 #[derive(Debug, Clone)]
 pub struct TranscriptionRequest {
@@ -603,12 +587,6 @@ impl ModelInfo {
     pub fn mark_installed(&mut self, local_path: PathBuf) {
         self.is_installed = true;
         self.metadata.local_path = Some(local_path);
-    }
-
-    /// Mark model as not installed
-    pub fn mark_uninstalled(&mut self) {
-        self.is_installed = false;
-        self.metadata.local_path = None;
     }
 }
 

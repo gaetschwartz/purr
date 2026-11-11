@@ -139,15 +139,6 @@ impl TranscribeSession {
         self.engine_memory.read().clone()
     }
 
-    /// Whether a run is going on.
-    #[must_use]
-    pub fn is_running(&self) -> bool {
-        self.record
-            .read()
-            .as_ref()
-            .is_some_and(|record| record.run.outcome == RunOutcome::Running)
-    }
-
     /// The length and waveform of `id`.
     #[must_use]
     pub fn overview(&self, id: &FileId) -> OverviewState {
