@@ -463,6 +463,31 @@ details>.preview{margin:8px 0 0;font-family:var(--font)}
   .skip-link{padding:13px 16px}
 }
 
+/* ---------- Forced colours: shapes drawn only with backgrounds get system-colour borders and fills ---------- */
+@media (forced-colors:active){
+  .btn,.icon-btn,.pill,.field,.select select,.text-input,.seg,.stepper,.sect-nav button,.chip,.recent button,.player,.opt{border:1px solid ButtonText}
+  .btn[disabled],.pill[disabled]{border-color:GrayText}
+  .seg button[aria-checked="true"],.nav-item[aria-current="page"],.tabbar a[aria-current="page"]{forced-color-adjust:none;background:Highlight;color:HighlightText}
+  .nav-item[aria-current="page"] svg,.nav-item[aria-current="page"] .count,.seg button[aria-checked="true"] svg{color:HighlightText}
+  .switch{forced-color-adjust:none;background:Canvas;border:1px solid ButtonText}
+  .switch::after{background:ButtonText;box-shadow:none}
+  .switch[aria-checked="true"]{background:Highlight;border-color:Highlight}
+  .switch[aria-checked="true"]::after{background:HighlightText}
+  .bar{forced-color-adjust:none;background:Canvas;border:1px solid CanvasText}
+  .bar>i{background:Highlight}
+  .wave i,.dots i{forced-color-adjust:none;background:GrayText}
+  .wave i.p,.dots i.on{background:Highlight}
+  mark{forced-color-adjust:none;background:Mark;color:MarkText}
+  mark.cur{background:Highlight;color:HighlightText}
+  .seg-row.playing,.opt.kb,.opt:hover{outline:2px solid Highlight;outline-offset:-2px}
+  .drop .well{border-color:ButtonText}
+  input[type=range].slider{forced-color-adjust:none}
+  input[type=range].slider::-webkit-slider-runnable-track{background:linear-gradient(90deg,Highlight var(--p),GrayText var(--p))}
+  input[type=range].slider::-moz-range-track{background:linear-gradient(90deg,Highlight var(--p),GrayText var(--p))}
+  input[type=range].slider::-webkit-slider-thumb{background:ButtonText}
+  input[type=range].slider::-moz-range-thumb{background:ButtonText}
+}
+
 @media (prefers-reduced-motion:reduce){
   *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important;scroll-behavior:auto!important}
   .blob{animation:none!important}
