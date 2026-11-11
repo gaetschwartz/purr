@@ -29,6 +29,8 @@ use tracing::{debug, error, info, warn};
 
 pub type PlatformImpl = DesktopPlatformImpl;
 
+const SETTINGS_FILE: &str = "settings.toml";
+
 pub(super) struct DesktopPlatformImpl {
     temp_dir: PathBuf,
     model_manager: Arc<ModelManager>,
@@ -372,31 +374,29 @@ impl Platform for DesktopPlatformImpl {
     }
 
     async fn save_settings(&self, settings: &Settings) -> Result<(), PlatformError> {
-        let settings_path = Self::get_settings_file_path()?;
-        let settings_dir = settings_path.parent().unwrap();
+        let settings_dir = Self::get_settings_dir()?;
+        let settings_path = settings_dir.join(SETTINGS_FILE);
 
         debug!("Saving settings to: {}", settings_path.display());
 
-        // Create the settings directory if it doesn't exist
-        tokio::fs::create_dir_all(settings_dir).await.map_err(|e| {
-            error!(
-                "Failed to create settings directory {}: {}",
-                settings_dir.display(),
-                e
-            );
-            PlatformError::settings_persistence(e)
-        })?;
+        tokio::fs::create_dir_all(&settings_dir)
+            .await
+            .map_err(|e| {
+                error!(
+                    "Failed to create settings directory {}: {}",
+                    settings_dir.display(),
+                    e
+                );
+                PlatformError::settings_persistence(e)
+            })?;
 
-        // Serialize settings to TOML
         let toml_content = toml::to_string_pretty(settings).map_err(|e| {
             error!("Failed to serialize settings to TOML: {}", e);
             PlatformError::settings_persistence(e)
         })?;
 
-        // Use atomic write pattern: write to temp file, then rename
-        let temp_path = settings_path.with_extension("toml.tmp");
+        let temp_path = settings_dir.join(format!("{SETTINGS_FILE}.{}.tmp", uuid::Uuid::new_v4()));
 
-        // Write to temporary file
         tokio::fs::write(&temp_path, &toml_content)
             .await
             .map_err(|e| {
@@ -408,7 +408,6 @@ impl Platform for DesktopPlatformImpl {
                 PlatformError::settings_persistence(e)
             })?;
 
-        // Atomically rename temp file to final location
         if let Err(e) = tokio::fs::rename(&temp_path, &settings_path).await {
             error!(
                 "Failed to rename settings file from {} to {}: {}",
@@ -416,8 +415,13 @@ impl Platform for DesktopPlatformImpl {
                 settings_path.display(),
                 e
             );
-            // Clean up temp file on failure
-            let _ = tokio::fs::remove_file(&temp_path).await;
+            if let Err(cleanup) = tokio::fs::remove_file(&temp_path).await {
+                error!(
+                    "Failed to remove the temporary settings file {}: {}",
+                    temp_path.display(),
+                    cleanup
+                );
+            }
             return Err(PlatformError::settings_persistence(e));
         }
 
@@ -671,7 +675,7 @@ impl DesktopPlatformImpl {
     /// Get the full path to the settings file
     fn get_settings_file_path() -> Result<PathBuf, PlatformError> {
         let settings_dir = Self::get_settings_dir()?;
-        Ok(settings_dir.join("settings.toml"))
+        Ok(settings_dir.join(SETTINGS_FILE))
     }
 }
 
