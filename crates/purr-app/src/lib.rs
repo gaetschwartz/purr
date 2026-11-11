@@ -30,6 +30,7 @@ use components::{
     page::document_title,
     toast::{ToastRegion, use_toast_provider},
 };
+use hooks::use_models::use_models_provider;
 use main_app::MainApp;
 use shortcuts::use_shortcut_provider;
 
@@ -103,6 +104,7 @@ pub fn App() -> Element {
 
     let toasts = use_toast_provider();
     use_appearance_provider(toasts);
+    use_models_provider();
     use_layer_host_provider();
     use_shortcut_provider();
 
