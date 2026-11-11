@@ -482,42 +482,6 @@ impl Platform for DesktopPlatformImpl {
         let settings_path = Self::get_settings_file_path()?;
         Ok(Some(settings_path.to_string_lossy().to_string()))
     }
-
-    // ========================================
-    // Theme Storage Implementation
-    // ========================================
-
-    async fn load_theme_setting(
-        &self,
-        _storage_key: &str,
-    ) -> Result<Option<String>, PlatformError> {
-        // Load settings and extract theme
-        let settings = self.load_settings().await?;
-        let theme_str = settings.ui.theme.to_storage_string();
-
-        debug!("Loaded theme setting: {}", theme_str);
-        Ok(Some(theme_str.to_owned()))
-    }
-
-    async fn save_theme_setting(
-        &self,
-        _storage_key: &str,
-        theme: &str,
-    ) -> Result<(), PlatformError> {
-        debug!("Saving theme setting: {}", theme);
-
-        // Load current settings
-        let mut settings = self.load_settings().await?;
-
-        // Update theme using from_storage_string
-        settings.ui.theme = purr_common::settings::Theme::from_storage_string(theme);
-
-        // Save settings atomically
-        self.save_settings(&settings).await?;
-
-        info!("Theme setting saved successfully: {}", theme);
-        Ok(())
-    }
 }
 
 fn lookup<'a>(manager: &'a ModelManager, model_id: &str) -> Result<&'a ModelSpec, PlatformError> {
