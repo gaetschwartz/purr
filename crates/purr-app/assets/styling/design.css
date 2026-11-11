@@ -412,14 +412,14 @@ kbd{font-family:var(--font);font-size:12px;font-weight:600;padding:2px 7px;borde
 .preview{border-radius:14px;background:var(--fill-hover);padding:12px 14px;font-size:13px;line-height:1.55;white-space:pre-wrap;max-height:260px;overflow:auto;color:var(--fg);font-variant-numeric:tabular-nums}
 details>summary{cursor:pointer}
 details>.preview{margin:8px 0 0;font-family:var(--font)}
-.toasts{position:absolute;z-index:60;left:50%;top:14px;transform:translateX(-50%);display:flex;flex-direction:column;gap:8px;align-items:center;width:min(440px,calc(100% - 24px));pointer-events:none}
+.toasts{position:absolute;z-index:60;left:50%;bottom:20px;transform:translateX(-50%);display:flex;flex-direction:column;gap:8px;align-items:center;width:min(440px,calc(100% - 24px));pointer-events:none}
 .toast{pointer-events:auto;display:flex;align-items:center;gap:10px;padding:10px 12px 10px 14px;border-radius:18px;font-size:14px;width:100%;animation:toastin .5s var(--ease-spring)}
 .toast .grow{min-width:0}
 .toast b{font-weight:600;display:block}
 .toast .grow span{color:var(--fg-2);font-size:13px;display:block}
 .toast.out{animation:toastout .3s ease forwards}
-@keyframes toastin{from{opacity:0;transform:translateY(-14px) scale(.96)}to{opacity:1;transform:none}}
-@keyframes toastout{to{opacity:0;transform:translateY(-8px) scale(.98)}}
+@keyframes toastin{from{opacity:0;transform:translateY(14px) scale(.96)}to{opacity:1;transform:none}}
+@keyframes toastout{to{opacity:0;transform:translateY(8px) scale(.98)}}
 .toast .tico{color:var(--accent-text);display:grid;place-items:center} .toast.ok .tico{color:var(--success)} .toast.warn .tico{color:var(--warning)} .toast.bad .tico{color:var(--danger)}
 
 /* ---------- Container-driven responsive layout ---------- */
@@ -452,7 +452,7 @@ details>.preview{margin:8px 0 0;font-family:var(--font)}
   .sheet{border-radius:30px}
   .popover,.popover.menu{left:8px!important;right:8px!important;width:auto;max-width:none;top:auto!important;bottom:8px;max-height:70%;transform-origin:bottom center}
   .layer.pop .scrim{background:var(--scrim);animation:fadein .25s ease}
-  .toasts{top:auto;bottom:88px}
+  .toasts{bottom:88px}
 }
 
 @media (prefers-reduced-motion:reduce){
