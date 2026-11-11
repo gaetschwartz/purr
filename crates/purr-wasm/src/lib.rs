@@ -4,8 +4,6 @@
 //! for running Purr in web browsers. It handles file processing, model management,
 //! and transcription coordination using web APIs.
 
-use wasm_bindgen::prelude::*;
-
 // Re-export main types
 pub use error::{AudioFormatError, StorageError, WebError, WebGpuError, WebResult, WorkerError};
 pub use model::{DownloadProgress, ModelInfo, ModelStorageStats, WebModelManager};
@@ -29,18 +27,10 @@ mod worker;
 #[cfg(test)]
 pub mod webgpu_test_utils;
 
-// Initialize the web platform
-#[wasm_bindgen(start)]
-pub fn init() -> Result<(), JsValue> {
-    // print pretty errors in wasm https://github.com/rustwasm/console_error_panic_hook
-    // This is not needed for tracing_wasm to work, but it is a common tool for getting proper error line numbers for panics.
+pub fn init() {
     console_error_panic_hook::set_once();
-
-    // Add this line:
     tracing_wasm::set_as_global_default();
-
     console_log!("Purr WASM Platform initialized");
-    Ok(())
 }
 
 // Import console.log for debugging
