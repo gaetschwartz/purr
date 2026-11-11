@@ -5809,6 +5809,7 @@ dependencies = [
  "hex",
  "miette",
  "pretty_assertions",
+ "purr-common",
  "purr-delayload",
  "reqwest",
  "rstest",

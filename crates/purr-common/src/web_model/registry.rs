@@ -8,12 +8,16 @@ use crate::web_model::manifest::{
     HUGGING_FACE_ORIGIN, SUPPORTED_SCHEMA, WebManifest, WebManifestModel, file_url,
 };
 use std::collections::HashSet;
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 
 #[cfg(test)]
 mod tests;
 
+const EMBEDDED_MANIFEST: &str = include_str!("../../manifests/web-models.json");
 const REVISION_HEX_LEN: usize = 40;
+
+static EMBEDDED: LazyLock<Result<Arc<WebModelRegistry>, WebManifestError>> =
+    LazyLock::new(|| WebModelRegistry::from_json(EMBEDDED_MANIFEST).map(Arc::new));
 
 /// A file transformers.js downloads for a model.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -75,6 +79,11 @@ pub struct WebModelRegistry {
 }
 
 impl WebModelRegistry {
+    /// The registry built from the manifest embedded in this crate.
+    pub fn embedded() -> Result<Arc<Self>, WebManifestError> {
+        EMBEDDED.clone()
+    }
+
     pub fn from_json(json: &str) -> Result<Self, WebManifestError> {
         Self::from_manifest(WebManifest::parse(json)?)
     }

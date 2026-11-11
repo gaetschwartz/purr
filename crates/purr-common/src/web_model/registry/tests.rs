@@ -322,3 +322,35 @@ fn digest_round_trips_through_text() -> Result<(), crate::web_model::digest::Sha
 fn digest_rejects_wrong_length() {
     assert!("abcd".parse::<Sha256Digest>().is_err());
 }
+
+#[test]
+fn embedded_manifest_parses() -> Result<(), WebManifestError> {
+    let registry = WebModelRegistry::embedded()?;
+    let ids: Vec<&str> = registry.models().iter().map(|m| m.id.as_str()).collect();
+    assert_eq!(ids, ["tiny", "base", "small", "large-v3-turbo"]);
+    assert_eq!(registry.default_model().id, "base");
+    Ok(())
+}
+
+#[test]
+fn embedded_manifest_pins_every_model_to_a_complete_file_set() -> Result<(), WebManifestError> {
+    let registry = WebModelRegistry::embedded()?;
+    for model in registry.models() {
+        assert_eq!(model.files.len(), ModelFileRole::ALL.len(), "{}", model.id);
+        assert!(model.total_size_bytes() > 0, "{}", model.id);
+    }
+    Ok(())
+}
+
+#[test]
+fn only_the_embedded_turbo_model_requires_shader_f16() -> Result<(), WebManifestError> {
+    let registry = WebModelRegistry::embedded()?;
+    let needing: Vec<&str> = registry
+        .models()
+        .iter()
+        .filter(|model| model.requires_shader_f16())
+        .map(|model| model.id.as_str())
+        .collect();
+    assert_eq!(needing, ["large-v3-turbo"]);
+    Ok(())
+}

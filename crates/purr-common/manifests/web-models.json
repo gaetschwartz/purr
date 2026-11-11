@@ -1,0 +1,190 @@
+{
+  "schema": 1,
+  "default": "base",
+  "models": [
+    {
+      "id": "tiny",
+      "repo": "onnx-community/whisper-tiny",
+      "revision": "ff4177021cc41f7db950912b73ea4fdf7d01d8e7",
+      "family": "tiny",
+      "encoder_dtype": "fp32",
+      "decoder_dtype": "q4",
+      "description": "Tiny multilingual model, fastest, lowest accuracy",
+      "files": [
+        {
+          "path": "config.json",
+          "size_bytes": 2243,
+          "sha256": "46aeea0a406afbeb563fc8e59ca10609203df4299af6a83f73752fef369efd2d"
+        },
+        {
+          "path": "generation_config.json",
+          "size_bytes": 3772,
+          "sha256": "f5c67e5a4f7102f8cb4d058bc95da276bbc19eeec997267c3bb0f25ef68facd1"
+        },
+        {
+          "path": "preprocessor_config.json",
+          "size_bytes": 339,
+          "sha256": "a6a76d28c93edb273669eb9e0b0636a2bddbb1272c3261e47b7ca6dfdbac1b8d"
+        },
+        {
+          "path": "tokenizer.json",
+          "size_bytes": 2480466,
+          "sha256": "27fc476bfe7f17299480be2273fc0608e4d5a99aba2ab5dec5374b4482d1a566"
+        },
+        {
+          "path": "tokenizer_config.json",
+          "size_bytes": 282683,
+          "sha256": "2a4c4281cf9f51ac6ccc406fdc711a087afe6530f671fa7b80953edc498275ce"
+        },
+        {
+          "path": "onnx/encoder_model.onnx",
+          "size_bytes": 32904992,
+          "sha256": "6642befb640f950d4a8cbbd17834d59e7e75f575b81ccf213e06b050623ab1dd"
+        },
+        {
+          "path": "onnx/decoder_model_merged_q4.onnx",
+          "size_bytes": 86713702,
+          "sha256": "a7573efde84f7d018d59e50e7f860c03e26623d68e23eb6037b76135367e72eb"
+        }
+      ]
+    },
+    {
+      "id": "base",
+      "repo": "onnx-community/whisper-base",
+      "revision": "27a07b4b52b3a4c5886134bb4320e93e1a4bbc7c",
+      "family": "base",
+      "encoder_dtype": "fp32",
+      "decoder_dtype": "q4",
+      "description": "Base multilingual model, good balance of speed and accuracy",
+      "files": [
+        {
+          "path": "config.json",
+          "size_bytes": 2243,
+          "sha256": "f4d0608f7d918166da7edb3e188de5ef1bfe70d9802e785d271fd88111e9cf4b"
+        },
+        {
+          "path": "generation_config.json",
+          "size_bytes": 3832,
+          "sha256": "61070cf8de25b1e9256e8e102ded49d8d24a8369ed36ef84fdf21549e68125a0"
+        },
+        {
+          "path": "preprocessor_config.json",
+          "size_bytes": 339,
+          "sha256": "a6a76d28c93edb273669eb9e0b0636a2bddbb1272c3261e47b7ca6dfdbac1b8d"
+        },
+        {
+          "path": "tokenizer.json",
+          "size_bytes": 2480466,
+          "sha256": "27fc476bfe7f17299480be2273fc0608e4d5a99aba2ab5dec5374b4482d1a566"
+        },
+        {
+          "path": "tokenizer_config.json",
+          "size_bytes": 282682,
+          "sha256": "2e036e4dbacfdeb7242c7d4ec4149f4a16e86026048f94d1637e3a8ee9c6a573"
+        },
+        {
+          "path": "onnx/encoder_model.onnx",
+          "size_bytes": 82468078,
+          "sha256": "a9f3b752833b49e880dec91ee5b6d936112be7c3ea07c221024ba493439f46fe"
+        },
+        {
+          "path": "onnx/decoder_model_merged_q4.onnx",
+          "size_bytes": 123602419,
+          "sha256": "09f83b71ceedc97dab1d90b914715dc532a646a147abda11d83c64867b7c319c"
+        }
+      ]
+    },
+    {
+      "id": "small",
+      "repo": "onnx-community/whisper-small",
+      "revision": "36050c46d777d46dc4b5f43f6d90574fc38f8732",
+      "family": "small",
+      "encoder_dtype": "fp32",
+      "decoder_dtype": "q4",
+      "description": "Small multilingual model, good accuracy",
+      "files": [
+        {
+          "path": "config.json",
+          "size_bytes": 2227,
+          "sha256": "457854d452f17661e197d74aee12b8e74fb75ba30ebfaa7426d0d61ea1e08a18"
+        },
+        {
+          "path": "generation_config.json",
+          "size_bytes": 3893,
+          "sha256": "f538b28220c6a6d6f1af1458d4141cacb4ef4963df3de98a19490440c412ddf0"
+        },
+        {
+          "path": "preprocessor_config.json",
+          "size_bytes": 339,
+          "sha256": "a6a76d28c93edb273669eb9e0b0636a2bddbb1272c3261e47b7ca6dfdbac1b8d"
+        },
+        {
+          "path": "tokenizer.json",
+          "size_bytes": 2480466,
+          "sha256": "27fc476bfe7f17299480be2273fc0608e4d5a99aba2ab5dec5374b4482d1a566"
+        },
+        {
+          "path": "tokenizer_config.json",
+          "size_bytes": 282683,
+          "sha256": "2a4c4281cf9f51ac6ccc406fdc711a087afe6530f671fa7b80953edc498275ce"
+        },
+        {
+          "path": "onnx/encoder_model.onnx",
+          "size_bytes": 352825870,
+          "sha256": "b37cd6625dc36f9178ec7539a1876b9680ea26a910097e092be39dc766320c7b"
+        },
+        {
+          "path": "onnx/decoder_model_merged_q4.onnx",
+          "size_bytes": 233149327,
+          "sha256": "795c61b344576719c2b249cc9911c78b4cc552c8c6a5407be21a3380a0791b13"
+        }
+      ]
+    },
+    {
+      "id": "large-v3-turbo",
+      "repo": "onnx-community/whisper-large-v3-turbo",
+      "revision": "360ebcde2559d60bb474678be3c1de9ef347d01a",
+      "family": "large-v3-turbo",
+      "encoder_dtype": "fp16",
+      "decoder_dtype": "q4",
+      "description": "Large v3 Turbo multilingual model, highest accuracy, needs a WebGPU adapter with shader-f16",
+      "files": [
+        {
+          "path": "config.json",
+          "size_bytes": 1332,
+          "sha256": "35cd83669f75bc2867f3b3a4461850392d5e308cd6ea951c3700539883c28df1"
+        },
+        {
+          "path": "generation_config.json",
+          "size_bytes": 3897,
+          "sha256": "16f95291d2f47c944d3c2b19390bba7965666555c1ea2a0bdc850d1fab45612f"
+        },
+        {
+          "path": "preprocessor_config.json",
+          "size_bytes": 340,
+          "sha256": "7ccc62c6f2765af1f3b46c00c9b5894426835a05021c8b9c01eecb6dfb542711"
+        },
+        {
+          "path": "tokenizer.json",
+          "size_bytes": 2480617,
+          "sha256": "6d8cbd7cd0d8d5815e478dac67b85a26bbe77c1f5e0c6d76d1ce2abc0e5f21ca"
+        },
+        {
+          "path": "tokenizer_config.json",
+          "size_bytes": 282843,
+          "sha256": "844b642c73a91359722f47b35705f7174686df33d252695d8572cf9ac03a6389"
+        },
+        {
+          "path": "onnx/encoder_model_fp16.onnx",
+          "size_bytes": 1274342603,
+          "sha256": "fdadc70836e6b028fd5e580417c312208dad073d2d01e509e2d127c1373399d8"
+        },
+        {
+          "path": "onnx/decoder_model_merged_q4.onnx",
+          "size_bytes": 334147222,
+          "sha256": "8b933ac24074a24a1635084d06a4ed37e387ef22d980f184a5fc27418e9ceeb8"
+        }
+      ]
+    }
+  ]
+}
