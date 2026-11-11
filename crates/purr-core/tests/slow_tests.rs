@@ -79,11 +79,13 @@ async fn test_transcribe_sample_files(#[files("../../samples/*")] sample_path: P
                         );
                     }
 
-                    println!("✓ Successfully transcribed {} ({:.2}s audio, {:.2}s processing): \"{}...\"", 
-                            sample_path.file_name().unwrap().to_string_lossy(),
-                            transcription.audio_duration,
-                            transcription.processing_time,
-                            transcription.text.chars().take(50).collect::<String>());
+                    println!(
+                        "✓ Successfully transcribed {} ({:.2}s audio, {:.2}s processing): \"{}...\"",
+                        sample_path.file_name().unwrap().to_string_lossy(),
+                        transcription.audio_duration,
+                        transcription.processing_time,
+                        transcription.text.chars().take(50).collect::<String>()
+                    );
                 }
                 Err(e) => {
                     // For tests, we should have at least one model available

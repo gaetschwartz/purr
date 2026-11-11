@@ -12,8 +12,8 @@ pub use model::{DownloadProgress, ModelInfo, ModelStorageStats, WebModelManager}
 pub use platform::PlatformImpl;
 pub use storage::{FileMetadata, WebStorage};
 pub use transcription::{
-    get_supported_formats, start_transcription_process, validate_audio_file, AudioMetadata,
-    AudioProcessingConfig, AudioProcessingProgress, AudioTranscriptionProcessor,
+    AudioMetadata, AudioProcessingConfig, AudioProcessingProgress, AudioTranscriptionProcessor,
+    get_supported_formats, start_transcription_process, validate_audio_file,
 };
 pub use worker::{TranscriptionConfig, TranscriptionWorker};
 
@@ -66,7 +66,7 @@ pub(crate) mod console {
 // Macro for console logging (public for modules)
 #[macro_export]
 macro_rules! console_log {
-    ($($e:expr),*) => {
+    ($($e:expr_2021),*) => {
         let array = ::js_sys::Array::new();
         $(array.push(&wasm_bindgen::JsValue::from($e));)*
         $crate::console::log(array);
@@ -75,7 +75,7 @@ macro_rules! console_log {
 
 #[macro_export]
 macro_rules! console_error {
-    ($($e:expr),*) => {
+    ($($e:expr_2021),*) => {
         let array = ::js_sys::Array::new();
         $(array.push(&wasm_bindgen::JsValue::from($e));)*
         $crate::console::error(array);
@@ -84,7 +84,7 @@ macro_rules! console_error {
 
 #[macro_export]
 macro_rules! console_warn {
-    ($($e:expr),*) => {
+    ($($e:expr_2021),*) => {
         let array = ::js_sys::Array::new();
         $(array.push(&wasm_bindgen::JsValue::from($e));)*
         $crate::console::warn(array);
@@ -92,7 +92,7 @@ macro_rules! console_warn {
 }
 #[macro_export]
 macro_rules! console_info {
-    ($($e:expr),*) => {
+    ($($e:expr_2021),*) => {
         let array = ::js_sys::Array::new();
         $(array.push(&wasm_bindgen::JsValue::from($e));)*
         $crate::console::info(array);
@@ -100,7 +100,7 @@ macro_rules! console_info {
 }
 #[macro_export]
 macro_rules! console_debug {
-    ($($e:expr),*) => {
+    ($($e:expr_2021),*) => {
         let array = ::js_sys::Array::new();
         $(array.push(&wasm_bindgen::JsValue::from($e));)*
         $crate::console::debug(array);
@@ -109,7 +109,7 @@ macro_rules! console_debug {
 
 #[macro_export]
 macro_rules! console_inspect {
-    ($s:expr) => {
+    ($s:expr_2021) => {
         $crate::console::inspect(&wasm_bindgen::JsValue::from($s));
     };
 }

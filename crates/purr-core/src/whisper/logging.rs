@@ -2,8 +2,8 @@ use core::ffi::{c_char, c_void};
 use std::borrow::Cow;
 use std::ffi::CStr;
 use std::sync::Once;
-use whisper_rs::whisper_rs_sys::{self, ggml_log_level};
 use whisper_rs::GGMLLogLevel;
+use whisper_rs::whisper_rs_sys::{self, ggml_log_level};
 
 /// Redirect all whisper.cpp and GGML logs to logging hooks installed by whisper-rs.
 ///

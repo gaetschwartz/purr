@@ -1,9 +1,9 @@
 use crate::{
+    AudioStream, ModelManager, TranscriptionConfig,
     error::TranscriptionError,
     whisper::{
-        load_model, StreamingChunk, TranscriptionResult, TranscriptionStats, WhisperTranscriber,
+        StreamingChunk, TranscriptionResult, TranscriptionStats, WhisperTranscriber, load_model,
     },
-    AudioStream, ModelManager, TranscriptionConfig,
 };
 use futures::{Stream, StreamExt};
 use std::{

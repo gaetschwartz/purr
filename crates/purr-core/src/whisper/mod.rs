@@ -8,7 +8,7 @@ use tokio::task;
 use tracing::info;
 use whisper_rs::{WhisperContext, WhisperContextParameters};
 
-use crate::{error::Result, ModelManager, TranscriptionConfig, WhisperError};
+use crate::{ModelManager, TranscriptionConfig, WhisperError, error::Result};
 
 pub trait TranscriptionResult {}
 

@@ -62,13 +62,15 @@ impl AsyncStreamBuffer {
 }
 
 unsafe extern "C" fn read_packet(opaque: *mut c_void, buf: *mut u8, buf_size: i32) -> i32 {
-    let stream_buffer = Arc::from_raw(opaque as *const AsyncStreamBuffer);
-    let result = {
-        let slice = std::slice::from_raw_parts_mut(buf, buf_size as usize);
-        stream_buffer.blocking_read(slice)
-    };
-    std::mem::forget(stream_buffer);
-    result
+    unsafe {
+        let stream_buffer = Arc::from_raw(opaque as *const AsyncStreamBuffer);
+        let result = {
+            let slice = std::slice::from_raw_parts_mut(buf, buf_size as usize);
+            stream_buffer.blocking_read(slice)
+        };
+        std::mem::forget(stream_buffer);
+        result
+    }
 }
 
 pub struct AsyncCustomInput {

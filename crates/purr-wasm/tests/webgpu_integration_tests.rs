@@ -10,8 +10,8 @@ use futures::StreamExt;
 use js_sys::Reflect;
 use purr_common::platform::{Platform, TranscriptionRequest, TranscriptionStatus};
 use purr_wasm::{
-    start_transcription_process, validate_audio_file, AudioProcessingConfig, ModelInfo,
-    PlatformImpl, TranscriptionConfig, TranscriptionWorker, WebModelManager, WebStorage,
+    AudioProcessingConfig, ModelInfo, PlatformImpl, TranscriptionConfig, TranscriptionWorker,
+    WebModelManager, WebStorage, start_transcription_process, validate_audio_file,
 };
 use std::sync::Arc;
 use wasm_bindgen::prelude::*;

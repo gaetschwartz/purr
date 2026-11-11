@@ -382,7 +382,9 @@ pub enum WebGpuError {
         actual: f32,
     },
 
-    #[error("WebGPU computation failed: tolerance exceeded. Max difference: {max_diff}, tolerance: {tolerance}")]
+    #[error(
+        "WebGPU computation failed: tolerance exceeded. Max difference: {max_diff}, tolerance: {tolerance}"
+    )]
     #[diagnostic(code(purr::web::webgpu::computation_failed))]
     ComputationFailed { max_diff: f32, tolerance: f32 },
 

@@ -1,7 +1,7 @@
 use crate::fmt::Verbosity;
 use clap::builder::{
-    styling::{AnsiColor, Effects, Style},
     Styles,
+    styling::{AnsiColor, Effects, Style},
 };
 use clap::{Parser, Subcommand};
 use purr_common::Language;

@@ -1,14 +1,14 @@
 //! Whisper transcription functionality
 
 use crate::{
+    ModelManager,
     audio::AudioData,
     config::TranscriptionConfig,
     error::{Result, TranscriptionError, WhisperError},
     whisper::{
-        load_model, SyncTranscriptionResult, TranscriptionSegment, TranscriptionStats,
-        WhisperTranscriber,
+        SyncTranscriptionResult, TranscriptionSegment, TranscriptionStats, WhisperTranscriber,
+        load_model,
     },
-    ModelManager,
 };
 use tracing::warn;
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext};

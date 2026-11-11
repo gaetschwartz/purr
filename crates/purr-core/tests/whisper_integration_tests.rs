@@ -5,14 +5,14 @@
 
 use futures::StreamExt;
 use purr_core::{
+    ModelManager,
     audio::{AudioData, AudioProcessor},
     config::TranscriptionConfig,
     transcribe_file_stream, transcribe_file_sync,
     whisper::{
-        streaming::StreamWhisperTranscriber, sync::SyncWhisperTranscriber, SyncTranscriptionResult,
-        WhisperTranscriber,
+        SyncTranscriptionResult, WhisperTranscriber, streaming::StreamWhisperTranscriber,
+        sync::SyncWhisperTranscriber,
     },
-    ModelManager,
 };
 use rstest::rstest;
 use std::path::PathBuf;
@@ -368,7 +368,9 @@ async fn test_streaming_transcription_high_level_api() {
 
     // For streaming audio (typically 25+ seconds), we should get multiple chunks
     if chunk_count == 1 {
-        println!("⚠ Warning: Only received 1 chunk - this might indicate streaming isn't working properly");
+        println!(
+            "⚠ Warning: Only received 1 chunk - this might indicate streaming isn't working properly"
+        );
     } else {
         println!("✓ Received {} streaming chunks as expected", chunk_count);
     }

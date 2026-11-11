@@ -1,9 +1,9 @@
 use axum::{
+    Router,
     extract::Path,
-    http::{header, StatusCode},
+    http::{StatusCode, header},
     response::Response,
     routing::get,
-    Router,
 };
 use axum_test::TestServer;
 use futures::StreamExt;
@@ -213,13 +213,13 @@ async fn test_url_vs_file_streaming_comparison() {
         let url_chunk = &url_chunks[i];
 
         println!(
-                "Comparing chunk {}: file_samples={}, url_samples={}, file_duration={:.3}, url_duration={:.3}",
-                i,
-                file_chunk.samples.len(),
-                url_chunk.samples.len(),
-                file_chunk.duration,
-                url_chunk.duration
-            );
+            "Comparing chunk {}: file_samples={}, url_samples={}, file_duration={:.3}, url_duration={:.3}",
+            i,
+            file_chunk.samples.len(),
+            url_chunk.samples.len(),
+            file_chunk.duration,
+            url_chunk.duration
+        );
 
         assert!(
             chunks_are_equivalent(file_chunk, url_chunk, CHUNK_SIMILARITY_TOLERANCE),

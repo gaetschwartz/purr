@@ -350,8 +350,10 @@ mod tests {
     fn test_audio_webgpu_tester() {
         let audio_data = AudioWebGpuTester::generate_test_audio(1000, 440.0, 44100.0);
         assert_eq!(audio_data.len(), 1000);
-        assert!(audio_data
-            .iter()
-            .all(|&sample| sample >= -1.0 && sample <= 1.0));
+        assert!(
+            audio_data
+                .iter()
+                .all(|&sample| sample >= -1.0 && sample <= 1.0)
+        );
     }
 }

@@ -3,7 +3,7 @@
 /// Assert that an async operation completes within a timeout
 #[macro_export]
 macro_rules! assert_async_timeout {
-    ($timeout_ms:expr, $fut:expr) => {
+    ($timeout_ms:expr_2021, $fut:expr_2021) => {
         match tokio::time::timeout(std::time::Duration::from_millis($timeout_ms), $fut).await {
             Ok(result) => result,
             Err(_) => panic!("Operation timed out after {}ms", $timeout_ms),
@@ -32,7 +32,7 @@ macro_rules! assert_webgpu_ok {
 /// Assert that audio data has expected properties
 #[macro_export]
 macro_rules! assert_audio_valid {
-    ($audio_data:expr, $sample_rate:expr) => {
+    ($audio_data:expr_2021, $sample_rate:expr_2021) => {
         assert!(!$audio_data.is_empty(), "Audio data should not be empty");
         assert_eq!(
             $audio_data.len() % $sample_rate as usize,
@@ -40,7 +40,7 @@ macro_rules! assert_audio_valid {
             "Audio data length should be divisible by sample rate"
         );
     };
-    ($audio_data:expr, $sample_rate:expr, $channels:expr) => {
+    ($audio_data:expr_2021, $sample_rate:expr_2021, $channels:expr_2021) => {
         assert!(!$audio_data.is_empty(), "Audio data should not be empty");
         assert_eq!(
             $audio_data.len() % ($sample_rate as usize * $channels),
@@ -53,7 +53,7 @@ macro_rules! assert_audio_valid {
 /// Assert that transcription result has expected structure
 #[macro_export]
 macro_rules! assert_transcription_valid {
-    ($transcription:expr) => {
+    ($transcription:expr_2021) => {
         assert!(
             !$transcription.text.trim().is_empty(),
             "Transcription text should not be empty"
@@ -73,7 +73,7 @@ macro_rules! assert_transcription_valid {
 /// Assert that a file exists and has expected size
 #[macro_export]
 macro_rules! assert_file_size_range {
-    ($path:expr, $min_bytes:expr, $max_bytes:expr) => {
+    ($path:expr_2021, $min_bytes:expr_2021, $max_bytes:expr_2021) => {
         let metadata = std::fs::metadata($path)
             .unwrap_or_else(|_| panic!("File should exist: {}", $path.display()));
         let size = metadata.len();
@@ -90,7 +90,7 @@ macro_rules! assert_file_size_range {
 /// Assert that memory usage is within acceptable bounds
 #[macro_export]
 macro_rules! assert_memory_usage {
-    ($max_mb:expr, $closure:expr) => {
+    ($max_mb:expr_2021, $closure:expr_2021) => {
         let start_memory = $crate::get_memory_usage();
         $closure;
         let end_memory = $crate::get_memory_usage();
@@ -107,7 +107,7 @@ macro_rules! assert_memory_usage {
 /// Assert that concurrent operations maintain consistency
 #[macro_export]
 macro_rules! assert_concurrent_consistency {
-    ($initial_state:expr, $operations:expr, $validator:expr) => {
+    ($initial_state:expr_2021, $operations:expr_2021, $validator:expr_2021) => {
         let state = std::sync::Arc::new(std::sync::Mutex::new($initial_state));
         let handles: Vec<_> = $operations
             .into_iter()
@@ -173,7 +173,7 @@ pub fn get_memory_usage() -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use tokio::time::{sleep, Duration};
+    use tokio::time::{Duration, sleep};
 
     #[tokio::test]
     async fn test_assert_async_timeout_success() {

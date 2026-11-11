@@ -92,7 +92,7 @@ impl WebModelManager {
     pub async fn download_model(
         &self,
         model_id: &str,
-    ) -> WebResult<impl Stream<Item = DownloadProgress>> {
+    ) -> WebResult<impl Stream<Item = DownloadProgress> + use<>> {
         let model_info = {
             let models = self.models.read().await;
             models

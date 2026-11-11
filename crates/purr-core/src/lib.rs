@@ -13,17 +13,17 @@ pub mod url;
 pub mod whisper;
 
 use crate::whisper::{
-    streaming::StreamWhisperTranscriber, sync::SyncWhisperTranscriber, WhisperTranscriber,
+    WhisperTranscriber, streaming::StreamWhisperTranscriber, sync::SyncWhisperTranscriber,
 };
 pub use audio::{AudioChunk, AudioProcessor, AudioStream};
 pub use config::TranscriptionConfig;
-pub use dev::{list_devices, Device, SystemInfo};
+pub use dev::{Device, SystemInfo, list_devices};
 pub use error::{Result, WhisperError};
 pub use model::{ModelManager, WhisperModel};
 use reqwest::IntoUrl;
 use tokio::try_join;
 use tracing::debug;
-pub use url::{is_file_path, is_valid_url, HttpStreamer, UrlContentInfo, UrlStreamConfig};
+pub use url::{HttpStreamer, UrlContentInfo, UrlStreamConfig, is_file_path, is_valid_url};
 pub use whisper::logging::install_logging_hooks;
 pub use whisper::streaming::StreamingTranscription;
 pub use whisper::{StreamingChunk, SyncTranscriptionResult};

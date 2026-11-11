@@ -4,19 +4,19 @@ mod fmt;
 
 use crate::fmt::{MyFormatter, Verbosity, VerbosityLevel};
 use clap::Parser as _;
-use cli::{Cli, Commands, ModelCommands, OutputFormat, TranscriptionConfigWithCliExt, ASCII_ART};
+use cli::{ASCII_ART, Cli, Commands, ModelCommands, OutputFormat, TranscriptionConfigWithCliExt};
 use indicatif::{HumanBytes, HumanDuration, ProgressBar, ProgressStyle};
 use miette::IntoDiagnostic as _;
 use owo_colors::OwoColorize as _;
 use purr_core::{
+    ModelManager, StreamingTranscription, TranscriptionConfig, WhisperModel,
     dev::{FeatureStatus, WhisperGpuBackend},
     install_logging_hooks, is_file_path, is_valid_url, list_devices, transcribe_file_stream,
-    transcribe_file_sync, transcribe_url_stream, transcribe_url_sync, ModelManager,
-    StreamingTranscription, TranscriptionConfig, WhisperModel,
+    transcribe_file_sync, transcribe_url_stream, transcribe_url_sync,
 };
 use purr_core::{
-    math::{ByteSpeed, RoundToUnit as _},
     SystemInfo,
+    math::{ByteSpeed, RoundToUnit as _},
 };
 use shadow_rs::shadow;
 use std::path::Path;
@@ -26,8 +26,8 @@ use std::{
     borrow::Cow,
     io::{self, Write},
 };
-use tracing::{debug, error, info, warn, Level};
-use tracing_subscriber::{fmt::time::Uptime, EnvFilter};
+use tracing::{Level, debug, error, info, warn};
+use tracing_subscriber::{EnvFilter, fmt::time::Uptime};
 
 const APP_NAME: &str = env!("CARGO_PKG_NAME");
 
@@ -60,7 +60,9 @@ async fn main_impl() -> miette::Result<()> {
     // Handle transcription (original behavior)
     let Some(audio_input) = cli.audio_input.clone() else {
         println!("{ASCII_ART}\n");
-        error!("No audio file or URL specified. Please provide an audio file path or URL to transcribe.");
+        error!(
+            "No audio file or URL specified. Please provide an audio file path or URL to transcribe."
+        );
         std::process::exit(1);
     };
 

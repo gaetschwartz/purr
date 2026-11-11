@@ -314,8 +314,10 @@ mod tests {
     fn test_performance_fixtures() {
         let scenarios = PerformanceFixtures::stress_test_scenarios();
         assert!(!scenarios.is_empty());
-        assert!(scenarios
-            .iter()
-            .all(|(name, size)| !name.is_empty() && *size > 0));
+        assert!(
+            scenarios
+                .iter()
+                .all(|(name, size)| !name.is_empty() && *size > 0)
+        );
     }
 }

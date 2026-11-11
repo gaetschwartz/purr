@@ -1,16 +1,16 @@
 //! Web storage implementation using browser APIs
 //! Uses `IndexedDB` for persistent storage
 
-use crate::error::{format_js_error, StorageError, WebError, WebResult};
+use crate::error::{StorageError, WebError, WebResult, format_js_error};
 use js_sys::{Array, Promise, Uint8Array};
 use purr_common::platform::FileId;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::{oneshot, RwLock};
+use tokio::sync::{RwLock, oneshot};
 use uuid::Uuid;
 use wasm_bindgen::prelude::*;
-use wasm_bindgen_futures::{spawn_local, JsFuture};
+use wasm_bindgen_futures::{JsFuture, spawn_local};
 use web_sys::{IdbDatabase, IdbOpenDbRequest, IdbVersionChangeEvent};
 
 /// File metadata

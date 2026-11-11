@@ -243,7 +243,7 @@ impl AudioProcessor {
         }
 
         // Resample frame with error handling
-        if let Some(ref mut resampler_ctx) = resampler {
+        if let Some(resampler_ctx) = resampler {
             match resampler_ctx.run(frame, resampled) {
                 Ok(_) => {
                     // Successfully resampled - extract f32 samples
@@ -266,11 +266,14 @@ impl AudioProcessor {
                     *last_rate = None;
 
                     // Try fallback processing for this frame
-                    if let Ok(()) = Self::process_frame_fallback(frame, samples, current_rate) {
-                        // Fallback succeeded, continue
-                    } else {
-                        // Log warning and skip this frame
-                        warn!("Skipping frame due to resampling error: {}", e);
+                    match Self::process_frame_fallback(frame, samples, current_rate) {
+                        Ok(()) => {
+                            // Fallback succeeded, continue
+                        }
+                        _ => {
+                            // Log warning and skip this frame
+                            warn!("Skipping frame due to resampling error: {}", e);
+                        }
                     }
                 }
             }
@@ -431,7 +434,7 @@ impl AudioProcessor {
         }
 
         // Resample frame with error handling
-        if let Some(ref mut resampler_ctx) = resampler {
+        if let Some(resampler_ctx) = resampler {
             match resampler_ctx.run(frame, resampled) {
                 Ok(_) => {
                     // Successfully resampled - extract f32 samples
@@ -454,13 +457,14 @@ impl AudioProcessor {
                     *last_rate = None;
 
                     // Try fallback processing for this frame
-                    if let Ok(()) =
-                        Self::process_frame_fallback(frame, output_samples, current_rate)
-                    {
-                        // Fallback succeeded, continue
-                    } else {
-                        // Log warning and skip this frame
-                        warn!("Skipping frame due to resampling error: {}", e);
+                    match Self::process_frame_fallback(frame, output_samples, current_rate) {
+                        Ok(()) => {
+                            // Fallback succeeded, continue
+                        }
+                        _ => {
+                            // Log warning and skip this frame
+                            warn!("Skipping frame due to resampling error: {}", e);
+                        }
                     }
                 }
             }
@@ -661,7 +665,10 @@ impl AudioProcessor {
         if samples.is_empty() {
             return Err(WhisperError::from(AudioProcessingError::processing_failed(
                 "audio extraction",
-                std::io::Error::new(std::io::ErrorKind::InvalidData, "No audio data could be extracted from URL - stream may be corrupted or unsupported")
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "No audio data could be extracted from URL - stream may be corrupted or unsupported",
+                ),
             )));
         }
 

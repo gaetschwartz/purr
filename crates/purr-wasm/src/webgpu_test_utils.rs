@@ -3,9 +3,9 @@
 //! This module provides utilities and helpers for testing WebGPU functionality
 //! in both unit tests and integration tests.
 
-use crate::error::WebGpuError;
 #[cfg(test)]
 use crate::WebResult;
+use crate::error::WebGpuError;
 #[cfg(test)]
 use js_sys::{Float32Array, Object, Promise, Reflect};
 #[cfg(test)]

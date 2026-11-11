@@ -219,7 +219,7 @@ impl WhisperGpuBackend {
 }
 
 mod serde_ggml_backend_dev_caps {
-    use serde::{ser::SerializeMap as _, Deserializer, Serializer};
+    use serde::{Deserializer, Serializer, ser::SerializeMap as _};
     use whisper_rs::whisper_rs_sys::ggml_backend_dev_caps;
 
     // pub struct ggml_backend_dev_caps {
@@ -293,7 +293,7 @@ mod serde_ggml_backend_dev_caps {
                                 FIELD_BUFFER_FROM_HOST_PTR,
                                 FIELD_EVENTS,
                             ],
-                        ))
+                        ));
                     }
                 }
             }

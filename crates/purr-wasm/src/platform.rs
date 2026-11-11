@@ -4,7 +4,7 @@ use crate::error::{WebError, WebResult};
 use crate::model::WebModelManager;
 use crate::storage::WebStorage;
 use crate::transcription::{
-    start_transcription_process, validate_audio_file, AudioProcessingConfig,
+    AudioProcessingConfig, start_transcription_process, validate_audio_file,
 };
 use crate::worker::{TranscriptionConfig, TranscriptionWorker};
 use bytes::Bytes;
@@ -18,7 +18,7 @@ use purr_common::settings::Settings;
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
-use tokio::sync::{oneshot, Mutex, RwLock};
+use tokio::sync::{Mutex, RwLock, oneshot};
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures;
 use web_sys::Storage;
