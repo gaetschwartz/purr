@@ -62,8 +62,16 @@ pub struct UiSettings {
     pub theme: Theme,
     /// Use compact interface layout
     pub compact_mode: bool,
-    /// Interface language code
+    /// Language spoken in the audio as a Whisper language code, or `auto` to detect it
     pub language: String,
+}
+
+impl UiSettings {
+    /// The language to force while transcribing, `None` when it should be detected
+    #[must_use]
+    pub fn transcription_language(&self) -> Option<&str> {
+        Some(self.language.as_str()).filter(|code| *code != "auto")
+    }
 }
 
 /// Performance and optimization settings
@@ -171,7 +179,7 @@ impl Default for Settings {
 impl Default for ModelSettings {
     fn default() -> Self {
         Self {
-            model_name: "whisper-1".to_owned(),
+            model_name: "base".to_owned(),
             temperature: 0.0,
             max_tokens: 4096,
         }
@@ -193,7 +201,7 @@ impl Default for UiSettings {
         Self {
             theme: Theme::Light,
             compact_mode: false,
-            language: "en".to_owned(),
+            language: "auto".to_owned(),
         }
     }
 }
@@ -335,7 +343,7 @@ impl Theme {
             Self::detect_linux_theme()
         }
 
-        #[cfg(all(target_arch = "wasm32", feature = "web"))]
+        #[cfg(target_arch = "wasm32")]
         {
             Self::detect_web_theme()
         }
@@ -344,7 +352,7 @@ impl Theme {
             target_os = "windows",
             target_os = "macos",
             target_os = "linux",
-            all(target_arch = "wasm32", feature = "web")
+            target_arch = "wasm32"
         )))]
         {
             // Fallback for unsupported platforms
@@ -503,7 +511,7 @@ impl Theme {
         None
     }
 
-    #[cfg(all(target_arch = "wasm32", feature = "web"))]
+    #[cfg(target_arch = "wasm32")]
     fn detect_web_theme() -> Self {
         use web_sys::window;
 
@@ -741,6 +749,14 @@ impl Default for SettingsBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn transcription_language_is_none_only_for_auto() {
+        let mut ui = UiSettings::default();
+        assert_eq!(ui.transcription_language(), None);
+        ui.language = "fr".to_owned();
+        assert_eq!(ui.transcription_language(), Some("fr"));
+    }
 
     #[test]
     fn test_default_settings_are_valid() {
