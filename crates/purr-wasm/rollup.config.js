@@ -1,25 +1,19 @@
-import resolve from '@rollup/plugin-node-resolve';
-import commonjs from '@rollup/plugin-commonjs';
-import terser from '@rollup/plugin-terser';
+import resolve from "@rollup/plugin-node-resolve";
+import commonjs from "@rollup/plugin-commonjs";
+import terser from "@rollup/plugin-terser";
 
 export default {
-  input: 'src/worker.js',
-  output: {
-    file: 'dist/worker.js',
-    format: 'es',
-    sourcemap: true
-  },
-  plugins: [
-    resolve({
-      browser: true,
-      preferBuiltins: false
-    }),
-    commonjs(),
-    terser({
-      compress: {
-        drop_console: false // Keep console logs for debugging
-      }
-    })
-  ],
-  external: []
+    input: "js/worker.js",
+    output: {
+        file: "dist/worker.js",
+        format: "es",
+        sourcemap: false,
+    },
+    plugins: [resolve({ browser: true, preferBuiltins: false }), commonjs(), terser()],
+    onwarn(warning, warn) {
+        if (warning.code === "CIRCULAR_DEPENDENCY" || warning.code === "INVALID_ANNOTATION") {
+            return;
+        }
+        warn(warning);
+    },
 };
