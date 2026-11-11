@@ -6,16 +6,14 @@ use crate::{
     },
     main_app::Route,
     transcribe::{engine::fallback_notice, session::RunRecord},
-    utils::delay::sleep,
     views::settings::sections::SettingsSection,
 };
 use dioxus::prelude::*;
-use std::time::Duration;
-
-const ROUTE_SETTLE: Duration = Duration::from_millis(150);
 
 fn jump_script(anchor: &str) -> String {
-    format!("document.getElementById({anchor:?})?.scrollIntoView({{ block: 'start' }})")
+    format!(
+        "let tries = 0; const timer = setInterval(() => {{ const target = document.getElementById({anchor:?}); tries += 1; if (target || tries > 40) {{ clearInterval(timer); target?.scrollIntoView({{ block: 'start' }}); }} }}, 50);"
+    )
 }
 
 /// Says, without blocking the run, that it used other hardware than the one asked for.
@@ -43,10 +41,7 @@ pub fn EngineNotice(record: RunRecord) -> Element {
                     size: ButtonSize::Small,
                     onclick: move |_| {
                         navigator.push(Route::Settings {});
-                        spawn(async move {
-                            sleep(ROUTE_SETTLE).await;
-                            document::eval(&jump_script(SettingsSection::Performance.anchor()));
-                        });
+                        document::eval(&jump_script(SettingsSection::Performance.anchor()));
                     },
                     "Open Performance settings"
                 }

@@ -191,7 +191,8 @@ impl TranscribeSession {
 
     /// Runs the stopped run again with the same file, model and language.
     pub fn restart_cancelled(self) {
-        if let Some(cancelled) = self.cancelled.peek().clone() {
+        let cancelled = self.cancelled.peek().clone();
+        if let Some(cancelled) = cancelled {
             let record = cancelled.record;
             if self.file_by_id(&record.file.id).is_some() {
                 self.launch(record.file, record.model, record.language);
@@ -475,11 +476,15 @@ impl TranscribeSession {
         match record.run.outcome {
             RunOutcome::Completed(completion) => {
                 self.save_to_history(&record, completion);
+                let audio_seconds = self
+                    .overview(&record.file.id)
+                    .duration()
+                    .unwrap_or(completion.audio_seconds);
                 self.toasts.success(
                     "Transcription finished",
                     format!(
                         "{} of audio in {}",
-                        timing::clock(completion.audio_seconds),
+                        timing::clock(audio_seconds),
                         timing::took(completion.processing_seconds)
                     ),
                 );

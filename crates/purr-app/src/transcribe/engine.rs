@@ -26,17 +26,13 @@ impl Planned {
     /// Where a run will happen, from the policy, else the last run made under it, else detection.
     #[must_use]
     pub fn of(policy: AccelPolicy, memory: Option<&RunMemory>, gpu_detected: bool) -> Self {
-        match policy {
-            AccelPolicy::Forced {
-                backend: AccelBackend::Cpu,
-                ..
-            } => Self::Cpu,
-            AccelPolicy::Forced { backend, .. } => Self::Backend(backend),
-            AccelPolicy::Auto => match memory {
-                Some(memory) if memory.policy == policy => Self::of_backend(memory.ran.backend),
-                Some(_) | None if gpu_detected => Self::Gpu,
-                Some(_) | None => Self::Cpu,
-            },
+        let remembered = memory.filter(|memory| memory.policy == policy);
+        match (policy, remembered) {
+            (AccelPolicy::CPU_ONLY, _) => Self::Cpu,
+            (_, Some(memory)) => Self::of_backend(memory.ran.backend),
+            (AccelPolicy::Forced { backend, .. }, None) => Self::of_backend(backend),
+            (AccelPolicy::Auto, None) if gpu_detected => Self::Gpu,
+            (AccelPolicy::Auto, None) => Self::Cpu,
         }
     }
 
@@ -208,6 +204,20 @@ mod tests {
     fn a_named_backend_is_what_the_settings_say() {
         assert_eq!(
             Planned::of(forced(AccelBackend::Vulkan), None, false),
+            Planned::Backend(AccelBackend::Vulkan)
+        );
+    }
+
+    #[test]
+    fn a_named_backend_that_fell_back_is_remembered_as_what_ran() {
+        let policy = forced(AccelBackend::Cuda);
+        let memory = RunMemory {
+            policy,
+            ran: ran(AccelBackend::Cpu, vec![]),
+        };
+        assert_eq!(Planned::of(policy, Some(&memory), true), Planned::Cpu);
+        assert_eq!(
+            Planned::of(forced(AccelBackend::Vulkan), Some(&memory), true),
             Planned::Backend(AccelBackend::Vulkan)
         );
     }
