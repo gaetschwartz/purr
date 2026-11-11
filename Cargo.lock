@@ -5711,6 +5711,7 @@ dependencies = [
  "pretty_assertions",
  "purr-common",
  "purr-core",
+ "purr-delayload",
  "purr-wasm",
  "rfd 0.18.0",
  "rstest",
@@ -5752,6 +5753,7 @@ dependencies = [
  "pretty_assertions",
  "purr-common",
  "purr-core",
+ "purr-delayload",
  "rstest",
  "serde_json",
  "shadow-rs",
@@ -5804,6 +5806,7 @@ dependencies = [
  "hex",
  "miette",
  "pretty_assertions",
+ "purr-delayload",
  "reqwest",
  "rstest",
  "rustls",
@@ -5822,6 +5825,15 @@ dependencies = [
  "tracing-subscriber",
  "url",
  "whisper-rs",
+ "windows",
+]
+
+[[package]]
+name = "purr-delayload"
+version = "0.1.0"
+dependencies = [
+ "tempfile",
+ "thiserror 2.0.21",
 ]
 
 [[package]]

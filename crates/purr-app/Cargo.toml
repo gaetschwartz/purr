@@ -129,3 +129,6 @@ wasm-bindgen-test = "0.3"
 
 [lints]
 workspace = true
+
+[build-dependencies]
+purr-delayload = { version = "0.1.0", path = "../purr-delayload" }

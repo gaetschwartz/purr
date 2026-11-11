@@ -59,6 +59,10 @@ static-ffmpeg = ["ffmpeg-next/static"]
 
 [build-dependencies]
 build-target = "0.8.0"
+purr-delayload = { version = "0.1.0", path = "../purr-delayload" }
 
 [lints]
 workspace = true
+
+[target."cfg(windows)".dependencies]
+windows = { version = "0.62.2", features = ["Win32_System_LibraryLoader", "Win32_Foundation"] }

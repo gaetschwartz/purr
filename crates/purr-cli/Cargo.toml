@@ -55,6 +55,7 @@ coreml = ["purr-core/coreml"]
 static-ffmpeg = ["purr-core/static-ffmpeg"]
 
 [build-dependencies]
+purr-delayload = { version = "0.1.0", path = "../purr-delayload" }
 shadow-rs = "2.0.0"
 
 [lints]

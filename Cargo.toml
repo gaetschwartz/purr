@@ -3,6 +3,7 @@ members = [
   "crates/purr-cli",
   "crates/purr-common",
   "crates/purr-core",
+  "crates/purr-delayload",
   'crates/purr-app',
   "crates/purr-wasm",
   "crates/purr-test-utils",
