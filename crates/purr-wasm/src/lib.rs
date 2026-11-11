@@ -1,107 +1,51 @@
-//! WebAssembly platform implementation for Purr transcription engine
-//!
-//! This crate provides a WebAssembly-compatible implementation of the Platform trait
-//! for running Purr in web browsers. It handles file processing, model management,
-//! and transcription coordination using web APIs.
+//! Browser implementation of the Purr platform: audio decoding with the Web Audio API,
+//! transcription with Whisper through transformers.js in a Web Worker, and model caching in
+//! the browser's Cache Storage.
 
-// Re-export main types
-pub use error::{AudioFormatError, StorageError, WebError, WebGpuError, WebResult, WorkerError};
-pub use model::WebModelManager;
-pub use platform::PlatformImpl;
-pub use storage::{FileMetadata, WebStorage};
-pub use transcription::{
-    AudioMetadata, AudioProcessingConfig, AudioProcessingProgress, AudioTranscriptionProcessor,
-    get_supported_formats, start_transcription_process, validate_audio_file,
-};
-pub use worker::{TranscriptionConfig, TranscriptionWorker, WorkerModel};
+use manganis::{Asset, AssetOptions, asset};
 
-// Module declarations
-mod error;
-mod model;
-mod model_cache;
-mod model_info;
+pub mod audio;
+pub mod error;
+pub mod integrity;
+pub mod local;
+pub mod logging;
+pub mod model;
+pub mod model_cache;
+pub mod model_info;
+pub mod model_progress;
 pub mod platform;
-mod storage;
-mod transcription;
-mod worker;
+pub mod protocol;
+pub mod status_mapper;
+pub mod storage;
+pub mod worker_client;
 
-// Test utilities (only available in test builds)
-#[cfg(test)]
-pub mod webgpu_test_utils;
+static WORKER_SCRIPT: Asset = asset!(
+    "/dist/worker.js",
+    AssetOptions::js().with_minify(false).into_asset_options()
+);
 
+static ORT_MODULE: Asset = asset!(
+    "/node_modules/@huggingface/transformers/dist/ort-wasm-simd-threaded.jsep.mjs",
+    AssetOptions::js().with_minify(false).into_asset_options()
+);
+
+static ORT_WASM: Asset =
+    asset!("/node_modules/@huggingface/transformers/dist/ort-wasm-simd-threaded.jsep.wasm");
+
+/// URL paths of the ONNX runtime files the worker loads.
+#[must_use]
+pub fn ort_urls() -> (String, String) {
+    (ORT_MODULE.to_string(), ORT_WASM.to_string())
+}
+
+/// Absolute URL path of the bundled transcription worker script.
+#[must_use]
+pub fn worker_url() -> String {
+    WORKER_SCRIPT.to_string()
+}
+
+/// Installs the panic hook. Logging is set up by the application, see [`logging`].
 pub fn init() {
     console_error_panic_hook::set_once();
-    tracing_wasm::set_as_global_default();
-    console_log!("Purr WASM Platform initialized");
 }
 
-// Import console.log for debugging
-pub(crate) mod console {
-    use wasm_bindgen::prelude::*;
-    #[wasm_bindgen]
-    extern "C" {
-        #[wasm_bindgen(js_namespace = console)]
-        pub(crate) fn log(a: js_sys::Array);
-        #[wasm_bindgen(js_namespace = console, js_name = error)]
-        pub(crate) fn error(a: js_sys::Array);
-        #[wasm_bindgen(js_namespace = console, js_name = warn)]
-        pub(crate) fn warn(a: js_sys::Array);
-        #[wasm_bindgen(js_namespace = console, js_name = info)]
-        pub(crate) fn info(a: js_sys::Array);
-        #[wasm_bindgen(js_namespace = console, js_name = debug)]
-        pub(crate) fn debug(a: js_sys::Array);
-        #[wasm_bindgen(js_namespace = console, js_name = inspect)]
-        pub(crate) fn inspect(s: &JsValue);
-    }
-}
-
-// Macro for console logging (public for modules)
-#[macro_export]
-macro_rules! console_log {
-    ($($e:expr_2021),*) => {
-        let array = ::js_sys::Array::new();
-        $(array.push(&wasm_bindgen::JsValue::from($e));)*
-        $crate::console::log(array);
-    }
-}
-
-#[macro_export]
-macro_rules! console_error {
-    ($($e:expr_2021),*) => {
-        let array = ::js_sys::Array::new();
-        $(array.push(&wasm_bindgen::JsValue::from($e));)*
-        $crate::console::error(array);
-    }
-}
-
-#[macro_export]
-macro_rules! console_warn {
-    ($($e:expr_2021),*) => {
-        let array = ::js_sys::Array::new();
-        $(array.push(&wasm_bindgen::JsValue::from($e));)*
-        $crate::console::warn(array);
-    }
-}
-#[macro_export]
-macro_rules! console_info {
-    ($($e:expr_2021),*) => {
-        let array = ::js_sys::Array::new();
-        $(array.push(&wasm_bindgen::JsValue::from($e));)*
-        $crate::console::info(array);
-    }
-}
-#[macro_export]
-macro_rules! console_debug {
-    ($($e:expr_2021),*) => {
-        let array = ::js_sys::Array::new();
-        $(array.push(&wasm_bindgen::JsValue::from($e));)*
-        $crate::console::debug(array);
-    }
-}
-
-#[macro_export]
-macro_rules! console_inspect {
-    ($s:expr_2021) => {
-        $crate::console::inspect(&wasm_bindgen::JsValue::from($s));
-    };
-}

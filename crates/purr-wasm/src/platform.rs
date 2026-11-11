@@ -1,85 +1,66 @@
 //! Web platform implementation of the Platform trait
 
+use crate::audio;
 use crate::error::{WebError, WebResult};
+use crate::local::run_local;
 use crate::model::WebModelManager;
 use crate::model_cache;
 use crate::model_info::model_info;
+use crate::protocol::{WorkerModel, WorkerRequest};
+use crate::status_mapper::{PreloadMapper, PreloadStep, TranscriptionMapper};
 use crate::storage::WebStorage;
-use crate::transcription::{
-    AudioProcessingConfig, start_transcription_process, validate_audio_file,
-};
-use crate::worker::{TranscriptionConfig, TranscriptionWorker, WorkerModel};
+use crate::worker_client::WorkerClient;
 use bytes::Bytes;
-use futures::StreamExt;
-use js_sys::Error as JsError;
+use futures::StreamExt as _;
 use purr_common::platform::{
-    DeviceInfo, DeviceType, FileId, FileSource, ModelInfo, ModelProgressStream, Platform,
-    PlatformError, TranscriptionRequest, TranscriptionStream,
+    DeviceInfo, DeviceType, FileId, FileSource, ModelInfo, ModelOperationProgress,
+    ModelProgressStream, Platform, PlatformError, TranscriptionRequest, TranscriptionStatus,
+    TranscriptionStream,
 };
 use purr_common::settings::Settings;
+use purr_common::web_model::registry::WebModelSpec;
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use tokio::sync::{Mutex, RwLock, oneshot};
-use wasm_bindgen::JsCast;
-use wasm_bindgen_futures;
-use web_sys::Storage;
+use tokio::sync::{Mutex, RwLock, mpsc};
+use tokio_stream::wrappers::UnboundedReceiverStream;
+use wasm_bindgen::JsCast as _;
+use wasm_bindgen_futures::{JsFuture, spawn_local};
+use web_sys::{DomException, Storage};
 
 pub type PlatformImpl = WasmPlatformImpl;
+
+const SETTINGS_KEY: &str = "purr-settings";
+const UPLOAD_RETENTION_MS: f64 = 24.0 * 60.0 * 60.0 * 1000.0;
+
 /// Web platform implementation using WebAssembly and browser APIs
 pub struct WasmPlatformImpl {
-    /// Storage manager for file operations
     storage: Arc<WebStorage>,
-    /// Model manager for model operations
     model_manager: Arc<WebModelManager>,
-    /// Worker pool for transcription
-    worker: Arc<TranscriptionWorker>,
-    /// Active transcription sessions
-    sessions: RwLock<HashMap<String, String>>,
-    /// Platform initialization status
+    worker: Arc<WorkerClient>,
     initialized: RwLock<bool>,
-    /// Configuration mutex for thread safety
     config_mutex: Mutex<()>,
 }
 
 impl WasmPlatformImpl {
-    /// Check if platform is properly initialized and initialize if needed
     async fn ensure_initialized(&self) -> Result<(), PlatformError> {
-        let initialized = self.initialized.read().await;
-        if *initialized {
+        if *self.initialized.read().await {
             return Ok(());
         }
-        drop(initialized);
 
-        // Use config_mutex to ensure only one initialization happens
         let _guard = self.config_mutex.lock().await;
-
-        // Double-check after acquiring the lock
-        let initialized = self.initialized.read().await;
-        if *initialized {
+        if *self.initialized.read().await {
             return Ok(());
         }
-        drop(initialized);
 
-        // Initialize storage
-        self.storage
-            .initialize()
-            .await
-            .map_err(Self::convert_error)?;
+        self.storage.initialize().await?;
+        self.storage.purge_older_than(UPLOAD_RETENTION_MS).await?;
 
         tracing::info!("Platform initialized");
-
-        let mut initialized = self.initialized.write().await;
-        *initialized = true;
+        *self.initialized.write().await = true;
         Ok(())
     }
 
-    /// Convert `WebError` to `PlatformError`
-    fn convert_error(error: WebError) -> PlatformError {
-        error.into()
-    }
-
-    /// Get browser localStorage
     fn get_local_storage() -> Result<Storage, PlatformError> {
         let window = web_sys::window()
             .ok_or_else(|| PlatformError::settings_persistence("No window available".to_owned()))?;
@@ -93,7 +74,6 @@ impl WasmPlatformImpl {
             })
     }
 
-    /// Get localStorage value
     fn get_storage_value(key: &str) -> Result<Option<String>, PlatformError> {
         let storage = Self::get_local_storage()?;
         storage.get_item(key).map_err(|e| {
@@ -103,103 +83,227 @@ impl WasmPlatformImpl {
         })
     }
 
-    /// Set localStorage value with quota exceeded handling
     fn set_storage_value(key: &str, value: &str) -> Result<(), PlatformError> {
         let storage = Self::get_local_storage()?;
         storage.set_item(key, value).map_err(|e| {
-            // Check if this is a quota exceeded error
-            let error_msg = if let Some(js_error) = e.dyn_ref::<JsError>() {
-                js_error.message().as_string().unwrap_or_default()
-            } else {
-                format!("{e:?}")
-            };
-
-            if error_msg.to_lowercase().contains("quota")
-                || error_msg.to_lowercase().contains("storage")
-                || error_msg.contains("22") // DOM_QUOTA_EXCEEDED_ERR
-            {
+            let is_quota = e
+                .dyn_ref::<DomException>()
+                .is_some_and(|exception| exception.name() == "QuotaExceededError");
+            let detail = crate::error::format_js_error(e);
+            if is_quota {
                 PlatformError::settings_persistence(format!(
-                    "localStorage quota exceeded. Please clear browser storage or reduce settings size: {error_msg}"
+                    "localStorage quota exceeded; clear browser storage for this site: {detail}"
                 ))
             } else {
                 PlatformError::settings_persistence(format!(
-                    "Failed to set item '{key}' in localStorage: {error_msg}"
+                    "Failed to set item '{key}' in localStorage: {detail}"
                 ))
             }
         })
     }
-}
 
-impl WasmPlatformImpl {
-    /// Create a new `WebPlatform` instance
-    fn new_inner() -> WebResult<Self> {
+    pub fn new() -> Result<Self, PlatformError> {
         let storage = Arc::new(WebStorage::new());
         let model_manager = Arc::new(WebModelManager::new()?);
-        let worker = Arc::new(TranscriptionWorker::new(model_manager.clone()));
-
-        let platform = Self {
+        let worker = Arc::new(WorkerClient::spawn(crate::worker_url()));
+        Ok(Self {
             storage,
             model_manager,
             worker,
-            sessions: RwLock::new(HashMap::new()),
             initialized: RwLock::new(false),
             config_mutex: Mutex::new(()),
-        };
+        })
+    }
+}
 
-        // Initialize default models
-        // Defer initialization to first use to avoid async in constructor
-        // The platform will initialize when first needed
+fn now_ms() -> f64 {
+    js_sys::Date::now()
+}
 
-        Ok(platform)
+fn send_status(
+    tx: &mpsc::UnboundedSender<Result<TranscriptionStatus, PlatformError>>,
+    status: TranscriptionStatus,
+) -> bool {
+    tx.send(Ok(status)).is_ok()
+}
+
+async fn run_transcription(
+    worker: Arc<WorkerClient>,
+    spec: WebModelSpec,
+    bytes: Bytes,
+    language: Option<String>,
+    translate: bool,
+    tx: mpsc::UnboundedSender<Result<TranscriptionStatus, PlatformError>>,
+) {
+    if !send_status(&tx, TranscriptionStatus::Starting)
+        || !send_status(&tx, TranscriptionStatus::ProcessingAudio)
+    {
+        return;
     }
 
-    pub fn new() -> Result<Self, PlatformError>
-    where
-        Self: Sized,
+    let decoded = match audio::decode(bytes).await {
+        Ok(decoded) => decoded,
+        Err(error) => {
+            send_status(
+                &tx,
+                TranscriptionStatus::Error {
+                    context: "Audio".to_owned(),
+                    error_message: error.to_string(),
+                },
+            );
+            return;
+        }
+    };
+    tracing::info!(
+        "Decoded {:.1}s of audio for model {}",
+        decoded.duration_seconds(),
+        spec.id
+    );
+
+    let request = WorkerRequest::Transcribe {
+        request_id: worker.next_request_id(),
+        model: WorkerModel::from(&spec),
+        language,
+        translate,
+        english_only: spec.english_only(),
+    };
+    let mut events = match worker.submit(request, Some(decoded.samples)) {
+        Ok(events) => events,
+        Err(error) => {
+            send_status(
+                &tx,
+                TranscriptionStatus::InitFailed {
+                    component: "Worker".to_owned(),
+                    reason: error.to_string(),
+                    error_details: None,
+                },
+            );
+            return;
+        }
+    };
+
+    let mut mapper = TranscriptionMapper::new(&spec);
+    loop {
+        tokio::select! {
+            () = tx.closed() => {
+                tracing::info!("Transcription stream dropped; cancelling");
+                return;
+            }
+            next = events.next() => {
+                let Some(event) = next else { return };
+                if let Some(status) = mapper.map(event) && !send_status(&tx, status) {
+                    return;
+                }
+            }
+        }
+    }
+}
+
+async fn run_preload(
+    worker: Arc<WorkerClient>,
+    spec: WebModelSpec,
+    tx: mpsc::UnboundedSender<Result<ModelOperationProgress, PlatformError>>,
+) {
+    let model_id = spec.id.clone();
+    let fail = |operation: &str, error_message: String| ModelOperationProgress::Failed {
+        model_id: model_id.clone(),
+        operation: operation.to_owned(),
+        error_message,
+    };
+    if tx
+        .send(Ok(ModelOperationProgress::Starting {
+            model_id: model_id.clone(),
+        }))
+        .is_err()
     {
-        Self::new_inner().map_err(Self::convert_error)
+        return;
+    }
+
+    let request = WorkerRequest::LoadModel {
+        request_id: worker.next_request_id(),
+        model: WorkerModel::from(&spec),
+    };
+    let mut events = match worker.submit(request, None) {
+        Ok(events) => events,
+        Err(error) => {
+            if tx.send(Ok(fail("download", error.to_string()))).is_err() {
+                tracing::warn!("Preload of {model_id} failed after its listener left");
+            }
+            return;
+        }
+    };
+
+    let mut mapper = PreloadMapper::new(&spec, now_ms());
+    loop {
+        tokio::select! {
+            () = tx.closed() => {
+                tracing::info!("Preload stream dropped; cancelling");
+                return;
+            }
+            next = events.next() => {
+                let Some(event) = next else { return };
+                let outcome = match mapper.map(event, now_ms()) {
+                    PreloadStep::Progress(progress) => Ok(progress),
+                    PreloadStep::Ignored => continue,
+                    PreloadStep::Failed(message) => Ok(fail("download", message)),
+                    PreloadStep::Loaded => {
+                        if tx
+                            .send(Ok(ModelOperationProgress::Installing { model_id: model_id.clone() }))
+                            .is_err()
+                        {
+                            return;
+                        }
+                        match model_cache::verify(&spec).await {
+                            Ok(()) => Ok(ModelOperationProgress::Completed {
+                                model_id: model_id.clone(),
+                                local_path: PathBuf::from(model_cache::location(&spec)),
+                            }),
+                            Err(error) => Ok(fail("verification", error.to_string())),
+                        }
+                    }
+                };
+                let finished = matches!(
+                    outcome,
+                    Ok(ModelOperationProgress::Completed { .. } | ModelOperationProgress::Failed { .. })
+                );
+                if tx.send(outcome).is_err() || finished {
+                    return;
+                }
+            }
+        }
     }
 }
 
 impl Platform for WasmPlatformImpl {
-    fn install_logging_hooks(&self) {
-        // No-op for web platform as logging is handled by the host environment
-    }
-    // ========================================
-    // File Processing Operations
-    // ========================================
+    fn install_logging_hooks(&self) {}
 
     async fn process_file(
         &self,
         file_data: Bytes,
         file_path: &Path,
     ) -> Result<FileId, PlatformError> {
+        audio::validate_size(file_data.len()).map_err(WebError::from)?;
         self.ensure_initialized().await?;
 
         let file_name = file_path
             .file_name()
             .and_then(|name| name.to_str())
             .unwrap_or("unknown");
-
-        // Detect MIME type from file extension
         let mime_type = match file_path.extension().and_then(|ext| ext.to_str()) {
             Some("mp3") => "audio/mpeg",
             Some("wav") => "audio/wav",
             Some("flac") => "audio/flac",
-            Some("ogg") => "audio/ogg",
-            Some("m4a") => "audio/mp4",
+            Some("ogg" | "opus") => "audio/ogg",
+            Some("m4a" | "mp4") => "audio/mp4",
+            Some("aac") => "audio/aac",
             Some("webm") => "audio/webm",
-            _ => "audio/unknown",
+            _ => "application/octet-stream",
         };
 
-        // Store file in browser storage
-        let file_id = self
+        Ok(self
             .storage
             .store_file(file_data, file_name, mime_type)
-            .await
-            .map_err(Self::convert_error)?;
-
-        Ok(file_id)
+            .await?)
     }
 
     async fn transcribe(
@@ -208,100 +312,63 @@ impl Platform for WasmPlatformImpl {
     ) -> Result<TranscriptionStream, PlatformError> {
         self.ensure_initialized().await?;
 
-        // Get file data
-        let file_data = match &request.file {
+        let bytes = match &request.file {
             FileSource::Bytes(bytes) => bytes.clone(),
-            FileSource::Path(path_buf) => panic!(
-                "FileSource::Path is not supported in web platform: {}",
-                path_buf.display()
-            ),
+            FileSource::Path(path) => {
+                return Err(PlatformError::unsupported(format!(
+                    "transcribing the file path {} in the browser; upload the file instead",
+                    path.display()
+                )));
+            }
             FileSource::Uploaded(file_id) => self
                 .storage
                 .get_file(file_id)
-                .await
-                .map_err(Self::convert_error)?
+                .await?
                 .ok_or_else(|| PlatformError::file_processing("File not found".to_owned()))?,
         };
+        audio::validate_size(bytes.len()).map_err(WebError::from)?;
 
-        // Note: Session management is now handled by start_transcription_process
-
-        // Validate audio file before processing
-        validate_audio_file(&file_data, 100 * 1024 * 1024) // 100MB limit
-            .map_err(Self::convert_error)?;
-
-        let model = self.model_manager.default_model();
-        let transcription_config = TranscriptionConfig {
-            language: request.language.clone(),
-            translate: request.translate,
-            ..TranscriptionConfig::new(WorkerModel::from(model))
-        };
-
-        // Configure audio processing with optimized settings
-        let audio_config = AudioProcessingConfig {
-            target_sample_rate: 16000.0,      // Whisper's optimal sample rate
-            target_channels: 1,               // Mono for better transcription
-            enable_agc: true,                 // Automatic gain control
-            enable_noise_reduction: false,    // Disabled for now to avoid artifacts
-            max_file_size: 100 * 1024 * 1024, // 100MB limit
-            ..Default::default()
-        };
+        let settings = self.load_settings().await?;
+        let spec = self
+            .model_manager
+            .model(&settings.model.model_name)?
+            .clone();
+        let language = request
+            .language
+            .or_else(|| settings.ui.transcription_language().map(str::to_owned));
 
         tracing::info!(
-            "Starting enhanced transcription for {} byte file with model: {}@{}",
-            file_data.len(),
-            model.repo,
-            model.revision
+            "Transcribing {} bytes with {} ({}), language {:?}",
+            bytes.len(),
+            spec.id,
+            spec.repo,
+            language
         );
 
-        // Start comprehensive transcription process
-        let stream =
-            start_transcription_process(file_data, transcription_config, Some(audio_config))
-                .await
-                .map_err(Self::convert_error)?;
-
-        // Convert to Result stream for platform compatibility
-        let converted_stream = stream.map(Ok);
-
-        Ok(Box::pin(converted_stream))
+        let (tx, rx) = mpsc::unbounded_channel();
+        spawn_local(run_transcription(
+            Arc::clone(&self.worker),
+            spec,
+            bytes,
+            language,
+            request.translate,
+            tx,
+        ));
+        Ok(Box::pin(UnboundedReceiverStream::new(rx)))
     }
 
     async fn cleanup(&self, file_id: &str) -> Result<(), PlatformError> {
         self.ensure_initialized().await?;
-
-        let file_id_obj = FileId::from(file_id);
-
-        // Remove file from storage
-        self.storage
-            .delete_file(&file_id_obj)
-            .await
-            .map_err(Self::convert_error)?;
-
-        // Close worker session if exists
-        {
-            let mut sessions = self.sessions.write().await;
-            if let Some(session_id) = sessions.remove(file_id) {
-                let _ = self.worker.close_session(&session_id).await;
-            }
-        }
-
+        self.storage.delete_file(&FileId::from(file_id)).await?;
         Ok(())
     }
-
-    // ========================================
-    // Model Management Operations
-    // ========================================
 
     async fn list_installed_models(&self) -> Result<Vec<ModelInfo>, PlatformError> {
         self.ensure_initialized().await?;
 
         let mut installed = Vec::new();
         for spec in self.model_manager.models() {
-            if self
-                .model_manager
-                .is_model_installed(&spec.id)
-                .await
-                .map_err(Self::convert_error)?
-            {
+            if self.model_manager.is_model_installed(&spec.id).await? {
                 installed.push(model_info(spec, true));
             }
         }
@@ -313,11 +380,7 @@ impl Platform for WasmPlatformImpl {
 
         let mut available = Vec::with_capacity(self.model_manager.models().len());
         for spec in self.model_manager.models() {
-            let is_installed = self
-                .model_manager
-                .is_model_installed(&spec.id)
-                .await
-                .map_err(Self::convert_error)?;
+            let is_installed = self.model_manager.is_model_installed(&spec.id).await?;
             available.push(model_info(spec, is_installed));
         }
         Ok(available)
@@ -326,215 +389,95 @@ impl Platform for WasmPlatformImpl {
     async fn fetch_model(&self, model_id: &str) -> Result<ModelProgressStream, PlatformError> {
         self.ensure_initialized().await?;
 
-        self.model_manager
-            .model(model_id)
-            .map_err(Self::convert_error)?;
-        Err(PlatformError::unsupported(
-            "fetch_model: transformers.js downloads the pinned files when the model is first used",
-        ))
+        let spec = self.model_manager.model(model_id)?.clone();
+        let (tx, rx) = mpsc::unbounded_channel();
+        spawn_local(run_preload(Arc::clone(&self.worker), spec, tx));
+        Ok(Box::pin(UnboundedReceiverStream::new(rx)))
     }
 
     async fn get_model_info(&self, model_id: &str) -> Result<ModelInfo, PlatformError> {
         self.ensure_initialized().await?;
 
-        let spec = self
-            .model_manager
-            .model(model_id)
-            .map_err(Self::convert_error)?;
-        let is_installed = self
-            .model_manager
-            .is_model_installed(model_id)
-            .await
-            .map_err(Self::convert_error)?;
+        let spec = self.model_manager.model(model_id)?;
+        let is_installed = self.model_manager.is_model_installed(model_id).await?;
         Ok(model_info(spec, is_installed))
     }
 
     async fn remove_model(&self, model_id: &str) -> Result<(), PlatformError> {
         self.ensure_initialized().await?;
-
-        self.model_manager
-            .remove_model(model_id)
-            .await
-            .map_err(Self::convert_error)?;
-
+        self.model_manager.remove_model(model_id).await?;
         Ok(())
     }
 
     async fn is_model_installed(&self, model_id: &str) -> Result<bool, PlatformError> {
         self.ensure_initialized().await?;
-
-        self.model_manager
-            .is_model_installed(model_id)
-            .await
-            .map_err(Self::convert_error)
+        Ok(self.model_manager.is_model_installed(model_id).await?)
     }
 
     async fn get_model_path(&self, model_id: &str) -> Result<String, PlatformError> {
         self.ensure_initialized().await?;
 
-        let spec = self
-            .model_manager
-            .model(model_id)
-            .map_err(Self::convert_error)?;
-        if !self
-            .model_manager
-            .is_model_installed(model_id)
-            .await
-            .map_err(Self::convert_error)?
-        {
+        let spec = self.model_manager.model(model_id)?;
+        if !self.model_manager.is_model_installed(model_id).await? {
             return Err(PlatformError::model_not_found(model_id));
         }
         Ok(model_cache::location(spec))
     }
 
     async fn list_available_devices(&self) -> Result<Vec<DeviceInfo>, PlatformError> {
-        let mut devices = Vec::new();
-
-        // CPU is always available
-        devices.push(DeviceInfo {
+        let mut devices = vec![DeviceInfo {
             id: 0,
             name: "CPU".to_owned(),
             description: Some("CPU-based transcription".to_owned()),
             device_type: DeviceType::Cpu,
-            memory_free: None, // Don't guess values
+            memory_free: None,
             memory_total: None,
             capabilities: None,
-        });
-
-        // Check if WebGPU is available using message-passing to isolate non-Send operations
-        let (result_tx, result_rx) = oneshot::channel();
-
-        // Use spawn_local to isolate all non-Send WebGPU operations
-        wasm_bindgen_futures::spawn_local(async move {
-            let webgpu_result = async move {
-                // Move all window/navigator access inside spawn_local
-                let window = match web_sys::window() {
-                    Some(w) => w,
-                    None => return Err("No window available".to_owned()),
-                };
-
-                let navigator = window.navigator();
-
-                // Check if WebGPU GPU interface exists
-                if navigator.gpu().is_undefined() {
-                    return Err("WebGPU not available".to_owned());
-                }
-
-                let adapter_promise = navigator.gpu().request_adapter();
-                let adapter = wasm_bindgen_futures::JsFuture::from(adapter_promise)
-                    .await
-                    .map_err(|e| format!("Failed to get WebGPU adapter: {e:?}"))?;
-
-                let Some(adapter) = adapter.into_option() else {
-                    return Err("No WebGPU adapter found".to_owned());
-                };
-                let info = adapter.info();
-                let vendor = info.vendor();
-                let device = info.device();
-                let features = adapter.features();
-
-                let mut caps = HashMap::with_capacity(features.size() as usize);
-                let iter = features.keys();
-                while let Ok(key) = iter.next() {
-                    let key = key.as_string().unwrap_or_default();
-                    let value = features.has(&key);
-                    caps.insert(key, value.to_string().into());
-                }
-
-                Ok::<DeviceInfo, String>(DeviceInfo {
-                    id: 1,
-                    name: format!("{vendor} {device}"),
-                    description: Some("WebGPU-based transcription".to_owned()),
-                    device_type: DeviceType::Gpu,
-                    memory_free: None, // WebGPU does not expose memory info
-                    memory_total: None,
-                    capabilities: Some(caps),
-                })
-            };
-
-            let result = webgpu_result.await;
-            let _ = result_tx.send(result);
-        });
-
-        // Wait for the result from the spawn_local task
-        if let Ok(webgpu_result) = result_rx.await {
-            match webgpu_result {
-                Ok(device_info) => {
-                    devices.push(device_info);
-                }
-                Err(err_msg) => {
-                    // Log the error but don't fail - just don't add GPU device
-                    tracing::warn!("WebGPU detection failed: {}", err_msg);
-                }
-            }
+        }];
+        if let Some(gpu) = run_local(detect_webgpu).await? {
+            devices.push(gpu);
         }
-
         Ok(devices)
     }
 
-    // ========================================
-    // Settings Persistence Operations
-    // ========================================
-
     async fn load_settings(&self) -> Result<Settings, PlatformError> {
-        const SETTINGS_KEY: &str = "purr-settings";
-
-        if let Some(json_str) = Self::get_storage_value(SETTINGS_KEY)? {
-            // Try to parse stored settings
-            match serde_json::from_str(&json_str) {
-                Ok(settings) => Ok(settings),
-                Err(e) => {
-                    tracing::warn!("Failed to parse stored settings, using defaults: {}", e);
-                    // If parsing fails, fall back to default settings
-                    // This provides automatic recovery from corrupted settings
-                    Ok(Settings::default())
-                }
-            }
-        } else {
-            // No settings found, return default settings
+        let Some(json) = Self::get_storage_value(SETTINGS_KEY)? else {
             tracing::info!("No settings found in localStorage, using defaults");
-            Ok(Settings::default())
-        }
+            return Ok(Settings::default());
+        };
+        serde_json::from_str(&json).map_err(|e| {
+            PlatformError::settings_persistence(format!(
+                "The settings stored in this browser are unreadable ({e}); reset them in Settings"
+            ))
+        })
     }
 
     async fn save_settings(&self, settings: &Settings) -> Result<(), PlatformError> {
-        const SETTINGS_KEY: &str = "purr-settings";
-
-        // Validate settings before saving
         let validation_errors = settings.validate();
         if !validation_errors.is_empty() {
-            let error_messages: Vec<String> = validation_errors
+            let messages: Vec<String> = validation_errors
                 .into_iter()
                 .map(|e| e.to_string())
                 .collect();
             return Err(PlatformError::settings_persistence(format!(
                 "Invalid settings: {}",
-                error_messages.join(", ")
+                messages.join(", ")
             )));
         }
 
-        // Serialize settings to JSON
-        let json_str = serde_json::to_string_pretty(settings).map_err(|e| {
+        let json = serde_json::to_string_pretty(settings).map_err(|e| {
             PlatformError::settings_persistence(format!("Failed to serialize settings: {e}"))
         })?;
-
-        // Save to localStorage with quota handling
-        Self::set_storage_value(SETTINGS_KEY, &json_str)?;
-
-        tracing::info!("Settings saved to localStorage successfully");
+        Self::set_storage_value(SETTINGS_KEY, &json)?;
+        tracing::info!("Settings saved to localStorage");
         Ok(())
     }
 
     async fn get_settings_location(&self) -> Result<Option<String>, PlatformError> {
-        Ok(Some("localStorage:purr-settings".to_owned()))
+        Ok(Some(format!("localStorage:{SETTINGS_KEY}")))
     }
 
-    // ========================================
-    // Theme Storage Implementation
-    // ========================================
-
     async fn load_theme_setting(&self, storage_key: &str) -> Result<Option<String>, PlatformError> {
-        // Load theme from localStorage
         Self::get_storage_value(storage_key)
     }
 
@@ -543,7 +486,59 @@ impl Platform for WasmPlatformImpl {
         storage_key: &str,
         theme: &str,
     ) -> Result<(), PlatformError> {
-        // Save theme to localStorage
         Self::set_storage_value(storage_key, theme)
     }
+}
+
+async fn detect_webgpu() -> WebResult<Option<DeviceInfo>> {
+    let window = web_sys::window().ok_or_else(|| {
+        WebError::web_api(
+            "Window",
+            wasm_bindgen::JsValue::from_str("no window available"),
+        )
+    })?;
+    let gpu = window.navigator().gpu();
+    if gpu.is_undefined() {
+        tracing::info!("WebGPU is not available in this browser");
+        return Ok(None);
+    }
+    let adapter = JsFuture::from(gpu.request_adapter())
+        .await
+        .map_err(|e| WebError::web_api("GPU.requestAdapter", e))?;
+    let Some(adapter) = adapter.into_option() else {
+        tracing::info!("The browser found no WebGPU adapter");
+        return Ok(None);
+    };
+    let info = adapter.info();
+    let features = adapter.features();
+
+    let mut capabilities = HashMap::new();
+    let iterator = features.keys();
+    while let Ok(entry) = iterator.next() {
+        if entry.done() {
+            break;
+        }
+        if let Some(name) = entry.value().as_string() {
+            capabilities.insert(name, serde_json::Value::Bool(true));
+        }
+    }
+
+    let name = [info.vendor(), info.architecture(), info.device()]
+        .into_iter()
+        .filter(|part| !part.trim().is_empty())
+        .collect::<Vec<_>>()
+        .join(" ");
+    Ok(Some(DeviceInfo {
+        id: 1,
+        name: if name.is_empty() {
+            "WebGPU adapter".to_owned()
+        } else {
+            name
+        },
+        description: Some("WebGPU-based transcription".to_owned()),
+        device_type: DeviceType::Gpu,
+        memory_free: None,
+        memory_total: None,
+        capabilities: Some(capabilities),
+    }))
 }

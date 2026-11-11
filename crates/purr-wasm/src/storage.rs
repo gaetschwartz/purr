@@ -264,6 +264,18 @@ impl WebStorage {
         Ok(cache.values().cloned().collect())
     }
 
+    /// Deletes every stored file that was created more than `max_age_ms` ago.
+    pub async fn purge_older_than(&self, max_age_ms: f64) -> WebResult<()> {
+        let now = js_sys::Date::now();
+        for file in self.list_files().await? {
+            if now - file.created_at > max_age_ms {
+                self.delete_file(&FileId::from(file.id.as_str())).await?;
+                tracing::info!("Removed stale upload {}", file.original_name);
+            }
+        }
+        Ok(())
+    }
+
     /// Initialize the `IndexedDB` database
     pub async fn initialize(&self) -> WebResult<()> {
         let (response_tx, response_rx) = oneshot::channel();

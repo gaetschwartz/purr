@@ -47,89 +47,61 @@ pub fn format_js_error(js_error: JsValue) -> String {
 // Specialized Error Enums for Domain-Specific Error Handling
 // ========================================
 
-/// Error for session not found scenarios
-#[derive(Debug, thiserror::Error, miette::Diagnostic)]
-#[error("Session not found: {session_id}")]
-#[diagnostic(code(purr::web::session::not_found))]
-pub struct SessionNotFoundError {
-    pub session_id: String,
-}
-
-impl SessionNotFoundError {
-    pub fn new(session_id: impl Into<String>) -> Self {
-        Self {
-            session_id: session_id.into(),
-        }
-    }
-}
-
-/// Worker-specific errors
+/// Failures of the transcription worker
 #[derive(Debug, thiserror::Error, miette::Diagnostic)]
 pub enum WorkerError {
-    #[error("Worker not initialized")]
-    #[diagnostic(code(purr::web::worker::not_initialized))]
-    NotInitialized,
+    #[error("The transcription worker was shut down before the request finished")]
+    #[diagnostic(code(purr::web::worker::closed))]
+    Closed,
 
-    #[error("Worker command send failed")]
-    #[diagnostic(code(purr::web::worker::command_send_failed))]
-    CommandSendFailed,
-
-    #[error("Worker ready timeout")]
-    #[diagnostic(code(purr::web::worker::ready_timeout))]
-    ReadyTimeout,
-
-    #[error("Worker ready channel closed")]
-    #[diagnostic(code(purr::web::worker::ready_channel_closed))]
-    ReadyChannelClosed,
-
-    #[error("Invalid request: {context}, {error_message}")]
-    #[diagnostic(code(purr::web::worker::invalid_request))]
-    InvalidRequest {
-        context: String,
-        error_message: String,
+    #[error("{message}")]
+    #[diagnostic(code(purr::web::worker::request_failed))]
+    RequestFailed {
+        kind: crate::protocol::FailureKind,
+        message: String,
     },
 }
 
 /// Storage-specific errors for `IndexedDB` and other storage operations
 #[derive(Debug, thiserror::Error, miette::Diagnostic)]
 pub enum StorageError {
-    #[error("IndexedDB availability check failed: {js_error:?}")]
+    #[error("IndexedDB availability check failed: {js_error}")]
     #[diagnostic(code(purr::web::storage::indexeddb_unavailable))]
     IndexedDbUnavailable { js_error: String },
 
-    #[error("Database open failed: {js_error:?}")]
+    #[error("Database open failed: {js_error}")]
     #[diagnostic(code(purr::web::storage::database_open_failed))]
     DatabaseOpenFailed { js_error: String },
 
-    #[error("Database connection failed: {js_error:?}")]
+    #[error("Database connection failed: {js_error}")]
     #[diagnostic(code(purr::web::storage::database_connection_failed))]
     DatabaseConnectionFailed { js_error: String },
 
-    #[error("Database cast failed: {js_error:?}")]
+    #[error("Database cast failed: {js_error}")]
     #[diagnostic(code(purr::web::storage::database_cast_failed))]
     DatabaseCastFailed { js_error: String },
 
-    #[error("Transaction creation failed: {js_error:?}")]
+    #[error("Transaction creation failed: {js_error}")]
     #[diagnostic(code(purr::web::storage::transaction_creation_failed))]
     TransactionCreationFailed { js_error: String },
 
-    #[error("Object store access failed: {js_error:?}")]
+    #[error("Object store access failed: {js_error}")]
     #[diagnostic(code(purr::web::storage::object_store_access_failed))]
     ObjectStoreAccessFailed { js_error: String },
 
-    #[error("File store operation failed: {js_error:?}")]
+    #[error("File store operation failed: {js_error}")]
     #[diagnostic(code(purr::web::storage::file_store_failed))]
     FileStoreFailed { js_error: String },
 
-    #[error("File storage operation failed: {js_error:?}")]
+    #[error("File storage operation failed: {js_error}")]
     #[diagnostic(code(purr::web::storage::file_storage_operation_failed))]
     FileStorageOperationFailed { js_error: String },
 
-    #[error("Metadata transaction creation failed: {js_error:?}")]
+    #[error("Metadata transaction creation failed: {js_error}")]
     #[diagnostic(code(purr::web::storage::metadata_transaction_failed))]
     MetadataTransactionFailed { js_error: String },
 
-    #[error("Metadata store access failed: {js_error:?}")]
+    #[error("Metadata store access failed: {js_error}")]
     #[diagnostic(code(purr::web::storage::metadata_store_access_failed))]
     MetadataStoreAccessFailed { js_error: String },
 
@@ -137,19 +109,19 @@ pub enum StorageError {
     #[diagnostic(code(purr::web::storage::metadata_serialization_failed))]
     MetadataSerializationFailed,
 
-    #[error("Metadata store operation failed: {js_error:?}")]
+    #[error("Metadata store operation failed: {js_error}")]
     #[diagnostic(code(purr::web::storage::metadata_store_failed))]
     MetadataStoreFailed { js_error: String },
 
-    #[error("Metadata storage operation failed: {js_error:?}")]
+    #[error("Metadata storage operation failed: {js_error}")]
     #[diagnostic(code(purr::web::storage::metadata_storage_operation_failed))]
     MetadataStorageOperationFailed { js_error: String },
 
-    #[error("Get request failed: {js_error:?}")]
+    #[error("Get request failed: {js_error}")]
     #[diagnostic(code(purr::web::storage::get_request_failed))]
     GetRequestFailed { js_error: String },
 
-    #[error("Get operation failed: {js_error:?}")]
+    #[error("Get operation failed: {js_error}")]
     #[diagnostic(code(purr::web::storage::get_operation_failed))]
     GetOperationFailed { js_error: String },
 
@@ -157,27 +129,27 @@ pub enum StorageError {
     #[diagnostic(code(purr::web::storage::data_format_invalid))]
     DataFormatInvalid,
 
-    #[error("Delete operation failed: {js_error:?}")]
+    #[error("Delete operation failed: {js_error}")]
     #[diagnostic(code(purr::web::storage::delete_operation_failed))]
     DeleteOperationFailed { js_error: String },
 
-    #[error("File deletion failed: {js_error:?}")]
+    #[error("File deletion failed: {js_error}")]
     #[diagnostic(code(purr::web::storage::file_deletion_failed))]
     FileDeletionFailed { js_error: String },
 
-    #[error("Metadata delete operation failed: {js_error:?}")]
+    #[error("Metadata delete operation failed: {js_error}")]
     #[diagnostic(code(purr::web::storage::metadata_delete_failed))]
     MetadataDeleteFailed { js_error: String },
 
-    #[error("Metadata deletion failed: {js_error:?}")]
+    #[error("Metadata deletion failed: {js_error}")]
     #[diagnostic(code(purr::web::storage::metadata_deletion_failed))]
     MetadataDeletionFailed { js_error: String },
 
-    #[error("GetAll request failed: {js_error:?}")]
+    #[error("GetAll request failed: {js_error}")]
     #[diagnostic(code(purr::web::storage::get_all_request_failed))]
     GetAllRequestFailed { js_error: String },
 
-    #[error("GetAll operation failed: {js_error:?}")]
+    #[error("GetAll operation failed: {js_error}")]
     #[diagnostic(code(purr::web::storage::get_all_operation_failed))]
     GetAllOperationFailed { js_error: String },
 
@@ -252,160 +224,64 @@ impl StorageError {
     }
 }
 
-/// Audio format and processing errors
+/// Failures while turning an uploaded file into audio samples
 #[derive(Debug, thiserror::Error, miette::Diagnostic)]
-pub enum AudioFormatError {
-    #[error("File too small to analyze")]
-    #[diagnostic(code(purr::web::audio::file_too_small_to_analyze))]
-    FileTooSmallToAnalyze,
+pub enum AudioError {
+    #[error("The audio file is empty")]
+    #[diagnostic(code(purr::web::audio::empty))]
+    Empty,
 
-    #[error("File too small")]
-    #[diagnostic(code(purr::web::audio::file_too_small))]
-    FileTooSmall,
-
-    #[error("Invalid WAV file")]
-    #[diagnostic(code(purr::web::audio::invalid_wav_file))]
-    InvalidWavFile,
-
-    #[error("No MP3 data after ID3 tag")]
-    #[diagnostic(code(purr::web::audio::no_mp3_data_after_id3))]
-    NoMp3DataAfterId3,
-
-    #[error("Invalid ID3/MP3 file")]
-    #[diagnostic(code(purr::web::audio::invalid_id3_mp3_file))]
-    InvalidId3Mp3File,
-
-    #[error("Unknown or unsupported audio format")]
-    #[diagnostic(code(purr::web::audio::unknown_audio_format))]
-    UnknownAudioFormat,
-
-    #[error("WAV file too small")]
-    #[diagnostic(code(purr::web::audio::wav_file_too_small))]
-    WavFileTooSmall,
-
-    #[error("Invalid WAV header")]
-    #[diagnostic(code(purr::web::audio::invalid_wav_header))]
-    InvalidWavHeader,
-
-    #[error("No fmt chunk found in WAV file")]
-    #[diagnostic(code(purr::web::audio::no_fmt_chunk_found))]
-    NoFmtChunkFound,
-
-    #[error("Invalid fmt chunk size")]
-    #[diagnostic(code(purr::web::audio::invalid_fmt_chunk_size))]
-    InvalidFmtChunkSize,
-
-    #[error("No MP3 frame found")]
-    #[diagnostic(code(purr::web::audio::no_mp3_frame_found))]
-    NoMp3FrameFound,
-
-    #[error("No valid MP3 frame found")]
-    #[diagnostic(code(purr::web::audio::no_valid_mp3_frame_found))]
-    NoValidMp3FrameFound,
-
-    #[error("Frame too small")]
-    #[diagnostic(code(purr::web::audio::frame_too_small))]
-    FrameTooSmall,
-
-    #[error("Invalid sync word")]
-    #[diagnostic(code(purr::web::audio::invalid_sync_word))]
-    InvalidSyncWord,
-
-    #[error("Invalid sample rate")]
-    #[diagnostic(code(purr::web::audio::invalid_sample_rate))]
-    InvalidSampleRate,
-
-    #[error("Invalid channel mode")]
-    #[diagnostic(code(purr::web::audio::invalid_channel_mode))]
-    InvalidChannelMode,
-
-    #[error("Invalid FLAC file")]
-    #[diagnostic(code(purr::web::audio::invalid_flac_file))]
-    InvalidFlacFile,
-
-    #[error("FLAC file too small")]
-    #[diagnostic(code(purr::web::audio::flac_file_too_small))]
-    FlacFileTooSmall,
-
-    #[error("First FLAC block is not STREAMINFO")]
-    #[diagnostic(code(purr::web::audio::flac_first_block_not_streaminfo))]
-    FlacFirstBlockNotStreaminfo,
-
-    #[error("STREAMINFO block too small")]
-    #[diagnostic(code(purr::web::audio::streaminfo_block_too_small))]
-    StreaminfoBlockTooSmall,
-
-    #[error("STREAMINFO data truncated")]
-    #[diagnostic(code(purr::web::audio::streaminfo_data_truncated))]
-    StreaminfoDataTruncated,
-
-    #[error("No data chunk found in WAV file")]
-    #[diagnostic(code(purr::web::audio::no_data_chunk_found))]
-    NoDataChunkFound,
-
-    #[error("Unsupported bit depth: {bit_depth}")]
-    #[diagnostic(code(purr::web::audio::unsupported_bit_depth))]
-    UnsupportedBitDepth { bit_depth: u16 },
-
-    #[error("Empty audio file")]
-    #[diagnostic(code(purr::web::audio::empty_audio_file))]
-    EmptyAudioFile,
-
-    #[error("File too small to be valid audio")]
-    #[diagnostic(code(purr::web::audio::file_too_small_for_valid_audio))]
-    FileTooSmallForValidAudio,
-
-    #[error("Unsupported or invalid audio format")]
-    #[diagnostic(code(purr::web::audio::unsupported_audio_format))]
-    UnsupportedAudioFormat,
-}
-
-/// WebGPU-specific errors
-#[derive(Debug, thiserror::Error, miette::Diagnostic)]
-pub enum WebGpuError {
-    #[error("Missing limit: {limit_name}")]
-    #[diagnostic(code(purr::web::webgpu::missing_limit))]
-    MissingLimit { limit_name: String },
-
-    #[error("Failed to get limit: {limit_name}")]
-    #[diagnostic(code(purr::web::webgpu::failed_to_get_limit))]
-    FailedToGetLimit { limit_name: String },
-
-    #[error("Input and output buffer sizes don't match")]
-    #[diagnostic(code(purr::web::webgpu::buffer_size_mismatch))]
-    BufferSizeMismatch,
-
-    #[error("Buffer data mismatch at index {index}: expected {expected}, got {actual}")]
-    #[diagnostic(code(purr::web::webgpu::buffer_data_mismatch))]
-    BufferDataMismatch {
-        index: usize,
-        expected: f32,
-        actual: f32,
-    },
+    #[error("Audio file too large: {file_size} bytes exceeds the limit of {max_size} bytes")]
+    #[diagnostic(code(purr::web::audio::too_large))]
+    TooLarge { file_size: u64, max_size: u64 },
 
     #[error(
-        "WebGPU computation failed: tolerance exceeded. Max difference: {max_diff}, tolerance: {tolerance}"
+        "This browser could not decode the audio file. It may be corrupt or use a format the browser does not support; MP3 and WAV are decoded by every browser. ({message})"
     )]
-    #[diagnostic(code(purr::web::webgpu::computation_failed))]
-    ComputationFailed { max_diff: f32, tolerance: f32 },
+    #[diagnostic(code(purr::web::audio::decode_failed))]
+    DecodeFailed { message: String },
 
-    #[error("WebGPU feature not supported: {feature}")]
-    #[diagnostic(code(purr::web::webgpu::feature_not_supported))]
-    FeatureNotSupported { feature: String },
+    #[error("The audio file decoded to no samples")]
+    #[diagnostic(code(purr::web::audio::no_samples))]
+    NoSamples,
+}
+
+/// A cached model file that does not match the manifest
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error, miette::Diagnostic)]
+pub enum IntegrityError {
+    #[error("{path} is not in the browser cache")]
+    #[diagnostic(code(purr::web::integrity::missing))]
+    Missing { path: String },
+
+    #[error("{path} has {actual} bytes in the cache but the manifest lists {expected}")]
+    #[diagnostic(code(purr::web::integrity::size_mismatch))]
+    SizeMismatch {
+        path: String,
+        expected: u64,
+        actual: u64,
+    },
+
+    #[error("{path} failed its SHA-256 check (expected {expected}, got {actual})")]
+    #[diagnostic(code(purr::web::integrity::digest_mismatch))]
+    DigestMismatch {
+        path: String,
+        expected: String,
+        actual: String,
+    },
 }
 
 /// Web-specific errors that can occur during platform operations
 #[derive(Debug, thiserror::Error, miette::Diagnostic)]
 pub enum WebError {
-    #[error("IndexedDB operation failed: {operation}, {js_error:?}")]
+    #[error("IndexedDB operation failed: {operation}, {js_error}")]
     #[diagnostic(code(purr::web::indexeddb::operation_failed))]
     IndexedDb { operation: String, js_error: String },
 
-    #[error("Web API error: {api} call failed, {js_error:?}")]
+    #[error("Web API error: {api} call failed, {js_error}")]
     #[diagnostic(code(purr::web::api::call_failed))]
     WebApi { api: String, js_error: String },
 
-    #[error("JavaScript error: {context}, {js_error:?}")]
+    #[error("JavaScript error: {context}, {js_error}")]
     #[diagnostic(code(purr::web::javascript::execution_error))]
     JavaScript { context: String, js_error: String },
 
@@ -424,26 +300,11 @@ pub enum WebError {
         url: String,
     },
 
-    #[error("Audio format not supported: {format} (supported: {supported_formats})")]
-    #[diagnostic(code(purr::web::audio::unsupported_format))]
-    UnsupportedAudioFormat {
-        format: String,
-        supported_formats: String,
-    },
-
-    #[error("Audio file too large: {file_size} bytes exceeds limit of {max_size} bytes")]
-    #[diagnostic(code(purr::web::audio::file_too_large))]
-    AudioFileTooLarge { file_size: u64, max_size: u64 },
-
-    #[error("Web Audio API error: {operation} failed, {js_error:?}")]
+    #[error("Web Audio API error: {operation} failed, {js_error}")]
     #[diagnostic(code(purr::web::audio::api_failed))]
     WebAudioApi { operation: String, js_error: String },
 
     // === Transparent wrappers for specialized error enums ===
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    SessionNotFound(SessionNotFoundError),
-
     #[error(transparent)]
     #[diagnostic(transparent)]
     Worker(WorkerError),
@@ -454,23 +315,18 @@ pub enum WebError {
 
     #[error(transparent)]
     #[diagnostic(transparent)]
-    AudioFormat(AudioFormatError),
-
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    WebGpu(WebGpuError),
+    Audio(AudioError),
 
     #[error(transparent)]
     #[diagnostic(transparent)]
     Manifest(WebManifestError),
+
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    Integrity(IntegrityError),
 }
 
 impl WebError {
-    /// Create a new session not found error
-    pub fn session_not_found(session_id: impl Into<String>) -> Self {
-        Self::SessionNotFound(SessionNotFoundError::new(session_id))
-    }
-
     /// Create a new model not found error
     pub fn model_not_found(model_id: impl Into<String>, storage_type: impl Into<String>) -> Self {
         Self::ModelNotFound {
@@ -545,18 +401,19 @@ impl WebError {
     #[must_use]
     pub fn into_platform_error(self) -> PlatformError {
         match self {
-            Self::AudioFormat { .. } => PlatformError::audio_processing(Box::new(self)),
-            Self::UnsupportedAudioFormat { .. } => PlatformError::audio_processing(Box::new(self)),
-            Self::AudioFileTooLarge { .. } => PlatformError::audio_processing(Box::new(self)),
-            Self::WebAudioApi { .. } => PlatformError::audio_processing(Box::new(self)),
-            Self::WebGpu { .. } => PlatformError::initialization(Box::new(self)),
-            Self::Manifest { .. } => PlatformError::model_management(Box::new(self)),
+            Self::Audio { .. } | Self::WebAudioApi { .. } => {
+                PlatformError::audio_processing(Box::new(self))
+            }
             Self::Worker { .. } => PlatformError::initialization(Box::new(self)),
-            Self::Storage { .. } => PlatformError::io(Box::new(self)),
-            Self::IndexedDb { .. } => PlatformError::io(Box::new(self)),
-            Self::WebApi { .. } => PlatformError::io(Box::new(self)),
-            Self::JavaScript { .. } => PlatformError::io(Box::new(self)),
-            _ => PlatformError::io(Box::new(self)),
+            Self::Manifest { .. } | Self::Integrity { .. } => {
+                PlatformError::model_management(Box::new(self))
+            }
+            Self::ModelNotFound { model_id, .. } => PlatformError::model_not_found(model_id),
+            Self::Storage { .. }
+            | Self::IndexedDb { .. }
+            | Self::WebApi { .. }
+            | Self::JavaScript { .. }
+            | Self::NetworkError { .. } => PlatformError::io(Box::new(self)),
         }
     }
 }
@@ -592,15 +449,15 @@ impl From<StorageError> for WebError {
     }
 }
 
-impl From<AudioFormatError> for WebError {
-    fn from(error: AudioFormatError) -> Self {
-        Self::AudioFormat(error)
+impl From<AudioError> for WebError {
+    fn from(error: AudioError) -> Self {
+        Self::Audio(error)
     }
 }
 
-impl From<WebGpuError> for WebError {
-    fn from(error: WebGpuError) -> Self {
-        Self::WebGpu(error)
+impl From<IntegrityError> for WebError {
+    fn from(error: IntegrityError) -> Self {
+        Self::Integrity(error)
     }
 }
 
