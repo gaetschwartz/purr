@@ -13,9 +13,9 @@ use crate::worker_client::WorkerClient;
 use bytes::Bytes;
 use futures::StreamExt as _;
 use purr_common::platform::{
-    DeviceInfo, DeviceType, FileId, FileSource, ModelInfo, ModelOperationProgress,
-    ModelProgressStream, Platform, PlatformError, TranscriptionRequest, TranscriptionStatus,
-    TranscriptionStream,
+    DeviceInfo, DeviceType, FileId, FileSource, ModelFailureKind, ModelInfo, ModelIntegrity,
+    ModelOperationProgress, ModelProgressStream, Platform, PlatformError, TranscriptionRequest,
+    TranscriptionStatus, TranscriptionStream,
 };
 use purr_common::settings::Settings;
 use purr_common::web_model::registry::WebModelSpec;
@@ -120,6 +120,23 @@ fn now_ms() -> f64 {
     js_sys::Date::now()
 }
 
+fn verification_failure_kind(error: &WebError) -> ModelFailureKind {
+    if matches!(error, WebError::Integrity(_)) {
+        ModelFailureKind::Integrity
+    } else {
+        ModelFailureKind::Other
+    }
+}
+
+fn download_failure_kind() -> ModelFailureKind {
+    let offline = web_sys::window().is_some_and(|window| !window.navigator().on_line());
+    if offline {
+        ModelFailureKind::Network
+    } else {
+        ModelFailureKind::Other
+    }
+}
+
 fn send_status(
     tx: &mpsc::UnboundedSender<Result<TranscriptionStatus, PlatformError>>,
     status: TranscriptionStatus,
@@ -206,10 +223,13 @@ async fn run_preload(
     tx: mpsc::UnboundedSender<Result<ModelOperationProgress, PlatformError>>,
 ) {
     let model_id = spec.id.clone();
-    let fail = |operation: &str, error_message: String| ModelOperationProgress::Failed {
-        model_id: model_id.clone(),
-        operation: operation.to_owned(),
-        error_message,
+    let fail = |operation: &str, error_message: String, kind: ModelFailureKind| {
+        ModelOperationProgress::Failed {
+            model_id: model_id.clone(),
+            operation: operation.to_owned(),
+            error_message,
+            kind,
+        }
     };
     if tx
         .send(Ok(ModelOperationProgress::Starting {
@@ -232,7 +252,11 @@ async fn run_preload(
             }
             if let Err(error) = model_cache::verify(&spec).await {
                 if tx
-                    .send(Ok(fail("verification", error.to_string())))
+                    .send(Ok(fail(
+                        "verification",
+                        error.to_string(),
+                        verification_failure_kind(&error),
+                    )))
                     .is_err()
                 {
                     tracing::warn!("Verification of {model_id} failed after its listener left");
@@ -244,7 +268,11 @@ async fn run_preload(
         Ok(false) => false,
         Err(error) => {
             if tx
-                .send(Ok(fail("verification", error.to_string())))
+                .send(Ok(fail(
+                    "verification",
+                    error.to_string(),
+                    ModelFailureKind::Other,
+                )))
                 .is_err()
             {
                 tracing::warn!("Checking {model_id} failed after its listener left");
@@ -260,7 +288,8 @@ async fn run_preload(
     let mut events = match worker.submit(request, None) {
         Ok(events) => events,
         Err(error) => {
-            if tx.send(Ok(fail("download", error.to_string()))).is_err() {
+            let failure = fail("download", error.to_string(), ModelFailureKind::Other);
+            if tx.send(Ok(failure)).is_err() {
                 tracing::warn!("Preload of {model_id} failed after its listener left");
             }
             return;
@@ -279,7 +308,9 @@ async fn run_preload(
                 let outcome = match mapper.map(event, now_ms()) {
                     PreloadStep::Progress(progress) => Ok(progress),
                     PreloadStep::Ignored => continue,
-                    PreloadStep::Failed(message) => Ok(fail("download", message)),
+                    PreloadStep::Failed(message) => {
+                        Ok(fail("download", message, download_failure_kind()))
+                    }
                     PreloadStep::Loaded => {
                         if !verified_first
                             && tx
@@ -298,7 +329,11 @@ async fn run_preload(
                                 model_id: model_id.clone(),
                                 local_path: PathBuf::from(model_cache::location(&spec)),
                             }),
-                            Err(error) => Ok(fail("verification", error.to_string())),
+                            Err(error) => Ok(fail(
+                                "verification",
+                                error.to_string(),
+                                verification_failure_kind(&error),
+                            )),
                         }
                     }
                 };
@@ -453,6 +488,17 @@ impl Platform for WasmPlatformImpl {
         self.ensure_initialized().await?;
         self.model_manager.remove_model(model_id).await?;
         Ok(())
+    }
+
+    async fn verify_model(&self, model_id: &str) -> Result<ModelIntegrity, PlatformError> {
+        self.ensure_initialized().await?;
+
+        let spec = self.model_manager.model(model_id)?;
+        match model_cache::verify(spec).await {
+            Ok(()) => Ok(ModelIntegrity::Verified),
+            Err(WebError::Integrity(problem)) => Ok(problem.into()),
+            Err(error) => Err(error.into()),
+        }
     }
 
     async fn is_model_installed(&self, model_id: &str) -> Result<bool, PlatformError> {

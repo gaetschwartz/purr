@@ -75,6 +75,13 @@ impl Platform for UnimplementedPlatformImpl {
         unsupported!()
     }
 
+    async fn verify_model(
+        &self,
+        model_id: &str,
+    ) -> Result<purr_common::platform::ModelIntegrity, PlatformError> {
+        unsupported!()
+    }
+
     async fn is_model_installed(&self, model_id: &str) -> Result<bool, PlatformError> {
         unsupported!()
     }

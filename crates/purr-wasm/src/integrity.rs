@@ -54,6 +54,7 @@ impl<'a> FileChecker<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use purr_common::platform::{IntegrityProblem, ModelIntegrity};
     use purr_common::web_model::file_role::ModelFileRole;
 
     const ABC_DIGEST: &str = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
@@ -103,5 +104,41 @@ mod tests {
             Err(IntegrityError::DigestMismatch { .. })
         ));
         Ok(())
+    }
+
+    #[test]
+    fn each_cache_problem_maps_to_the_platform_outcome() {
+        let path = "config.json".to_owned();
+        let cases = [
+            (
+                IntegrityError::Missing { path: path.clone() },
+                IntegrityProblem::Missing,
+            ),
+            (
+                IntegrityError::SizeMismatch {
+                    path: path.clone(),
+                    expected: 4,
+                    actual: 3,
+                },
+                IntegrityProblem::SizeMismatch,
+            ),
+            (
+                IntegrityError::DigestMismatch {
+                    path: path.clone(),
+                    expected: String::new(),
+                    actual: String::new(),
+                },
+                IntegrityProblem::ChecksumMismatch,
+            ),
+        ];
+        for (error, problem) in cases {
+            assert_eq!(
+                ModelIntegrity::from(error),
+                ModelIntegrity::Damaged {
+                    problem,
+                    file: path.clone(),
+                }
+            );
+        }
     }
 }

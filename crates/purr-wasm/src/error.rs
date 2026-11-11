@@ -1,6 +1,6 @@
 //! Error types for the web platform implementation
 
-use purr_common::platform::PlatformError;
+use purr_common::platform::{IntegrityProblem, ModelIntegrity, PlatformError};
 use purr_common::web_model::error::{UnknownWebModelError, WebManifestError};
 use wasm_bindgen::JsValue;
 
@@ -272,6 +272,19 @@ pub enum IntegrityError {
         expected: String,
         actual: String,
     },
+}
+
+impl From<IntegrityError> for ModelIntegrity {
+    fn from(error: IntegrityError) -> Self {
+        let (problem, file) = match error {
+            IntegrityError::Missing { path } => (IntegrityProblem::Missing, path),
+            IntegrityError::SizeMismatch { path, .. } => (IntegrityProblem::SizeMismatch, path),
+            IntegrityError::DigestMismatch { path, .. } => {
+                (IntegrityProblem::ChecksumMismatch, path)
+            }
+        };
+        Self::Damaged { problem, file }
+    }
 }
 
 /// Web-specific errors that can occur during platform operations

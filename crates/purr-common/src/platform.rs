@@ -636,6 +636,43 @@ pub enum ModelOperationProgress {
         model_id: String,
         operation: String,
         error_message: String,
+        #[serde(default)]
+        kind: ModelFailureKind,
+    },
+}
+
+/// What went wrong in a failed model operation, so the UI can word the recovery.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub enum ModelFailureKind {
+    /// The connection to the model host failed or dropped.
+    Network,
+    /// The downloaded or cached files do not match the published checksums.
+    Integrity,
+    /// Anything else, including storage errors.
+    #[default]
+    Other,
+}
+
+/// How a stored model file differs from its published description.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum IntegrityProblem {
+    /// A file of the model is not stored.
+    Missing,
+    /// A file has a different size than published.
+    SizeMismatch,
+    /// A file's SHA-256 differs from the published checksum.
+    ChecksumMismatch,
+}
+
+/// The outcome of checking an installed model against its published checksums.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum ModelIntegrity {
+    /// Every file matches.
+    Verified,
+    /// A file does not match; `file` names the first one that failed.
+    Damaged {
+        problem: IntegrityProblem,
+        file: String,
     },
 }
 
@@ -812,6 +849,24 @@ pub trait Platform: Send + Sync + 'static {
         &self,
         model_id: &str,
     ) -> impl std::future::Future<Output = Result<(), PlatformError>> + Send;
+
+    /// Hash an installed model's files against the published checksums
+    ///
+    /// # Arguments
+    /// * `model_id` - Unique identifier of the model to check
+    ///
+    /// # Returns
+    /// `ModelIntegrity::Damaged` when a file does not match; `Err` only when the check itself
+    /// could not run.
+    ///
+    /// # Platform Differences
+    /// - **Desktop**: Hashes the model file on disk
+    /// - **Web**: Hashes every cached file and evicts the ones that fail, so the next use
+    ///   downloads them again
+    fn verify_model(
+        &self,
+        model_id: &str,
+    ) -> impl std::future::Future<Output = Result<ModelIntegrity, PlatformError>> + Send;
 
     /// Check if a specific model is currently installed
     ///
