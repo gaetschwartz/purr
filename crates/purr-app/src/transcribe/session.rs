@@ -584,14 +584,17 @@ impl TranscribeSession {
     pub fn cancel(mut self) {
         self.stop_task();
         let cancelled_record = self.record.take();
-        if let Some(record) = &cancelled_record
-            && self
-                .file
-                .peek()
-                .as_ref()
-                .is_none_or(|file| file.id != record.file.id)
-        {
-            self.file.set(Some(record.file.clone()));
+        let restore = cancelled_record
+            .as_ref()
+            .map(|record| record.file.clone())
+            .filter(|restored| {
+                self.file
+                    .peek()
+                    .as_ref()
+                    .is_none_or(|file| file.id != restored.id)
+            });
+        if let Some(file) = restore {
+            self.file.set(Some(file));
         }
         let detail = cancel_detail(IS_WEB, self.models.is_downloading());
         self.cancelled

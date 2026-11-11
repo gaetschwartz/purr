@@ -1,7 +1,9 @@
 //! The read-only system panel as plain rows, made from what the platform reports.
 
 use crate::{
-    hooks::use_models::GpuSupport, transcribe::engine::why_passed_over, utils::byte_size::ByteSize,
+    hooks::use_models::GpuSupport,
+    transcribe::engine::{routinely_skipped, why_passed_over},
+    utils::byte_size::ByteSize,
 };
 use purr_common::{
     accel::{
@@ -177,19 +179,12 @@ pub struct LastRunNote {
     pub detail: String,
 }
 
-const fn expected_to_be_skipped(reason: &PassedReason) -> bool {
-    matches!(
-        reason,
-        PassedReason::Unavailable(
-            BackendUnavailable::NotBuilt | BackendUnavailable::NotBuiltOrNoDevice
-        )
-    )
-}
-
 /// The note under the panel for the last transcription; `None` when none ran yet.
 ///
-/// A backend that is simply not part of this build is mentioned only when the user asked for
-/// it by name (`requested`): nobody expects the others.
+/// A backend that is routinely skipped, because the build lacks it or the machine has no device
+/// for it, is mentioned only when the user asked for it by name (`requested`).
+///
+/// This is the same rule as the banner on a run, so the two never disagree.
 #[must_use]
 pub fn last_run_note(
     last: Option<&LastRun>,
@@ -203,9 +198,7 @@ pub fn last_run_note(
     let skipped: Vec<_> = last
         .passed_over
         .iter()
-        .filter(|passed| {
-            !expected_to_be_skipped(&passed.reason) || requested == Some(passed.backend)
-        })
+        .filter(|passed| !routinely_skipped(&passed.reason) || requested == Some(passed.backend))
         .map(|passed| {
             format!(
                 "{} was passed over: {}",
@@ -580,6 +573,26 @@ mod tests {
                 title: "The last transcription ran on CPU".to_owned(),
                 detail: "Vulkan was passed over: it is not part of this build.".to_owned(),
             })
+        );
+    }
+
+    #[test]
+    fn a_backend_without_a_device_is_not_news_unless_the_user_asked_for_it() {
+        let last = LastRun {
+            backend: AccelBackend::Cpu,
+            device: None,
+            passed_over: vec![PassedOver {
+                backend: AccelBackend::Cuda,
+                reason: PassedReason::Unavailable(BackendUnavailable::NoDevice),
+            }],
+        };
+        assert_eq!(
+            last_run_note(Some(&last), None).map(|note| note.fell_back),
+            Some(false)
+        );
+        assert_eq!(
+            last_run_note(Some(&last), Some(AccelBackend::Cuda)).map(|note| note.detail),
+            Some("CUDA was passed over: no usable device responded.".to_owned())
         );
     }
 }

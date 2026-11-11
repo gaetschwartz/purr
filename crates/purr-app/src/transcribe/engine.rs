@@ -100,7 +100,7 @@ pub fn why_passed_over(reason: &PassedReason) -> String {
 
 /// Skipping a backend this build lacks, or one with no device, is how automatic selection works.
 #[must_use]
-const fn routinely_skipped(reason: &PassedReason) -> bool {
+pub const fn routinely_skipped(reason: &PassedReason) -> bool {
     matches!(
         reason,
         PassedReason::Unavailable(
