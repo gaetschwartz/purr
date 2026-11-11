@@ -359,11 +359,14 @@ async fn run_preload(
                                 model_id: model_id.clone(),
                                 local_path: PathBuf::from(model_cache::location(&spec)),
                             }),
-                            Err(error) => Ok(fail(
-                                "verification",
-                                error.to_string(),
-                                verification_failure_kind(&error),
-                            )),
+                            Err(error) => {
+                                worker.release_idle();
+                                Ok(fail(
+                                    "verification",
+                                    error.to_string(),
+                                    verification_failure_kind(&error),
+                                ))
+                            }
                         }
                     }
                 };
@@ -573,6 +576,7 @@ impl Platform for WasmPlatformImpl {
     async fn remove_model(&self, model_id: &str) -> Result<(), PlatformError> {
         self.ensure_initialized().await?;
         self.model_manager.remove_model(model_id).await?;
+        self.worker.release_idle();
         Ok(())
     }
 

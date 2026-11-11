@@ -34,6 +34,7 @@ struct Submission {
 enum Input {
     Submit(Submission),
     Cancel(RequestId),
+    ReleaseIdle,
     FromWorker(WorkerSignal),
 }
 
@@ -63,6 +64,14 @@ impl WorkerClient {
 
     pub fn next_request_id(&self) -> RequestId {
         RequestId::new(self.next_id.fetch_add(1, Ordering::Relaxed))
+    }
+
+    /// Stops the worker if no request is running, so the model it holds in memory is dropped and
+    /// the next request downloads and loads it again.
+    pub fn release_idle(&self) {
+        if self.input.send(Input::ReleaseIdle).is_err() {
+            tracing::debug!("The worker router has stopped; there is nothing to release");
+        }
     }
 
     /// Sends a request to the worker. Dropping the returned stream before it ends cancels the
@@ -283,6 +292,7 @@ impl Router {
             match input {
                 Input::Submit(submission) => self.submit(submission),
                 Input::Cancel(id) => self.cancel(id),
+                Input::ReleaseIdle => self.release_idle(),
                 Input::FromWorker(WorkerSignal::Event(event)) => self.deliver(event),
                 Input::FromWorker(WorkerSignal::Malformed(message)) => {
                     tracing::error!("Malformed worker message: {message}");
@@ -397,6 +407,15 @@ impl Router {
             {
                 tracing::warn!("Request {id:?} stopped listening before its failure arrived");
             }
+        }
+    }
+
+    fn release_idle(&mut self) {
+        if self.pending.is_empty()
+            && let Some(worker) = self.worker.take()
+        {
+            tracing::info!("Stopping the idle transcription worker to drop the model it holds");
+            worker.terminate();
         }
     }
 
