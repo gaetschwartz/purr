@@ -13,6 +13,8 @@ mod main_app;
 pub mod model_catalog;
 /// Platform abstraction layer for client-only architecture
 pub mod platform;
+/// The single owner and writer of the user's settings
+pub mod settings_store;
 /// Keyboard shortcut registry
 pub mod shortcuts;
 mod transcript;
