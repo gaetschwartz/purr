@@ -1,8 +1,12 @@
 //! Theme and transparency preferences, applied as attributes on the document root.
 
 use crate::{components::toast::Toasts, platform};
-use dioxus::{core::spawn_forever, prelude::*};
-use purr_common::{platform::Platform as _, settings::Theme};
+use dioxus::prelude::*;
+use futures::StreamExt as _;
+use purr_common::{
+    platform::{Platform as _, PlatformError},
+    settings::Theme,
+};
 
 /// The look the user chose.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -23,8 +27,8 @@ impl Default for Appearance {
 /// What the document root carries for an [`Appearance`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RootAttributes {
-    /// `data-theme`, absent when the theme follows the system.
-    pub data_theme: Option<&'static str>,
+    /// `data-theme`: `light`, `dark` or `system`.
+    pub data_theme: &'static str,
     /// The `dark` class the Tailwind `dark:` utilities of the older views key on.
     pub dark_class: bool,
     /// `data-transparency="reduced"`.
@@ -35,9 +39,9 @@ pub struct RootAttributes {
 #[must_use]
 pub const fn root_attributes(appearance: Appearance, system_dark: bool) -> RootAttributes {
     let (data_theme, dark_class) = match appearance.theme {
-        Theme::Light => (Some("light"), false),
-        Theme::Dark => (Some("dark"), true),
-        Theme::System => (None, system_dark),
+        Theme::Light => ("light", false),
+        Theme::Dark => ("dark", true),
+        Theme::System => ("system", system_dark),
     };
     RootAttributes {
         data_theme,
@@ -47,17 +51,14 @@ pub const fn root_attributes(appearance: Appearance, system_dark: bool) -> RootA
 }
 
 fn root_script(attributes: RootAttributes) -> String {
-    let theme = attributes.data_theme.map_or_else(
-        || "root.removeAttribute('data-theme');".to_owned(),
-        |value| format!("root.setAttribute('data-theme', '{value}');"),
-    );
+    let theme = attributes.data_theme;
     let transparency = if attributes.reduced_transparency {
         "root.setAttribute('data-transparency', 'reduced');"
     } else {
         "root.removeAttribute('data-transparency');"
     };
     format!(
-        "const root = document.documentElement; {theme} {transparency} root.classList.toggle('dark', {});",
+        "const root = document.documentElement; root.setAttribute('data-theme', '{theme}'); {transparency} root.classList.toggle('dark', {});",
         attributes.dark_class
     )
 }
@@ -68,7 +69,7 @@ const SYSTEM_SCHEME_WATCHER: &str = "const query = window.matchMedia('(prefers-c
 #[derive(Clone, Copy, PartialEq)]
 pub struct AppearanceHandle {
     appearance: Signal<Appearance>,
-    toasts: Toasts,
+    saver: Coroutine<Appearance>,
 }
 
 impl AppearanceHandle {
@@ -84,37 +85,40 @@ impl AppearanceHandle {
         *self.appearance.peek()
     }
 
+    /// Replaces the whole appearance and saves it.
+    pub fn set(mut self, appearance: Appearance) {
+        self.appearance.set(appearance);
+        self.saver.send(appearance);
+    }
+
     /// Switches the theme and saves it.
-    pub fn set_theme(mut self, theme: Theme) {
-        self.appearance.write().theme = theme;
-        self.persist();
+    pub fn set_theme(self, theme: Theme) {
+        self.set(Appearance {
+            theme,
+            ..self.peek()
+        });
     }
 
     /// Turns the solid surfaces on or off and saves the choice.
-    pub fn set_reduce_transparency(mut self, reduce: bool) {
-        self.appearance.write().reduce_transparency = reduce;
-        self.persist();
-    }
-
-    fn persist(self) {
-        let chosen = *self.appearance.peek();
-        let toasts = self.toasts;
-        spawn_forever(async move {
-            let platform = platform::get_platform();
-            let saved = match platform.load_settings().await {
-                Ok(mut settings) => {
-                    settings.ui.theme = chosen.theme;
-                    settings.ui.reduce_transparency = chosen.reduce_transparency;
-                    platform.save_settings(&settings).await
-                }
-                Err(error) => Err(error),
-            };
-            if let Err(error) = saved {
-                tracing::error!("Could not save the appearance: {error}");
-                toasts.error("Couldn't save the appearance", error.to_string());
-            }
+    pub fn set_reduce_transparency(self, reduce_transparency: bool) {
+        self.set(Appearance {
+            reduce_transparency,
+            ..self.peek()
         });
     }
+}
+
+/// The last of a burst of requests; earlier ones are superseded.
+fn newest<T>(first: T, rest: impl IntoIterator<Item = T>) -> T {
+    rest.into_iter().last().unwrap_or(first)
+}
+
+async fn save(chosen: Appearance) -> Result<(), PlatformError> {
+    let platform = platform::get_platform();
+    let mut settings = platform.load_settings().await?;
+    settings.ui.theme = chosen.theme;
+    settings.ui.reduce_transparency = chosen.reduce_transparency;
+    platform.save_settings(&settings).await
 }
 
 /// Loads the saved appearance, keeps the root attributes in sync and provides the handle.
@@ -146,7 +150,19 @@ pub fn use_appearance_provider(toasts: Toasts) -> AppearanceHandle {
         document::eval(&root_script(attributes));
     });
 
-    use_context_provider(|| AppearanceHandle { appearance, toasts })
+    let saver = use_coroutine(
+        move |mut requests: UnboundedReceiver<Appearance>| async move {
+            while let Some(first) = requests.next().await {
+                let pending = std::iter::from_fn(|| requests.try_recv().ok());
+                if let Err(error) = save(newest(first, pending)).await {
+                    tracing::error!("Could not save the appearance: {error}");
+                    toasts.error("Couldn't save the appearance", error.to_string());
+                }
+            }
+        },
+    );
+
+    use_context_provider(|| AppearanceHandle { appearance, saver })
 }
 
 /// The appearance handle provided at the root.
@@ -159,17 +175,23 @@ mod tests {
     use super::*;
 
     #[test]
-    fn system_theme_leaves_the_attribute_off_and_follows_the_os_for_tailwind() {
+    fn system_theme_follows_the_os_for_tailwind() {
         let appearance = Appearance::default();
         assert_eq!(
             root_attributes(appearance, true),
             RootAttributes {
-                data_theme: None,
+                data_theme: "system",
                 dark_class: true,
                 reduced_transparency: false,
             }
         );
         assert!(!root_attributes(appearance, false).dark_class);
+    }
+
+    #[test]
+    fn a_burst_of_saves_keeps_only_the_newest() {
+        assert_eq!(newest(1, [2, 3]), 3);
+        assert_eq!(newest(1, []), 1);
     }
 
     #[test]
@@ -181,7 +203,7 @@ mod tests {
         assert_eq!(
             root_attributes(dark, false),
             RootAttributes {
-                data_theme: Some("dark"),
+                data_theme: "dark",
                 dark_class: true,
                 reduced_transparency: true,
             }
@@ -193,7 +215,7 @@ mod tests {
         assert_eq!(
             root_attributes(light, true),
             RootAttributes {
-                data_theme: Some("light"),
+                data_theme: "light",
                 dark_class: false,
                 reduced_transparency: false,
             }

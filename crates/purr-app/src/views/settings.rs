@@ -1,5 +1,5 @@
 use crate::{
-    appearance::use_appearance,
+    appearance::{Appearance, use_appearance},
     components::{
         banner::{Banner, BannerTone},
         button::{Button, ButtonVariant},
@@ -80,8 +80,10 @@ pub fn Settings() -> Element {
     let reset_settings = move |()| {
         reset_open.set(false);
         let defaults = SettingsConfig::default();
-        appearance.set_theme(defaults.ui.theme);
-        appearance.set_reduce_transparency(defaults.ui.reduce_transparency);
+        appearance.set(Appearance {
+            theme: defaults.ui.theme,
+            reduce_transparency: defaults.ui.reduce_transparency,
+        });
         if let Err(error) = apply_log_level(&defaults.logging.level) {
             tracing::warn!("Could not apply the default log level: {error}");
         }
