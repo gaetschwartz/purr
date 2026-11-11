@@ -19,11 +19,11 @@ use crate::{
         format,
         listing::{Listing, ModelQuery, ModelRow, active_download, build_listing, summarize},
     },
-    platform::{self, IS_WEB},
+    platform::IS_WEB,
+    settings_store::use_settings,
     utils::byte_size::ByteSize,
 };
 use dioxus::prelude::*;
-use purr_common::platform::Platform as _;
 
 const IN_PROGRESS: &str = "In progress";
 
@@ -176,25 +176,12 @@ fn Catalog(models: ModelsHandle, rows: Vec<ModelRow>, selected: Option<String>) 
 #[component]
 pub fn Models() -> Element {
     let models = use_models();
-    let selected = use_resource(|| async {
-        platform::get_platform()
-            .load_settings()
-            .await
-            .map(|settings| settings.model.model_name)
-    });
+    let settings = use_settings();
+    let selected_id = use_memo(move || settings.with(|s| s.model.model_name.clone()));
     let subtitle = if IS_WEB {
         "Speech models stored in this browser. Larger models are more accurate and slower."
     } else {
         "Speech models stored on this device. Larger models are more accurate and slower."
-    };
-
-    let selected_id = match &*selected.read() {
-        Some(Ok(name)) => Some(name.clone()),
-        Some(Err(error)) => {
-            tracing::warn!("Could not read the chosen model: {error}");
-            None
-        }
-        None => None,
     };
 
     rsx! {
@@ -223,7 +210,7 @@ pub fn Models() -> Element {
                     }
                 },
                 Some(Ok(rows)) => rsx! {
-                    Catalog { models, rows, selected: selected_id }
+                    Catalog { models, rows, selected: Some(selected_id()) }
                 },
             }
         }
