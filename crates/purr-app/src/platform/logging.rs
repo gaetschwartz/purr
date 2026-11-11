@@ -387,13 +387,46 @@ fn output_layer() -> impl Layer<Layered<reload::Layer<EnvFilter, Registry>, Regi
         .compact()
 }
 
+/// UI framework targets whose trace output is a consequence of rendering the log list.
+const FRAMEWORK_TARGETS: [&str; 9] = [
+    "dioxus_core",
+    "dioxus_desktop",
+    "dioxus_hooks",
+    "dioxus_html",
+    "dioxus_router",
+    "dioxus_signals",
+    "dioxus_web",
+    "generational_box",
+    "warnings",
+];
+
+/// The filter directives that record `level` and above, with the UI framework held to `info`.
+///
+/// Without the cap, tracing the framework fills the capture, which re-renders the log list,
+/// which makes the framework trace again.
+#[must_use]
+pub fn filter_directives(level: &LogLevel) -> String {
+    let framework = match level {
+        LogLevel::Error | LogLevel::Warn | LogLevel::Info => level.to_string(),
+        LogLevel::Debug | LogLevel::Trace => LogLevel::Info.to_string(),
+    };
+    let mut directives = level.to_string().to_owned();
+    for target in FRAMEWORK_TARGETS {
+        directives.push(',');
+        directives.push_str(target);
+        directives.push('=');
+        directives.push_str(framework);
+    }
+    directives
+}
+
 /// Makes the application log at `level` and above.
 pub fn apply_log_level(level: &LogLevel) -> miette::Result<()> {
     let handle = FILTER_HANDLE
         .get()
         .ok_or_else(|| miette::miette!("Logging has not been initialized"))?;
     handle
-        .reload(EnvFilter::new(level.to_string()))
+        .reload(EnvFilter::new(filter_directives(level)))
         .into_diagnostic()
 }
 
@@ -439,6 +472,65 @@ mod tests {
 
     fn ids(storage: &LogsStorage) -> Vec<u64> {
         storage.snapshot().iter().map(|entry| entry.id).collect()
+    }
+
+    fn directives(level: &LogLevel, framework: &str) -> Vec<String> {
+        let mut expected = vec![level.to_string().to_owned()];
+        expected.extend(
+            FRAMEWORK_TARGETS
+                .iter()
+                .map(|target| format!("{target}={framework}")),
+        );
+        expected
+    }
+
+    fn split(level: &LogLevel) -> Vec<String> {
+        filter_directives(level)
+            .split(',')
+            .map(str::to_owned)
+            .collect()
+    }
+
+    #[test]
+    fn tracing_holds_the_ui_framework_to_info() {
+        for level in [LogLevel::Debug, LogLevel::Trace] {
+            assert_eq!(split(&level), directives(&level, "info"));
+        }
+    }
+
+    #[test]
+    fn quieter_levels_hold_the_ui_framework_to_the_same_level() {
+        for level in [LogLevel::Error, LogLevel::Warn, LogLevel::Info] {
+            assert_eq!(split(&level), directives(&level, level.to_string()));
+        }
+    }
+
+    #[test]
+    fn a_trace_filter_records_purr_but_not_the_framework() {
+        let subscriber = Registry::default()
+            .with(EnvFilter::new(filter_directives(&LogLevel::Trace)))
+            .with(LogsCaptureLayer::new());
+        tracing::subscriber::with_default(subscriber, || {
+            tracing::trace!(target: "purr_app::engine", "filter-test purr");
+            tracing::trace!(target: "dioxus_signals", "filter-test signal");
+            tracing::info!(target: "dioxus_signals", "filter-test framework info");
+        });
+        let recorded: Vec<(String, String)> = get_logs_storage()
+            .snapshot()
+            .iter()
+            .filter(|entry| entry.message.starts_with("filter-test"))
+            .map(|entry| (entry.target.clone(), entry.message.clone()))
+            .collect();
+        assert_eq!(
+            recorded,
+            [
+                ("purr_app::engine".to_owned(), "filter-test purr".to_owned()),
+                (
+                    "dioxus_signals".to_owned(),
+                    "filter-test framework info".to_owned()
+                ),
+            ]
+        );
     }
 
     #[test]
