@@ -76,7 +76,24 @@ pub fn App() -> Element {
             storage_type: StorageType::LocalStorage,
             storage_name: "theme".to_owned(),
             custom_themes: Some(custom_themes),
-            MainApp {}
+            ErrorBoundary {
+                handle_error: |errors: ErrorContext| rsx! {
+                    main { class: "min-h-screen flex items-center justify-center p-6 bg-gray-50 text-gray-900 dark:bg-gray-900 dark:text-gray-100",
+                        div { class: "max-w-xl space-y-3", role: "alert",
+                            h1 { class: "text-2xl font-bold text-red-700 dark:text-red-400", "Something went wrong" }
+                            if let Some(error) = errors.error() {
+                                p { "{error}" }
+                            }
+                            button {
+                                class: "px-4 py-2 rounded-lg bg-teal-500 text-white hover:bg-teal-600",
+                                onclick: move |_| errors.clear_errors(),
+                                "Try again"
+                            }
+                        }
+                    }
+                },
+                MainApp {}
+            }
         }
     }
 }
