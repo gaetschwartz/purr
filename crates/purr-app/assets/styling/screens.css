@@ -139,7 +139,7 @@ mark.cur{background:var(--accent);color:#fff}
 .sect-nav button{height:30px;padding:0 12px;border-radius:999px;background:var(--fill);font-size:13px;font-weight:500}
 .sect-nav button:hover{background:var(--fill-2)}
 .settings{display:flex;flex-direction:column;gap:28px}
-.settings .sect{display:flex;flex-direction:column;gap:14px}
+.settings .sect{display:flex;flex-direction:column;gap:14px;scroll-margin-top:20px}
 .saved.warn svg{color:var(--warning)}
 .item .ctl .pill,.item .ctl .pill .grow{min-width:0}.item .ctl .pill .val{display:block;color:inherit}
 .sys{display:flex;flex-direction:column}
