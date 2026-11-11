@@ -220,13 +220,16 @@ async fn list_available(manager: &ModelManager) -> miette::Result<()> {
 }
 
 async fn delete(manager: &ModelManager, spec: &ModelSpec) -> miette::Result<()> {
-    if matches!(manager.file_status(spec).await?, ModelFileStatus::Missing) {
-        println!(
-            "{} Model {} is not downloaded.",
-            "Warning:".yellow().bold(),
-            spec.id
-        );
-        return Ok(());
+    match manager.file_status(spec).await? {
+        ModelFileStatus::Missing => {
+            println!(
+                "{} Model {} is not downloaded.",
+                "Warning:".yellow().bold(),
+                spec.id
+            );
+            return Ok(());
+        }
+        ModelFileStatus::Present | ModelFileStatus::SizeMismatch { .. } => {}
     }
 
     manager.delete_model(spec).await?;

@@ -241,13 +241,14 @@ impl Platform for DesktopPlatformImpl {
                 }
                 Ok(false) => {}
                 Err(e) => {
-                    let _ = tx
-                        .send(Ok(ModelOperationProgress::Failed {
-                            model_id: model_id.clone(),
-                            operation: "model_check".to_owned(),
-                            error_message: e.to_string(),
-                        }))
-                        .await;
+                    let failed = ModelOperationProgress::Failed {
+                        model_id: model_id.clone(),
+                        operation: "model_check".to_owned(),
+                        error_message: e.to_string(),
+                    };
+                    if tx.send(Ok(failed)).await.is_err() {
+                        debug!("Model progress receiver dropped before {model_id} check failed");
+                    }
                     return;
                 }
             }
