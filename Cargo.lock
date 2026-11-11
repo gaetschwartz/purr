@@ -3003,28 +3003,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "gloo-events"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8c6a94fa8cd88bea0babf8a27fe9abbcdece831fd1c3c84dd5c231fab4685ec7"
-dependencies = [
- "wasm-bindgen",
- "web-sys",
-]
-
-[[package]]
-name = "gloo-file"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "544a15ff6a3d5976bebc97380c8471ae14283bc71f4bb198d6c8cae64f411ab7"
-dependencies = [
- "gloo-events",
- "js-sys",
- "wasm-bindgen",
- "web-sys",
-]
-
-[[package]]
 name = "gloo-net"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5537,16 +5515,13 @@ name = "purr-app"
 version = "0.1.0"
 dependencies = [
  "ambassador",
- "async-trait",
  "bytes",
  "cached",
  "chrono",
- "const-str 1.1.0",
  "dioxus",
  "directories",
  "futures",
  "getrandom 0.4.3",
- "gloo-file",
  "gloo-timers",
  "js-sys",
  "miette",
@@ -5560,7 +5535,6 @@ dependencies = [
  "rstest",
  "scc",
  "serde",
- "serde-wasm-bindgen",
  "serde_json",
  "serde_with",
  "strum",
@@ -5568,7 +5542,6 @@ dependencies = [
  "thiserror 2.0.21",
  "tokio",
  "toml 1.2.1+spec-1.1.0",
- "toml_edit 0.25.19+spec-1.1.0",
  "tracing",
  "tracing-subscriber",
  "uuid",
@@ -5613,7 +5586,6 @@ name = "purr-common"
 version = "0.1.0"
 dependencies = [
  "ambassador",
- "async-trait",
  "bytes",
  "clap",
  "const-str 1.1.0",
@@ -7486,7 +7458,6 @@ dependencies = [
  "indexmap 2.14.2",
  "toml_datetime 1.1.3+spec-1.1.0",
  "toml_parser",
- "toml_writer",
  "winnow 1.0.5",
 ]
 
