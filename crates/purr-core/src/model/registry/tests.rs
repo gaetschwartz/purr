@@ -40,7 +40,7 @@ fn registry_with(edit: impl FnOnce(&mut serde_json::Value)) -> Result<Registry, 
 #[test]
 fn embedded_manifest_parses() -> Result<(), ManifestError> {
     let registry = Registry::embedded()?;
-    assert_eq!(registry.models().len(), 30);
+    assert_eq!(registry.models().len(), 34);
     assert_eq!(registry.default_model().id, "base");
     Ok(())
 }

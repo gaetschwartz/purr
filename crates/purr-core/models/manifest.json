@@ -82,6 +82,18 @@
       "description": "Tiny multilingual model, Q8_0 quantized for a smaller download"
     },
     {
+      "id": "tiny.en-q8_0",
+      "source": "whisper-cpp",
+      "filename": "ggml-tiny.en-q8_0.bin",
+      "family": "tiny",
+      "language": "english-only",
+      "quantization": "q8_0",
+      "features": [],
+      "size_bytes": 43550795,
+      "sha256": "5bc2b3860aa151a4c6e7bb095e1fcce7cf12c7b020ca08dcec0c6d018bb7dd94",
+      "description": "Tiny English-only model, Q8_0 quantized for a smaller download"
+    },
+    {
       "id": "base",
       "source": "whisper-cpp",
       "filename": "ggml-base.bin",
@@ -140,6 +152,18 @@
       "size_bytes": 81768585,
       "sha256": "c577b9a86e7e048a0b7eada054f4dd79a56bbfa911fbdacf900ac5b567cbb7d9",
       "description": "Base multilingual model, Q8_0 quantized for a smaller download"
+    },
+    {
+      "id": "base.en-q8_0",
+      "source": "whisper-cpp",
+      "filename": "ggml-base.en-q8_0.bin",
+      "family": "base",
+      "language": "english-only",
+      "quantization": "q8_0",
+      "features": [],
+      "size_bytes": 81781811,
+      "sha256": "a4d4a0768075e13cfd7e19df3ae2dbc4a68d37d36a7dad45e8410c9a34f8c87e",
+      "description": "Base English-only model, Q8_0 quantized for a smaller download"
     },
     {
       "id": "small",
@@ -216,6 +240,18 @@
       "description": "Small multilingual model, Q8_0 quantized for a smaller download"
     },
     {
+      "id": "small.en-q8_0",
+      "source": "whisper-cpp",
+      "filename": "ggml-small.en-q8_0.bin",
+      "family": "small",
+      "language": "english-only",
+      "quantization": "q8_0",
+      "features": [],
+      "size_bytes": 264477561,
+      "sha256": "67a179f608ea6114bd3fdb9060e762b588a3fb3bd00c4387971be4d177958067",
+      "description": "Small English-only model, Q8_0 quantized for a smaller download"
+    },
+    {
       "id": "medium",
       "source": "whisper-cpp",
       "filename": "ggml-medium.bin",
@@ -274,6 +310,18 @@
       "size_bytes": 823369779,
       "sha256": "42a1ffcbe4167d224232443396968db4d02d4e8e87e213d3ee2e03095dea6502",
       "description": "Medium multilingual model, Q8_0 quantized for a smaller download"
+    },
+    {
+      "id": "medium.en-q8_0",
+      "source": "whisper-cpp",
+      "filename": "ggml-medium.en-q8_0.bin",
+      "family": "medium",
+      "language": "english-only",
+      "quantization": "q8_0",
+      "features": [],
+      "size_bytes": 823382461,
+      "sha256": "43fa2cd084de5a04399a896a9a7a786064e221365c01700cea4666005218f11c",
+      "description": "Medium English-only model, Q8_0 quantized for a smaller download"
     },
     {
       "id": "large-v1",
