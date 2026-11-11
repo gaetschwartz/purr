@@ -35,6 +35,7 @@ pub fn Page(
                     {eyebrow}
                     h1 {
                         class: if file_title { "lt file" } else { "lt" },
+                        title: file_title.then(|| title.clone()),
                         tabindex: "-1",
                         onmounted: move |event: MountedEvent| async move {
                             if let Err(error) = event.data().set_focus(true).await {

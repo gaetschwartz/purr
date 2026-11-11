@@ -38,7 +38,7 @@ pub fn HistoryRow(summary: HistorySummary, now_ms: i64) -> Element {
                 },
                 span { class: "badge", aria_hidden: "true", {kind_label(&summary.file_name)} }
                 span { class: "grow",
-                    span { class: "nm", "{summary.title}" }
+                    span { class: "nm", title: "{summary.title}", "{summary.title}" }
                     span { class: "pv", "{preview_text(&summary)}" }
                     span { class: "mt", "{meta}" }
                 }

@@ -201,6 +201,7 @@ h1[tabindex="-1"]:focus{outline:none}
 .topbar{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap}
 .topbar .titles{flex:1;min-width:0}
 h1.lt{font-family:var(--font-display);font-size:30px;line-height:36px;font-weight:700;letter-spacing:-.025em;margin:0;text-wrap:balance}
+h1.lt.file{overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden}
 .sub{color:var(--fg-2);font-size:14px;margin:4px 0 0}
 h2.t2{font-family:var(--font-display);font-size:20px;line-height:26px;font-weight:650;letter-spacing:-.015em;margin:0}
 .t3{font-size:16px;line-height:22px;font-weight:600;margin:0;letter-spacing:-.01em}
@@ -402,14 +403,14 @@ kbd{font-family:var(--font);font-size:12px;font-weight:600;padding:2px 7px;borde
 .opt.danger{color:var(--danger)}
 .opt.danger .ck{color:var(--danger)}
 .sheet-wrap{position:absolute;inset:0;display:grid;place-items:center;padding:24px;pointer-events:none}
-.sheet{pointer-events:auto;width:min(460px,100%);max-height:calc(100% - 24px);overflow:auto;border-radius:28px;padding:24px;display:flex;flex-direction:column;gap:14px;animation:sheetin .45s var(--ease-spring)}
+.sheet{pointer-events:auto;width:min(460px,100%);max-height:calc(100% - 24px);overflow:auto;scrollbar-width:thin;border-radius:28px;padding:24px;display:flex;flex-direction:column;gap:14px;animation:sheetin .45s var(--ease-spring)}
 .sheet.wide{width:min(620px,100%)}
 @keyframes sheetin{from{opacity:0;transform:translateY(16px) scale(.97)}to{opacity:1;transform:none}}
 .sheet h2{font-family:var(--font-display);font-size:20px;font-weight:650;letter-spacing:-.015em;margin:0}
 .sheet p{margin:0;color:var(--fg-2)}
 .sheet .acts{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;margin-top:6px}
 .sheet .group{background:var(--fill-hover)}
-.preview{border-radius:14px;background:var(--fill-hover);padding:12px 14px;font-size:13px;line-height:1.55;white-space:pre-wrap;max-height:260px;overflow:auto;color:var(--fg);font-variant-numeric:tabular-nums}
+.preview{border-radius:14px;background:var(--fill-hover);padding:12px 14px;font-size:13px;line-height:1.55;white-space:pre-wrap;max-height:260px;overflow:auto;scrollbar-width:thin;color:var(--fg);font-variant-numeric:tabular-nums}
 details>summary{cursor:pointer}
 details>.preview{margin:8px 0 0;font-family:var(--font)}
 .toasts{position:absolute;z-index:60;left:50%;bottom:20px;transform:translateX(-50%);display:flex;flex-direction:column;gap:8px;align-items:center;width:min(440px,calc(100% - 24px));pointer-events:none}
