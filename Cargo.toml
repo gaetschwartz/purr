@@ -15,6 +15,12 @@ purr-core = { path = "crates/purr-core" }
 
 [profile]
 
+[profile.dev.build-override]
+opt-level = 1
+
+[profile.release.build-override]
+opt-level = 1
+
 [profile.wasm-dev]
 inherits = "dev"
 opt-level = 1
