@@ -1,4 +1,4 @@
-use std::env;
+use std::{env, process::ExitCode};
 
 const TRACKED_VARS: &[&str] = &[
     "VULKAN_SDK",
@@ -20,7 +20,7 @@ fn collect_prefixed(prefix: &str) -> Vec<(String, String)> {
     vars
 }
 
-fn main() {
+fn main() -> ExitCode {
     for var in TRACKED_VARS {
         println!("cargo::rerun-if-env-changed={var}");
     }
@@ -42,4 +42,6 @@ fn main() {
             env::var(var).unwrap_or_else(|_| "NOT SET".to_owned())
         ));
     }
+
+    purr_delayload::emit::report(purr_delayload::emit::emit_link_args())
 }
