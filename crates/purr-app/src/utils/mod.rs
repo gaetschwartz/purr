@@ -6,6 +6,7 @@ pub mod delay;
 pub mod dom_id;
 pub mod file_kind;
 pub mod language_label;
+pub mod primary_key;
 
 use bytes::Bytes;
 

@@ -1,15 +1,20 @@
-//! The design-system components (one per file) and the legacy transcription widgets.
+//! The design-system components, one per file.
 
+pub mod audio_player;
 pub mod banner;
 pub mod brand_mark;
 pub mod button;
 pub mod chip;
 pub mod dialog;
+pub mod drop_pad;
 pub mod empty_state;
+pub mod export_menu;
+pub mod file_card;
 pub mod group;
 pub mod icon;
 pub mod icon_button;
 pub mod kbd;
+pub mod language_picker;
 pub mod layer;
 pub mod page;
 pub mod pill;
@@ -27,12 +32,8 @@ pub mod toast;
 
 pub mod model_download;
 pub mod model_filters;
-pub mod model_loading;
 pub mod model_meters;
 pub mod model_picker;
 pub mod model_row;
 pub mod model_section;
 pub mod model_stats;
-pub mod transcript_panel;
-pub mod transcription_display;
-pub mod upload_zone;

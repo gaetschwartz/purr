@@ -4,15 +4,9 @@ use crate::platform::logging::apply_saved_log_level;
 use crate::settings_store::use_settings;
 use crate::views::{
     history::History, home::Home, logs::Logs, models::Models, not_found::NotFound,
-    settings::Settings, shell::Shell, transcription::Transcription,
+    settings::Settings, shell::Shell,
 };
 use dioxus::prelude::*;
-use purr_common::platform::FileId;
-use std::collections::HashMap;
-
-/// File names of the uploads made in this session, by upload id.
-#[derive(Clone, Copy)]
-pub struct UploadNames(pub Signal<HashMap<FileId, String>>);
 
 /// The app's routes.
 #[derive(Debug, Clone, Routable, PartialEq, Eq)]
@@ -21,8 +15,6 @@ pub enum Route {
     #[layout(Shell)]
         #[route("/")]
         Home {},
-        #[route("/transcription/:file")]
-        Transcription { file: FileId },
         #[route("/history")]
         History {},
         #[route("/models")]
@@ -50,7 +42,7 @@ impl NavSection {
     #[must_use]
     pub const fn of(route: &Route) -> Option<Self> {
         match route {
-            Route::Home {} | Route::Transcription { .. } => Some(Self::Transcribe),
+            Route::Home {} => Some(Self::Transcribe),
             Route::History {} => Some(Self::History),
             Route::Models {} => Some(Self::Models),
             Route::Settings {} => Some(Self::Settings),
@@ -63,7 +55,6 @@ impl NavSection {
 /// Session state shared by the views, and the router.
 #[component]
 pub fn MainApp() -> Element {
-    use_context_provider(|| UploadNames(Signal::new(HashMap::new())));
     let settings = use_settings();
     let log_level = use_memo(move || settings.with(|settings| settings.logging.level.clone()));
     use_effect(move || apply_saved_log_level(&log_level.read()));
@@ -80,9 +71,7 @@ mod tests {
     #[test]
     fn detail_and_log_routes_light_up_their_section() {
         assert_eq!(
-            NavSection::of(&Route::Transcription {
-                file: FileId::new("upload".to_owned())
-            }),
+            NavSection::of(&Route::Home {}),
             Some(NavSection::Transcribe)
         );
         assert_eq!(NavSection::of(&Route::Logs {}), Some(NavSection::Logs));

@@ -110,6 +110,8 @@ pub fn App() -> Element {
     let settings = use_settings_store_provider(toasts);
     use_appearance_provider(settings);
     use_models_provider();
+    let session = transcribe::session::use_transcribe_session_provider();
+    platform::playback_source::use_audio_route(session);
     use_layer_host_provider();
     use_shortcut_provider();
     let loading = settings.load_state() == LoadState::Loading;

@@ -18,6 +18,11 @@ pub fn Page(
     #[props(into)] title: String,
     #[props(into)] subtitle: Option<String>,
     #[props(default)] wide: bool,
+    /// A small row above the title, such as a back link.
+    eyebrow: Option<Element>,
+    /// The title is a file name that may be long and unbroken, so it wraps anywhere.
+    #[props(default)]
+    file_title: bool,
     actions: Option<Element>,
     children: Element,
 ) -> Element {
@@ -27,8 +32,9 @@ pub fn Page(
         div { class,
             div { class: "topbar",
                 div { class: "titles",
+                    {eyebrow}
                     h1 {
-                        class: "lt",
+                        class: if file_title { "lt file" } else { "lt" },
                         tabindex: "-1",
                         onmounted: move |event: MountedEvent| async move {
                             if let Err(error) = event.data().set_focus(true).await {

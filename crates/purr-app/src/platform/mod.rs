@@ -5,8 +5,14 @@ use purr_common::settings::Settings;
 use std::path::Path;
 use std::sync::{Arc, LazyLock};
 
+/// Decoding an upload for its length and waveform
+pub mod audio_overview;
+
 /// Saving and copying text
 pub mod export;
+
+/// Where the player loads audio from
+pub mod playback_source;
 
 /// Logging infrastructure
 pub mod logging;

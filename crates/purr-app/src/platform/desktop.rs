@@ -36,11 +36,19 @@ pub(super) struct DesktopPlatformImpl {
     model_manager: Arc<ModelManager>,
 }
 
+fn upload_dir() -> PathBuf {
+    std::env::temp_dir().join("purr-temp")
+}
+
+/// Where [`Platform::process_file`] stored the upload `file_id`.
+pub(super) fn stored_upload(file_id: &FileId) -> PathBuf {
+    upload_dir().join(file_id)
+}
+
 impl DesktopPlatformImpl {
     pub fn new() -> Result<Self, PlatformError> {
-        let temp_dir = std::env::temp_dir().join("purr-temp");
-        // Ensure temp directory exists
-        let _ = std::fs::create_dir_all(&temp_dir);
+        let temp_dir = upload_dir();
+        std::fs::create_dir_all(&temp_dir).map_err(PlatformError::io)?;
 
         let model_manager = ModelManager::new().map_err(PlatformError::model_management)?;
 
