@@ -17,6 +17,7 @@ use purr_core::model::attributes::{ModelFeature, ModelLanguage};
 use purr_core::model::registry::ModelSpec;
 use purr_core::model::status::ModelIntegrity as CoreIntegrity;
 use std::{
+    collections::VecDeque,
     future::Future,
     path::{Path, PathBuf},
     pin::Pin,
@@ -116,9 +117,7 @@ impl Platform for DesktopPlatformImpl {
             request.model
         );
 
-        let (tx, rx) = mpsc::channel(32);
-        tokio::spawn(run_transcription(audio_path, config, model.size_bytes, tx));
-        Ok(Box::pin(rx))
+        Ok(transcription_stream(audio_path, config, model.size_bytes))
     }
 
     async fn cleanup(&self, file_id: &str) -> Result<(), PlatformError> {
@@ -419,104 +418,129 @@ impl<S: Stream + Unpin> Stream for CancelOnDrop<S> {
 
 type ProgressSender = mpsc::Sender<Result<ModelOperationProgress, PlatformError>>;
 
-type StatusSender = mpsc::Sender<Result<TranscriptionStatus, PlatformError>>;
+type Status = Result<TranscriptionStatus, PlatformError>;
 
-/// Sends `status`; `false` once the listener is gone, which is how a transcription is cancelled.
-async fn report(tx: &mut StatusSender, status: Result<TranscriptionStatus, PlatformError>) -> bool {
-    if tx.send(status).await.is_ok() {
-        true
-    } else {
-        info!("The transcription listener is gone; stopping");
-        false
+/// Where a desktop transcription stream is.
+enum Phase {
+    Load {
+        audio_path: PathBuf,
+        config: purr_core::TranscriptionConfig,
+    },
+    Decode(purr_core::StreamingTranscription),
+    Finished,
+}
+
+/// One desktop transcription, folded into the statuses the UI reads.
+struct DesktopRun {
+    phase: Phase,
+    pending: VecDeque<Status>,
+    started: Instant,
+    language_reported: bool,
+    word_count: usize,
+    audio_duration: f32,
+    last_end: f64,
+}
+
+impl DesktopRun {
+    async fn advance(&mut self) {
+        match std::mem::replace(&mut self.phase, Phase::Finished) {
+            Phase::Load { audio_path, config } => {
+                match purr_core::transcribe_file_stream(&audio_path, config).await {
+                    Ok(stream) => {
+                        self.pending
+                            .push_back(Ok(TranscriptionStatus::Transcribing));
+                        self.phase = Phase::Decode(stream);
+                    }
+                    Err(error) => {
+                        error!("Failed to start transcription: {error}");
+                        self.pending
+                            .push_back(Err(PlatformError::transcription(error)));
+                    }
+                }
+            }
+            Phase::Decode(mut stream) => match stream.next().await {
+                Some(Ok(chunk)) => {
+                    if !self.language_reported
+                        && let Some(language) = chunk.language.clone()
+                    {
+                        self.language_reported = true;
+                        self.pending
+                            .push_back(Ok(TranscriptionStatus::LanguageDetected { language }));
+                    }
+                    self.word_count += chunk.text.split_whitespace().count();
+                    self.last_end = self.last_end.max(chunk.end);
+                    if let Some(stats) = &chunk.final_stats {
+                        self.audio_duration = stats.audio_duration;
+                    }
+                    self.pending.push_back(Ok(TranscriptionStatus::InProgress {
+                        chunk_index: chunk.chunk_index,
+                        text: chunk.text,
+                        start_time: chunk.start,
+                        end_time: chunk.end,
+                    }));
+                    self.phase = Phase::Decode(stream);
+                }
+                Some(Err(error)) => {
+                    error!("Transcription error: {error}");
+                    self.pending
+                        .push_back(Err(PlatformError::transcription(error)));
+                }
+                None => {
+                    let processing_time = self.started.elapsed().as_secs_f64();
+                    info!("Transcription completed in {processing_time:.2}s");
+                    self.pending.push_back(Ok(TranscriptionStatus::Completed {
+                        processing_time,
+                        audio_duration: if self.audio_duration > 0.0 {
+                            self.audio_duration
+                        } else {
+                            self.last_end as f32
+                        },
+                        word_count: self.word_count,
+                    }));
+                }
+            },
+            Phase::Finished => {}
+        }
     }
 }
 
-/// Runs one transcription, reporting on `tx` until it ends or the receiver is dropped.
+/// The statuses of one transcription, produced as the caller polls them.
 ///
-/// Dropping the core stream stops Whisper after the chunk it is working on; a model load that
+/// Whisper runs blocking inside a runtime worker, so the core stream is polled by the caller
+/// rather than by a forwarding task that could starve on that worker. Dropping the stream drops
+/// the core stream, which stops Whisper after the chunk it is working on; a model load that
 /// already started finishes first.
-async fn run_transcription(
+fn transcription_stream(
     audio_path: PathBuf,
     config: purr_core::TranscriptionConfig,
     model_bytes: u64,
-    mut tx: StatusSender,
-) {
-    let started = Instant::now();
-    if !report(&mut tx, Ok(TranscriptionStatus::Starting)).await {
-        return;
-    }
-    let loading = TranscriptionStatus::LoadingModel {
-        loaded_bytes: 0,
-        total_bytes: model_bytes,
+) -> TranscriptionStream {
+    let run = DesktopRun {
+        phase: Phase::Load { audio_path, config },
+        pending: VecDeque::from([
+            Ok(TranscriptionStatus::Starting),
+            Ok(TranscriptionStatus::LoadingModel {
+                loaded_bytes: 0,
+                total_bytes: model_bytes,
+            }),
+        ]),
+        started: Instant::now(),
+        language_reported: false,
+        word_count: 0,
+        audio_duration: 0.0,
+        last_end: 0.0,
     };
-    if !report(&mut tx, Ok(loading)).await {
-        return;
-    }
-    let mut stream = match purr_core::transcribe_file_stream(&audio_path, config).await {
-        Ok(stream) => stream,
-        Err(error) => {
-            error!("Failed to start transcription: {error}");
-            report(&mut tx, Err(PlatformError::transcription(error))).await;
-            return;
-        }
-    };
-    if !report(&mut tx, Ok(TranscriptionStatus::Transcribing)).await {
-        return;
-    }
-
-    let mut language_reported = false;
-    let mut word_count = 0;
-    let mut audio_duration = 0.0_f32;
-    let mut last_end = 0.0_f64;
-    while let Some(next) = stream.next().await {
-        let chunk = match next {
-            Ok(chunk) => chunk,
-            Err(error) => {
-                error!("Transcription error: {error}");
-                report(&mut tx, Err(PlatformError::transcription(error))).await;
-                return;
+    Box::pin(futures::stream::unfold(run, |mut run| async move {
+        loop {
+            if let Some(status) = run.pending.pop_front() {
+                return Some((status, run));
             }
-        };
-        if !language_reported && let Some(language) = chunk.language.clone() {
-            language_reported = true;
-            if !report(
-                &mut tx,
-                Ok(TranscriptionStatus::LanguageDetected { language }),
-            )
-            .await
-            {
-                return;
+            if matches!(run.phase, Phase::Finished) {
+                return None;
             }
+            run.advance().await;
         }
-        word_count += chunk.text.split_whitespace().count();
-        last_end = last_end.max(chunk.end);
-        if let Some(stats) = &chunk.final_stats {
-            audio_duration = stats.audio_duration;
-        }
-        let progress = TranscriptionStatus::InProgress {
-            chunk_index: chunk.chunk_index,
-            text: chunk.text,
-            start_time: chunk.start,
-            end_time: chunk.end,
-        };
-        if !report(&mut tx, Ok(progress)).await {
-            return;
-        }
-    }
-
-    let processing_time = started.elapsed().as_secs_f64();
-    let completed = TranscriptionStatus::Completed {
-        processing_time,
-        audio_duration: if audio_duration > 0.0 {
-            audio_duration
-        } else {
-            last_end as f32
-        },
-        word_count,
-    };
-    if report(&mut tx, Ok(completed)).await {
-        info!("Transcription completed in {processing_time:.2}s");
-    }
+    }))
 }
 
 fn failure_kind(error: &WhisperError) -> ModelFailureKind {
