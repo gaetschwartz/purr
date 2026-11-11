@@ -393,6 +393,8 @@ pub enum TranscriptionStatus {
     LoadingModel { loaded_bytes: u64, total_bytes: u64 },
     /// The model is ready and speech is being decoded; segments follow
     Transcribing,
+    /// The platform recognised the spoken language (a Whisper language code)
+    LanguageDetected { language: String },
     /// Transcription in progress; `text` is the whole current text of segment `chunk_index`
     InProgress {
         chunk_index: usize,
