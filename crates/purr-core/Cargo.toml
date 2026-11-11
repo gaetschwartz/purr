@@ -29,7 +29,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 directories = "6.0"
 
 # HTTP client for model downloading
-reqwest = { version = "0.13", features = ["stream"] }
+reqwest = { version = "0.13", features = ["charset", "http2", "rustls-no-provider", "stream", "system-proxy"], default-features = false }
 futures-util = "0.3"
 strum = { version = "0.28.0", features = ["derive"] }
 tokio-stream = "0.1.17"
@@ -39,6 +39,7 @@ bytes = "1.10.1"
 url = "2.5"
 sha2 = "0.10.9"
 hex = "0.4.3"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 
 [dev-dependencies]
 tempfile = "3.21"

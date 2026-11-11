@@ -122,7 +122,9 @@ async fn main() -> miette::Result<()> {
         .into_diagnostic()
         .wrap_err_with(|| format!("reading {}", args.manifest_path.display()))?;
     let mut manifest = Manifest::parse(&text)?;
-    let client = reqwest::Client::new();
+    let client = purr_core::http::client_builder()?
+        .build()
+        .into_diagnostic()?;
 
     let mut changed = 0usize;
     for source in &mut manifest.sources {

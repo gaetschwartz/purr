@@ -22,7 +22,11 @@ pub async fn download_verified<F>(
 where
     F: FnMut(u64, Option<u64>),
 {
-    let response = reqwest::get(url)
+    let response = crate::http::client_builder()?
+        .build()
+        .map_err(|source| WhisperError::from(ConfigurationError::DownloadFailed { source }))?
+        .get(url)
+        .send()
         .await
         .map_err(|source| WhisperError::from(ConfigurationError::DownloadFailed { source }))?;
 

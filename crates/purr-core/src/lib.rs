@@ -7,6 +7,7 @@ pub mod audio;
 pub mod config;
 pub mod dev;
 pub mod error;
+pub mod http;
 pub mod input;
 pub mod math;
 pub mod model;

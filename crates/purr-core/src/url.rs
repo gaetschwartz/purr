@@ -73,7 +73,7 @@ impl HttpStreamer {
 
     /// Create a new URL streamer with custom configuration
     pub fn with_config(config: UrlStreamConfig) -> Result<Self> {
-        let client = Client::builder()
+        let client = crate::http::client_builder()?
             .timeout(config.timeout)
             .connect_timeout(config.connect_timeout)
             .user_agent(&config.user_agent)
