@@ -1,5 +1,10 @@
 //! Model downloading and management functionality
 
+pub mod attributes;
+pub mod digest;
+pub mod manifest;
+pub mod registry;
+
 use crate::error::{ConfigurationError, Result, WhisperError};
 use crate::math::ByteSpeed;
 use core::str;

@@ -1,5 +1,6 @@
 //! Error types for the purr-core library
 
+use crate::model::digest::Sha256Digest;
 use std::path::PathBuf;
 
 use crate::accel::{
@@ -14,7 +15,10 @@ use crate::accel::{
 /// Error for unknown Whisper model names
 #[derive(Debug, thiserror::Error, miette::Diagnostic)]
 #[error("Unknown Whisper model: {model_name}")]
-#[diagnostic(code(whisper::config::unknown_model))]
+#[diagnostic(
+    code(whisper::config::unknown_model),
+    help("Use 'models list --available' to see the available models")
+)]
 pub struct UnknownModelError {
     pub model_name: String,
 }
@@ -25,6 +29,74 @@ impl UnknownModelError {
             model_name: model_name.into(),
         }
     }
+}
+
+/// Error for an invalid or inconsistent model manifest
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error, miette::Diagnostic)]
+pub enum ManifestError {
+    #[error("Failed to parse the model manifest: {message}")]
+    #[diagnostic(code(whisper::manifest::parse))]
+    Parse { message: String },
+
+    #[error("Unsupported model manifest schema {found} (supported: {supported})")]
+    #[diagnostic(code(whisper::manifest::unsupported_schema))]
+    UnsupportedSchema { found: u32, supported: u32 },
+
+    #[error("Duplicate model id in manifest: {id}")]
+    #[diagnostic(code(whisper::manifest::duplicate_model_id))]
+    DuplicateModelId { id: String },
+
+    #[error("Duplicate source id in manifest: {id}")]
+    #[diagnostic(code(whisper::manifest::duplicate_source_id))]
+    DuplicateSourceId { id: String },
+
+    #[error("Duplicate model filename in manifest: {filename}")]
+    #[diagnostic(code(whisper::manifest::duplicate_filename))]
+    DuplicateFilename { filename: String },
+
+    #[error("Model {model_id} references unknown source {source_id}")]
+    #[diagnostic(code(whisper::manifest::unknown_source))]
+    UnknownSource { model_id: String, source_id: String },
+
+    #[error("Source {source_id} has an invalid revision: {revision}")]
+    #[diagnostic(code(whisper::manifest::invalid_revision))]
+    InvalidRevision { source_id: String, revision: String },
+
+    #[error("Model {model_id} has a size of zero bytes")]
+    #[diagnostic(code(whisper::manifest::zero_size))]
+    ZeroSize { model_id: String },
+
+    #[error("Model {model_id} has no SHA-256 digest")]
+    #[diagnostic(code(whisper::manifest::missing_digest))]
+    MissingDigest { model_id: String },
+
+    #[error("The manifest lists no preferred models")]
+    #[diagnostic(code(whisper::manifest::no_preferred_model))]
+    NoPreferredModel,
+
+    #[error("Preferred model {id} is not in the manifest")]
+    #[diagnostic(code(whisper::manifest::unknown_preferred_model))]
+    UnknownPreferredModel { id: String },
+}
+
+/// Error for a model file that does not match the manifest
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error, miette::Diagnostic)]
+pub enum ModelIntegrityError {
+    #[error("Model {model_id} has {actual} bytes, expected {expected}")]
+    #[diagnostic(code(whisper::model::size_mismatch))]
+    SizeMismatch {
+        model_id: String,
+        expected: u64,
+        actual: u64,
+    },
+
+    #[error("Model {model_id} has SHA-256 {actual}, expected {expected}")]
+    #[diagnostic(code(whisper::model::checksum_mismatch))]
+    ChecksumMismatch {
+        model_id: String,
+        expected: Sha256Digest,
+        actual: Sha256Digest,
+    },
 }
 
 /// Error for unsupported audio formats
@@ -48,7 +120,15 @@ impl UnsupportedFormatError {
 pub enum ConfigurationError {
     #[error(transparent)]
     #[diagnostic(transparent)]
-    UnknownModel(UnknownModelError),
+    UnknownModel(#[from] UnknownModelError),
+
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    Manifest(#[from] ManifestError),
+
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    ModelIntegrity(#[from] ModelIntegrityError),
 
     #[error("Failed to get XDG directories")]
     #[diagnostic(code(whisper::config::xdg_dirs))]
@@ -285,6 +365,20 @@ pub enum WhisperError {
     #[diagnostic(code(whisper::input::error))]
     InvalidInput { message: String },
 }
+
+macro_rules! into_whisper_error_via_configuration {
+    ($($error:ty),+ $(,)?) => {$(
+        impl From<$error> for WhisperError {
+            fn from(source: $error) -> Self {
+                Self::Configuration {
+                    source: ConfigurationError::from(source),
+                }
+            }
+        }
+    )+};
+}
+
+into_whisper_error_via_configuration!(UnknownModelError, ManifestError, ModelIntegrityError);
 
 /// Result type alias for purr operations
 pub type Result<T> = std::result::Result<T, WhisperError>;
