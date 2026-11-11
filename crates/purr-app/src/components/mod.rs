@@ -15,11 +15,14 @@ pub use card::*;
 mod upload_zone;
 pub use upload_zone::*;
 
+pub mod model_loading;
+
+pub mod model_picker;
+
+pub mod transcript_panel;
+
 mod transcription_display;
 pub use transcription_display::*;
-
-mod status_badge;
-pub use status_badge::*;
 
 mod progress_bar;
 pub use progress_bar::*;

@@ -12,6 +12,7 @@ mod main_app;
 pub mod platform;
 /// Theme system for managing colors and styling
 pub mod theme;
+mod transcript;
 /// Utilities module
 mod utils;
 /// Define a views module that contains the UI for all Layouts and Routes for our app.
@@ -31,8 +32,18 @@ const TAILWIND_CSS: Asset = asset!("/assets/tailwind.css");
 /// This component sets up the theme system with custom themes including Solarized.
 #[component]
 pub fn App() -> Element {
-    // Log when the app renders
-    tracing::debug!("App component rendering with theme system");
+    if let Some(error) = platform::platform_init_error() {
+        return rsx! {
+            document::Title { "Purr" }
+            main { class: "min-h-screen flex items-center justify-center p-6 bg-gray-50 text-gray-900",
+                div { class: "max-w-xl space-y-3", role: "alert",
+                    h1 { class: "text-2xl font-bold text-red-700", "Purr could not start" }
+                    p { "{error}" }
+                    p { "Reload the page to try again. If it keeps failing, check that this browser allows site data (IndexedDB and local storage)." }
+                }
+            }
+        };
+    }
 
     // Setup custom themes as specified
     let solarized_theme = CustomTheme {
@@ -54,6 +65,7 @@ pub fn App() -> Element {
     // The `rsx!` macro lets us define HTML inside of rust. It expands to an Element with all of our HTML inside.
     rsx! {
         // Global document head elements
+        document::Title { "Purr" }
         document::Link { rel: "icon", href: FAVICON }
         document::Link { rel: "stylesheet", href: MAIN_CSS }
         document::Link { rel: "stylesheet", href: TAILWIND_CSS }

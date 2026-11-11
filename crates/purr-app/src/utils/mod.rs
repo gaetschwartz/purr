@@ -1,5 +1,9 @@
 #![allow(dead_code)]
 
+pub mod byte_size;
+pub mod file_kind;
+pub mod language_label;
+
 use bytes::Bytes;
 
 pub trait BytesExt {

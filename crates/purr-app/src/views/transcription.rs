@@ -1,9 +1,12 @@
 use crate::{
-    components::{Button, ButtonVariant, Card, IconType, TranscriptionDisplay},
+    components::{Card, TranscriptionDisplay},
+    main_app::{Route, UploadNames},
     platform::{self, TranscriptionRequest, TranscriptionStatus},
+    transcript::Transcript,
+    views::NavBarState,
 };
 use dioxus::prelude::*;
-use futures::StreamExt;
+use futures::StreamExt as _;
 use purr_common::platform::{FileId, FileSource, Platform as _};
 use tracing::{error, info};
 
@@ -12,59 +15,87 @@ use tracing::{error, info};
 #[component]
 pub fn Transcription(file: FileId) -> Element {
     let navigator = use_navigator();
-    let transcription_status = use_signal(|| None::<TranscriptionStatus>);
-    let transcription_text = use_signal(String::new);
-    let mut is_transcribing = use_signal(|| false);
+    let mut navbar_state = use_context::<NavBarState>();
+    let names = use_context::<UploadNames>();
+    let mut status = use_signal(|| None::<TranscriptionStatus>);
+    let mut transcript = use_signal(Transcript::default);
+    let mut language = use_signal(|| None::<String>);
+    let mut attempt = use_signal(|| 0u32);
+    let mut cancelled = use_signal(|| false);
 
-    // Start transcription when component mounts
-    let file_for_ui = file.clone();
     use_effect(move || {
-        let file_id = file.clone();
-        if !is_transcribing() {
-            is_transcribing.set(true);
-            start_transcription_process(file_id, transcription_status, transcription_text);
+        navbar_state.title.set("Transcription".to_owned());
+        navbar_state.show_back.set(true);
+        navbar_state.top_right.set(None);
+    });
+
+    let file_for_run = file.clone();
+    use_resource(move || {
+        let file_id = file_for_run.clone();
+        async move {
+            attempt();
+            if cancelled() {
+                return;
+            }
+            status.set(None);
+            transcript.set(Transcript::default());
+            language.set(None);
+            run_transcription(file_id, status, transcript, language).await;
         }
     });
 
-    let handle_back = move |_| {
-        navigator.go_back();
-    };
+    let file_for_cleanup = file.clone();
+    use_drop(move || {
+        let file_id = file_for_cleanup;
+        dioxus::core::spawn_forever(async move {
+            if let Err(e) = platform::get_platform().cleanup(&file_id).await {
+                error!("Could not remove the uploaded file: {e}");
+            }
+        });
+    });
+
+    let file_name = names.0.read().get(&file).cloned();
 
     rsx! {
-        div { class: "main-layout",
-            // Header with file info and back button
-            div { class: "backdrop-glass shadow-sm border-b border-gray-200 px-6 py-4",
-                div { class: "flex items-center justify-between max-w-4xl mx-auto",
-                    div { class: "flex items-center space-x-4",
-                        Button {
-                            variant: ButtonVariant::Ghost,
-                            icon: Some(IconType::BackArrow),
-                            onclick: handle_back,
-                            "Back"
-                        }
-                        h1 { class: "text-2xl font-bold text-gray-900", "Audio Transcription" }
-                    }
-                }
-            }
-
-            // Main content area
+        document::Title { "Purr - Transcription" }
+        div { class: "main-content",
             div { class: "content-container",
-                // Transcription status and content
-                Card {
-                    TranscriptionDisplay {
-                        status: transcription_status(),
-                        text: transcription_text(),
-                        file_name: file_for_ui,
-                    }
-
-                    // Add back button for error state
-                    if let Some(TranscriptionStatus::Error { .. }) = transcription_status() {
-                        div { class: "mt-8 text-center",
-                            Button {
-                                variant: ButtonVariant::Primary,
-                                onclick: handle_back,
-                                "Try Another File"
+                if cancelled() {
+                    div { class: "text-center py-8 space-y-4",
+                        h2 { class: "text-lg font-semibold text-gray-900 dark:text-gray-100", "Transcription cancelled" }
+                        div { class: "flex justify-center gap-3",
+                            button {
+                                class: "px-4 py-2 rounded-lg bg-teal-500 text-white hover:bg-teal-600 focus:outline-none focus:ring-2 focus:ring-teal-500",
+                                onclick: move |_| {
+                                    cancelled.set(false);
+                                    attempt += 1;
+                                },
+                                "Start again"
                             }
+                            button {
+                                class: "px-4 py-2 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-100 hover:bg-gray-200 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-teal-500",
+                                onclick: move |_| {
+                                    navigator.push(Route::Home {});
+                                },
+                                "Choose another file"
+                            }
+                        }
+                    }
+                } else {
+                    Card {
+                        TranscriptionDisplay {
+                            status: status(),
+                            transcript: transcript(),
+                            language: language(),
+                            file_name,
+                            on_cancel: move |()| {
+                                cancelled.set(true);
+                                status.set(None);
+                            },
+                            on_retry: move |()| attempt += 1,
+                            on_new: move |()| {
+                                navigator.push(Route::Home {});
+                            },
                         }
                     }
                 }
@@ -73,77 +104,60 @@ pub fn Transcription(file: FileId) -> Element {
     }
 }
 
-/// Start transcription process using platform abstraction
-fn start_transcription_process(
+/// Streams the transcription of `file_id` into the signals until it ends or the caller drops it.
+async fn run_transcription(
     file_id: FileId,
-    mut status_signal: Signal<Option<TranscriptionStatus>>,
-    mut text_signal: Signal<String>,
+    mut status: Signal<Option<TranscriptionStatus>>,
+    mut transcript: Signal<Transcript>,
+    mut language: Signal<Option<String>>,
 ) {
-    info!("Starting transcription for file ID: {}", file_id);
+    info!("Starting transcription for file ID: {file_id}");
+    let request = TranscriptionRequest {
+        language: None,
+        translate: false,
+        file: FileSource::Uploaded(file_id.clone()),
+    };
 
-    spawn(async move {
-        // Get platform implementation
-        let platform = platform::get_platform();
+    let mut stream = match platform::get_platform().transcribe(request).await {
+        Ok(stream) => stream,
+        Err(e) => {
+            error!("Failed to start transcription: {e}");
+            status.set(Some(TranscriptionStatus::Error {
+                context: "Transcription".to_owned(),
+                error_message: e.to_string(),
+            }));
+            return;
+        }
+    };
 
-        let request = TranscriptionRequest {
-            language: None,
-            translate: false,
-            file: FileSource::Uploaded(file_id.clone()),
-        };
-
-        // Start transcription with streaming updates
-        match platform.transcribe(request).await {
-            Ok(mut stream) => {
-                let mut full_text = String::new();
-
-                // Process streaming updates
-                while let Some(result) = stream.next().await {
-                    match result {
-                        Ok(status) => {
-                            // Update status signal
-                            status_signal.set(Some(status.clone()));
-
-                            // Accumulate text for in-progress updates
-                            if let TranscriptionStatus::InProgress { text, .. } = &status {
-                                full_text.push_str(text);
-                                full_text.push(' ');
-                                text_signal.set(full_text.clone());
-                            }
-
-                            // Check if completed or errored
-                            match status {
-                                TranscriptionStatus::Completed { .. } => {
-                                    info!("Transcription completed for file ID: {}", file_id);
-                                    break;
-                                }
-                                TranscriptionStatus::Error {
-                                    context,
-                                    error_message,
-                                } => {
-                                    error!("Transcription error: {}: {}", context, error_message);
-                                    break;
-                                }
-                                _ => {}
-                            }
-                        }
-                        Err(e) => {
-                            error!("Stream error: {}", e);
-                            status_signal.set(Some(TranscriptionStatus::Error {
-                                context: "stream".to_owned(),
-                                error_message: format!("Stream error: {e}"),
-                            }));
-                            break;
-                        }
-                    }
+    while let Some(update) = stream.next().await {
+        match update {
+            Ok(next) => {
+                transcript.write().apply(&next);
+                if let TranscriptionStatus::LanguageDetected { language: code } = &next {
+                    language.set(Some(code.clone()));
+                    continue;
+                }
+                let finished = matches!(
+                    next,
+                    TranscriptionStatus::Completed { .. }
+                        | TranscriptionStatus::Error { .. }
+                        | TranscriptionStatus::InitFailed { .. }
+                );
+                status.set(Some(next));
+                if finished {
+                    info!("Transcription of {file_id} ended");
+                    return;
                 }
             }
             Err(e) => {
-                error!("Failed to start transcription: {}", e);
-                status_signal.set(Some(TranscriptionStatus::Error {
-                    context: "transcription_start".to_owned(),
-                    error_message: format!("Failed to start transcription: {e}"),
+                error!("Transcription stream failed: {e}");
+                status.set(Some(TranscriptionStatus::Error {
+                    context: "Transcription".to_owned(),
+                    error_message: e.to_string(),
                 }));
+                return;
             }
         }
-    });
+    }
 }
