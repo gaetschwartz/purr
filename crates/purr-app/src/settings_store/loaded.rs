@@ -52,12 +52,7 @@ mod tests {
     #[test]
     fn unreadable_storage_is_a_failure_not_the_defaults() {
         let failure = accept_loaded(Err(PlatformError::settings_persistence("bad json")));
-        assert_eq!(
-            failure,
-            Err(LoadFailure::Unreadable(
-                "Settings persistence error: bad json".to_owned()
-            ))
-        );
+        assert_eq!(failure, Err(LoadFailure::Unreadable("bad json".to_owned())));
     }
 
     #[test]

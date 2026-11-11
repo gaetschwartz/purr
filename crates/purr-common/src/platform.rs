@@ -128,14 +128,14 @@ pub enum PlatformError {
         source: Box<dyn std::error::Error + Send + Sync>,
     },
 
-    #[error("Settings persistence error: {source}")]
+    #[error("{source}")]
     #[diagnostic(code(platform::settings_persistence))]
     SettingsPersistence {
         #[source]
         source: Box<dyn std::error::Error + Send + Sync>,
     },
 
-    #[error("History error: {source}")]
+    #[error("{source}")]
     #[diagnostic(code(platform::history))]
     History {
         #[source]

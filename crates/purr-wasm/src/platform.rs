@@ -164,6 +164,12 @@ async fn downloaded_check_failure(
                 tracing::warn!("Could not read how much storage is left: {estimate_error}");
             }
         }
+        return (
+            format!(
+                "The download finished but the browser did not keep all of it ({error}). Try again."
+            ),
+            ModelFailureKind::Other,
+        );
     }
     (error.to_string(), verification_failure_kind(error))
 }
