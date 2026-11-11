@@ -44,13 +44,14 @@ pub fn plain_text(segments: &[TranscriptSegment]) -> String {
 fn subrip(segments: &[TranscriptSegment]) -> String {
     segments
         .iter()
+        .zip(cue_ends(segments))
         .enumerate()
-        .map(|(index, segment)| {
+        .map(|(index, (segment, end))| {
             format!(
                 "{}\n{} --> {}\n{}\n",
                 index + 1,
                 cue_time(segment.start_time, ','),
-                cue_time(cue_end(segment), ','),
+                cue_time(end, ','),
                 segment.text.trim()
             )
         })
@@ -61,17 +62,28 @@ fn subrip(segments: &[TranscriptSegment]) -> String {
 fn webvtt(segments: &[TranscriptSegment]) -> String {
     let cues = segments
         .iter()
-        .map(|segment| {
+        .zip(cue_ends(segments))
+        .map(|(segment, end)| {
             format!(
                 "{} --> {}\n{}\n",
                 cue_time(segment.start_time, '.'),
-                cue_time(cue_end(segment), '.'),
+                cue_time(end, '.'),
                 segment.text.trim()
             )
         })
         .collect::<Vec<_>>()
         .join("\n");
     format!("WEBVTT\n\n{cues}")
+}
+
+/// Subtitle cue ends: each stops by the time the next cue starts, so players never stack two.
+fn cue_ends(segments: &[TranscriptSegment]) -> impl Iterator<Item = f64> + '_ {
+    segments.iter().enumerate().map(|(index, segment)| {
+        let end = cue_end(segment);
+        segments
+            .get(index + 1)
+            .map_or(end, |next| end.min(next.start_time).max(segment.start_time))
+    })
 }
 
 #[derive(Serialize)]
@@ -189,6 +201,20 @@ mod tests {
         assert_eq!(
             render(ExportFormat::Srt, &document(&segments))?,
             "1\n00:00:04,000 --> 00:00:04,000\nx\n"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn overlapping_subtitle_cues_end_when_the_next_one_starts() -> serde_json::Result<()> {
+        let segments = vec![segment("a", 0.0, 3.84), segment("b", 3.5, 7.28)];
+        assert_eq!(
+            render(ExportFormat::Srt, &document(&segments))?,
+            "1\n00:00:00,000 --> 00:00:03,500\na\n\n2\n00:00:03,500 --> 00:00:07,280\nb\n"
+        );
+        assert_eq!(
+            render(ExportFormat::Vtt, &document(&segments))?,
+            "WEBVTT\n\n00:00:00.000 --> 00:00:03.500\na\n\n00:00:03.500 --> 00:00:07.280\nb\n"
         );
         Ok(())
     }
