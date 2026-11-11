@@ -1,45 +1,39 @@
 # Development
 
-Your new jumpstart project includes basic organization with an organized `assets` folder and a `components` folder.
-If you chose to develop with the router feature, you will also have a `views` folder.
+`purr-app` is the Dioxus interface shared by the desktop app and the browser build.
 
 ```
-project/
-├─ assets/ # Any assets that are used by the app should be placed here
+crates/purr-app/
+├─ assets/
+│  ├─ styling/design.css   # design tokens, glass materials, primitives, shell and layers
+│  ├─ styling/screens.css  # screen-level styles (Transcribe, Result, Models, History, Settings, Logs)
+│  ├─ fonts/               # bundled Inter
+│  └─ icons/               # app mark and favicon
+├─ index.html              # the web page template (language, description, theme colours)
 ├─ src/
-│  ├─ main.rs # The entrypoint for the app. It also defines the routes for the app.
-│  ├─ components/
-│  │  ├─ mod.rs # Defines the components module
-│  │  ├─ hero.rs # The Hero component for use in the home page
-│  │  ├─ echo.rs # The echo component uses server functions to communicate with the server
-│  ├─ views/ # The views each route will render in the app.
-│  │  ├─ mod.rs # Defines the module for the views route and re-exports the components for each route
-│  │  ├─ blog.rs # The component that will render at the /blog/:id route
-│  │  ├─ home.rs # The component that will render at the / route
-├─ Cargo.toml # The Cargo.toml file defines the dependencies and feature flags for your project
+│  ├─ main.rs              # entry point: desktop window or web launch
+│  ├─ lib.rs               # root component, providers and stylesheet links
+│  ├─ components/          # design-system components, one per file
+│  ├─ views/               # routed screens and their parts
+│  ├─ platform/            # desktop and browser implementations of the Platform trait
+│  └─ …                    # settings store, history, transcription session, model catalog
+└─ Cargo.toml
 ```
 
-### Tailwind
-1. Install npm: https://docs.npmjs.com/downloading-and-installing-node-js-and-npm
-2. Install the Tailwind CSS CLI: https://tailwindcss.com/docs/installation
-3. Run the following command in the root of the project to start the Tailwind CSS compiler:
+The visual design is specified by `docs/design/purr-redesign-opus-v2.html`; the stylesheets are plain
+CSS with no build step.
+
+### Serving the app
+
+The `dx` CLI must match the Dioxus version of the workspace (see `DIOXUS_VERSION` in
+`.github/workflows/build.yml`).
 
 ```bash
-npx tailwindcss -i ./tailwind.css -o ./assets/tailwind.css --watch
+dx serve -p purr-app --desktop   # desktop
+dx serve -p purr-app --web       # browser
 ```
 
-### Serving Your App
-
-Run the following command in the root of your project to start developing with the default platform:
-
-```bash
-dx serve --platform desktop
-```
-
-To run for a different platform, use the `--platform platform` flag. E.g.
-```bash
-dx serve --platform desktop
-```
+A plain `cargo build` of the desktop app runs without its stylesheets; use `dx` to get the assets.
 
 ### Web build
 
@@ -51,6 +45,5 @@ dx serve -p purr-app --web                 # development
 dx bundle -p purr-app --release --web --out-dir dist-web   # production, deploy dist-web/public
 ```
 
-`res/vercel-config.json` serves `index.html` for every route that is not a file, so deep links such as `/settings` reload.
-
-
+`res/vercel-config.json` serves `index.html` for every route that is not a file, so deep links such as
+`/settings` reload, and answers 404 for a missing file under `/assets/`.

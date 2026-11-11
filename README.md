@@ -14,10 +14,13 @@ A high-performance audio transcription tool built with Rust, using OpenAI's Whis
 
 ## Architecture
 
-The project consists of two main crates:
+The project consists of these crates:
 
 - **`purr-core`**: Core library with transcription functionality
 - **`purr-cli`**: Command-line interface using the core library
+- **`purr-app`**: The Dioxus interface shared by the desktop app and the browser build (see `crates/purr-app/README.md`)
+- **`purr-wasm`**: The browser platform: WebGPU transcription with transformers.js in a worker, and IndexedDB storage
+- **`purr-common`**: Types shared by the desktop and the browser, the `Platform` trait and the settings
 
 ## Prerequisites
 
