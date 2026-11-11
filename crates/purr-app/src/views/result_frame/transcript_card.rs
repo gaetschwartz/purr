@@ -165,7 +165,7 @@ pub fn TranscriptCard(
                         Layout::Reading => rsx! {
                             div { class: "para", id: "segs",
                                 for range in paragraphs(segments.len(), SEGMENTS_PER_PARAGRAPH) {
-                                    p { key: "{range.start}",
+                                    p { key: "{range.start}", dir: "auto",
                                         if show_times() {
                                             span { class: "faint tnum", style: "font-size:13px;margin-right:8px",
                                                 {segments.get(range.start).map(|segment| timing::clock(segment.start_time))}
@@ -204,7 +204,7 @@ fn SegmentRow(
     let start = segment.start_time;
     let clock = timing::clock(start);
     let line = rsx! {
-        span { class: "tx",
+        span { class: "tx", dir: "auto",
             Marked {
                 text: segment.text.trim().to_owned(),
                 matches,

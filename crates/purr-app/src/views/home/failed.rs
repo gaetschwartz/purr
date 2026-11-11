@@ -90,7 +90,7 @@ pub fn Failed(record: RunRecord, failure: RunFailure) -> Element {
                         for (index , segment) in segments.iter().enumerate() {
                             li { key: "{index}", class: "seg-row",
                                 span { class: "ts", {timing::clock(segment.start_time)} }
-                                span { class: "tx", "{segment.text.trim()}" }
+                                span { class: "tx", dir: "auto", "{segment.text.trim()}" }
                             }
                         }
                     }

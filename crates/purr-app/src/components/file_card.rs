@@ -29,7 +29,7 @@ pub fn FileCard(
                 Icon { name: icon, size: IconSize::Large }
             }
             div { class: "grow", style: "min-width:0",
-                div { class: "name", title: "{name}", "{name}" }
+                div { class: "name", dir: "auto", title: "{name}", "{name}" }
                 div { class: "meta tnum", "{details}" }
                 if let Some(problem) = &problem {
                     p { class: "file-problem", role: "alert", "{problem}" }

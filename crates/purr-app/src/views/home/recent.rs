@@ -51,8 +51,8 @@ pub fn Recent() -> Element {
                                 onclick: move |_| {
                                     navigator.push(Route::HistoryItem { id: id.clone() });
                                 },
-                                span { class: "nm", title: "{summary.title}", "{summary.title}" }
-                                span { class: "pv", "{preview_text(summary)}" }
+                                span { class: "nm", dir: "auto", title: "{summary.title}", "{summary.title}" }
+                                span { class: "pv", dir: "auto", "{preview_text(summary)}" }
                                 span { class: "mt tnum", "{card_meta(&when_text(summary.created_at_ms, now), summary)}" }
                             }
                         }
