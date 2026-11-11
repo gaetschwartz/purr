@@ -5,7 +5,17 @@ use crate::protocol::{FailureKind, WorkerEvent};
 use purr_common::platform::{ModelOperationProgress, TranscriptionStatus};
 use purr_common::web_model::registry::WebModelSpec;
 
+/// `message` as a sentence, so a hint can follow it.
+fn as_sentence(message: &str) -> String {
+    let trimmed = message.trim();
+    match trimmed.chars().last() {
+        None | Some('.' | '!' | '?' | '…') => trimmed.to_owned(),
+        Some(_) => format!("{trimmed}."),
+    }
+}
+
 fn failure_status(kind: FailureKind, message: String) -> TranscriptionStatus {
+    let message = as_sentence(&message);
     let init_failed = |component: &str, hint: &str| TranscriptionStatus::InitFailed {
         component: component.to_owned(),
         reason: message.clone(),
@@ -18,7 +28,7 @@ fn failure_status(kind: FailureKind, message: String) -> TranscriptionStatus {
         ),
         FailureKind::ShaderF16Unavailable => init_failed(
             "WebGPU",
-            "Choose a smaller model in Settings; it does not need this GPU feature.",
+            "Choose a smaller model; it does not need this GPU feature.",
         ),
         FailureKind::ModelLoad => init_failed(
             "Model",
@@ -291,7 +301,7 @@ mod tests {
             status,
             Some(TranscriptionStatus::InitFailed {
                 component: "WebGPU".to_owned(),
-                reason: "no gpu".to_owned(),
+                reason: "no gpu.".to_owned(),
                 error_details: Some(
                     "Purr runs the model on your GPU through WebGPU. Use a current Chrome or Edge, or enable WebGPU in your browser."
                         .to_owned()
@@ -313,10 +323,18 @@ mod tests {
             status,
             Some(TranscriptionStatus::Error {
                 context: "Transcription".to_owned(),
-                error_message: "out of memory".to_owned(),
+                error_message: "out of memory.".to_owned(),
             })
         );
         Ok(())
+    }
+
+    #[test]
+    fn a_failure_reason_ends_as_a_sentence_before_its_hint() {
+        assert_eq!(as_sentence("Failed to fetch"), "Failed to fetch.");
+        assert_eq!(as_sentence("Done. "), "Done.");
+        assert_eq!(as_sentence("Why?"), "Why?");
+        assert_eq!(as_sentence(""), "");
     }
 
     #[test]
