@@ -27,9 +27,6 @@ impl MyFormatter {
                         .any(|t| event.metadata().target().starts_with(t))
             }),
             VerbosityLevel::VERBOSE_VALUE => Box::new(|event: &Event<'_>| {
-                if *event.metadata().level() <= Level::INFO {
-                    return false;
-                }
                 [
                     APP_NAME,
                     purr_core::PKG_NAME,
