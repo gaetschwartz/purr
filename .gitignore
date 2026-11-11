@@ -1,8 +1,7 @@
 target/
 # target but shorter
 t/
-models/
-!/crates/purr-core/models/
+/models/
 whisper.cpp/
 node_modules/
 dist/
