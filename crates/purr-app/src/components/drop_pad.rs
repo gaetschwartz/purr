@@ -2,13 +2,19 @@ use super::{
     icon::{Icon, IconName, IconSize},
     spinner::Spinner,
 };
+use crate::platform::IS_WEB;
 use dioxus::{html::FileData, html::HasFileData, prelude::*};
 
 /// The DOM id of the pad's file input; open the chooser by clicking it.
 pub const FILE_INPUT_ID: &str = "file-input";
 
-/// What the file chooser offers.
-const ACCEPT: &str = "audio/*,.mp3,.wav,.aac,.flac,.ogg,.oga,.opus,.webm,.weba,.m4a,.m4b,.mp4,.wma,.aif,.aiff,.amr,.mka";
+/// What the file chooser offers. Browsers also take `audio/*`; the desktop dialog would expand
+/// it into extensions the list already names.
+const ACCEPT: &str = if IS_WEB {
+    "audio/*,.mp3,.wav,.aac,.flac,.ogg,.oga,.opus,.webm,.weba,.m4a,.m4b,.mp4,.wma,.aif,.aiff,.amr,.mka"
+} else {
+    ".mp3,.wav,.aac,.flac,.ogg,.oga,.opus,.webm,.weba,.m4a,.m4b,.mp4,.wma,.aif,.aiff,.amr,.mka"
+};
 
 /// The glass well of the Transcribe screen: drop a file on it, or click it (or press Space or
 /// Enter on it) to open the file chooser. It "purrs" gently while idle, unless motion is reduced.
