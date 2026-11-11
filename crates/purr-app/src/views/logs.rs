@@ -512,15 +512,6 @@ fn ExportDropdown(state: Signal<LogsState>) -> Element {
                         button {
                             class: "block w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors",
                             onclick: move |_| {
-                                export_logs(LogExportFormat::Kdl, &state);
-                                show_dropdown.set(false);
-                            },
-                            "😻 Export as KDL"
-                        }
-
-                        button {
-                            class: "block w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors",
-                            onclick: move |_| {
                                 export_logs(LogExportFormat::Csv, &state);
                                 show_dropdown.set(false);
                             },
@@ -551,7 +542,6 @@ fn export_logs(format: LogExportFormat, state: &Signal<LogsState>) {
         LogExportFormat::Text => ("logs.txt", "text/plain"),
         LogExportFormat::Json => ("logs.json", "application/json"),
         LogExportFormat::Csv => ("logs.csv", "text/csv"),
-        LogExportFormat::Kdl => ("logs.kdl", "text/kdl"),
     };
 
     // Use platform-specific export

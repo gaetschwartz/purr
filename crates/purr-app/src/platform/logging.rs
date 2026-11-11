@@ -410,7 +410,6 @@ pub enum LogExportFormat {
     Text,
     Json,
     Csv,
-    Kdl,
 }
 
 impl LogsStorage {
@@ -433,7 +432,6 @@ impl LogsStorage {
                 .collect::<Vec<_>>()
                 .join("\n"),
             LogExportFormat::Json => serde_json::to_string_pretty(&entries).unwrap_or_default(),
-            LogExportFormat::Kdl => serde_kdl::to_string(&entries).unwrap_or_default(),
             LogExportFormat::Csv => {
                 let mut csv = String::new();
                 csv.push_str("Timestamp,Level,Target,Message,File,Line\n");

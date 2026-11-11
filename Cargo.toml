@@ -12,9 +12,6 @@ resolver = "2"
 [workspace.dependencies]
 purr-core = { path = "crates/purr-core" }
 
-
-[profile]
-
 [profile.dev.build-override]
 opt-level = 1
 
