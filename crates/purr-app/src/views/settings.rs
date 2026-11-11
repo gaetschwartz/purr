@@ -4,7 +4,7 @@ use crate::{
         dialog::{Dialog, DialogTone},
         group::{Group, Item, ItemAction, TileColor},
         icon::IconName,
-        model_picker::ModelPicker,
+        model_picker::ModelPill,
         page::Page,
         segmented::{Segment, Segmented},
         select::{Select, SelectOption},
@@ -159,12 +159,15 @@ pub fn Settings() -> Element {
                             }
                         },
                     }
-                    div { class: "item col",
-                        ModelPicker {
-                            selected: selected_model,
-                            models,
-                            onselect: move |value: String| report(settings.set_model(value)),
-                        }
+                    Item {
+                        icon: IconName::Cube,
+                        tile: TileColor::Purple,
+                        title: "Model",
+                        subtitle: "Used for new transcriptions. Download and remove models in Models.",
+                        stackable: true,
+                        control: rsx! {
+                            ModelPill { id: "settings-model" }
+                        },
                     }
                     if !IS_WEB {
                         Item {

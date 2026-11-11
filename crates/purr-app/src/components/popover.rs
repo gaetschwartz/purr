@@ -63,15 +63,25 @@ pub fn PopoverOption(
     #[props(default)] selected: bool,
     #[props(default)] disabled: bool,
     #[props(default)] danger: bool,
+    /// Marks the row the keyboard points at while focus stays in a search field.
+    #[props(default)]
+    highlighted: bool,
+    #[props(into)] id: Option<String>,
     onselect: EventHandler<()>,
 ) -> Element {
-    let class = if danger { "opt danger" } else { "opt" };
+    let class = match (danger, highlighted) {
+        (true, true) => "opt danger kb",
+        (true, false) => "opt danger",
+        (false, true) => "opt kb",
+        (false, false) => "opt",
+    };
     let (role, aria_selected) = match role {
         OptionRole::MenuItem => ("menuitem", None),
         OptionRole::Option => ("option", Some(selected)),
     };
     rsx! {
         button {
+            id,
             class,
             r#type: "button",
             role,

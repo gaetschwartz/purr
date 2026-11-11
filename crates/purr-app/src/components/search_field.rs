@@ -12,6 +12,12 @@ pub fn SearchField(
     #[props(into)] id: Option<String>,
     #[props(into)] described_by: Option<String>,
     onkeydown: Option<EventHandler<KeyboardEvent>>,
+    /// The id of the list the field filters, for a combobox.
+    #[props(into)]
+    controls: Option<String>,
+    /// The id of the list row the keyboard points at.
+    #[props(into)]
+    active_descendant: Option<String>,
     #[props(into, default)] style: String,
 ) -> Element {
     let generated = use_dom_id("search");
@@ -27,6 +33,8 @@ pub fn SearchField(
                 placeholder,
                 aria_label: label,
                 aria_describedby: described_by,
+                aria_controls: controls,
+                aria_activedescendant: active_descendant,
                 autocomplete: "off",
                 spellcheck: "false",
                 oninput: move |event| oninput.call(event.value()),
