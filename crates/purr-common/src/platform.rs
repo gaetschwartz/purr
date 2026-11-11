@@ -374,6 +374,14 @@ impl From<Bytes> for FileSource {
     }
 }
 
+/// A timed piece of a transcript
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct TranscriptSegment {
+    pub text: String,
+    pub start_time: f64,
+    pub end_time: f64,
+}
+
 /// Transcription status updates
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub enum TranscriptionStatus {
@@ -381,13 +389,19 @@ pub enum TranscriptionStatus {
     Starting,
     /// Processing audio file
     ProcessingAudio,
-    /// Transcription in progress with chunk updates
+    /// Model files are being downloaded or loaded into memory
+    LoadingModel { loaded_bytes: u64, total_bytes: u64 },
+    /// The model is ready and speech is being decoded; segments follow
+    Transcribing,
+    /// Transcription in progress; `text` is the whole current text of segment `chunk_index`
     InProgress {
         chunk_index: usize,
         text: String,
         start_time: f64,
         end_time: f64,
     },
+    /// Authoritative segment list that replaces everything reported through `InProgress`
+    Segments { segments: Vec<TranscriptSegment> },
     /// Final result
     Completed {
         processing_time: f64,
@@ -516,6 +530,14 @@ impl ModelInfo {
     }
 }
 
+/// Keys of the flags a platform can set in [`ModelMetadata::platform_specific`].
+pub mod model_flag {
+    /// The model needs the WebGPU `shader-f16` feature.
+    pub const REQUIRES_SHADER_F16: &str = "requires_shader_f16";
+    /// The model only transcribes English.
+    pub const ENGLISH_ONLY: &str = "english_only";
+}
+
 /// Platform-specific metadata for models
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ModelMetadata {
@@ -570,6 +592,14 @@ impl ModelMetadata {
     pub fn with_quantization(mut self, quantization: String) -> Self {
         self.quantization = Some(quantization);
         self
+    }
+
+    /// Whether the platform marked the model with `flag` (see [`model_flag`]).
+    #[must_use]
+    pub fn has_flag(&self, flag: &str) -> bool {
+        self.platform_specific
+            .get(flag)
+            .is_some_and(|value| value == "true")
     }
 
     /// Builder pattern for adding platform-specific attributes

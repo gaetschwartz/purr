@@ -67,6 +67,11 @@ impl WebModelSpec {
     }
 
     #[must_use]
+    pub const fn english_only(&self) -> bool {
+        self.family.is_english_only()
+    }
+
+    #[must_use]
     pub const fn requires_shader_f16(&self) -> bool {
         self.encoder_dtype.requires_shader_f16() || self.decoder_dtype.requires_shader_f16()
     }

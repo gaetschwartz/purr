@@ -21,10 +21,16 @@ use strum::{Display, EnumString};
 pub enum WebModelFamily {
     #[strum(serialize = "tiny")]
     Tiny,
+    #[strum(serialize = "tiny.en")]
+    TinyEn,
     #[strum(serialize = "base")]
     Base,
+    #[strum(serialize = "base.en")]
+    BaseEn,
     #[strum(serialize = "small")]
     Small,
+    #[strum(serialize = "small.en")]
+    SmallEn,
     #[strum(serialize = "large-v3-turbo")]
     LargeV3Turbo,
 }
@@ -34,9 +40,21 @@ impl WebModelFamily {
     pub const fn display_name(self) -> &'static str {
         match self {
             Self::Tiny => "Whisper Tiny",
+            Self::TinyEn => "Whisper Tiny (English)",
             Self::Base => "Whisper Base",
+            Self::BaseEn => "Whisper Base (English)",
             Self::Small => "Whisper Small",
+            Self::SmallEn => "Whisper Small (English)",
             Self::LargeV3Turbo => "Whisper Large v3 Turbo",
+        }
+    }
+
+    /// Whether the model only knows English and rejects `language` and `task` options.
+    #[must_use]
+    pub const fn is_english_only(self) -> bool {
+        match self {
+            Self::TinyEn | Self::BaseEn | Self::SmallEn => true,
+            Self::Tiny | Self::Base | Self::Small | Self::LargeV3Turbo => false,
         }
     }
 }
