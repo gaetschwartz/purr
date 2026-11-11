@@ -2,8 +2,10 @@
 
 pub mod attributes;
 pub mod digest;
+pub mod download;
 pub mod manifest;
 pub mod registry;
+pub mod status;
 
 use crate::error::{ConfigurationError, Result, WhisperError};
 use crate::math::ByteSpeed;
