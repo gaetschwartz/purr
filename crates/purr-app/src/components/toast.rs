@@ -233,7 +233,7 @@ impl Toasts {
 /// Provides the toast queue; call once at the root, above [`ToastRegion`].
 pub fn use_toast_provider() -> Toasts {
     use_context_provider(|| Toasts {
-        queue: Signal::new(ToastQueue::default()),
+        queue: Signal::new_in_scope(ToastQueue::default(), ScopeId::ROOT),
     })
 }
 

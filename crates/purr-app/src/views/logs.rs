@@ -14,7 +14,7 @@ use crate::{
         logging::{LogEntry, LogExportFormat, LogsQuery, SerdeTracingLevel, get_logs_storage},
     },
 };
-use dioxus::prelude::*;
+use dioxus::{core::spawn_forever, prelude::*};
 use std::{borrow::Cow, collections::HashSet};
 use strum::VariantArray as _;
 
@@ -112,7 +112,7 @@ pub fn Logs() -> Element {
             // Header with controls
             div { class: "logbar",
 
-                div { class: "flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4",
+                div { class: "grow flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4",
 
                     // Title and stats
                     div { class: "flex items-center gap-4",
@@ -263,7 +263,7 @@ pub fn Logs() -> Element {
 
             // Footer with settings
             div { class: "logbar",
-                div { class: "flex items-center justify-between text-sm text-gray-600 dark:text-gray-400",
+                div { class: "grow flex flex-wrap gap-2 items-center justify-between text-sm text-gray-600 dark:text-gray-400",
 
                     div { class: "flex items-center gap-4",
 
@@ -333,7 +333,7 @@ fn LogEntryRow(entry: LogEntry, search_query: String) -> Element {
                 div { class: "flex-1 min-w-0",
 
                     // Header line with timestamp, level, and target
-                    div { class: "flex items-center gap-3 mb-1 text-xs",
+                    div { class: "flex flex-wrap items-center gap-3 mb-1 text-xs",
 
                         time { class: "font-mono text-gray-500 dark:text-gray-400 flex-shrink-0",
                             {entry.formatted_timestamp()}
@@ -368,7 +368,7 @@ fn LogEntryRow(entry: LogEntry, search_query: String) -> Element {
                         }
 
                         if let Some(file) = &entry.file {
-                            span { class: "text-gray-400 dark:text-gray-600 text-xs",
+                            span { class: "text-gray-400 dark:text-gray-600 text-xs break-all",
                                 {format!("{}:{}", file, entry.line.unwrap_or(0))}
                             }
                         }
@@ -538,7 +538,7 @@ fn export_logs(format: LogExportFormat, state: &Signal<LogsState>, toasts: Toast
         LogExportFormat::Csv => ("logs.csv", "text/csv;charset=utf-8"),
     };
 
-    spawn(async move {
+    spawn_forever(async move {
         let saved = save_text_file(TextFile {
             file_name,
             content_type,

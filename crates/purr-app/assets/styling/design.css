@@ -360,6 +360,8 @@ kbd{font-family:var(--font);font-size:12px;font-weight:600;padding:2px 7px;borde
 .popover.placing{visibility:hidden;animation:none}
 @keyframes popin{from{opacity:0;transform:scale(.94) translateY(-4px)}to{opacity:1;transform:none}}
 .popover>*{flex:none}
+.popover.glass::before,.sheet.glass::before{inset:0}
+.popover,.sheet{overflow-x:hidden}
 .popover.menu{width:220px}
 .popover .ph{padding:8px 10px 6px;font-size:12px;font-weight:600;color:var(--fg-3);letter-spacing:.04em;text-transform:uppercase}
 .popover .plist{display:flex;flex-direction:column;padding:2px}
@@ -423,7 +425,7 @@ kbd{font-family:var(--font);font-size:12px;font-weight:600;padding:2px 7px;borde
   .ctl{max-width:62%}
   .sheet-wrap{place-items:end center;padding:10px}
   .sheet{border-radius:30px}
-  .popover{left:8px!important;right:8px!important;width:auto;max-width:none;top:auto!important;bottom:8px;max-height:70%;transform-origin:bottom center}
+  .popover,.popover.menu{left:8px!important;right:8px!important;width:auto;max-width:none;top:auto!important;bottom:8px;max-height:70%;transform-origin:bottom center}
   .layer.pop .scrim{background:var(--scrim);animation:fadein .25s ease}
   .toasts{top:auto;bottom:88px}
 }

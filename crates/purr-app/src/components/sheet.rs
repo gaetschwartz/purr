@@ -6,7 +6,8 @@ use dioxus::prelude::*;
 ///
 /// Render it only while open. It is labelled by its `title`, traps focus, closes on Escape and
 /// scrim clicks through `on_close`, and returns focus to the opener. Put an `autofocus` attribute
-/// on the control that should take focus first; otherwise the first focusable one does.
+/// on the control that should take focus first; otherwise the first focusable one does. Handlers
+/// inside run in the sheet's scope, so work that outlives the sheet must use `spawn_forever`.
 #[component]
 pub fn Sheet(
     #[props(into)] title: String,

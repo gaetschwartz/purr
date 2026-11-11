@@ -40,8 +40,13 @@ pub async fn save_text_file(file: TextFile<'_>) -> miette::Result<()> {
         .map_err(|e| miette!("Could not name the download: {e:?}"))?;
     link.click();
 
-    gloo_timers::future::TimeoutFuture::new(10_000).await;
-    Url::revoke_object_url(&url).map_err(|e| miette!("Could not release the download: {e:?}"))
+    wasm_bindgen_futures::spawn_local(async move {
+        gloo_timers::future::TimeoutFuture::new(10_000).await;
+        if let Err(error) = Url::revoke_object_url(&url) {
+            tracing::warn!("Could not release the download: {error:?}");
+        }
+    });
+    Ok(())
 }
 
 /// Asks where to save the file and writes it there.

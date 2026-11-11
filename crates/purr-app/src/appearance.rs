@@ -1,7 +1,7 @@
 //! Theme and transparency preferences, applied as attributes on the document root.
 
 use crate::{components::toast::Toasts, platform};
-use dioxus::prelude::*;
+use dioxus::{core::spawn_forever, prelude::*};
 use purr_common::{platform::Platform as _, settings::Theme};
 
 /// The look the user chose.
@@ -99,7 +99,7 @@ impl AppearanceHandle {
     fn persist(self) {
         let chosen = *self.appearance.peek();
         let toasts = self.toasts;
-        spawn(async move {
+        spawn_forever(async move {
             let platform = platform::get_platform();
             let saved = match platform.load_settings().await {
                 Ok(mut settings) => {

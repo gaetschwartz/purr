@@ -6,7 +6,8 @@ use dioxus::prelude::*;
 ///
 /// Render it only while open (`if open() { Popover { .. } }`). It traps focus, closes on Escape
 /// and outside clicks through `on_close`, and gives focus back to the opener when it unmounts.
-/// `menu` narrows it for action menus; fill it with [`PopoverOption`] rows.
+/// `menu` narrows it for action menus; fill it with [`PopoverOption`] rows. Handlers inside run in
+/// the popover's scope, so work that outlives the popover must use `spawn_forever`.
 #[component]
 pub fn Popover(
     #[props(into)] anchor: String,
