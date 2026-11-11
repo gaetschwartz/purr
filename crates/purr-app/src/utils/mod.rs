@@ -1,46 +1,9 @@
-#![allow(dead_code)]
-
 pub mod byte_size;
 pub mod clock;
+pub mod counted;
 pub mod delay;
 pub mod dom_id;
 pub mod file_kind;
 pub mod language_label;
 pub mod local_time;
 pub mod primary_key;
-
-use bytes::Bytes;
-
-pub trait BytesExt {
-    fn chunks(&self, chunk_size: usize) -> impl Iterator<Item = Bytes> + '_;
-}
-
-impl BytesExt for Bytes {
-    fn chunks(&self, chunk_size: usize) -> impl Iterator<Item = Self> + '_ {
-        ByteChunks {
-            bytes: self,
-            chunk_size,
-            position: 0,
-        }
-    }
-}
-
-struct ByteChunks<'a> {
-    bytes: &'a Bytes,
-    chunk_size: usize,
-    position: usize,
-}
-
-impl Iterator for ByteChunks<'_> {
-    type Item = Bytes;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.position >= self.bytes.len() {
-            return None;
-        }
-        let end = (self.position + self.chunk_size).min(self.bytes.len());
-        let chunk = self.bytes.slice(self.position..end);
-        self.position = end;
-        Some(chunk)
-    }
-}

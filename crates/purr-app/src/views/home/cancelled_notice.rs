@@ -2,7 +2,6 @@ use crate::{
     components::{
         banner::{Banner, BannerTone},
         button::{Button, ButtonSize, ButtonVariant},
-        icon::IconName,
     },
     transcribe::session::{Cancelled, TranscribeSession},
 };
@@ -14,7 +13,6 @@ pub fn CancelledNotice(cancelled: Cancelled, session: TranscribeSession) -> Elem
     rsx! {
         Banner {
             tone: BannerTone::Info,
-            icon: IconName::Stop,
             title: "Transcription cancelled",
             role: "status",
             id: "cancelled-notice",

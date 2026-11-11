@@ -17,7 +17,10 @@ use crate::{
         session::{RunRecord, use_transcribe_session},
         timing,
     },
-    utils::{byte_size::ByteSize, clock::now_ms, delay::sleep, language_label::language_label},
+    utils::{
+        byte_size::ByteSize, clock::now_ms, counted::counted, delay::sleep,
+        language_label::language_label,
+    },
 };
 use dioxus::prelude::*;
 use std::time::Duration;
@@ -80,12 +83,7 @@ pub fn Running(record: RunRecord) -> Element {
         (LanguageChoice::Spoken(_), _) => format!("{} · chosen", record.language.label()),
     };
     let transcribing_sub = if run.stage == Stage::Transcribing {
-        let count = segments.len();
-        if count == 1 {
-            "1 segment".to_owned()
-        } else {
-            format!("{count} segments")
-        }
+        counted(segments.len(), "segment", "segments")
     } else {
         "Waiting".to_owned()
     };

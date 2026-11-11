@@ -15,6 +15,7 @@ use crate::{
     settings_store::use_settings,
     shortcuts::{Key, KeyChord, Shortcut, use_shortcut},
     transcribe::export_format::{ExportDocument, export_file_name, render},
+    utils::counted::counted,
 };
 use dioxus::{core::spawn_forever, prelude::*};
 use purr_common::{export_format::ExportFormat, platform::TranscriptSegment};
@@ -93,7 +94,9 @@ pub fn copy_export(source: &ExportSource, format: ExportFormat, toasts: Toasts) 
         match copied {
             Ok(()) => {
                 let what = match format {
-                    ExportFormat::Txt => format!("{count} segments, no timestamps."),
+                    ExportFormat::Txt => {
+                        format!("{}, no timestamps.", counted(count, "segment", "segments"))
+                    }
                     ExportFormat::Srt | ExportFormat::Vtt | ExportFormat::Json => {
                         format!("{} text is on the clipboard.", format.short_name())
                     }
