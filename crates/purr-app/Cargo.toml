@@ -125,3 +125,6 @@ rstest = "0.28"
 pretty_assertions = "1.4.1"
 tempfile = "3.21"
 wasm-bindgen-test = "0.3"
+
+[lints]
+workspace = true

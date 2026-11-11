@@ -116,3 +116,6 @@ tempfile = "3.21"
 wasm-bindgen-test = "0.3"
 
 # Profiles are handled at workspace level
+
+[lints]
+workspace = true

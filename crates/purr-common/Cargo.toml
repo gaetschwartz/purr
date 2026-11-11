@@ -39,3 +39,6 @@ tempfile = "3.21"
 default = []
 clap = ["dep:clap"]
 web = []
+
+[lints]
+workspace = true

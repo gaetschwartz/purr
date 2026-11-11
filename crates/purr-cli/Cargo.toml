@@ -56,3 +56,6 @@ coreml = ["purr-core/coreml"]
 
 [build-dependencies]
 shadow-rs = "2.0.0"
+
+[lints]
+workspace = true

@@ -66,3 +66,6 @@ mocks = ["dep:mockall"]
 [lib]
 name = "purr_test_utils"
 path = "src/lib.rs"
+
+[lints]
+workspace = true

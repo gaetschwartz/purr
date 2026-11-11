@@ -55,3 +55,6 @@ coreml = ["whisper-rs/coreml"]
 
 [build-dependencies]
 build-target = "0.8.0"
+
+[lints]
+workspace = true
