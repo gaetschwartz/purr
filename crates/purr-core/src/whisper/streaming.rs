@@ -76,8 +76,10 @@ impl WhisperTranscriber for StreamWhisperTranscriber {
 
         // Spawn background task to process audio stream
         tokio::spawn(async move {
-            if let Err(e) = Self::process_audio_stream(state, config, input, tx.clone()).await {
-                let _ = tx.send(Err(e));
+            if let Err(e) = Self::process_audio_stream(state, config, input, tx.clone()).await
+                && tx.send(Err(e)).is_err()
+            {
+                debug!("Receiver dropped, error not delivered");
             }
         });
 
@@ -221,7 +223,9 @@ impl StreamWhisperTranscriber {
                             }
                             Err(e) => {
                                 warn!("Failed to process audio chunk: {}", e);
-                                let _ = tx.send(Err(e));
+                                if tx.send(Err(e)).is_err() {
+                                    debug!("Receiver dropped, error not delivered");
+                                }
                                 return Ok(());
                             }
                         }
@@ -236,7 +240,9 @@ impl StreamWhisperTranscriber {
                 }
                 Err(e) => {
                     warn!("Audio stream error: {}", e);
-                    let _ = tx.send(Err(e));
+                    if tx.send(Err(e)).is_err() {
+                        debug!("Receiver dropped, error not delivered");
+                    }
                     break;
                 }
             }
