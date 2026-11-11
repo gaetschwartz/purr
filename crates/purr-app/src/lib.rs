@@ -33,7 +33,11 @@ use shortcuts::use_shortcut_provider;
 
 const FAVICON: Asset = asset!("/assets/icons/purr-mark.svg");
 const TAILWIND_CSS: Asset = asset!("/assets/tailwind.css");
-const DESIGN_CSS: Asset = asset!("/assets/styling/design.css");
+// unminified: the minifier strips the -webkit- prefixed glass fallbacks older Safari needs
+const DESIGN_CSS: Asset = asset!(
+    "/assets/styling/design.css",
+    AssetOptions::css().with_minify(false)
+);
 const SCREENS_CSS: Asset = asset!("/assets/styling/screens.css");
 const INTER: Asset = asset!("/assets/fonts/InterVariable.woff2");
 
