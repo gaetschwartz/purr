@@ -53,6 +53,7 @@ cuda = ["purr-core/cuda"]
 vulkan = ["purr-core/vulkan"]
 metal = ["purr-core/metal"]
 coreml = ["purr-core/coreml"]
+static-ffmpeg = ["purr-core/static-ffmpeg"]
 
 [build-dependencies]
 shadow-rs = "2.0.0"

@@ -118,6 +118,7 @@ vulkan = ["purr-core/vulkan"]
 cuda = ["purr-core/cuda"]
 metal = ["purr-core/metal"]
 coreml = ["purr-core/coreml"]
+static-ffmpeg = ["purr-core/static-ffmpeg"]
 gloo-timers = ["dep:gloo-timers"]
 
 [dev-dependencies]

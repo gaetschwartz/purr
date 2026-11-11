@@ -52,6 +52,7 @@ cuda = ["whisper-rs/cuda"]
 vulkan = ["whisper-rs/vulkan"]
 metal = ["whisper-rs/metal"]
 coreml = ["whisper-rs/coreml"]
+static-ffmpeg = ["ffmpeg-next/static"]
 
 [build-dependencies]
 build-target = "0.8.0"

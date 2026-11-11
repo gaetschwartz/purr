@@ -8,6 +8,14 @@ fn main() {
     let os = target_os();
     println!("cargo:rustc-env=TARGET_OS={os:?}");
 
+    // statically linked FFmpeg's Media Foundation code needs these IID libraries
+    if env::var_os("CARGO_FEATURE_STATIC_FFMPEG").is_some()
+        && env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc")
+    {
+        println!("cargo::rustc-link-lib=mfuuid");
+        println!("cargo::rustc-link-lib=strmiids");
+    }
+
     // Capture environment for debugging vulkan feature propagation
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
     let env_file = out_dir.join("build_env.txt");
