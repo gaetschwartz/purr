@@ -2,6 +2,7 @@ use ambassador::Delegate;
 use bytes::Bytes;
 pub use purr_common::platform::*;
 use purr_common::{
+    accel::SystemReport,
     audio_overview::AudioOverview,
     history::{
         entry::{HistoryEntry, HistoryId, HistoryRecord},
@@ -27,6 +28,10 @@ pub mod logging;
 
 /// Text, JSON and CSV files made of captured logs
 pub mod log_export;
+
+/// Settings and machine probes as purr-core configuration and reports
+#[cfg(feature = "desktop")]
+mod engine_options;
 
 /// Re-export the appropriate platform implementation
 #[cfg(feature = "desktop")]

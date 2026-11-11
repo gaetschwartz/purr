@@ -143,6 +143,10 @@ impl Platform for UnimplementedPlatformImpl {
         unsupported!()
     }
 
+    async fn system_report(&self) -> Result<purr_common::accel::SystemReport, PlatformError> {
+        unsupported!()
+    }
+
     async fn load_settings(&self) -> Result<Settings, PlatformError> {
         unsupported!()
     }

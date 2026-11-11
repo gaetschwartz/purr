@@ -13,6 +13,7 @@ use crate::storage::WebStorage;
 use crate::worker_client::WorkerClient;
 use bytes::Bytes;
 use futures::StreamExt as _;
+use purr_common::accel::SystemReport;
 use purr_common::audio_overview::{AudioOverview, peaks};
 use purr_common::history::{
     entry::{HistoryEntry, HistoryId, HistoryRecord},
@@ -615,6 +616,10 @@ impl Platform for WasmPlatformImpl {
             devices.push(gpu);
         }
         Ok(devices)
+    }
+
+    async fn system_report(&self) -> Result<SystemReport, PlatformError> {
+        Err(PlatformError::unsupported("a system report in the browser"))
     }
 
     async fn load_settings(&self) -> Result<Settings, PlatformError> {

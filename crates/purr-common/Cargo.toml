@@ -37,6 +37,7 @@ web-sys = { version = "0.3", features = ["Window", "MediaQueryList"] }
 rstest = "0.28"
 pretty_assertions = "1.4.1"
 tempfile = "3.21"
+toml = "1.2"
 
 [features]
 default = []

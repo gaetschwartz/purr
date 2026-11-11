@@ -15,6 +15,7 @@ use std::{
 };
 
 use crate::{
+    accel::{AccelPolicy, SystemReport},
     audio_overview::AudioOverview,
     history::{
         entry::{HistoryEntry, HistoryId, HistoryRecord},
@@ -359,6 +360,31 @@ pub struct TranscriptionRequest {
     pub language: Option<String>,
     /// Whether to translate to English
     pub translate: bool,
+    /// How the engine runs; platforms that do not choose their own hardware ignore it
+    pub engine: EngineOptions,
+}
+
+/// How the transcription engine runs, taken from the performance and model settings.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct EngineOptions {
+    /// Which hardware to run on
+    pub accel: AccelPolicy,
+    /// CPU threads, `None` to let the engine choose
+    pub threads: Option<u32>,
+    /// Sampling temperature, 0.0 being deterministic
+    pub temperature: f64,
+}
+
+impl EngineOptions {
+    /// The options the user's settings ask for.
+    #[must_use]
+    pub const fn from_settings(settings: &Settings) -> Self {
+        Self {
+            accel: settings.performance.accel_policy(),
+            threads: settings.performance.threads,
+            temperature: settings.model.temperature,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -1044,6 +1070,15 @@ pub trait Platform: Send + Sync + 'static {
         &self,
     ) -> impl std::future::Future<Output = Result<Vec<DeviceInfo>, PlatformError>> + Send;
 
+    /// Report the acceleration backends this machine offers, best first
+    ///
+    /// # Platform Differences
+    /// - **Desktop**: Probes the backends built into purr-core and lists their devices
+    /// - **Web**: Unsupported; the browser's own GPU is reported by [`Self::list_available_devices`]
+    fn system_report(
+        &self,
+    ) -> impl std::future::Future<Output = Result<SystemReport, PlatformError>> + Send;
+
     // ========================================
     // Settings Persistence Operations
     // ========================================
@@ -1100,4 +1135,38 @@ pub trait Platform: Send + Sync + 'static {
     fn get_settings_location(
         &self,
     ) -> impl std::future::Future<Output = Result<Option<String>, PlatformError>> + Send;
+}
+
+#[cfg(test)]
+mod engine_options_tests {
+    use super::*;
+    use crate::accel::{AccelBackend, AccelSelection};
+
+    #[test]
+    fn the_engine_follows_the_performance_and_model_settings() {
+        let mut settings = Settings::default();
+        settings.performance.accel_backend = AccelSelection::Vulkan;
+        settings.performance.accel_fallback = false;
+        settings.performance.threads = Some(3);
+        settings.model.temperature = 0.4;
+        assert_eq!(
+            EngineOptions::from_settings(&settings),
+            EngineOptions {
+                accel: AccelPolicy::Forced {
+                    backend: AccelBackend::Vulkan,
+                    allow_fallback: false
+                },
+                threads: Some(3),
+                temperature: 0.4,
+            }
+        );
+    }
+
+    #[test]
+    fn the_default_settings_leave_the_engine_to_choose() {
+        assert_eq!(
+            EngineOptions::from_settings(&Settings::default()),
+            EngineOptions::default()
+        );
+    }
 }

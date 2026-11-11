@@ -7,7 +7,6 @@ use purr_common::{platform::PlatformError, settings::Settings};
 pub fn accept_loaded(loaded: Result<Settings, PlatformError>) -> Result<Settings, LoadFailure> {
     let mut settings = loaded.map_err(|error| LoadFailure::Unreadable(error.to_string()))?;
     let stored_version = settings.version;
-    settings.version = Settings::default().version;
     settings
         .migrate_from_version(stored_version)
         .map_err(LoadFailure::Unsupported)?;
@@ -41,7 +40,7 @@ pub fn validated(settings: Settings) -> Result<Settings, UpdateError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use purr_common::settings::SettingsError;
+    use purr_common::settings::{CURRENT_VERSION, SettingsError};
 
     #[test]
     fn stored_settings_are_used_as_they_are() {
@@ -71,7 +70,7 @@ mod tests {
             accept_loaded(Ok(stored)),
             Err(LoadFailure::Unsupported(
                 SettingsError::UnsupportedVersion {
-                    current: 1,
+                    current: CURRENT_VERSION,
                     target: 7
                 }
             ))
@@ -85,6 +84,19 @@ mod tests {
             ..Settings::default()
         };
         assert_eq!(accept_loaded(Ok(stored)), Ok(Settings::default()));
+    }
+
+    #[test]
+    fn version_one_is_migrated_and_keeps_what_the_user_chose() {
+        let mut stored = Settings {
+            version: 1,
+            ..Settings::default()
+        };
+        "small".clone_into(&mut stored.model.model_name);
+        stored.performance.gpu_acceleration = false;
+        let mut expected = Settings::default();
+        "small".clone_into(&mut expected.model.model_name);
+        assert_eq!(accept_loaded(Ok(stored)), Ok(expected));
     }
 
     #[test]

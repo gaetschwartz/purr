@@ -16,6 +16,7 @@ use crate::{
     hooks::use_models::{ModelsHandle, use_models},
     model_catalog::entry::{Language, ModelEntry},
     platform::{self, IS_WEB},
+    settings_store::{SettingsStore, use_settings},
     utils::{
         clock::{now_ms, unix_ms},
         file_kind::may_contain_audio,
@@ -30,8 +31,8 @@ use futures::StreamExt as _;
 use purr_common::{
     history::entry::{HistoryEntry, HistoryId, LanguageOrigin},
     platform::{
-        FileId, FileSource, ModelId, Platform as _, PlatformError, TranscriptionRequest,
-        TranscriptionStatus,
+        EngineOptions, FileId, FileSource, ModelId, Platform as _, PlatformError,
+        TranscriptionRequest, TranscriptionStatus,
     },
 };
 use std::{collections::HashMap, path::PathBuf, rc::Rc};
@@ -72,6 +73,7 @@ pub struct TranscribeSession {
     toasts: Toasts,
     models: ModelsHandle,
     history: HistoryStore,
+    settings: SettingsStore,
 }
 
 impl TranscribeSession {
@@ -335,11 +337,13 @@ impl TranscribeSession {
     fn launch(mut self, file: ChosenFile, model: ModelEntry, language: LanguageChoice) {
         self.stop_task();
         let language = language.for_model(model.language == Language::EnglishOnly);
+        let settings = self.settings.peek();
         let request = TranscriptionRequest {
             file: FileSource::Uploaded(file.id.clone()),
             model: ModelId::new(model.id.clone()),
             language: language.request_code(),
-            translate: false,
+            translate: settings.model.translate,
+            engine: EngineOptions::from_settings(&settings),
         };
         let run = Run::new(language == LanguageChoice::Automatic, now_ms());
         tracing::info!(
@@ -577,6 +581,7 @@ pub fn use_transcribe_session_provider() -> TranscribeSession {
     let toasts = use_toasts();
     let models = use_models();
     let history = use_history();
+    let settings = use_settings();
     let session = use_hook(|| {
         Runtime::current().in_scope(ScopeId::ROOT, || TranscribeSession {
             file: Signal::new(None),
@@ -590,6 +595,7 @@ pub fn use_transcribe_session_provider() -> TranscribeSession {
             toasts,
             models,
             history,
+            settings,
         })
     });
     use_context_provider(|| session)

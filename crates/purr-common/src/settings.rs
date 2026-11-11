@@ -4,8 +4,19 @@
 //! all Purr components (UI, core, CLI) with proper serialization support
 //! and validation methods.
 
+use crate::accel::{AccelBackend, AccelPolicy, AccelSelection};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+
+/// The version of the settings schema this build writes.
+pub const CURRENT_VERSION: u32 = 2;
+
+/// The most CPU threads a setting may ask for.
+pub const MAX_THREADS: u32 = 256;
+
+const fn enabled() -> bool {
+    true
+}
 
 /// Application settings configuration
 ///
@@ -42,6 +53,9 @@ pub struct ModelSettings {
     pub temperature: f64,
     /// Maximum number of tokens to generate
     pub max_tokens: u32,
+    /// Write English text whatever language is spoken
+    #[serde(default)]
+    pub translate: bool,
 }
 
 /// Audio processing settings
@@ -80,8 +94,17 @@ impl UiSettings {
 /// Performance and optimization settings
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PerformanceSettings {
-    /// Enable GPU acceleration for transcription
+    /// Allow hardware acceleration; off means the processor only, whatever `accel_backend` says
     pub gpu_acceleration: bool,
+    /// The backend to use, or `Auto` to take the best one that works
+    #[serde(default)]
+    pub accel_backend: AccelSelection,
+    /// Move on to the next best backend when the chosen one cannot run
+    #[serde(default = "enabled")]
+    pub accel_fallback: bool,
+    /// Threads for the processor, `None` to let Whisper choose
+    #[serde(default)]
+    pub threads: Option<u32>,
     /// Enable concurrent processing of multiple files
     pub concurrent_processing: bool,
     /// Maximum number of concurrent transcription jobs
@@ -169,7 +192,7 @@ pub enum LogLevel {
 impl Default for Settings {
     fn default() -> Self {
         Self {
-            version: 1,
+            version: CURRENT_VERSION,
             model: ModelSettings::default(),
             audio: AudioSettings::default(),
             ui: UiSettings::default(),
@@ -185,6 +208,7 @@ impl Default for ModelSettings {
             model_name: "base".to_owned(),
             temperature: 0.0,
             max_tokens: 4096,
+            translate: false,
         }
     }
 }
@@ -213,7 +237,10 @@ impl Default for UiSettings {
 impl Default for PerformanceSettings {
     fn default() -> Self {
         Self {
-            gpu_acceleration: false,
+            gpu_acceleration: true,
+            accel_backend: AccelSelection::Auto,
+            accel_fallback: true,
+            threads: None,
             concurrent_processing: true,
             max_concurrent_jobs: 2,
         }
@@ -226,6 +253,28 @@ impl Default for LoggingSettings {
             level: LogLevel::Info,
             enable_file_logging: true,
             log_file_path: None,
+        }
+    }
+}
+
+impl PerformanceSettings {
+    /// How transcription picks its backend.
+    ///
+    /// Turning `gpu_acceleration` off wins over every other choice and means the processor only.
+    /// With it on, `Auto` always falls back, and a named backend falls back only when
+    /// `accel_fallback` allows it.
+    #[must_use]
+    pub const fn accel_policy(&self) -> AccelPolicy {
+        if !self.gpu_acceleration {
+            return AccelPolicy::CPU_ONLY;
+        }
+        match self.accel_backend.backend() {
+            None => AccelPolicy::Auto,
+            Some(AccelBackend::Cpu) => AccelPolicy::CPU_ONLY,
+            Some(backend) => AccelPolicy::Forced {
+                backend,
+                allow_fallback: self.accel_fallback,
+            },
         }
     }
 }
@@ -606,6 +655,12 @@ impl Settings {
             });
         }
 
+        if let Some(threads) = self.performance.threads
+            && !(1..=MAX_THREADS).contains(&threads)
+        {
+            errors.push(SettingsError::InvalidThreads { value: threads });
+        }
+
         // Validate UI settings
         if self.ui.language.trim().is_empty() {
             errors.push(SettingsError::EmptyLanguage);
@@ -631,28 +686,31 @@ impl Settings {
         SettingsBuilder::new()
     }
 
-    /// Migrate settings from an older version
+    /// Brings settings read from schema version `from_version` up to [`CURRENT_VERSION`].
+    ///
+    /// Version 1 saved `gpu_acceleration` as off without anything reading it, so it moves to
+    /// the new default instead of silently switching acceleration off.
     pub fn migrate_from_version(&mut self, from_version: u32) -> Result<(), SettingsError> {
-        match from_version {
-            0 => {
-                // Migrate from version 0 to 1
-                // Add any migration logic here
-                self.version = 1;
-                Ok(())
-            }
-            v if v == self.version => Ok(()), // No migration needed
-            v if v > self.version => Err(SettingsError::UnsupportedVersion {
-                current: self.version,
-                target: v,
-            }),
-            _ => {
-                // For now, we only support migrating from version 0
-                Err(SettingsError::UnsupportedMigration {
-                    from: from_version,
-                    to: self.version,
-                })
+        if from_version > CURRENT_VERSION {
+            return Err(SettingsError::UnsupportedVersion {
+                current: CURRENT_VERSION,
+                target: from_version,
+            });
+        }
+        for step in from_version..CURRENT_VERSION {
+            match step {
+                0 => {}
+                1 => self.performance.gpu_acceleration = true,
+                other => {
+                    return Err(SettingsError::UnsupportedMigration {
+                        from: other,
+                        to: other.saturating_add(1),
+                    });
+                }
             }
         }
+        self.version = CURRENT_VERSION;
+        Ok(())
     }
 }
 
@@ -670,6 +728,9 @@ pub enum SettingsError {
 
     #[error("Invalid concurrent jobs value: {value} (must be between 1 and 16)")]
     InvalidConcurrentJobs { value: u32 },
+
+    #[error("Invalid thread count: {value} (must be between 1 and 256)")]
+    InvalidThreads { value: u32 },
 
     #[error("Language code cannot be empty")]
     EmptyLanguage,
@@ -822,6 +883,7 @@ mod tests {
                 model_name: "whisper-large".to_owned(),
                 temperature: 0.2,
                 max_tokens: 8192,
+                translate: false,
             })
             .build()
             .unwrap();
@@ -856,6 +918,226 @@ mod tests {
             .build()
             .unwrap();
         assert!(settings.ui.reduce_transparency);
+    }
+
+    #[test]
+    fn model_settings_saved_before_translate_still_load() {
+        let saved = r#"{"model_name":"small","temperature":0.0,"max_tokens":4096}"#;
+        let model: ModelSettings = serde_json::from_str(saved).unwrap();
+        assert_eq!(
+            model,
+            ModelSettings {
+                model_name: "small".to_owned(),
+                translate: false,
+                ..ModelSettings::default()
+            }
+        );
+    }
+
+    #[test]
+    fn performance_settings_saved_before_the_backend_choice_still_load() {
+        let saved =
+            r#"{"gpu_acceleration":true,"concurrent_processing":false,"max_concurrent_jobs":3}"#;
+        let performance: PerformanceSettings = serde_json::from_str(saved).unwrap();
+        assert_eq!(
+            performance,
+            PerformanceSettings {
+                gpu_acceleration: true,
+                accel_backend: AccelSelection::Auto,
+                accel_fallback: true,
+                threads: None,
+                concurrent_processing: false,
+                max_concurrent_jobs: 3,
+            }
+        );
+    }
+
+    #[test]
+    fn a_version_one_toml_file_with_the_old_layout_loads_and_migrates() {
+        let saved = r#"
+version = 1
+
+[model]
+model_name = "base"
+temperature = 0.0
+max_tokens = 4096
+
+[audio]
+sample_rate = "Hz16000"
+quality = "High"
+file_format = "Mp3"
+
+[ui]
+theme = "Light"
+compact_mode = false
+language = "en"
+
+[performance]
+gpu_acceleration = false
+concurrent_processing = true
+max_concurrent_jobs = 2
+
+[logging]
+level = "Info"
+enable_file_logging = true
+"#;
+        let mut settings: Settings = toml::from_str(saved).unwrap();
+        let stored = settings.version;
+        assert_eq!(stored, 1);
+        assert_eq!(settings.migrate_from_version(stored), Ok(()));
+        assert_eq!(settings.version, CURRENT_VERSION);
+        assert!(settings.performance.gpu_acceleration);
+        assert_eq!(settings.performance.accel_backend, AccelSelection::Auto);
+        assert_eq!(settings.performance.threads, None);
+        assert!(settings.is_valid());
+    }
+
+    #[test]
+    fn migration_reaches_the_current_version_from_every_older_one() {
+        for from in 0..CURRENT_VERSION {
+            let mut settings = Settings {
+                performance: PerformanceSettings {
+                    gpu_acceleration: false,
+                    ..PerformanceSettings::default()
+                },
+                ..Settings::default()
+            };
+            assert_eq!(settings.migrate_from_version(from), Ok(()));
+            assert_eq!(settings.version, CURRENT_VERSION);
+            assert!(settings.performance.gpu_acceleration);
+        }
+    }
+
+    #[test]
+    fn current_settings_are_left_as_they_are() {
+        let mut settings = Settings {
+            performance: PerformanceSettings {
+                gpu_acceleration: false,
+                ..PerformanceSettings::default()
+            },
+            ..Settings::default()
+        };
+        let before = settings.clone();
+        assert_eq!(settings.migrate_from_version(CURRENT_VERSION), Ok(()));
+        assert_eq!(settings, before);
+    }
+
+    #[test]
+    fn settings_from_a_newer_version_are_refused() {
+        let mut settings = Settings::default();
+        assert_eq!(
+            settings.migrate_from_version(CURRENT_VERSION + 1),
+            Err(SettingsError::UnsupportedVersion {
+                current: CURRENT_VERSION,
+                target: CURRENT_VERSION + 1
+            })
+        );
+    }
+
+    #[test]
+    fn thread_counts_outside_the_limits_are_invalid() {
+        let with_threads = |threads| {
+            let mut settings = Settings::default();
+            settings.performance.threads = threads;
+            settings.validate()
+        };
+        assert_eq!(with_threads(None), []);
+        assert_eq!(with_threads(Some(1)), []);
+        assert_eq!(with_threads(Some(MAX_THREADS)), []);
+        assert_eq!(
+            with_threads(Some(0)),
+            [SettingsError::InvalidThreads { value: 0 }]
+        );
+        assert_eq!(
+            with_threads(Some(MAX_THREADS + 1)),
+            [SettingsError::InvalidThreads {
+                value: MAX_THREADS + 1
+            }]
+        );
+    }
+
+    fn policy(gpu: bool, backend: AccelSelection, fallback: bool) -> AccelPolicy {
+        PerformanceSettings {
+            gpu_acceleration: gpu,
+            accel_backend: backend,
+            accel_fallback: fallback,
+            ..PerformanceSettings::default()
+        }
+        .accel_policy()
+    }
+
+    #[test]
+    fn turning_acceleration_off_beats_every_other_choice() {
+        for backend in AccelSelection::ALL {
+            for fallback in [true, false] {
+                assert_eq!(policy(false, backend, fallback), AccelPolicy::CPU_ONLY);
+            }
+        }
+    }
+
+    #[test]
+    fn automatic_always_falls_back() {
+        assert_eq!(policy(true, AccelSelection::Auto, true), AccelPolicy::Auto);
+        assert_eq!(policy(true, AccelSelection::Auto, false), AccelPolicy::Auto);
+    }
+
+    #[test]
+    fn a_named_backend_falls_back_only_when_allowed() {
+        assert_eq!(
+            policy(true, AccelSelection::Vulkan, true),
+            AccelPolicy::Forced {
+                backend: AccelBackend::Vulkan,
+                allow_fallback: true
+            }
+        );
+        assert_eq!(
+            policy(true, AccelSelection::Cuda, false),
+            AccelPolicy::Forced {
+                backend: AccelBackend::Cuda,
+                allow_fallback: false
+            }
+        );
+    }
+
+    #[test]
+    fn choosing_the_processor_never_falls_back_to_anything() {
+        assert_eq!(
+            policy(true, AccelSelection::Cpu, true),
+            AccelPolicy::CPU_ONLY
+        );
+    }
+
+    #[test]
+    fn the_defaults_accelerate_automatically() {
+        assert_eq!(
+            Settings::default().performance.accel_policy(),
+            AccelPolicy::Auto
+        );
+    }
+
+    #[test]
+    fn the_new_settings_survive_a_save_and_a_load() {
+        let mut settings = Settings::default();
+        settings.model.translate = true;
+        settings.performance.accel_backend = AccelSelection::Vulkan;
+        settings.performance.accel_fallback = false;
+        settings.performance.threads = Some(6);
+        let saved = toml::to_string_pretty(&settings).unwrap();
+        assert_eq!(toml::from_str::<Settings>(&saved).unwrap(), settings);
+    }
+
+    #[test]
+    fn builder_keeps_the_performance_choices() {
+        let settings = SettingsBuilder::new()
+            .performance(PerformanceSettings {
+                accel_backend: AccelSelection::Cpu,
+                threads: Some(4),
+                ..PerformanceSettings::default()
+            })
+            .build()
+            .unwrap();
+        assert_eq!(settings.performance.accel_backend, AccelSelection::Cpu);
+        assert_eq!(settings.performance.threads, Some(4));
     }
 
     #[test]

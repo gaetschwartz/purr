@@ -1,10 +1,14 @@
 /// Default platform implementation for desktop/native builds
 /// This implementation uses direct file system access and native whisper transcription
 use super::{
-    Platform, PlatformError, TranscriptionRequest, TranscriptionStatus, history_store::HistoryDir,
+    Platform, PlatformError, TranscriptionRequest, TranscriptionStatus,
+    engine_options::{apply_engine, device_info, last_run, probe},
+    history_store::HistoryDir,
 };
 use bytes::Bytes;
 use futures::{SinkExt, Stream, StreamExt, channel::mpsc};
+use parking_lot::Mutex;
+use purr_common::accel::{LastRun, SystemReport};
 use purr_common::audio_overview::{AudioOverview, PeakFold};
 use purr_common::history::{
     entry::{HistoryEntry, HistoryId, HistoryRecord},
@@ -12,9 +16,8 @@ use purr_common::history::{
     retention::Limits,
 };
 use purr_common::platform::{
-    DeviceInfo, DeviceType, FileId, FileSource, IntegrityProblem, ModelFailureKind, ModelInfo,
-    ModelIntegrity, ModelMetadata, ModelOperationProgress, ModelProgressStream,
-    TranscriptionStream, model_flag,
+    DeviceInfo, FileId, FileSource, IntegrityProblem, ModelFailureKind, ModelInfo, ModelIntegrity,
+    ModelMetadata, ModelOperationProgress, ModelProgressStream, TranscriptionStream, model_flag,
 };
 use purr_common::settings::Settings;
 use purr_core::WhisperError;
@@ -44,6 +47,7 @@ pub(super) struct DesktopPlatformImpl {
     temp_dir: PathBuf,
     model_manager: Arc<ModelManager>,
     history_lock: tokio::sync::Mutex<()>,
+    last_run: Arc<Mutex<Option<LastRun>>>,
 }
 
 fn upload_dir() -> PathBuf {
@@ -87,6 +91,7 @@ impl DesktopPlatformImpl {
             temp_dir,
             model_manager: Arc::new(model_manager),
             history_lock: tokio::sync::Mutex::new(()),
+            last_run: Arc::new(Mutex::new(None)),
         })
     }
 }
@@ -138,17 +143,25 @@ impl Platform for DesktopPlatformImpl {
         if !installed {
             return Err(PlatformError::model_not_found(request.model.to_string()));
         }
-        let config = purr_core::TranscriptionConfig::new()
-            .with_translate(request.translate)
-            .with_model_path(manager.get_model_path(model))
-            .with_opt_language(request.language);
+        let config = apply_engine(
+            purr_core::TranscriptionConfig::new()
+                .with_translate(request.translate)
+                .with_model_path(manager.get_model_path(model))
+                .with_opt_language(request.language),
+            &request.engine,
+        );
         info!(
             "Transcribing {} with {}",
             audio_path.display(),
             request.model
         );
 
-        Ok(transcription_stream(audio_path, config, model.size_bytes))
+        Ok(transcription_stream(
+            audio_path,
+            config,
+            model.size_bytes,
+            Arc::clone(&self.last_run),
+        ))
     }
 
     async fn cleanup(&self, file_id: &str) -> Result<(), PlatformError> {
@@ -328,41 +341,14 @@ impl Platform for DesktopPlatformImpl {
     }
 
     async fn list_available_devices(&self) -> Result<Vec<DeviceInfo>, PlatformError> {
-        // Use the same logic as purr_core::dev::list_devices()
-        let devices = dev::list_devices();
+        Ok(dev::list_devices().into_iter().map(device_info).collect())
+    }
 
-        let device_infos = devices
-            .into_iter()
-            .map(|device| DeviceInfo {
-                id: device.id,
-                name: device.name,
-                description: Some(device.description),
-                device_type: match device.tpe {
-                    dev::DeviceType::Cpu => DeviceType::Cpu,
-                    dev::DeviceType::Gpu | dev::DeviceType::Igpu => DeviceType::Gpu,
-                    dev::DeviceType::Accel => DeviceType::Accel,
-                    dev::DeviceType::Unknown => DeviceType::Unknown,
-                },
-                memory_free: Some(device.vram_free),
-                memory_total: Some(device.vram_total),
-                capabilities: device.caps.map(|caps| {
-                    let mut cap_map = std::collections::HashMap::new();
-                    cap_map.insert("async".to_owned(), serde_json::Value::Bool(caps.async_));
-                    cap_map.insert(
-                        "host_buffer".to_owned(),
-                        serde_json::Value::Bool(caps.host_buffer),
-                    );
-                    cap_map.insert(
-                        "buffer_from_host_ptr".to_owned(),
-                        serde_json::Value::Bool(caps.buffer_from_host_ptr),
-                    );
-                    cap_map.insert("events".to_owned(), serde_json::Value::Bool(caps.events));
-                    cap_map
-                }),
-            })
-            .collect();
-
-        Ok(device_infos)
+    async fn system_report(&self) -> Result<SystemReport, PlatformError> {
+        let last = self.last_run.lock().clone();
+        tokio::task::spawn_blocking(move || probe(last))
+            .await
+            .map_err(PlatformError::device_detection)
     }
 
     // ========================================
@@ -530,6 +516,7 @@ enum Phase {
 struct DesktopRun {
     phase: Phase,
     pending: VecDeque<Status>,
+    last_run: Arc<Mutex<Option<LastRun>>>,
     started: Instant,
     language_reported: bool,
     word_count: usize,
@@ -543,6 +530,7 @@ impl DesktopRun {
             Phase::Load { audio_path, config } => {
                 match purr_core::transcribe_file_stream(&audio_path, config).await {
                     Ok(stream) => {
+                        *self.last_run.lock() = Some(last_run(stream.accel()));
                         self.pending
                             .push_back(Ok(TranscriptionStatus::Transcribing));
                         self.phase = Phase::Decode(stream);
@@ -610,6 +598,7 @@ fn transcription_stream(
     audio_path: PathBuf,
     config: purr_core::TranscriptionConfig,
     model_bytes: u64,
+    last_run: Arc<Mutex<Option<LastRun>>>,
 ) -> TranscriptionStream {
     let run = DesktopRun {
         phase: Phase::Load { audio_path, config },
@@ -620,6 +609,7 @@ fn transcription_stream(
                 total_bytes: model_bytes,
             }),
         ]),
+        last_run,
         started: Instant::now(),
         language_reported: false,
         word_count: 0,

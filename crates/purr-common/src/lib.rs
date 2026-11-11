@@ -1,3 +1,4 @@
+pub mod accel;
 pub mod audio_overview;
 pub mod history;
 pub mod platform;
