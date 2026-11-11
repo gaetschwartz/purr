@@ -382,6 +382,15 @@ impl StreamWhisperTranscriber {
                     );
                 }
 
+                let language = if config.language.is_none() {
+                    whisper_rs::get_lang_str(
+                        streaming_state.whisper_state.full_lang_id_from_state(),
+                    )
+                    .map(str::to_owned)
+                } else {
+                    None
+                };
+
                 let streaming_chunk = StreamingChunk {
                     text: chunk_text,
                     start: chunk_start_time,
@@ -389,6 +398,7 @@ impl StreamWhisperTranscriber {
                     is_final: is_final_chunk,
                     chunk_index: streaming_state.chunk_index,
                     final_stats,
+                    language,
                 };
 
                 Ok(Some(streaming_chunk))

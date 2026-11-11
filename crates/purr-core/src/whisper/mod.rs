@@ -125,6 +125,9 @@ pub struct StreamingChunk {
 
     /// Final statistics (only present on the very last chunk)
     pub final_stats: Option<TranscriptionStats>,
+
+    /// The language Whisper recognised in this chunk (a Whisper code), when it was asked to detect it
+    pub language: Option<String>,
 }
 
 pub trait WhisperTranscriber {
