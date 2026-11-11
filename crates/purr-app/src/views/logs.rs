@@ -1,8 +1,9 @@
 //! Logs viewer component for displaying application logs in real-time
 
 use crate::{
-    platform::logging::{
-        LogEntry, LogExportFormat, LogsQuery, SerdeTracingLevel, get_logs_storage,
+    platform::{
+        export::{TextFile, save_text_file},
+        logging::{LogEntry, LogExportFormat, LogsQuery, SerdeTracingLevel, get_logs_storage},
     },
     views::NavBarState,
 };
@@ -90,6 +91,11 @@ pub fn Logs() -> Element {
                             .with_limit(current_state.max_display),
                     );
                     logs_clone.set(updated_logs);
+                    if current_state.stick_to_bottom {
+                        document::eval(
+                            "const box = document.getElementById('logs-container'); if (box) { box.scrollTop = box.scrollHeight; }",
+                        );
+                    }
                 }
             }
         });
@@ -99,6 +105,7 @@ pub fn Logs() -> Element {
     let filtered_logs = logs.read().clone();
 
     rsx! {
+        document::Title { "Purr - Logs" }
         div { class: "flex flex-col h-[calc(100vh-4rem)] bg-gray-50 dark:bg-gray-900",
 
             // Header with controls
@@ -114,7 +121,7 @@ pub fn Logs() -> Element {
 
                         div { class: "flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400",
                             span { class: "inline-flex items-center px-2 py-1 rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
-                                {format!("{} entries", filtered_logs.len())}
+                                {if filtered_logs.len() == 1 { "1 entry".to_owned() } else { format!("{} entries", filtered_logs.len()) }}
                             }
 
                             if current_state.paused {
@@ -468,12 +475,19 @@ fn LogLevelButton(
 #[component]
 fn ExportDropdown(state: Signal<LogsState>) -> Element {
     let mut show_dropdown = use_signal(|| false);
+    let notice = use_signal(|| None::<String>);
 
     rsx! {
         div { class: "relative",
 
+            if let Some(message) = notice() {
+                span { class: "absolute right-0 top-full mt-12 text-xs text-gray-600 dark:text-gray-300 whitespace-nowrap", role: "status", "{message}" }
+            }
+
             button {
                 class: "px-3 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-md transition-colors duration-200 flex items-center gap-2",
+                aria_haspopup: "menu",
+                aria_expanded: "{show_dropdown()}",
                 onclick: move |_| {
                     let current = *show_dropdown.read();
                     show_dropdown.set(!current);
@@ -494,7 +508,7 @@ fn ExportDropdown(state: Signal<LogsState>) -> Element {
                         button {
                             class: "block w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors",
                             onclick: move |_| {
-                                export_logs(LogExportFormat::Text, &state);
+                                export_logs(LogExportFormat::Text, &state, notice);
                                 show_dropdown.set(false);
                             },
                             "📄 Export as Text"
@@ -503,7 +517,7 @@ fn ExportDropdown(state: Signal<LogsState>) -> Element {
                         button {
                             class: "block w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors",
                             onclick: move |_| {
-                                export_logs(LogExportFormat::Json, &state);
+                                export_logs(LogExportFormat::Json, &state, notice);
                                 show_dropdown.set(false);
                             },
                             "📋 Export as JSON"
@@ -512,7 +526,7 @@ fn ExportDropdown(state: Signal<LogsState>) -> Element {
                         button {
                             class: "block w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors",
                             onclick: move |_| {
-                                export_logs(LogExportFormat::Csv, &state);
+                                export_logs(LogExportFormat::Csv, &state, notice);
                                 show_dropdown.set(false);
                             },
                             "📊 Export as CSV"
@@ -525,109 +539,40 @@ fn ExportDropdown(state: Signal<LogsState>) -> Element {
 }
 
 /// Export logs to a downloadable file
-fn export_logs(format: LogExportFormat, state: &Signal<LogsState>) {
+fn export_logs(
+    format: LogExportFormat,
+    state: &Signal<LogsState>,
+    mut notice: Signal<Option<String>>,
+) {
     let current_state = state.read();
     let storage = get_logs_storage();
-    let level_filters = &current_state.selected_levels;
-
     let exported_data = storage.export_logs(
         format,
         LogsQuery::new()
             .with_search(&current_state.search_query)
-            .with_level_filters(Cow::Borrowed(level_filters))
+            .with_level_filters(Cow::Borrowed(&current_state.selected_levels))
             .with_limit(current_state.max_display),
     );
 
-    let (filename, _content_type) = match format {
-        LogExportFormat::Text => ("logs.txt", "text/plain"),
+    let (file_name, content_type) = match format {
+        LogExportFormat::Text => ("logs.txt", "text/plain;charset=utf-8"),
         LogExportFormat::Json => ("logs.json", "application/json"),
-        LogExportFormat::Csv => ("logs.csv", "text/csv"),
+        LogExportFormat::Csv => ("logs.csv", "text/csv;charset=utf-8"),
     };
 
-    // Use platform-specific export
-    #[cfg(feature = "desktop")]
-    {
-        spawn(async move {
-            if let Err(e) = save_file_desktop(filename, &exported_data).await {
-                tracing::error!("Failed to save file: {}", e);
+    spawn(async move {
+        let saved = save_text_file(TextFile {
+            file_name,
+            content_type,
+            content: &exported_data,
+        })
+        .await;
+        match saved {
+            Ok(()) => notice.set(Some(format!("Exported {file_name}"))),
+            Err(error) => {
+                tracing::error!("Failed to export the logs: {error}");
+                notice.set(Some(format!("Export failed: {error}")));
             }
-        });
-    }
-
-    #[cfg(all(feature = "web", target_arch = "wasm32"))]
-    {
-        if let Err(e) = save_file_web(filename, _content_type, &exported_data) {
-            tracing::error!("Failed to download file: {}", e);
         }
-    }
-
-    tracing::info!("Exported {} logs as {}", storage.count(), filename);
-}
-
-/// Save file on desktop platforms
-#[cfg(feature = "desktop")]
-async fn save_file_desktop(
-    filename: &str,
-    content: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
-    use rfd::AsyncFileDialog;
-    use std::io::Write;
-
-    if let Some(file_handle) = AsyncFileDialog::new()
-        .set_file_name(filename)
-        .save_file()
-        .await
-    {
-        let mut file = std::fs::File::create(file_handle.path())?;
-        file.write_all(content.as_bytes())?;
-        tracing::info!("File saved to: {}", file_handle.path().display());
-    }
-
-    Ok(())
-}
-
-/// Save file on web platforms
-#[cfg(all(feature = "web", target_arch = "wasm32"))]
-fn save_file_web(filename: &str, content_type: &str, content: &str) -> Result<(), miette::Report> {
-    use wasm_bindgen::JsCast;
-    use web_sys::{Blob, BlobPropertyBag, HtmlElement, Url, window};
-
-    let window = window().ok_or_else(|| miette::miette!("No window object"))?;
-    let document = window
-        .document()
-        .ok_or_else(|| miette::miette!("No document object"))?;
-
-    // Create blob
-    let blob_options = BlobPropertyBag::new();
-    blob_options.set_type(content_type);
-
-    let array = js_sys::Array::new();
-    array.push(&content.into());
-
-    let blob = Blob::new_with_str_sequence_and_options(&array, &blob_options)
-        .map_err(|e| miette::miette!("Failed to create blob: {:?}", e))?;
-    let url = Url::create_object_url_with_blob(&blob)
-        .map_err(|e| miette::miette!("Failed to create object URL: {:?}", e))?;
-
-    // Create download link
-    let link = document
-        .create_element("a")
-        .map_err(|e| miette::miette!("Failed to create link element: {:?}", e))?;
-    let html_link = link
-        .dyn_into::<HtmlElement>()
-        .map_err(|e| miette::miette!("Failed to cast to HtmlElement: {:?}", e))?;
-
-    html_link
-        .set_attribute("href", &url)
-        .map_err(|e| miette::miette!("Failed to set href attribute on link: {:?}", e))?;
-    html_link
-        .set_attribute("download", filename)
-        .map_err(|e| miette::miette!("Failed to set download attribute on link: {:?}", e))?;
-    html_link.click();
-
-    // Clean up
-    Url::revoke_object_url(&url)
-        .map_err(|e| miette::miette!("Failed to revoke object URL: {:?}", e))?;
-
-    Ok(())
+    });
 }

@@ -21,6 +21,14 @@ fn collect_prefixed(prefix: &str) -> Vec<(String, String)> {
 }
 
 fn main() -> ExitCode {
+    println!("cargo::rustc-check-cfg=cfg(purr_web)");
+    let is_web = env::var_os("CARGO_FEATURE_WEB").is_some()
+        && env::var_os("CARGO_FEATURE_DESKTOP").is_none()
+        && env::var("CARGO_CFG_TARGET_ARCH").is_ok_and(|arch| arch == "wasm32");
+    if is_web {
+        println!("cargo::rustc-cfg=purr_web");
+    }
+
     for var in TRACKED_VARS {
         println!("cargo::rerun-if-env-changed={var}");
     }

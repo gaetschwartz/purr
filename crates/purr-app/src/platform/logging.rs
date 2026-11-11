@@ -5,6 +5,7 @@
 
 use miette::IntoDiagnostic as _;
 use purr_common::platform::Platform as _;
+use purr_common::settings::LogLevel;
 use serde::{Deserialize, Serialize};
 use serde_with::{DeserializeFromStr, SerializeDisplay};
 use std::{
@@ -15,15 +16,62 @@ use std::{
         OnceLock,
         atomic::{self},
     },
-    time::{SystemTime, UNIX_EPOCH},
 };
 use tracing::{Level, Subscriber};
 use tracing_subscriber::{
-    layer::{Context, Layer},
+    EnvFilter, Registry,
+    layer::{Context, Layer, Layered, SubscriberExt as _},
     registry::LookupSpan,
+    reload,
 };
 
 use crate::platform::get_platform;
+
+#[cfg(purr_web)]
+fn now_millis() -> u64 {
+    js_sys::Date::now() as u64
+}
+
+#[cfg(not(purr_web))]
+fn now_millis() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |elapsed| elapsed.as_millis() as u64)
+}
+
+#[cfg(purr_web)]
+fn local_clock_time(millis: u64) -> String {
+    let date = js_sys::Date::new(&wasm_bindgen::JsValue::from_f64(millis as f64));
+    format!(
+        "{:02}:{:02}:{:02}.{:03}",
+        date.get_hours(),
+        date.get_minutes(),
+        date.get_seconds(),
+        date.get_milliseconds()
+    )
+}
+
+#[cfg(all(feature = "chrono", not(purr_web)))]
+fn local_clock_time(millis: u64) -> String {
+    i64::try_from(millis)
+        .ok()
+        .and_then(chrono::DateTime::from_timestamp_millis)
+        .map(|utc| utc.with_timezone(&chrono::Local))
+        .map_or_else(String::new, |local| {
+            local.format("%H:%M:%S%.3f").to_string()
+        })
+}
+
+#[cfg(not(any(feature = "chrono", purr_web)))]
+fn local_clock_time(millis: u64) -> String {
+    format!(
+        "{:02}:{:02}:{:02}.{:03}",
+        (millis / 3_600_000) % 24,
+        (millis / 60_000) % 60,
+        (millis / 1000) % 60,
+        millis % 1000
+    )
+}
 
 /// Maximum number of log entries to keep in memory
 const MAX_LOG_ENTRIES: usize = 10000;
@@ -53,23 +101,7 @@ impl LogEntry {
     /// Get timestamp as a formatted string
     #[must_use]
     pub fn formatted_timestamp(&self) -> String {
-        #[cfg(feature = "chrono")]
-        {
-            let datetime = chrono::DateTime::from_timestamp(self.timestamp as i64 / 1000, 0)
-                .unwrap_or_default();
-            datetime.format("%H:%M:%S%.3f").to_string()
-        }
-        #[cfg(not(feature = "chrono"))]
-        {
-            // Fallback for web builds without chrono
-            format!(
-                "{:02}:{:02}:{:02}.{:03}",
-                (self.timestamp / 3600000) % 24,
-                (self.timestamp / 60000) % 60,
-                (self.timestamp / 1000) % 60,
-                self.timestamp % 1000
-            )
-        }
+        local_clock_time(self.timestamp)
     }
 
     /// Get a short target name (last component of the module path)
@@ -215,11 +247,12 @@ impl LogsStorage {
             })
             .cloned();
 
+        let mut entries: Vec<LogEntry> = filtered.collect();
         if let Some(limit) = query.limit {
-            filtered.take(limit).collect()
-        } else {
-            filtered.collect()
+            let excess = entries.len().saturating_sub(limit);
+            entries.drain(..excess);
         }
+        entries
     }
 
     /// Clear all log entries
@@ -284,10 +317,7 @@ where
         // Create a log entry
         let mut entry = LogEntry {
             id: 0, // Will be set when adding to storage
-            timestamp: SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_millis() as u64,
+            timestamp: now_millis(),
             level: SerdeTracingLevel::from(metadata.level()),
             target: metadata.target().to_owned(),
             message: String::new(),
@@ -367,40 +397,72 @@ impl tracing::field::Visit for LogFieldVisitor<'_> {
     }
 }
 
+type FilterHandle = reload::Handle<EnvFilter, Registry>;
+
+static FILTER_HANDLE: OnceLock<FilterHandle> = OnceLock::new();
+
 /// Initialize the logging capture layer
 /// This should be called during application startup
 pub fn init_logging_capture() -> miette::Result<()> {
-    use tracing_subscriber::{EnvFilter, Registry, prelude::*};
-
-    // Create the logs capture layer
-    let logs_layer = LogsCaptureLayer::new();
-
-    // Create a filter that allows all levels by default, but respects RUST_LOG
     let filter = EnvFilter::builder()
         .with_default_directive(tracing::Level::INFO.into())
         .from_env_lossy();
+    let (filter_layer, handle) = reload::Layer::new(filter);
+    FILTER_HANDLE
+        .set(handle)
+        .map_err(|_rejected| miette::miette!("Logging was already initialized"))?;
 
-    // Build the subscriber with both console output and our capture layer
     let subscriber = Registry::default()
-        .with(filter)
-        .with(
-            tracing_subscriber::fmt::layer()
-                .with_writer(std::io::stderr)
-                .with_ansi(true)
-                .with_target(true)
-                .with_file(true)
-                .with_line_number(true)
-                .compact(),
-        )
-        .with(logs_layer);
-
+        .with(filter_layer)
+        .with(output_layer())
+        .with(LogsCaptureLayer::new());
     tracing::subscriber::set_global_default(subscriber).into_diagnostic()?;
 
     get_platform().install_logging_hooks();
-    // Log that initialization is complete
     tracing::info!("Log capture initialized successfully");
 
     Ok(())
+}
+
+#[cfg(purr_web)]
+fn output_layer() -> impl Layer<Layered<reload::Layer<EnvFilter, Registry>, Registry>> {
+    purr_wasm::logging::console_layer()
+}
+
+#[cfg(not(purr_web))]
+fn output_layer() -> impl Layer<Layered<reload::Layer<EnvFilter, Registry>, Registry>> {
+    tracing_subscriber::fmt::layer()
+        .with_writer(std::io::stderr)
+        .with_ansi(true)
+        .with_target(true)
+        .with_file(true)
+        .with_line_number(true)
+        .compact()
+}
+
+/// Makes the application log at `level` and above.
+pub fn apply_log_level(level: &LogLevel) -> miette::Result<()> {
+    let handle = FILTER_HANDLE
+        .get()
+        .ok_or_else(|| miette::miette!("Logging has not been initialized"))?;
+    handle
+        .reload(EnvFilter::new(level.to_string()))
+        .into_diagnostic()
+}
+
+/// Applies the log level saved in the settings, unless `RUST_LOG` overrides it.
+pub async fn apply_saved_log_level() {
+    if std::env::var_os("RUST_LOG").is_some() {
+        return;
+    }
+    match get_platform().load_settings().await {
+        Ok(settings) => {
+            if let Err(error) = apply_log_level(&settings.logging.level) {
+                tracing::warn!("Could not apply the saved log level: {error}");
+            }
+        }
+        Err(error) => tracing::warn!("Could not read the saved log level: {error}"),
+    }
 }
 
 /// Export logs to a string in various formats

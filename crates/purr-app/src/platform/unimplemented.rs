@@ -6,9 +6,9 @@ use purr_common::platform::TranscriptionStream;
 use purr_common::settings::Settings;
 use std::path::Path;
 
-pub(super) type PlatformImpl = UnimplementedPlatformImpl;
+pub type PlatformImpl = UnimplementedPlatformImpl;
 
-pub(super) struct UnimplementedPlatformImpl {}
+pub struct UnimplementedPlatformImpl {}
 
 macro_rules! unsupported {
     () => {

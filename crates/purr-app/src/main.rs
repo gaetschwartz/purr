@@ -2,7 +2,7 @@
 use purr_app::App;
 
 fn main() {
-    #[cfg(all(feature = "web", target_arch = "wasm32", not(feature = "desktop")))]
+    #[cfg(purr_web)]
     purr_wasm::init();
 
     // Initialize logging capture for desktop builds

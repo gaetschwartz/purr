@@ -5,6 +5,9 @@ use purr_common::settings::Settings;
 use std::path::Path;
 use std::sync::{Arc, LazyLock};
 
+/// Saving and copying text
+pub mod export;
+
 /// Logging infrastructure
 pub mod logging;
 
@@ -13,7 +16,7 @@ pub mod logging;
 #[path = "desktop.rs"]
 mod platform_impl;
 
-#[cfg(all(feature = "web", target_arch = "wasm32", not(feature = "desktop")))]
+#[cfg(purr_web)]
 pub use purr_wasm::platform as platform_impl;
 
 mod unimplemented;
@@ -23,20 +26,47 @@ use unimplemented as platform_impl;
 
 #[derive(Delegate)]
 #[delegate(Platform)]
-pub struct PlatformImpl {
-    inner: platform_impl::PlatformImpl,
+enum Inner {
+    Ready(platform_impl::PlatformImpl),
+    Unavailable(unimplemented::PlatformImpl),
 }
 
-impl PlatformImpl {
-    fn new() -> Result<Self, PlatformError> {
-        Ok(Self {
-            inner: platform_impl::PlatformImpl::new()?,
-        })
-    }
+/// The platform the app runs on, or a stand-in that refuses everything when it failed to start.
+#[derive(Delegate)]
+#[delegate(Platform)]
+pub struct PlatformImpl {
+    inner: Inner,
+}
+
+/// Whether this build runs in a browser, where desktop-only options do not apply.
+pub const IS_WEB: bool = cfg!(purr_web);
+
+struct StartedPlatform {
+    platform: Arc<PlatformImpl>,
+    init_error: Option<PlatformError>,
+}
+
+static PLATFORM: LazyLock<StartedPlatform> =
+    LazyLock::new(|| match platform_impl::PlatformImpl::new() {
+        Ok(inner) => StartedPlatform {
+            platform: Arc::new(PlatformImpl {
+                inner: Inner::Ready(inner),
+            }),
+            init_error: None,
+        },
+        Err(error) => StartedPlatform {
+            platform: Arc::new(PlatformImpl {
+                inner: Inner::Unavailable(unimplemented::UnimplementedPlatformImpl {}),
+            }),
+            init_error: Some(error),
+        },
+    });
+
+/// Why the platform could not start, if it could not. The UI shows this instead of rendering.
+pub fn platform_init_error() -> Option<&'static PlatformError> {
+    PLATFORM.init_error.as_ref()
 }
 
 pub fn get_platform() -> &'static Arc<PlatformImpl> {
-    static PLATFORM: LazyLock<Result<Arc<PlatformImpl>, PlatformError>> =
-        LazyLock::new(|| PlatformImpl::new().map(Arc::new));
-    PLATFORM.as_ref().expect("Failed to initialize platform")
+    &PLATFORM.platform
 }
