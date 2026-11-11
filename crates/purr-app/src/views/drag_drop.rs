@@ -1,5 +1,5 @@
 use crate::{
-    components::{UploadState, UploadZone},
+    components::upload_zone::{UploadState, UploadZone},
     main_app::{Route, UploadNames},
     platform,
     utils::file_kind::may_contain_audio,

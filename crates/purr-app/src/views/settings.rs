@@ -1,16 +1,24 @@
 use crate::{
+    appearance::use_appearance,
     components::{
-        Card, Icon, IconType, NumberInput, Section, Select, SelectOption, Slider, Toggle,
+        banner::{Banner, BannerTone},
+        button::{Button, ButtonVariant},
+        dialog::{Dialog, DialogTone},
+        group::{Group, Item, ItemAction, TileColor},
+        icon::IconName,
         model_picker::ModelPicker,
+        page::Page,
+        segmented::{Segment, Segmented},
+        select::{Select, SelectOption},
+        slider::Slider,
+        stepper::Stepper,
+        switch::Switch,
     },
-    hooks::{
-        use_models::{GpuSupport, use_models},
-        use_theme::use_theme,
-    },
+    hooks::use_models::{GpuSupport, use_models},
     main_app::Route,
     platform::{self, IS_WEB, logging::apply_log_level},
     utils::language_label::capitalized,
-    views::NavBarState,
+    views::about::AboutSheet,
 };
 use dioxus::prelude::*;
 use purr_common::platform::{Platform as _, model_flag};
@@ -25,28 +33,14 @@ pub fn Settings() -> Element {
     let mut has_changes = use_signal(|| false);
     let mut save_status: Signal<Option<SaveStatus>> = use_signal(|| None);
     let mut is_loading = use_signal(|| true);
-    let mut navbar_state = use_context::<NavBarState>();
-    let theme = use_theme();
+    let mut about_open = use_signal(|| false);
+    let mut reset_open = use_signal(|| false);
+    let appearance = use_appearance();
     let models = use_models();
-
-    use_effect(move || {
-        navbar_state.title.set("Settings".to_owned());
-        navbar_state.show_back.set(true);
-        navbar_state.top_right.set(Some(rsx! {
-            Link {
-                to: Route::Logs {},
-                class: "p-2 rounded-lg text-gray-600 dark:text-gray-300 hover:text-teal-600 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors",
-                title: "Logs",
-                aria_label: "Logs",
-                Icon { icon_type: IconType::Logs }
-            }
-        }));
-    });
 
     use_future(move || async move {
         match platform::get_platform().load_settings().await {
-            Ok(mut loaded) => {
-                loaded.ui.theme = *theme.theme.peek();
+            Ok(loaded) => {
                 settings.set(loaded);
                 save_status.set(None);
             }
@@ -64,7 +58,10 @@ pub fn Settings() -> Element {
     };
 
     let save_settings = move |_| {
-        let settings_copy = settings.read().clone();
+        let mut settings_copy = settings.read().clone();
+        let chosen = appearance.peek();
+        settings_copy.ui.theme = chosen.theme;
+        settings_copy.ui.reduce_transparency = chosen.reduce_transparency;
         save_status.set(Some(SaveStatus::Saving));
         spawn(async move {
             match platform::get_platform().save_settings(&settings_copy).await {
@@ -80,9 +77,11 @@ pub fn Settings() -> Element {
         });
     };
 
-    let reset_settings = move |_| {
+    let reset_settings = move |()| {
+        reset_open.set(false);
         let defaults = SettingsConfig::default();
-        theme.set_theme.call(defaults.ui.theme);
+        appearance.set_theme(defaults.ui.theme);
+        appearance.set_reduce_transparency(defaults.ui.reduce_transparency);
         if let Err(error) = apply_log_level(&defaults.logging.level) {
             tracing::warn!("Could not apply the default log level: {error}");
         }
@@ -91,340 +90,393 @@ pub fn Settings() -> Element {
         save_status.set(Some(SaveStatus::ResetToDefaults));
     };
 
-    let selected_model = settings.read().model.model_name.clone();
+    let chosen = appearance.get();
+    let current = settings.read().clone();
+    let selected_model = current.model.model_name.clone();
     let english_only = models
         .find(&selected_model)
         .is_some_and(|model| model.metadata.has_flag(model_flag::ENGLISH_ONLY));
     let gpu = models.gpu.read().clone();
-    let status_line = save_status.read().as_ref().map_or_else(
-        || {
-            rsx! {
-                if has_changes() {
-                    span { class: "text-sm text-orange-600 dark:text-orange-400", "You have unsaved changes" }
-                }
-            }
-        },
-        |status| {
-            rsx! {
-                span { class: "{status.text_color()} text-sm", "{status}" }
-            }
-        },
-    );
     let language_hint = if english_only {
-        "The selected model only transcribes English"
+        "The selected model only transcribes English."
     } else {
-        "Language spoken in the audio, or detect it automatically"
+        "Automatic works for most recordings."
     };
-    let language_options: Vec<SelectOption> = purr_common::Language::VARIANTS
+    let language_options: Vec<SelectOption<String>> = purr_common::Language::VARIANTS
         .iter()
         .map(|lang| {
             let label = if lang.code() == "auto" {
-                "Detect automatically".to_owned()
+                "Automatic".to_owned()
             } else {
                 capitalized(lang.name())
             };
-            SelectOption::new(lang.code(), label)
+            SelectOption::new(lang.code().to_owned(), label)
         })
         .collect();
+    let saving = matches!(*save_status.read(), Some(SaveStatus::Saving));
 
     rsx! {
-        document::Title { "Purr - Settings" }
-        div { class: "main-content",
-            div { class: "content-container",
-                div { class: "mb-8",
-                    h1 { class: "text-3xl font-bold text-gradient mb-2", "Settings" }
-                    p { class: "text-gray-600 dark:text-gray-300", "Configure your Purr transcription experience" }
+        Page {
+            title: "Settings",
+            subtitle: "Appearance changes apply and save at once. Press Save for the rest.",
+            actions: rsx! {
+                if let Some(status) = save_status() {
+                    span { class: "foot", role: "status", "{status}" }
+                } else if has_changes() {
+                    span { class: "foot", role: "status", "Unsaved changes" }
                 }
-
-                if is_loading() {
-                    p { class: "text-gray-600 dark:text-gray-300", role: "status", "Loading settings..." }
+                Button {
+                    variant: ButtonVariant::Primary,
+                    icon: IconName::Check,
+                    disabled: !has_changes() || saving,
+                    onclick: save_settings,
+                    if saving {
+                        "Saving…"
+                    } else {
+                        "Save"
+                    }
                 }
+            },
 
-                Card { class: "max-w-4xl mx-auto",
-                    form {
-                        class: "space-y-8",
-                        onsubmit: move |event| event.prevent_default(),
+            if is_loading() {
+                p { class: "muted", role: "status", "Loading settings…" }
+            }
 
-                        if IS_WEB {
-                            p { class: "text-sm text-gray-600 dark:text-gray-300",
-                                "Settings are stored in this browser. Options that only apply to the desktop app are not shown."
-                            }
-                            match gpu {
-                                GpuSupport::Checking => rsx! {},
-                                GpuSupport::Unavailable => rsx! {
-                                    p { class: "text-sm text-red-600 dark:text-red-400", role: "alert",
-                                        "WebGPU is not available in this browser, so Purr cannot transcribe here. Use a current Chrome, Edge or another browser with WebGPU enabled."
-                                    }
-                                },
-                                GpuSupport::Available { name, shader_f16 } => rsx! {
-                                    p { class: "text-sm text-gray-600 dark:text-gray-300",
-                                        "GPU: {name}"
-                                        if !shader_f16 {
-                                            " (without shader-f16: the Large v3 Turbo model is unavailable)"
-                                        }
-                                    }
-                                },
+            if IS_WEB {
+                Banner { tone: BannerTone::Info, icon: IconName::Window, title: "You're using Purr in the browser",
+                    "Settings are stored in this browser. Options that only apply to the desktop app are not shown."
+                }
+                match gpu {
+                    GpuSupport::Checking => rsx! {},
+                    GpuSupport::Unavailable => rsx! {
+                        Banner { tone: BannerTone::Bad, icon: IconName::Cpu, title: "WebGPU is not available", role: "alert",
+                            "Purr cannot transcribe in this browser. Use a current Chrome, Edge or another browser with WebGPU enabled."
+                        }
+                    },
+                    GpuSupport::Available { name, shader_f16 } => rsx! {
+                        p { class: "foot", style: "margin:0",
+                            "GPU: {name}"
+                            if !shader_f16 {
+                                " (without shader-f16: the Large v3 Turbo model is unavailable)"
                             }
                         }
+                    },
+                }
+            }
 
-                        Section {
-                            title: "User Interface",
-                            description: "Customize the appearance and the language of the transcript",
+            div { class: "settings",
+                Group { header: "Appearance",
+                    Item {
+                        icon: IconName::Sun,
+                        tile: TileColor::Blue,
+                        title: "Theme",
+                        stackable: true,
+                        control: rsx! {
+                            Segmented {
+                                label: "Theme",
+                                value: chosen.theme,
+                                segments: vec![
+                                    Segment::new(Theme::System, "Auto").with_icon(IconName::Auto),
+                                    Segment::new(Theme::Light, "Light").with_icon(IconName::Sun),
+                                    Segment::new(Theme::Dark, "Dark").with_icon(IconName::Moon),
+                                ],
+                                onchange: move |theme| appearance.set_theme(theme),
+                            }
+                        },
+                    }
+                    Item {
+                        icon: IconName::Stack,
+                        tile: TileColor::Gray,
+                        title: "Reduce transparency",
+                        subtitle: "Solid backgrounds instead of glass. Also follows the system setting.",
+                        control: rsx! {
+                            Switch {
+                                label: "Reduce transparency",
+                                checked: chosen.reduce_transparency,
+                                onchange: move |reduce| appearance.set_reduce_transparency(reduce),
+                            }
+                        },
+                    }
+                }
 
-                            div { class: "grid grid-cols-1 md:grid-cols-2 gap-6",
-                                Select {
-                                    label: "Theme",
-                                    description: "Choose your preferred color scheme",
-                                    value: theme.theme.read().to_storage_string().to_owned(),
-                                    options: vec![
-                                        SelectOption::new("light", "Light"),
-                                        SelectOption::new("dark", "Dark"),
-                                        SelectOption::new("system", "System"),
-                                    ],
-                                    onchange: move |value: String| {
-                                        let chosen = Theme::from_storage_string(&value);
-                                        theme.set_theme.call(chosen);
-                                        settings.with_mut(|s| s.ui.theme = chosen);
-                                    },
-                                }
-
-                                Select {
-                                    label: "Language",
-                                    description: language_hint,
-                                    value: settings.read().ui.language.clone(),
-                                    disabled: english_only,
-                                    options: language_options,
-                                    onchange: move |value: String| {
-                                        settings.with_mut(|s| s.ui.language = value);
+                Group { header: "Transcription",
+                    Item {
+                        icon: IconName::Globe,
+                        tile: TileColor::Indigo,
+                        title: "Spoken language",
+                        subtitle: language_hint,
+                        control: rsx! {
+                            Select {
+                                label: "Spoken language",
+                                value: current.ui.language.clone(),
+                                disabled: english_only,
+                                options: language_options,
+                                onchange: move |value: String| {
+                                    settings.with_mut(|s| s.ui.language = value);
+                                    mark_changed();
+                                },
+                            }
+                        },
+                    }
+                    div { class: "item col",
+                        ModelPicker {
+                            selected: selected_model,
+                            models,
+                            onselect: move |value: String| {
+                                settings.with_mut(|s| s.model.model_name = value);
+                                mark_changed();
+                            },
+                        }
+                    }
+                    if !IS_WEB {
+                        Item {
+                            icon: IconName::Hash,
+                            tile: TileColor::Gray,
+                            title: "Maximum tokens",
+                            subtitle: "Maximum number of tokens to generate.",
+                            control: rsx! {
+                                Stepper {
+                                    label: "Maximum tokens",
+                                    value: current.model.max_tokens,
+                                    min: 256,
+                                    max: 8192,
+                                    step: 256,
+                                    onchange: move |value| {
+                                        settings.with_mut(|s| s.model.max_tokens = value);
                                         mark_changed();
                                     },
                                 }
-                            }
+                            },
                         }
-
-                        Section {
-                            title: "Model Settings",
-                            description: "Choose the transcription model",
-
-                            div { class: "space-y-4",
-                                ModelPicker {
-                                    selected: selected_model,
-                                    models,
-                                    onselect: move |value: String| {
-                                        settings.with_mut(|s| s.model.model_name = value);
-                                        mark_changed();
-                                    },
-                                }
-
-                                if !IS_WEB {
-                                    NumberInput {
-                                        label: "Max Tokens",
-                                        description: "Maximum number of tokens to generate",
-                                        value: settings.read().model.max_tokens,
-                                        min: 256,
-                                        max: 8192,
-                                        onchange: move |value| {
-                                            settings.with_mut(|s| s.model.max_tokens = value);
-                                            mark_changed();
-                                        },
-                                    }
-
-                                    Slider {
-                                        label: "Temperature",
-                                        description: "Controls randomness in output (0.0 = deterministic, 1.0 = creative)",
-                                        value: settings.read().model.temperature,
-                                        min: 0.0,
-                                        max: 1.0,
-                                        step: 0.01,
-                                        onchange: move |value| {
-                                            settings.with_mut(|s| s.model.temperature = value);
-                                            mark_changed();
-                                        },
-                                    }
-                                }
-                            }
-                        }
-
-                        if !IS_WEB {
-                            Section {
-                                title: "Audio Settings",
-                                description: "Configure audio processing and quality",
-
-                                div { class: "grid grid-cols-1 md:grid-cols-3 gap-6",
-                                    Select {
-                                        label: "Sample Rate",
-                                        description: "Audio sample rate in Hz",
-                                        value: settings.read().audio.sample_rate.to_hz_string().to_owned(),
-                                        options: vec![
-                                            SelectOption::new("8000", "8 kHz"),
-                                            SelectOption::new("16000", "16 kHz"),
-                                            SelectOption::new("22050", "22.05 kHz"),
-                                            SelectOption::new("44100", "44.1 kHz"),
-                                            SelectOption::new("48000", "48 kHz"),
-                                        ],
-                                        onchange: move |value: String| {
-                                            if let Some(sample_rate) = SampleRate::from_hz_string(&value) {
-                                                settings.with_mut(|s| s.audio.sample_rate = sample_rate);
-                                                mark_changed();
-                                            }
-                                        },
-                                    }
-
-                                    Select {
-                                        label: "Audio Quality",
-                                        description: "Processing quality level",
-                                        value: settings.read().audio.quality.to_string().to_owned(),
-                                        options: vec![
-                                            SelectOption::new("low", "Low (Fast)"),
-                                            SelectOption::new("medium", "Medium"),
-                                            SelectOption::new("high", "High (Slow)"),
-                                            SelectOption::new("ultra", "Ultra (Slowest)"),
-                                        ],
-                                        onchange: move |value: String| {
-                                            if let Some(quality) = AudioQuality::from_string(&value) {
-                                                settings.with_mut(|s| s.audio.quality = quality);
-                                                mark_changed();
-                                            }
-                                        },
-                                    }
-
-                                    Select {
-                                        label: "File Format",
-                                        description: "Preferred audio file format",
-                                        value: settings.read().audio.file_format.to_extension().to_owned(),
-                                        options: vec![
-                                            SelectOption::new("mp3", "MP3"),
-                                            SelectOption::new("wav", "WAV"),
-                                            SelectOption::new("flac", "FLAC"),
-                                            SelectOption::new("ogg", "OGG"),
-                                        ],
-                                        onchange: move |value: String| {
-                                            if let Some(format) = AudioFormat::from_extension(&value) {
-                                                settings.with_mut(|s| s.audio.file_format = format);
-                                                mark_changed();
-                                            }
-                                        },
-                                    }
-                                }
-                            }
-
-                            Section {
-                                title: "Performance",
-                                description: "Optimize performance for your system",
-
-                                div { class: "space-y-4",
-                                    Toggle {
-                                        label: "GPU Acceleration",
-                                        description: "Use GPU for faster transcription (requires compatible hardware)",
-                                        checked: settings.read().performance.gpu_acceleration,
-                                        onchange: move |value| {
-                                            settings.with_mut(|s| s.performance.gpu_acceleration = value);
-                                            mark_changed();
-                                        },
-                                    }
-
-                                    Toggle {
-                                        label: "Concurrent Processing",
-                                        description: "Process multiple audio files simultaneously",
-                                        checked: settings.read().performance.concurrent_processing,
-                                        onchange: move |value| {
-                                            settings.with_mut(|s| s.performance.concurrent_processing = value);
-                                            mark_changed();
-                                        },
-                                    }
-
-                                    if settings.read().performance.concurrent_processing {
-                                        NumberInput {
-                                            label: "Max Concurrent Jobs",
-                                            description: "Maximum number of files to process simultaneously",
-                                            value: settings.read().performance.max_concurrent_jobs,
-                                            min: 1,
-                                            max: 8,
-                                            onchange: move |value| {
-                                                settings.with_mut(|s| s.performance.max_concurrent_jobs = value);
-                                                mark_changed();
-                                            },
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        Section {
-                            title: "Logging",
-                            description: "Configure application logging and debugging",
-
-                            div { class: "space-y-4",
-                                Select {
-                                    label: "Log Level",
-                                    description: "Minimum level of messages shown in the Logs page and the console",
-                                    value: settings.read().logging.level.to_string().to_owned(),
-                                    options: vec![
-                                        SelectOption::new("error", "Error"),
-                                        SelectOption::new("warn", "Warning"),
-                                        SelectOption::new("info", "Info"),
-                                        SelectOption::new("debug", "Debug"),
-                                        SelectOption::new("trace", "Trace"),
-                                    ],
-                                    onchange: move |value: String| {
-                                        if let Some(level) = LogLevel::from_string(&value) {
-                                            if let Err(error) = apply_log_level(&level) {
-                                                tracing::warn!("Could not apply the log level: {error}");
-                                            }
-                                            settings.with_mut(|s| s.logging.level = level);
-                                            mark_changed();
-                                        }
-                                    },
-                                }
-
-                                if !IS_WEB {
-                                    Toggle {
-                                        label: "File Logging",
-                                        description: "Save logs to file for debugging",
-                                        checked: settings.read().logging.enable_file_logging,
-                                        onchange: move |value| {
-                                            settings.with_mut(|s| s.logging.enable_file_logging = value);
-                                            mark_changed();
-                                        },
-                                    }
-                                }
-                            }
-                        }
-
-                        div { class: "flex flex-wrap items-center justify-between gap-4 pt-6 border-t border-gray-200 dark:border-gray-700",
-                            div { class: "flex items-center space-x-4", role: "status",
-                                {status_line}
-                            }
-
-                            div { class: "flex items-center space-x-3",
-                                button {
-                                    r#type: "button",
-                                    class: "px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500",
-                                    onclick: reset_settings,
-                                    "Reset to Defaults"
-                                }
-
-                                button {
-                                    r#type: "button",
-                                    class: format!(
-                                        "px-4 py-2 rounded-md shadow-sm text-sm font-medium focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500 {}",
-                                        match (&*save_status.read(), *has_changes.read()) {
-                                            (Some(SaveStatus::Saving), _) => "bg-teal-400 text-white cursor-wait",
-                                            (_, true) => "bg-teal-600 text-white hover:bg-teal-700",
-                                            (_, false) => "bg-gray-300 text-gray-500 cursor-not-allowed dark:bg-gray-700 dark:text-gray-400",
-                                        },
-                                    ),
-                                    disabled: !*has_changes.read() || matches!(*save_status.read(), Some(SaveStatus::Saving)),
-                                    onclick: save_settings,
-                                    match *save_status.read() {
-                                        Some(SaveStatus::Saving) => "Saving...",
-                                        _ => "Save Changes",
-                                    }
-                                }
+                        Item {
+                            icon: IconName::Thermometer,
+                            tile: TileColor::Pink,
+                            title: "Temperature",
+                            subtitle: "Lower is more predictable. Raise it if the text repeats itself.",
+                            value: format!("{:.2}", current.model.temperature),
+                            Slider {
+                                label: "Temperature",
+                                value: current.model.temperature,
+                                min: 0.0,
+                                max: 1.0,
+                                step: 0.01,
+                                value_text: format!("{:.2}", current.model.temperature),
+                                ends: ("0".to_owned(), "1".to_owned()),
+                                onchange: move |value| {
+                                    settings.with_mut(|s| s.model.temperature = value);
+                                    mark_changed();
+                                },
                             }
                         }
                     }
                 }
+
+                if !IS_WEB {
+                    Group { header: "Audio",
+                        Item {
+                            icon: IconName::Speaker,
+                            tile: TileColor::Red,
+                            title: "Sample rate",
+                            control: rsx! {
+                                Select {
+                                    label: "Sample rate",
+                                    value: current.audio.sample_rate.clone(),
+                                    options: vec![
+                                        SelectOption::new(SampleRate::Hz8000, "8 kHz"),
+                                        SelectOption::new(SampleRate::Hz16000, "16 kHz"),
+                                        SelectOption::new(SampleRate::Hz22050, "22.05 kHz"),
+                                        SelectOption::new(SampleRate::Hz44100, "44.1 kHz"),
+                                        SelectOption::new(SampleRate::Hz48000, "48 kHz"),
+                                    ],
+                                    onchange: move |rate| {
+                                        settings.with_mut(|s| s.audio.sample_rate = rate);
+                                        mark_changed();
+                                    },
+                                }
+                            },
+                        }
+                        Item {
+                            icon: IconName::Wave,
+                            tile: TileColor::Blue,
+                            title: "Processing quality",
+                            subtitle: "Higher is slower.",
+                            stackable: true,
+                            control: rsx! {
+                                Segmented {
+                                    label: "Processing quality",
+                                    value: current.audio.quality.clone(),
+                                    segments: vec![
+                                        Segment::new(AudioQuality::Low, "Low"),
+                                        Segment::new(AudioQuality::Medium, "Medium"),
+                                        Segment::new(AudioQuality::High, "High"),
+                                        Segment::new(AudioQuality::Ultra, "Ultra"),
+                                    ],
+                                    onchange: move |quality| {
+                                        settings.with_mut(|s| s.audio.quality = quality);
+                                        mark_changed();
+                                    },
+                                }
+                            },
+                        }
+                        Item {
+                            icon: IconName::Doc,
+                            tile: TileColor::Teal,
+                            title: "File format",
+                            subtitle: "Preferred audio file format.",
+                            control: rsx! {
+                                Select {
+                                    label: "File format",
+                                    value: current.audio.file_format.clone(),
+                                    options: vec![
+                                        SelectOption::new(AudioFormat::Mp3, "MP3"),
+                                        SelectOption::new(AudioFormat::Wav, "WAV"),
+                                        SelectOption::new(AudioFormat::Flac, "FLAC"),
+                                        SelectOption::new(AudioFormat::Ogg, "OGG"),
+                                    ],
+                                    onchange: move |format| {
+                                        settings.with_mut(|s| s.audio.file_format = format);
+                                        mark_changed();
+                                    },
+                                }
+                            },
+                        }
+                    }
+
+                    Group { header: "Performance",
+                        Item {
+                            icon: IconName::Bolt,
+                            tile: TileColor::Orange,
+                            title: "GPU acceleration",
+                            subtitle: "Much faster on a supported graphics card.",
+                            control: rsx! {
+                                Switch {
+                                    label: "GPU acceleration",
+                                    checked: current.performance.gpu_acceleration,
+                                    onchange: move |value| {
+                                        settings.with_mut(|s| s.performance.gpu_acceleration = value);
+                                        mark_changed();
+                                    },
+                                }
+                            },
+                        }
+                        Item {
+                            icon: IconName::Stack,
+                            tile: TileColor::Purple,
+                            title: "Process files concurrently",
+                            subtitle: "Run more than one transcription at a time. Uses more memory.",
+                            control: rsx! {
+                                Switch {
+                                    label: "Process files concurrently",
+                                    checked: current.performance.concurrent_processing,
+                                    onchange: move |value| {
+                                        settings.with_mut(|s| s.performance.concurrent_processing = value);
+                                        mark_changed();
+                                    },
+                                }
+                            },
+                        }
+                        if current.performance.concurrent_processing {
+                            Item {
+                                icon: IconName::Hash,
+                                tile: TileColor::Purple,
+                                title: "Maximum concurrent jobs",
+                                control: rsx! {
+                                    Stepper {
+                                        label: "Maximum concurrent jobs",
+                                        value: current.performance.max_concurrent_jobs,
+                                        min: 1,
+                                        max: 8,
+                                        onchange: move |value| {
+                                            settings.with_mut(|s| s.performance.max_concurrent_jobs = value);
+                                            mark_changed();
+                                        },
+                                    }
+                                },
+                            }
+                        }
+                    }
+                }
+
+                Group { header: "Logging",
+                    Item {
+                        icon: IconName::Logs,
+                        tile: TileColor::Gray,
+                        title: "Log level",
+                        subtitle: "Debug and Trace help when reporting a problem.",
+                        control: rsx! {
+                            Select {
+                                label: "Log level",
+                                value: current.logging.level.clone(),
+                                options: vec![
+                                    SelectOption::new(LogLevel::Error, "Error"),
+                                    SelectOption::new(LogLevel::Warn, "Warning"),
+                                    SelectOption::new(LogLevel::Info, "Info"),
+                                    SelectOption::new(LogLevel::Debug, "Debug"),
+                                    SelectOption::new(LogLevel::Trace, "Trace"),
+                                ],
+                                onchange: move |level: LogLevel| {
+                                    if let Err(error) = apply_log_level(&level) {
+                                        tracing::warn!("Could not apply the log level: {error}");
+                                    }
+                                    settings.with_mut(|s| s.logging.level = level);
+                                    mark_changed();
+                                },
+                            }
+                        },
+                    }
+                    if !IS_WEB {
+                        Item {
+                            icon: IconName::File,
+                            tile: TileColor::Blue,
+                            title: "Write logs to a file",
+                            control: rsx! {
+                                Switch {
+                                    label: "Write logs to a file",
+                                    checked: current.logging.enable_file_logging,
+                                    onchange: move |value| {
+                                        settings.with_mut(|s| s.logging.enable_file_logging = value);
+                                        mark_changed();
+                                    },
+                                }
+                            },
+                        }
+                    }
+                    Item {
+                        icon: IconName::Logs,
+                        tile: TileColor::Indigo,
+                        title: "Open logs",
+                        action: ItemAction::Navigate(Route::Logs {}),
+                    }
+                }
+
+                Group { header: "About",
+                    Item {
+                        icon: IconName::Shield,
+                        tile: TileColor::Green,
+                        title: "Privacy",
+                        subtitle: "What stays on this device, and the one thing that uses the network.",
+                        action: ItemAction::Press(EventHandler::new(move |_| about_open.set(true))),
+                    }
+                    Item {
+                        title: "Reset all settings",
+                        subtitle: "Models are not affected.",
+                        danger: true,
+                        action: ItemAction::Press(EventHandler::new(move |_| reset_open.set(true))),
+                    }
+                }
+            }
+        }
+        if about_open() {
+            AboutSheet { on_close: move |()| about_open.set(false) }
+        }
+        if reset_open() {
+            Dialog {
+                title: "Reset all settings?",
+                confirm_label: "Reset settings",
+                tone: DialogTone::Destructive,
+                on_confirm: reset_settings,
+                on_cancel: move |()| reset_open.set(false),
+                "Theme, language, model choice, performance and logging go back to their defaults. Press Save afterwards to keep them. Downloaded models stay."
             }
         }
     }
@@ -442,25 +494,11 @@ pub enum SaveStatus {
 impl std::fmt::Display for SaveStatus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Saving => write!(f, "Saving settings..."),
-            Self::Success => write!(f, "Settings saved successfully!"),
-            Self::ResetToDefaults => write!(
-                f,
-                "Settings reset to defaults. Click Save to persist changes."
-            ),
+            Self::Saving => write!(f, "Saving settings…"),
+            Self::Success => write!(f, "Settings saved"),
+            Self::ResetToDefaults => write!(f, "Defaults restored. Press Save to keep them."),
             Self::LoadError(err) => write!(f, "Failed to load settings: {err}"),
             Self::SaveError(err) => write!(f, "Failed to save settings: {err}"),
-        }
-    }
-}
-
-impl SaveStatus {
-    pub const fn text_color(&self) -> &'static str {
-        match self {
-            Self::Saving => "text-blue-600 dark:text-blue-400",
-            Self::Success => "text-green-600 dark:text-green-400",
-            Self::ResetToDefaults => "text-orange-600 dark:text-orange-400",
-            Self::LoadError(_) | Self::SaveError(_) => "text-red-600 dark:text-red-400",
         }
     }
 }

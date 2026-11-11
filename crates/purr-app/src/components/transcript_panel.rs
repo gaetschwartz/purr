@@ -1,21 +1,18 @@
-use super::{Button, ButtonSize, ButtonVariant};
+use super::{
+    button::{Button, ButtonSize, ButtonVariant},
+    icon::IconName,
+    toast::use_toasts,
+};
 use crate::{
     platform::export::{TextFile, copy_to_clipboard, save_text_file},
     transcript::{Transcript, clock_time},
 };
 use dioxus::prelude::*;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum ActionOutcome {
-    Copied,
-    Saved(&'static str),
-    Failed(String),
-}
-
 /// The transcript as timed segments, with copy and download actions once it is complete.
 #[component]
 pub fn TranscriptPanel(transcript: Transcript, complete: bool, file_stem: String) -> Element {
-    let mut outcome = use_signal(|| None::<ActionOutcome>);
+    let toasts = use_toasts();
     let segments = transcript.segments();
 
     let copy_text = {
@@ -23,10 +20,10 @@ pub fn TranscriptPanel(transcript: Transcript, complete: bool, file_stem: String
         move |_| {
             let text = transcript.text();
             spawn(async move {
-                outcome.set(Some(match copy_to_clipboard(&text).await {
-                    Ok(()) => ActionOutcome::Copied,
-                    Err(error) => ActionOutcome::Failed(error.to_string()),
-                }));
+                match copy_to_clipboard(&text).await {
+                    Ok(()) => toasts.success("Transcript copied", "The text is on the clipboard."),
+                    Err(error) => toasts.error("Couldn't copy the transcript", error.to_string()),
+                };
             });
         }
     };
@@ -43,10 +40,10 @@ pub fn TranscriptPanel(transcript: Transcript, complete: bool, file_stem: String
                     content: &text,
                 })
                 .await;
-                outcome.set(Some(match saved {
-                    Ok(()) => ActionOutcome::Saved("Text file"),
-                    Err(error) => ActionOutcome::Failed(error.to_string()),
-                }));
+                match saved {
+                    Ok(()) => toasts.success("Text file saved", file_name),
+                    Err(error) => toasts.error("Couldn't save the text file", error.to_string()),
+                };
             });
         }
     };
@@ -62,66 +59,53 @@ pub fn TranscriptPanel(transcript: Transcript, complete: bool, file_stem: String
                     content: &subtitles,
                 })
                 .await;
-                outcome.set(Some(match saved {
-                    Ok(()) => ActionOutcome::Saved("Subtitles"),
-                    Err(error) => ActionOutcome::Failed(error.to_string()),
-                }));
+                match saved {
+                    Ok(()) => toasts.success("Subtitles saved", file_name),
+                    Err(error) => toasts.error("Couldn't save the subtitles", error.to_string()),
+                };
             });
         }
     };
 
     rsx! {
-        div { class: "text-left space-y-4",
-            if segments.is_empty() {
-                p { class: "text-gray-600 dark:text-gray-300",
-                    if complete {
-                        "No speech was recognised in this audio."
-                    } else {
-                        "Waiting for the first words..."
-                    }
+        if segments.is_empty() {
+            p { class: "faint", style: "margin:0",
+                if complete {
+                    "No speech was recognised in this audio."
+                } else {
+                    "Text appears here as soon as the first sentence is recognised."
                 }
-            } else {
-                ol { class: "space-y-2", aria_live: if complete { "off" } else { "polite" },
-                    for (index , segment) in segments.iter().enumerate() {
-                        li { key: "{index}", class: "flex gap-3 leading-relaxed",
-                            span { class: "font-mono text-xs text-gray-500 dark:text-gray-400 pt-1 w-12 shrink-0",
-                                {clock_time(segment.start_time)}
-                            }
-                            span { class: "text-gray-800 dark:text-gray-100 whitespace-pre-wrap", "{segment.text.trim()}" }
-                        }
+            }
+        } else {
+            ol {
+                class: "live",
+                style: "margin:0;padding:0",
+                aria_live: if complete { "off" } else { "polite" },
+                for (index , segment) in segments.iter().enumerate() {
+                    li { key: "{index}", class: "seg-row",
+                        span { class: "ts", {clock_time(segment.start_time)} }
+                        span { class: "tx", "{segment.text.trim()}" }
                     }
                 }
             }
+        }
 
-            if complete && !segments.is_empty() {
-                div { class: "flex flex-wrap items-center gap-3 pt-2",
-                    Button { size: ButtonSize::Small, onclick: copy_text, "Copy text" }
-                    Button {
-                        size: ButtonSize::Small,
-                        variant: ButtonVariant::Secondary,
-                        onclick: save_txt,
-                        "Download .txt"
-                    }
-                    Button {
-                        size: ButtonSize::Small,
-                        variant: ButtonVariant::Secondary,
-                        onclick: save_srt,
-                        "Download .srt"
-                    }
-                    span { class: "text-sm", role: "status",
-                        match outcome() {
-                            Some(ActionOutcome::Copied) => rsx! {
-                                span { class: "text-green-700 dark:text-green-400", "Copied to the clipboard" }
-                            },
-                            Some(ActionOutcome::Saved(what)) => rsx! {
-                                span { class: "text-green-700 dark:text-green-400", "{what} saved" }
-                            },
-                            Some(ActionOutcome::Failed(message)) => rsx! {
-                                span { class: "text-red-600 dark:text-red-400", "{message}" }
-                            },
-                            None => rsx! {},
-                        }
-                    }
+        if complete && !segments.is_empty() {
+            div { class: "row wrap",
+                Button { icon: IconName::Copy, onclick: copy_text, "Copy text" }
+                Button {
+                    variant: ButtonVariant::Plain,
+                    size: ButtonSize::Small,
+                    icon: IconName::Download,
+                    onclick: save_txt,
+                    "Download .txt"
+                }
+                Button {
+                    variant: ButtonVariant::Plain,
+                    size: ButtonSize::Small,
+                    icon: IconName::Download,
+                    onclick: save_srt,
+                    "Download .srt"
                 }
             }
         }

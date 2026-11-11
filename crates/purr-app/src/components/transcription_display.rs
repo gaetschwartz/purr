@@ -1,5 +1,10 @@
 use super::{
-    Button, ButtonVariant, Card, CardVariant, Icon, IconType, model_loading::ModelLoading,
+    banner::{Banner, BannerTone},
+    button::{Button, ButtonVariant},
+    chip::{Chip, ChipTone},
+    icon::IconName,
+    model_loading::ModelLoading,
+    spinner::Spinner,
     transcript_panel::TranscriptPanel,
 };
 use crate::{
@@ -45,7 +50,7 @@ pub fn TranscriptionDisplay(props: TranscriptionDisplayProps) -> Element {
     match &props.status {
         None | Some(TranscriptionStatus::Starting) => rsx! {
             Waiting {
-                title: "Starting transcription...",
+                title: "Starting transcription…",
                 detail: format!("Preparing to transcribe {}", display_name(props.file_name.as_deref())),
                 on_cancel: props.on_cancel,
             }
@@ -53,8 +58,8 @@ pub fn TranscriptionDisplay(props: TranscriptionDisplayProps) -> Element {
 
         Some(TranscriptionStatus::ProcessingAudio) => rsx! {
             Waiting {
-                title: "Decoding the audio...",
-                detail: "Your browser is converting the file for the model",
+                title: "Decoding the audio…",
+                detail: "Converting the file for the model",
                 on_cancel: props.on_cancel,
             }
         },
@@ -63,11 +68,10 @@ pub fn TranscriptionDisplay(props: TranscriptionDisplayProps) -> Element {
             loaded_bytes,
             total_bytes,
         }) => rsx! {
-            div { class: "text-center py-8",
-                LoadingSpinner {}
+            div { class: "stack",
                 ModelLoading { loaded_bytes: *loaded_bytes, total_bytes: *total_bytes }
-                div { class: "mt-6",
-                    Button { variant: ButtonVariant::Secondary, onclick: cancel, "Cancel" }
+                div { class: "row",
+                    Button { icon: IconName::Stop, onclick: cancel, "Cancel" }
                 }
             }
         },
@@ -77,42 +81,29 @@ pub fn TranscriptionDisplay(props: TranscriptionDisplayProps) -> Element {
             | TranscriptionStatus::LanguageDetected { .. }
             | TranscriptionStatus::InProgress { .. },
         ) => rsx! {
-            div { class: "space-y-6",
-                div { class: "text-center",
-                    PulsingIndicator {}
-                    h3 { class: "text-lg font-semibold text-gray-900 dark:text-gray-100 mb-1", role: "status",
-                        "Transcribing audio..."
-                    }
-                    p { class: "text-sm text-gray-600 dark:text-gray-400", {display_name(props.file_name.as_deref())} }
-                    if let Some(code) = &props.language {
-                        p { class: "text-sm text-gray-600 dark:text-gray-400", "Detected language: {language_label(code)}" }
-                    }
+            div { class: "stack",
+                div { class: "row",
+                    Spinner {}
+                    h2 { class: "t3 grow", role: "status", "Transcribing…" }
+                    Chip { tone: ChipTone::Accent, icon: IconName::Wave, "Streaming" }
                 }
-                Card { variant: CardVariant::Info, class: "text-left shadow-sm", padding: false,
-                    div { class: "p-6",
-                        h4 { class: "text-base font-semibold text-blue-900 dark:text-blue-200 mb-3 flex items-center",
-                            Icon {
-                                icon_type: IconType::LiveTranscription,
-                                class: "w-4 h-4 mr-2 text-blue-600",
-                            }
-                            "Live Transcription"
-                        }
-                        TranscriptPanel {
-                            transcript: props.transcript.clone(),
-                            complete: false,
-                            file_stem: export_stem(props.file_name.as_deref()),
-                        }
-                    }
+                if let Some(code) = &props.language {
+                    p { class: "muted", "Detected language: {language_label(code)}" }
                 }
-                div { class: "text-center",
-                    Button { variant: ButtonVariant::Secondary, onclick: cancel, "Cancel" }
+                TranscriptPanel {
+                    transcript: props.transcript.clone(),
+                    complete: false,
+                    file_stem: export_stem(props.file_name.as_deref()),
+                }
+                div { class: "row",
+                    Button { icon: IconName::Stop, onclick: cancel, "Cancel" }
                 }
             }
         },
 
         Some(TranscriptionStatus::Segments { .. }) => rsx! {
             Waiting {
-                title: "Finishing...",
+                title: "Finishing…",
                 detail: "Putting the transcript together",
                 on_cancel: props.on_cancel,
             }
@@ -123,46 +114,39 @@ pub fn TranscriptionDisplay(props: TranscriptionDisplayProps) -> Element {
             audio_duration,
             word_count,
         }) => rsx! {
-            div { class: "space-y-6",
-                div { class: "text-center",
-                    SuccessIcon {}
-                    h3 { class: "text-xl font-bold text-green-700 dark:text-green-400 mb-4", role: "status",
-                        "Transcription Complete!"
-                    }
+            div { class: "stack",
+                Banner {
+                    tone: BannerTone::Ok,
+                    title: "Transcription finished",
+                    role: "status",
                     if let Some(code) = &props.language {
-                        p { class: "text-sm text-gray-600 dark:text-gray-400 mb-4", "Detected language: {language_label(code)}" }
-                    }
-                    TranscriptionStats {
-                        processing_time: *processing_time,
-                        audio_duration: *audio_duration,
-                        word_count: *word_count,
+                        "Detected language: {language_label(code)}"
                     }
                 }
-                Card { variant: CardVariant::Success, class: "text-left shadow-lg", padding: false,
-                    div { class: "p-6",
-                        h4 { class: "text-lg font-bold text-green-900 dark:text-green-200 mb-3 flex items-center",
-                            Icon {
-                                icon_type: IconType::Check,
-                                class: "w-5 h-5 mr-2 text-green-600",
-                            }
-                            "Final Transcription"
-                        }
-                        TranscriptPanel {
-                            transcript: props.transcript.clone(),
-                            complete: true,
-                            file_stem: export_stem(props.file_name.as_deref()),
-                        }
-                    }
+                TranscriptionStats {
+                    processing_time: *processing_time,
+                    audio_duration: *audio_duration,
+                    word_count: *word_count,
                 }
-                div { class: "text-center",
-                    Button { onclick: new_file, "Transcribe Another File" }
+                TranscriptPanel {
+                    transcript: props.transcript.clone(),
+                    complete: true,
+                    file_stem: export_stem(props.file_name.as_deref()),
+                }
+                div { class: "row",
+                    Button {
+                        variant: ButtonVariant::Primary,
+                        icon: IconName::Plus,
+                        onclick: new_file,
+                        "Transcribe another file"
+                    }
                 }
             }
         },
 
         Some(TranscriptionStatus::Error { error_message, .. }) => rsx! {
             Failure {
-                title: "Transcription Failed",
+                title: "Transcription failed",
                 message: error_message.clone(),
                 hint: String::new(),
                 on_retry: props.on_retry,
@@ -189,14 +173,14 @@ pub fn TranscriptionDisplay(props: TranscriptionDisplayProps) -> Element {
 #[component]
 fn Waiting(title: String, detail: String, on_cancel: EventHandler<()>) -> Element {
     rsx! {
-        div { class: "text-center py-8",
-            LoadingSpinner {}
-            h3 { class: "text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2", role: "status", "{title}" }
-            p { class: "text-gray-600 dark:text-gray-400 mb-6", "{detail}" }
-            Button {
-                variant: ButtonVariant::Secondary,
-                onclick: move |_| on_cancel.call(()),
-                "Cancel"
+        div { class: "stack",
+            div { class: "row",
+                Spinner {}
+                h2 { class: "t3", role: "status", "{title}" }
+            }
+            p { class: "muted", style: "margin:0", "{detail}" }
+            div { class: "row",
+                Button { icon: IconName::Stop, onclick: move |_| on_cancel.call(()), "Cancel" }
             }
         }
     }
@@ -211,66 +195,22 @@ fn Failure(
     on_new: EventHandler<()>,
 ) -> Element {
     rsx! {
-        div { class: "text-center py-8", role: "alert",
-            ErrorIcon {}
-            h3 { class: "text-lg font-semibold text-red-800 dark:text-red-300 mb-3", "{title}" }
-            Card { variant: CardVariant::Error, class: "mb-4 max-w-xl mx-auto",
-                p { class: "text-red-700 dark:text-red-300 text-sm break-words", "{message}" }
-                if !hint.is_empty() {
-                    p { class: "text-red-700 dark:text-red-300 text-sm mt-3", "{hint}" }
-                }
-            }
-            div { class: "flex justify-center gap-3",
-                Button { onclick: move |_| on_retry.call(()), "Try Again" }
+        Banner {
+            tone: BannerTone::Bad,
+            title,
+            role: "alert",
+            actions: rsx! {
                 Button {
-                    variant: ButtonVariant::Secondary,
-                    onclick: move |_| on_new.call(()),
-                    "Try Another File"
+                    variant: ButtonVariant::Primary,
+                    icon: IconName::Retry,
+                    onclick: move |_| on_retry.call(()),
+                    "Try again"
                 }
-            }
-        }
-    }
-}
-
-/// Loading spinner component
-#[component]
-fn LoadingSpinner() -> Element {
-    rsx! {
-        div { class: "flex justify-center mb-4", aria_hidden: "true",
-            div { class: "animate-spin rounded-full h-10 w-10 border-4 border-teal-200 border-t-teal-500" }
-        }
-    }
-}
-
-/// Pulsing indicator for in-progress state
-#[component]
-fn PulsingIndicator() -> Element {
-    rsx! {
-        div { class: "flex justify-center mb-4", aria_hidden: "true",
-            div { class: "animate-pulse rounded-full h-10 w-10 bg-gradient-to-r from-teal-400 to-teal-600 shadow-lg" }
-        }
-    }
-}
-
-/// Success icon component
-#[component]
-fn SuccessIcon() -> Element {
-    rsx! {
-        div { class: "flex justify-center mb-4",
-            div { class: "w-14 h-14 bg-green-100 dark:bg-green-900 rounded-full flex items-center justify-center",
-                Icon { icon_type: IconType::Check, class: "w-7 h-7 text-green-600" }
-            }
-        }
-    }
-}
-
-/// Error icon component
-#[component]
-fn ErrorIcon() -> Element {
-    rsx! {
-        div { class: "flex justify-center mb-4",
-            div { class: "w-14 h-14 bg-red-100 dark:bg-red-950 rounded-full flex items-center justify-center",
-                Icon { icon_type: IconType::Error, class: "w-7 h-7 text-red-600" }
+                Button { onclick: move |_| on_new.call(()), "Try another file" }
+            },
+            "{message}"
+            if !hint.is_empty() {
+                " {hint}"
             }
         }
     }
@@ -289,36 +229,28 @@ struct TranscriptionStatsProps {
 fn TranscriptionStats(props: TranscriptionStatsProps) -> Element {
     let speed = if props.processing_time > 0.0 {
         format!(
-            "{:.1}x",
+            "{:.1}×",
             f64::from(props.audio_duration) / props.processing_time
         )
     } else {
         "n/a".to_owned()
     };
     rsx! {
-        div { class: "grid grid-cols-2 md:grid-cols-4 gap-4 max-w-2xl mx-auto mb-6",
-            StatCard { label: "Processing Time", value: format!("{:.1}s", props.processing_time) }
-            StatCard { label: "Audio Duration", value: format!("{:.1}s", props.audio_duration) }
-            StatCard { label: "Word Count", value: format!("{}", props.word_count) }
-            StatCard { label: "Speed", value: speed }
+        div { class: "stats",
+            Stat { label: "Took", value: format!("{:.1} s", props.processing_time) }
+            Stat { label: "Audio", value: format!("{:.1} s", props.audio_duration) }
+            Stat { label: "Words", value: format!("{}", props.word_count) }
+            Stat { label: "Speed", value: speed }
         }
     }
 }
 
-/// Props for stat cards
-#[derive(Props, Clone, PartialEq)]
-struct StatCardProps {
-    label: &'static str,
-    value: String,
-}
-
-/// Individual stat card component
 #[component]
-fn StatCard(props: StatCardProps) -> Element {
+fn Stat(label: &'static str, value: String) -> Element {
     rsx! {
-        div { class: "bg-white dark:bg-gray-800 p-3 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 text-center",
-            p { class: "text-xs font-medium text-gray-600 dark:text-gray-400 mb-1", "{props.label}" }
-            p { class: "text-lg font-bold text-teal-600 dark:text-teal-400", "{props.value}" }
+        div { class: "stat",
+            div { class: "k", "{label}" }
+            div { class: "v", "{value}" }
         }
     }
 }

@@ -1,6 +1,8 @@
 #![allow(dead_code)]
 
 pub mod byte_size;
+pub mod delay;
+pub mod dom_id;
 pub mod file_kind;
 pub mod language_label;
 

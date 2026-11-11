@@ -1,11 +1,18 @@
 //! Logs viewer component for displaying application logs in real-time
 
 use crate::{
+    components::{
+        button::Button,
+        icon::{Icon, IconName, IconSize},
+        layer::PopoverAlign,
+        page::Page,
+        popover::{Popover, PopoverOption},
+        toast::{Toasts, use_toasts},
+    },
     platform::{
         export::{TextFile, save_text_file},
         logging::{LogEntry, LogExportFormat, LogsQuery, SerdeTracingLevel, get_logs_storage},
     },
-    views::NavBarState,
 };
 use dioxus::prelude::*;
 use std::{borrow::Cow, collections::HashSet};
@@ -48,12 +55,6 @@ impl Default for LogsState {
 pub fn Logs() -> Element {
     let mut state = use_signal(LogsState::default);
     let mut logs = use_signal(Vec::<LogEntry>::new);
-    let mut navbar_state = use_context::<NavBarState>();
-    use_effect(move || {
-        navbar_state.title.set("Logs".to_owned());
-        navbar_state.show_back.set(true);
-        navbar_state.top_right.set(None);
-    });
 
     // Initial load and setup
     use_effect(move || {
@@ -105,20 +106,16 @@ pub fn Logs() -> Element {
     let filtered_logs = logs.read().clone();
 
     rsx! {
-        document::Title { "Purr - Logs" }
-        div { class: "flex flex-col h-[calc(100vh-4rem)] bg-gray-50 dark:bg-gray-900",
+        Page { title: "Logs", subtitle: "Logs stay on this device.", wide: true,
+        section { class: "card glass tight", aria_label: "Log entries",
 
             // Header with controls
-            header { class: "bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-4",
+            div { class: "logbar",
 
                 div { class: "flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4",
 
                     // Title and stats
                     div { class: "flex items-center gap-4",
-                        h1 { class: "text-2xl font-bold text-gray-900 dark:text-white",
-                            "Application Logs"
-                        }
-
                         div { class: "flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400",
                             span { class: "inline-flex items-center px-2 py-1 rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
                                 {if filtered_logs.len() == 1 { "1 entry".to_owned() } else { format!("{} entries", filtered_logs.len()) }}
@@ -233,10 +230,10 @@ pub fn Logs() -> Element {
             }
 
             // Main logs display
-            main { class: "flex-1 overflow-hidden",
+            div {
 
                 div {
-                    class: "h-full overflow-y-auto font-mono text-sm bg-white dark:bg-gray-900",
+                    class: "loglist",
                     id: "logs-container",
 
                     if filtered_logs.is_empty() {
@@ -265,7 +262,7 @@ pub fn Logs() -> Element {
             }
 
             // Footer with settings
-            footer { class: "bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 px-6 py-3",
+            div { class: "logbar",
                 div { class: "flex items-center justify-between text-sm text-gray-600 dark:text-gray-400",
 
                     div { class: "flex items-center gap-4",
@@ -306,6 +303,7 @@ pub fn Logs() -> Element {
                     }
                 }
             }
+        }
         }
     }
 }
@@ -471,66 +469,50 @@ fn LogLevelButton(
     }
 }
 
-/// Export dropdown component
+/// Export menu: text, JSON or CSV of the entries on screen
 #[component]
 fn ExportDropdown(state: Signal<LogsState>) -> Element {
-    let mut show_dropdown = use_signal(|| false);
-    let notice = use_signal(|| None::<String>);
+    let mut open = use_signal(|| false);
+    let toasts = use_toasts();
+    let mut export = move |format: LogExportFormat| {
+        open.set(false);
+        export_logs(format, &state, toasts);
+    };
 
     rsx! {
-        div { class: "relative",
-
-            if let Some(message) = notice() {
-                span { class: "absolute right-0 top-full mt-12 text-xs text-gray-600 dark:text-gray-300 whitespace-nowrap", role: "status", "{message}" }
-            }
-
-            button {
-                class: "px-3 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-md transition-colors duration-200 flex items-center gap-2",
-                aria_haspopup: "menu",
-                aria_expanded: "{show_dropdown()}",
-                onclick: move |_| {
-                    let current = *show_dropdown.read();
-                    show_dropdown.set(!current);
-                },
-                "💾 Export"
-                span { class: if *show_dropdown.read() { "transform rotate-180 transition-transform" } else { "transition-transform" },
-                    "▼"
-                }
-            }
-
-            if *show_dropdown.read() {
-                div {
-                    class: "absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg z-50",
-                    onclick: move |_| show_dropdown.set(false), // Close on click
-
-                    div { class: "py-1",
-
-                        button {
-                            class: "block w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors",
-                            onclick: move |_| {
-                                export_logs(LogExportFormat::Text, &state, notice);
-                                show_dropdown.set(false);
-                            },
-                            "📄 Export as Text"
-                        }
-
-                        button {
-                            class: "block w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors",
-                            onclick: move |_| {
-                                export_logs(LogExportFormat::Json, &state, notice);
-                                show_dropdown.set(false);
-                            },
-                            "📋 Export as JSON"
-                        }
-
-                        button {
-                            class: "block w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors",
-                            onclick: move |_| {
-                                export_logs(LogExportFormat::Csv, &state, notice);
-                                show_dropdown.set(false);
-                            },
-                            "📊 Export as CSV"
-                        }
+        Button {
+            id: "log-export",
+            icon: IconName::Share,
+            aria_haspopup: "menu",
+            aria_expanded: open(),
+            onclick: move |_| open.toggle(),
+            "Export"
+        }
+        if open() {
+            Popover {
+                anchor: "log-export",
+                label: "Export logs",
+                menu: true,
+                align: PopoverAlign::End,
+                on_close: move |()| open.set(false),
+                div { class: "plist", role: "menu", aria_label: "Export logs",
+                    PopoverOption {
+                        title: "Text",
+                        trailing: ".txt",
+                        leading: rsx! { Icon { name: IconName::Doc, size: IconSize::Small } },
+                        onselect: move |()| export(LogExportFormat::Text),
+                    }
+                    PopoverOption {
+                        title: "JSON",
+                        trailing: ".json",
+                        leading: rsx! { Icon { name: IconName::Doc, size: IconSize::Small } },
+                        onselect: move |()| export(LogExportFormat::Json),
+                    }
+                    PopoverOption {
+                        title: "CSV",
+                        trailing: ".csv",
+                        leading: rsx! { Icon { name: IconName::Doc, size: IconSize::Small } },
+                        onselect: move |()| export(LogExportFormat::Csv),
                     }
                 }
             }
@@ -539,11 +521,7 @@ fn ExportDropdown(state: Signal<LogsState>) -> Element {
 }
 
 /// Export logs to a downloadable file
-fn export_logs(
-    format: LogExportFormat,
-    state: &Signal<LogsState>,
-    mut notice: Signal<Option<String>>,
-) {
+fn export_logs(format: LogExportFormat, state: &Signal<LogsState>, toasts: Toasts) {
     let current_state = state.read();
     let storage = get_logs_storage();
     let exported_data = storage.export_logs(
@@ -568,10 +546,15 @@ fn export_logs(
         })
         .await;
         match saved {
-            Ok(()) => notice.set(Some(format!("Exported {file_name}"))),
+            Ok(()) => {
+                toasts.success(
+                    format!("Exported {file_name}"),
+                    "The log entries on screen were saved.",
+                );
+            }
             Err(error) => {
                 tracing::error!("Failed to export the logs: {error}");
-                notice.set(Some(format!("Export failed: {error}")));
+                toasts.error("Couldn't export the logs", error.to_string());
             }
         }
     });

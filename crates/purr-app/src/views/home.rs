@@ -1,42 +1,34 @@
 use crate::{
-    components::{Icon, IconType},
-    main_app::Route,
-    views::{DragDropZone, NavBarState},
+    components::{
+        icon::{Icon, IconName, IconSize},
+        page::Page,
+    },
+    platform::IS_WEB,
+    views::drag_drop::DragDropZone,
 };
 use dioxus::prelude::*;
 
-/// The Home page component that will be rendered when the current route is `[Route::Home]`
-/// Contains a drop zone to upload a file, if clicked, will open a file dialog
-/// If a file is uploaded, it will be sent to the backend to be processed
-/// the drop zone should be surrounded by a dashed border
+/// The Transcribe view: drop or choose an audio file to transcribe it.
 #[component]
 pub fn Home() -> Element {
-    let mut navbar_state = use_context::<NavBarState>();
-    use_effect(move || {
-        navbar_state.title.set("Purr".to_owned());
-        navbar_state.show_back.set(false);
-        navbar_state.top_right.set(Some(rsx! {
-            Link {
-                to: Route::Settings {},
-                class: "p-2 rounded-lg text-gray-600 dark:text-gray-300 hover:text-teal-600 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors",
-                title: "Settings",
-                aria_label: "Settings",
-                onclick: move |_| {
-                    tracing::info!("Navigating to Settings page");
-                },
-                Icon { icon_type: IconType::Settings }
-            }
-        }));
-    });
-
-    // Log when the home page renders
-    use_effect(move || {
-        tracing::info!("Home page loaded");
-        tracing::debug!("Rendering DragDropZone component");
-    });
-
+    let (subtitle, privacy) = if IS_WEB {
+        (
+            "Turn a recording into text. Nothing leaves this browser.",
+            "Processed on this device with WebGPU. Audio is never uploaded.",
+        )
+    } else {
+        (
+            "Turn a recording into text. Nothing leaves this computer.",
+            "Processed on this device. Audio is never uploaded.",
+        )
+    };
     rsx! {
-        document::Title { "Purr - Speech to text" }
-        DragDropZone {}
+        Page { title: "Transcribe", subtitle,
+            DragDropZone {}
+            p { class: "privacy-line",
+                Icon { name: IconName::Lock, size: IconSize::Small }
+                "{privacy}"
+            }
+        }
     }
 }

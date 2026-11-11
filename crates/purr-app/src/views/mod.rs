@@ -1,27 +1,12 @@
-//! The views module contains the components for all Layouts and Routes for our app. Each layout and route in our [`Route`]
-//! enum will render one of these components.
-//!
-//!
-//! The [`Home`] and [`Blog`] components will be rendered when the current route is [`Route::Home`] or [`Route::Blog`] respectively.
-//!
-//!
-//! The [`Navbar`] component will be rendered on all pages of our app since every page is under the layout. The layout defines
-//! a common wrapper around all child routes.
+//! The shell layout and one module per routed view.
 
-mod home;
-pub use home::Home;
-
-mod navbar;
-pub use navbar::{NavBarState, Navbar};
-
-mod drag_drop;
-pub use drag_drop::DragDropZone;
-
-mod transcription;
-pub use transcription::Transcription;
-
-mod settings;
-pub use settings::Settings;
-
-mod logs;
-pub use logs::Logs;
+pub mod about;
+pub mod drag_drop;
+pub mod history;
+pub mod home;
+pub mod logs;
+pub mod models;
+pub mod not_found;
+pub mod settings;
+pub mod shell;
+pub mod transcription;

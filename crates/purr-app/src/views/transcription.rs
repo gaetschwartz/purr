@@ -1,9 +1,14 @@
 use crate::{
-    components::{Card, TranscriptionDisplay},
+    components::{
+        banner::{Banner, BannerTone},
+        button::{Button, ButtonSize, ButtonVariant},
+        icon::IconName,
+        page::Page,
+        transcription_display::TranscriptionDisplay,
+    },
     main_app::{Route, UploadNames},
     platform::{self, TranscriptionRequest, TranscriptionStatus},
     transcript::Transcript,
-    views::NavBarState,
 };
 use dioxus::prelude::*;
 use futures::StreamExt as _;
@@ -15,19 +20,12 @@ use tracing::{error, info};
 #[component]
 pub fn Transcription(file: FileId) -> Element {
     let navigator = use_navigator();
-    let mut navbar_state = use_context::<NavBarState>();
     let names = use_context::<UploadNames>();
     let mut status = use_signal(|| None::<TranscriptionStatus>);
     let mut transcript = use_signal(Transcript::default);
     let mut language = use_signal(|| None::<String>);
     let mut attempt = use_signal(|| 0u32);
     let mut cancelled = use_signal(|| false);
-
-    use_effect(move || {
-        navbar_state.title.set("Transcription".to_owned());
-        navbar_state.show_back.set(true);
-        navbar_state.top_right.set(None);
-    });
 
     let file_for_run = file.clone();
     use_resource(move || {
@@ -55,48 +53,65 @@ pub fn Transcription(file: FileId) -> Element {
     });
 
     let file_name = names.0.read().get(&file).cloned();
+    let title = file_name
+        .clone()
+        .unwrap_or_else(|| "Transcription".to_owned());
 
     rsx! {
-        document::Title { "Purr - Transcription" }
-        div { class: "main-content",
-            div { class: "content-container",
-                if cancelled() {
-                    div { class: "text-center py-8 space-y-4",
-                        h2 { class: "text-lg font-semibold text-gray-900 dark:text-gray-100", "Transcription cancelled" }
-                        div { class: "flex justify-center gap-3",
-                            button {
-                                class: "px-4 py-2 rounded-lg bg-teal-500 text-white hover:bg-teal-600 focus:outline-none focus:ring-2 focus:ring-teal-500",
-                                onclick: move |_| {
-                                    cancelled.set(false);
-                                    attempt += 1;
-                                },
-                                "Start again"
-                            }
-                            button {
-                                class: "px-4 py-2 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-100 hover:bg-gray-200 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-teal-500",
-                                onclick: move |_| {
-                                    navigator.push(Route::Home {});
-                                },
-                                "Choose another file"
-                            }
-                        }
-                    }
-                } else {
-                    Card {
-                        TranscriptionDisplay {
-                            status: status(),
-                            transcript: transcript(),
-                            language: language(),
-                            file_name,
-                            on_cancel: move |()| {
-                                cancelled.set(true);
-                                status.set(None);
+        Page {
+            title,
+            actions: rsx! {
+                Button {
+                    variant: ButtonVariant::Plain,
+                    size: ButtonSize::Small,
+                    icon: IconName::Back,
+                    onclick: move |_| {
+                        navigator.push(Route::Home {});
+                    },
+                    "New transcription"
+                }
+            },
+            if cancelled() {
+                Banner {
+                    tone: BannerTone::Info,
+                    title: "Transcription cancelled",
+                    role: "status",
+                    actions: rsx! {
+                        Button {
+                            variant: ButtonVariant::Primary,
+                            size: ButtonSize::Small,
+                            icon: IconName::Retry,
+                            onclick: move |_| {
+                                cancelled.set(false);
+                                attempt += 1;
                             },
-                            on_retry: move |()| attempt += 1,
-                            on_new: move |()| {
+                            "Start again"
+                        }
+                        Button {
+                            size: ButtonSize::Small,
+                            onclick: move |_| {
                                 navigator.push(Route::Home {});
                             },
+                            "Choose another file"
                         }
+                    },
+                    "Nothing was saved."
+                }
+            } else {
+                section { class: "card glass", aria_label: "Transcription",
+                    TranscriptionDisplay {
+                        status: status(),
+                        transcript: transcript(),
+                        language: language(),
+                        file_name,
+                        on_cancel: move |()| {
+                            cancelled.set(true);
+                            status.set(None);
+                        },
+                        on_retry: move |()| attempt += 1,
+                        on_new: move |()| {
+                            navigator.push(Route::Home {});
+                        },
                     }
                 }
             }

@@ -1,4 +1,12 @@
-use super::{Button, ButtonSize, ButtonVariant, ProgressBar, Select, SelectOption};
+use super::{
+    banner::{Banner, BannerTone},
+    button::{Button, ButtonSize, ButtonVariant},
+    chip::{Chip, ChipTone},
+    icon::IconName,
+    progress_bar::{Progress, ProgressBar},
+    select::{Select, SelectOption},
+    spinner::Spinner,
+};
 use crate::{
     hooks::use_models::{GpuSupport, ModelsHandle},
     platform,
@@ -58,38 +66,34 @@ pub fn ModelPicker(
     let list = models.models.read().clone();
     let Some(list) = list else {
         return rsx! {
-            p { class: "text-sm text-gray-500 dark:text-gray-400", role: "status", "Loading models..." }
+            div { class: "row", role: "status",
+                Spinner {}
+                span { class: "muted", "Loading models…" }
+            }
         };
     };
     let list = match list {
         Ok(list) => list,
         Err(error) => {
             return rsx! {
-                p { class: "text-sm text-red-600 dark:text-red-400", role: "alert", "Could not list the models: {error}" }
+                Banner { tone: BannerTone::Bad, title: "Could not list the models", role: "alert", "{error}" }
             };
         }
     };
 
     let current = list.iter().find(|model| model.id == selected).cloned();
-    let mut options: Vec<SelectOption> = list
+    let mut options: Vec<SelectOption<String>> = list
         .iter()
         .map(|model| {
             let runnable = is_runnable(model, &gpu);
-            SelectOption {
-                value: model.id.clone(),
-                label: option_label(model, runnable),
-                disabled: !runnable,
-            }
+            SelectOption::new(model.id.clone(), option_label(model, runnable)).disabled(!runnable)
         })
         .collect();
     if current.is_none() {
         options.insert(
             0,
-            SelectOption {
-                value: selected.clone(),
-                label: format!("{selected} (not available here)"),
-                disabled: true,
-            },
+            SelectOption::new(selected.clone(), format!("{selected} (not available here)"))
+                .disabled(true),
         );
     }
 
@@ -169,41 +173,44 @@ pub fn ModelPicker(
     let busy = !matches!(state, DownloadState::Idle | DownloadState::Failed(_));
 
     rsx! {
-        Select {
-            label: "Model",
-            description: "Larger models are more accurate but slower and need a bigger download",
-            value: selected.clone(),
-            options,
-            onchange: move |value: String| onselect.call(value),
-        }
+        div { class: "stack",
+            div { class: "row wrap",
+                span { class: "grow", id: "model-select-label", b { "Model" } }
+                Select {
+                    labelled_by: "model-select-label",
+                    value: selected.clone(),
+                    options,
+                    onchange: move |value: String| onselect.call(value),
+                }
+            }
 
-        if let Some(model) = current {
-            div { class: "space-y-3 rounded-lg border border-gray-200 dark:border-gray-700 p-4",
-                p { class: "text-sm text-gray-600 dark:text-gray-300", "{model.description}" }
+            if let Some(model) = current {
+                p { class: "muted", style: "margin:0", "{model.description}" }
 
                 match state {
                     DownloadState::Idle | DownloadState::Failed(_) => rsx! {
-                        div { class: "flex flex-wrap items-center gap-3",
+                        div { class: "row wrap",
                             if model.is_installed {
-                                span { class: "text-sm font-medium text-green-700 dark:text-green-400", "Downloaded and ready" }
+                                Chip { tone: ChipTone::Ok, icon: IconName::CheckCircle, "Downloaded and ready" }
                                 Button {
-                                    variant: ButtonVariant::Secondary,
                                     size: ButtonSize::Small,
+                                    icon: IconName::Shield,
                                     onclick: download_model,
                                     "Verify files"
                                 }
                                 Button {
-                                    variant: ButtonVariant::Secondary,
+                                    variant: ButtonVariant::Danger,
                                     size: ButtonSize::Small,
+                                    icon: IconName::Trash,
                                     onclick: remove_model,
                                     "Remove download"
                                 }
                             } else {
-                                span { class: "text-sm text-gray-600 dark:text-gray-300",
-                                    {format!("Not downloaded yet ({})", ByteSize(model.size_bytes))}
-                                }
+                                span { class: "muted", {format!("Not downloaded yet ({})", ByteSize(model.size_bytes))} }
                                 Button {
+                                    variant: ButtonVariant::Primary,
                                     size: ButtonSize::Small,
+                                    icon: IconName::Download,
                                     onclick: download_model,
                                     "Download now"
                                 }
@@ -211,50 +218,55 @@ pub fn ModelPicker(
                         }
                     },
                     DownloadState::Starting => rsx! {
-                        p { class: "text-sm text-gray-600 dark:text-gray-300", role: "status", "Starting..." }
+                        div { class: "row", role: "status",
+                            Spinner {}
+                            span { class: "muted", "Starting…" }
+                        }
                     },
                     DownloadState::Downloading { loaded, total, speed_bps } => {
                         let total = total.unwrap_or(model.size_bytes).max(1);
-                        let percent = loaded as f32 / total as f32 * 100.0;
-                        let speed = speed_bps.map(|bps| format!(" at {}/s", ByteSize(bps))).unwrap_or_default();
+                        let fraction = loaded as f64 / total as f64;
+                        let speed = speed_bps.map(|bps| format!("{}/s", ByteSize(bps))).unwrap_or_default();
                         rsx! {
-                            div { class: "space-y-2", role: "status",
+                            div { class: "dl", role: "status",
                                 ProgressBar {
-                                    value: percent,
-                                    label: format!("Downloading {} of {}{speed}", ByteSize(loaded), ByteSize(total)),
+                                    progress: Progress::Determinate(fraction),
+                                    label: "Model download",
+                                }
+                                div { class: "dlmeta",
+                                    span { {format!("{} of {}", ByteSize(loaded), ByteSize(total))} }
+                                    span { "{speed}" }
                                 }
                             }
                         }
                     }
                     DownloadState::Verifying => rsx! {
-                        p { class: "text-sm text-gray-600 dark:text-gray-300", role: "status", "Checking the downloaded files..." }
+                        div { class: "row", role: "status",
+                            Spinner {}
+                            span { class: "muted", "Checking the downloaded files…" }
+                        }
                     },
                 }
 
                 if busy {
-                    Button {
-                        variant: ButtonVariant::Secondary,
-                        size: ButtonSize::Small,
-                        onclick: cancel_download,
-                        "Cancel download"
+                    div { class: "row",
+                        Button { size: ButtonSize::Small, onclick: cancel_download, "Cancel download" }
                     }
                 }
 
                 if let DownloadState::Failed(message) = download.read().clone() {
-                    p { class: "text-sm text-red-600 dark:text-red-400", role: "alert", "The model could not be installed: {message}" }
+                    Banner { tone: BannerTone::Bad, title: "The model could not be installed", role: "alert", "{message}" }
                 }
                 if verified() && model.is_installed {
-                    p { class: "text-sm text-green-700 dark:text-green-400", role: "status",
-                        "All files match their published checksums."
-                    }
+                    Banner { tone: BannerTone::Ok, title: "All files match their published checksums", role: "status" }
                 }
                 if let Some(message) = remove_error() {
-                    p { class: "text-sm text-red-600 dark:text-red-400", role: "alert", "Could not remove the model: {message}" }
+                    Banner { tone: BannerTone::Bad, title: "Could not remove the model", role: "alert", "{message}" }
                 }
-            }
-        } else {
-            p { class: "text-sm text-red-600 dark:text-red-400", role: "alert",
-                "The saved model \"{selected}\" is not available here. Choose another model and save."
+            } else {
+                Banner { tone: BannerTone::Warn, title: "The saved model is not available here", role: "alert",
+                    "\"{selected}\" cannot run in this app. Choose another model and save."
+                }
             }
         }
     }

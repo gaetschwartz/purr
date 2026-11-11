@@ -1,103 +1,99 @@
-use super::{Icon, IconType};
+use super::icon::{Icon, IconName, IconSize};
 use dioxus::prelude::*;
 
-/// Button variants for different styles
-#[allow(dead_code)]
-#[derive(Clone, Copy, PartialEq, Eq)]
+/// Visual weight of a [`Button`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ButtonVariant {
     Primary,
+    #[default]
     Secondary,
+    Plain,
     Danger,
-    Ghost,
+    DangerSolid,
 }
 
-/// Button sizes
-#[allow(dead_code)]
-#[derive(Clone, Copy, PartialEq, Eq)]
+impl ButtonVariant {
+    const fn class(self) -> &'static str {
+        match self {
+            Self::Primary => " primary",
+            Self::Secondary => "",
+            Self::Plain => " plain",
+            Self::Danger => " danger",
+            Self::DangerSolid => " danger solid",
+        }
+    }
+}
+
+/// Height of a [`Button`]: 30, 36 or 44 px.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ButtonSize {
     Small,
+    #[default]
     Medium,
     Large,
 }
 
-/// Props for the Button component
-#[derive(Props, Clone, PartialEq)]
-pub struct ButtonProps {
-    /// Button text
-    pub children: Element,
-    /// Click handler
-    #[props(optional)]
-    pub onclick: Option<EventHandler<MouseEvent>>,
-    /// Button variant
-    #[props(default = ButtonVariant::Primary)]
-    pub variant: ButtonVariant,
-    /// Button size
-    #[props(default = ButtonSize::Medium)]
-    pub size: ButtonSize,
-    /// Optional icon to display
-    #[props(optional)]
-    pub icon: Option<IconType>,
-    /// Whether the button is disabled
-    #[props(default = false)]
-    pub disabled: bool,
-    /// Additional CSS classes
-    #[props(default = "")]
-    pub class: &'static str,
+impl ButtonSize {
+    const fn class(self) -> &'static str {
+        match self {
+            Self::Small => " sm",
+            Self::Medium => "",
+            Self::Large => " lg",
+        }
+    }
+
+    const fn icon(self) -> IconSize {
+        match self {
+            Self::Small | Self::Medium => IconSize::Small,
+            Self::Large => IconSize::Medium,
+        }
+    }
 }
 
-/// Reusable Button component with consistent styling
+/// Whether a [`Button`] submits its form.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ButtonType {
+    #[default]
+    Button,
+    Submit,
+}
+
+impl ButtonType {
+    const fn attribute(self) -> &'static str {
+        match self {
+            Self::Button => "button",
+            Self::Submit => "submit",
+        }
+    }
+}
+
+/// A pill-shaped push button with an optional leading icon.
 #[component]
-pub fn Button(props: ButtonProps) -> Element {
-    let base_classes = "inline-flex items-center justify-center font-medium rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2";
-
-    let variant_classes = match props.variant {
-        ButtonVariant::Primary => {
-            "bg-teal-500 text-white hover:bg-teal-600 focus:ring-teal-500 shadow-md hover:shadow-lg"
-        }
-        ButtonVariant::Secondary => {
-            "bg-gray-100 text-gray-700 hover:bg-gray-200 focus:ring-gray-500 dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600"
-        }
-        ButtonVariant::Danger => {
-            "bg-red-500 text-white hover:bg-red-600 focus:ring-red-500 shadow-md hover:shadow-lg"
-        }
-        ButtonVariant::Ghost => {
-            "text-gray-600 hover:text-teal-600 hover:bg-teal-50 focus:ring-teal-500 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-teal-300"
-        }
-    };
-
-    let size_classes = match props.size {
-        ButtonSize::Small => "px-3 py-1.5 text-sm",
-        ButtonSize::Medium => "px-4 py-2 text-sm",
-        ButtonSize::Large => "px-6 py-3 text-base",
-    };
-
-    let disabled_classes = if props.disabled {
-        "opacity-50 cursor-not-allowed"
-    } else {
-        "cursor-pointer"
-    };
-
-    let full_classes = format!(
-        "{} {} {} {} {}",
-        base_classes, variant_classes, size_classes, disabled_classes, props.class
-    );
-
+pub fn Button(
+    #[props(default)] variant: ButtonVariant,
+    #[props(default)] size: ButtonSize,
+    #[props(default)] kind: ButtonType,
+    icon: Option<IconName>,
+    #[props(default)] disabled: bool,
+    onclick: Option<EventHandler<MouseEvent>>,
+    #[props(extends = GlobalAttributes)] attributes: Vec<Attribute>,
+    children: Element,
+) -> Element {
     rsx! {
         button {
-            class: "{full_classes}",
-            disabled: props.disabled,
-            onclick: move |evt| {
-                if !props.disabled
-                    && let Some(handler) = &props.onclick {
-                        handler.call(evt);
-                    }
+            class: "btn{variant.class()}{size.class()}",
+            r#type: kind.attribute(),
+            disabled,
+            onclick: move |event| {
+                if let Some(handler) = onclick {
+                    handler.call(event);
+                }
             },
-
-            if let Some(icon_type) = props.icon {
-                Icon { icon_type, class: "w-4 h-4 mr-2" }
+            ..attributes,
+            if let Some(name) = icon {
+                Icon { name, size: size.icon() }
             }
-
-            {props.children}
+            {children}
         }
     }
 }

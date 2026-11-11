@@ -1,48 +1,61 @@
 use dioxus::prelude::*;
 
-/// Props for the `ProgressBar` component
-#[derive(Props, Clone, PartialEq)]
-pub struct ProgressBarProps {
-    /// Progress value (0-100)
-    pub value: f32,
-    /// Label to display above the progress bar
-    #[props(optional)]
-    pub label: Option<String>,
-    /// Whether to show the percentage text
-    #[props(default = true)]
-    pub show_percentage: bool,
-    /// Additional CSS classes
-    #[props(default = "")]
-    pub class: &'static str,
+/// How much of the work a [`ProgressBar`] shows as done.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Progress {
+    /// A fraction between 0 and 1.
+    Determinate(f64),
+    /// Work whose length is unknown; the bar sweeps.
+    Indeterminate,
 }
 
-/// Progress bar component for showing upload/processing progress
+/// Colour of the filled part of a [`ProgressBar`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ProgressTone {
+    #[default]
+    Accent,
+    Warn,
+    Bad,
+}
+
+/// The rounded progress track (`role="progressbar"`); `thin` draws the 4 px variant.
 #[component]
-pub fn ProgressBar(props: ProgressBarProps) -> Element {
-    let clamped_value = props.value.clamp(0.0, 100.0);
-
+pub fn ProgressBar(
+    progress: Progress,
+    #[props(into)] label: String,
+    #[props(into)] value_text: Option<String>,
+    #[props(default)] tone: ProgressTone,
+    #[props(default)] thin: bool,
+) -> Element {
+    let mut class = String::from("bar");
+    if thin {
+        class.push_str(" thin");
+    }
+    match tone {
+        ProgressTone::Accent => {}
+        ProgressTone::Warn => class.push_str(" warn"),
+        ProgressTone::Bad => class.push_str(" bad"),
+    }
+    let (percent, now) = match progress {
+        Progress::Determinate(fraction) => {
+            let percent = (fraction * 100.0).clamp(0.0, 100.0);
+            (percent, Some(format!("{percent:.0}")))
+        }
+        Progress::Indeterminate => {
+            class.push_str(" indet");
+            (35.0, None)
+        }
+    };
     rsx! {
-        div { class: "w-full mx-auto {props.class}",
-
-            if let Some(label) = &props.label {
-                p { class: "text-sm font-medium text-gray-600 dark:text-gray-300 mb-2", "{label}" }
-            }
-
-            div {
-                class: "bg-gray-200 dark:bg-gray-700 rounded-full h-2 mb-2",
-                role: "progressbar",
-                aria_valuemin: "0",
-                aria_valuemax: "100",
-                aria_valuenow: "{clamped_value:.0}",
-                div {
-                    class: "bg-teal-500 h-2 rounded-full transition-all duration-300",
-                    style: "width: {clamped_value}%",
-                }
-            }
-
-            if props.show_percentage {
-                p { class: "text-sm text-gray-600 dark:text-gray-300 text-center", "{clamped_value:.1}%" }
-            }
+        div {
+            class,
+            role: "progressbar",
+            aria_label: label,
+            aria_valuemin: "0",
+            aria_valuemax: "100",
+            aria_valuenow: now,
+            aria_valuetext: value_text,
+            i { style: "width:{percent}%" }
         }
     }
 }
