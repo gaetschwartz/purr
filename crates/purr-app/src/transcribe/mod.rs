@@ -10,4 +10,3 @@ pub mod search;
 pub mod session;
 pub mod timing;
 pub mod transcript;
-pub mod waveform;

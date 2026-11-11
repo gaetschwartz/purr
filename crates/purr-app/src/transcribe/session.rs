@@ -1,17 +1,25 @@
 //! The Transcribe flow's state, kept at the root so a run and its result outlive the screen.
 
 use super::{
-    chosen_file::{AudioOverview, ChosenFile, FileProblem},
+    chosen_file::{ChosenFile, FileProblem, OverviewState, WAVEFORM_BARS},
     language_choice::LanguageChoice,
-    run::{Run, RunOutcome},
+    run::{Completion, Run, RunOutcome},
     timing,
 };
 use crate::{
     components::toast::{Toast, ToastKind, Toasts, use_toasts},
+    history::{
+        entry_builder::{self, Finished},
+        save_state::SaveState,
+        store::{HistoryStore, use_history},
+    },
     hooks::use_models::{ModelsHandle, use_models},
     model_catalog::entry::{Language, ModelEntry},
-    platform::{self, IS_WEB, audio_overview},
-    utils::{clock::now_ms, file_kind::may_contain_audio},
+    platform::{self, IS_WEB},
+    utils::{
+        clock::{now_ms, unix_ms},
+        file_kind::may_contain_audio,
+    },
 };
 use dioxus::{
     core::{Runtime, ScopeId, Task, spawn_forever},
@@ -19,11 +27,14 @@ use dioxus::{
     prelude::*,
 };
 use futures::StreamExt as _;
-use purr_common::platform::{
-    FileId, FileSource, ModelId, Platform as _, PlatformError, TranscriptionRequest,
-    TranscriptionStatus,
+use purr_common::{
+    history::entry::{HistoryEntry, HistoryId, LanguageOrigin},
+    platform::{
+        FileId, FileSource, ModelId, Platform as _, PlatformError, TranscriptionRequest,
+        TranscriptionStatus,
+    },
 };
-use std::{collections::HashMap, rc::Rc};
+use std::{collections::HashMap, path::PathBuf, rc::Rc};
 
 /// A run with what it was started on.
 #[derive(Debug, Clone, PartialEq)]
@@ -53,11 +64,14 @@ pub struct TranscribeSession {
     file: Signal<Option<ChosenFile>>,
     reading: Signal<Option<String>>,
     problem: Signal<Option<FileProblem>>,
-    overviews: Signal<HashMap<FileId, AudioOverview>>,
+    overviews: Signal<HashMap<FileId, OverviewState>>,
     record: Signal<Option<RunRecord>>,
     task: Signal<Option<Task>>,
+    saved: Signal<SaveState>,
+    originals: Signal<HashMap<String, PathBuf>>,
     toasts: Toasts,
     models: ModelsHandle,
+    history: HistoryStore,
 }
 
 impl TranscribeSession {
@@ -96,12 +110,29 @@ impl TranscribeSession {
 
     /// The length and waveform of `id`.
     #[must_use]
-    pub fn overview(&self, id: &FileId) -> AudioOverview {
+    pub fn overview(&self, id: &FileId) -> OverviewState {
         self.overviews
             .read()
             .get(id)
             .cloned()
-            .unwrap_or(AudioOverview::Reading)
+            .unwrap_or(OverviewState::Reading)
+    }
+
+    /// Whether the last finished run is saved to History (subscribes the caller).
+    #[must_use]
+    pub fn save_state(&self) -> SaveState {
+        self.saved.read().clone()
+    }
+
+    /// Lets the desktop webview play the original file of a saved transcription as `id`.
+    pub fn serve_original(mut self, id: &HistoryId, path: PathBuf) {
+        self.originals.write().insert(id.to_string(), path);
+    }
+
+    /// The original file registered under `id`, without subscribing.
+    #[must_use]
+    pub fn original_path(&self, id: &str) -> Option<PathBuf> {
+        self.originals.peek().get(id).cloned()
     }
 
     /// The chosen or transcribed file with the id `id`, without subscribing.
@@ -137,7 +168,7 @@ impl TranscribeSession {
                 .set(Some(FileProblem::Unsupported { name, content_type }));
             return;
         }
-        if let Some(limit) = audio_overview::UPLOAD_LIMIT_BYTES
+        if let Some(limit) = platform::get_platform().max_upload_bytes()
             && data.size() > limit
         {
             self.problem.set(Some(FileProblem::TooLarge {
@@ -197,28 +228,39 @@ impl TranscribeSession {
                 detail: error.to_string(),
             })?;
         tracing::info!("Stored {name} ({} bytes) as {id}", bytes.len());
+        let source_path = (!IS_WEB).then(|| data.path()).filter(|path| path.is_file());
         Ok(ChosenFile {
             id,
             name: name.to_owned(),
             size: bytes.len() as u64,
             content_type: Some(content_type.to_owned()).filter(|kind| !kind.is_empty()),
             bytes,
+            source_path,
         })
     }
 
     fn inspect(mut self, file: ChosenFile) {
         self.overviews
             .write()
-            .insert(file.id.clone(), AudioOverview::Reading);
+            .insert(file.id.clone(), OverviewState::Reading);
         spawn_forever(async move {
-            let overview = match audio_overview::decode(&file.id, file.bytes.clone()).await {
-                Ok(decoded) => AudioOverview::Ready {
-                    duration_seconds: decoded.duration_seconds,
-                    peaks: Rc::new(decoded.peaks),
+            let overview = match platform::get_platform()
+                .audio_overview(&file.id, WAVEFORM_BARS)
+                .await
+            {
+                Ok(measured) => OverviewState::Ready {
+                    duration_seconds: measured.duration_seconds,
+                    peaks: Rc::new(measured.peaks),
                 },
                 Err(error) => {
                     tracing::warn!("Could not decode {}: {error}", file.name);
-                    AudioOverview::Undecodable(error.to_string())
+                    OverviewState::Undecodable(
+                        if let PlatformError::AudioProcessing { source } = &error {
+                            source.to_string()
+                        } else {
+                            error.to_string()
+                        },
+                    )
                 }
             };
             if self.overviews.peek().contains_key(&file.id) {
@@ -307,6 +349,7 @@ impl TranscribeSession {
             request.language
         );
         let previous = self.record.peek().clone();
+        self.saved.set(SaveState::Idle);
         self.record.set(Some(RunRecord {
             file: file.clone(),
             model,
@@ -371,6 +414,7 @@ impl TranscribeSession {
         };
         match record.run.outcome {
             RunOutcome::Completed(completion) => {
+                self.save_to_history(&record, completion);
                 self.toasts.success(
                     "Transcription finished",
                     format!(
@@ -384,6 +428,84 @@ impl TranscribeSession {
                 self.toasts.error("Transcription failed", record.file.name);
             }
             RunOutcome::Running => {}
+        }
+    }
+
+    fn save_to_history(mut self, record: &RunRecord, completion: Completion) {
+        let overview = self.overviews.peek().get(&record.file.id).cloned();
+        let (duration, peaks) = match overview {
+            Some(OverviewState::Ready {
+                duration_seconds,
+                peaks,
+            }) => (duration_seconds, peaks.as_ref().clone()),
+            Some(OverviewState::Reading | OverviewState::Undecodable(_)) | None => {
+                (completion.audio_seconds, Vec::new())
+            }
+        };
+        let id = match entry_builder::new_id() {
+            Ok(id) => id,
+            Err(error) => {
+                self.saved.set(SaveState::Idle);
+                tracing::error!("Could not name the history entry: {error}");
+                self.toasts
+                    .error("Couldn't save to History", error.to_string());
+                return;
+            }
+        };
+        let origin = if record.run.detected_language.is_some() {
+            LanguageOrigin::Detected
+        } else {
+            LanguageOrigin::Chosen
+        };
+        let entry = entry_builder::build(Finished {
+            id,
+            created_at_ms: unix_ms(),
+            file_name: record.file.name.clone(),
+            source_path: record.file.source_path.clone(),
+            model_id: record.model.id.clone(),
+            model_label: record.model.label.clone(),
+            language: record.language_code(),
+            language_origin: origin,
+            processing_seconds: completion.processing_seconds,
+            audio_seconds: duration,
+            segments: record.run.transcript.segments(),
+            peaks,
+        });
+        self.write_to_history(Rc::new(entry));
+    }
+
+    fn write_to_history(mut self, entry: Rc<HistoryEntry>) {
+        self.saved.set(SaveState::Saving);
+        spawn_forever(async move {
+            let outcome = match self.history.save(&entry).await {
+                Ok(saved) if saved.evicted.contains(&entry.id) => Err(
+                    "History is full of newer transcriptions, so this one was dropped.".to_owned(),
+                ),
+                Ok(_) => Ok(()),
+                Err(error) => {
+                    tracing::error!("Could not save {} to History: {error}", entry.file_name);
+                    Err(error.to_string())
+                }
+            };
+            if *self.saved.peek() != SaveState::Saving {
+                return;
+            }
+            match outcome {
+                Ok(()) => self.saved.set(SaveState::Saved(entry.id.clone())),
+                Err(message) => {
+                    self.toasts
+                        .error("Couldn't save to History", message.clone());
+                    self.saved.set(SaveState::Failed { message, entry });
+                }
+            }
+        });
+    }
+
+    /// Writes the last finished run to History again after a failed save.
+    pub fn retry_save(self) {
+        let state = self.saved.peek().clone();
+        if let SaveState::Failed { entry, .. } = state {
+            self.write_to_history(entry);
         }
     }
 
@@ -454,6 +576,7 @@ fn describe(error: &PlatformError) -> String {
 pub fn use_transcribe_session_provider() -> TranscribeSession {
     let toasts = use_toasts();
     let models = use_models();
+    let history = use_history();
     let session = use_hook(|| {
         Runtime::current().in_scope(ScopeId::ROOT, || TranscribeSession {
             file: Signal::new(None),
@@ -462,8 +585,11 @@ pub fn use_transcribe_session_provider() -> TranscribeSession {
             overviews: Signal::new(HashMap::new()),
             record: Signal::new(None),
             task: Signal::new(None),
+            saved: Signal::new(SaveState::Idle),
+            originals: Signal::new(HashMap::new()),
             toasts,
             models,
+            history,
         })
     });
     use_context_provider(|| session)

@@ -52,6 +52,25 @@ pub fn may_contain_audio(content_type: &str, file_name: &str) -> bool {
         )
 }
 
+/// The MIME type to serve an audio file of this name as.
+#[must_use]
+pub fn audio_mime(file_name: &str) -> &'static str {
+    let extension = file_name
+        .rsplit_once('.')
+        .map(|(_, extension)| extension.to_ascii_lowercase());
+    match extension.as_deref() {
+        Some("mp3") => "audio/mpeg",
+        Some("wav") => "audio/wav",
+        Some("flac") => "audio/flac",
+        Some("ogg" | "oga" | "opus") => "audio/ogg",
+        Some("m4a" | "m4b" | "mp4") => "audio/mp4",
+        Some("aac") => "audio/aac",
+        Some("webm" | "weba") => "audio/webm",
+        Some("aif" | "aiff") => "audio/aiff",
+        Some(_) | None => "application/octet-stream",
+    }
+}
+
 /// The short type shown next to a file: its extension in capitals, or `Audio` without one.
 #[must_use]
 pub fn kind_label(file_name: &str) -> String {
@@ -87,6 +106,13 @@ mod tests {
             "WhatsApp Ptt 2026-11-11"
         );
         assert_eq!(file_stem("talk.final.mp3"), "talk.final");
+    }
+
+    #[test]
+    fn audio_is_served_under_its_own_type() {
+        assert_eq!(audio_mime("memo.OGG"), "audio/ogg");
+        assert_eq!(audio_mime("talk.m4a"), "audio/mp4");
+        assert_eq!(audio_mime("mystery"), "application/octet-stream");
     }
 
     #[test]

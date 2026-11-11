@@ -1,7 +1,7 @@
 use super::icon::{Icon, IconName};
 use crate::{
-    platform::playback_source,
-    transcribe::{chosen_file::ChosenFile, playback, timing},
+    platform::playback_source::{self, AudioSource},
+    transcribe::{playback, timing},
 };
 use dioxus::{document::Eval, prelude::*};
 use serde::{Deserialize, Serialize};
@@ -157,9 +157,9 @@ impl PlayerHandle {
     }
 }
 
-/// Loads `file` into a hidden audio element of the page, released when the caller unmounts.
-pub fn use_audio_player(file: &ChosenFile) -> PlayerHandle {
-    let source = use_hook(|| playback_source::url(file).map_err(|error| error.to_string()));
+/// Loads `source` into a hidden audio element of the page, released when the caller unmounts.
+pub fn use_audio_player(source: &AudioSource) -> PlayerHandle {
+    let source = use_hook(|| playback_source::url(source).map_err(|error| error.to_string()));
     let handle = use_hook(|| PlayerHandle {
         position: Signal::new(0.0),
         duration: Signal::new(None),

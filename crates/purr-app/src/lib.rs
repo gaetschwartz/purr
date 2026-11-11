@@ -5,6 +5,8 @@ use dioxus::prelude::*;
 pub mod appearance;
 /// The design-system components
 pub mod components;
+/// Saved transcriptions: building entries, searching them and the root store
+pub mod history;
 /// Custom hooks for state management and UI patterns
 pub mod hooks;
 /// Routing and session state
@@ -110,6 +112,7 @@ pub fn App() -> Element {
     let settings = use_settings_store_provider(toasts);
     use_appearance_provider(settings);
     use_models_provider();
+    history::store::use_history_provider();
     let session = transcribe::session::use_transcribe_session_provider();
     platform::playback_source::use_audio_route(session);
     use_layer_host_provider();

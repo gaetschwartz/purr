@@ -14,3 +14,20 @@ pub fn now_ms() -> f64 {
         START.elapsed().as_secs_f64() * 1000.0
     }
 }
+
+/// Milliseconds since the Unix epoch on the wall clock, for dating something.
+#[must_use]
+pub fn unix_ms() -> i64 {
+    #[cfg(target_arch = "wasm32")]
+    {
+        js_sys::Date::now() as i64
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_or(0, |elapsed| elapsed.as_millis() as i64)
+    }
+}

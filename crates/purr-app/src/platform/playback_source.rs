@@ -1,13 +1,29 @@
-//! The URL the player loads a chosen file's audio from.
+//! The URL the player loads audio from.
 
 use crate::transcribe::chosen_file::ChosenFile;
+use purr_common::history::entry::HistoryId;
+use std::path::PathBuf;
 
-/// A URL the page can `fetch` the audio of `file` from; release it with [`release`].
+/// Audio the player can load.
+#[derive(Debug, Clone, PartialEq)]
+pub enum AudioSource {
+    /// The copy of a picked file the session holds.
+    Upload(ChosenFile),
+    /// The original file of a saved transcription, still on the computer.
+    Original { id: HistoryId, path: PathBuf },
+}
+
+/// A URL the page can `fetch` the audio of `source` from; release it with [`release`].
 #[cfg(purr_web)]
-pub fn url(file: &ChosenFile) -> miette::Result<String> {
+pub fn url(source: &AudioSource) -> miette::Result<String> {
     use miette::miette;
     use web_sys::{Blob, BlobPropertyBag, Url};
 
+    let AudioSource::Upload(file) = source else {
+        return Err(miette!(
+            "the browser does not keep the original audio of a saved transcription"
+        ));
+    };
     let options = BlobPropertyBag::new();
     if let Some(content_type) = &file.content_type {
         options.set_type(content_type);
@@ -32,19 +48,24 @@ pub fn release(url: &str) {
 #[cfg(all(feature = "desktop", not(purr_web)))]
 pub const AUDIO_ROUTE: &str = "purr-audio";
 
-/// A URL the page can `fetch` the audio of `file` from, served by [`use_audio_route`].
+/// A URL the page can `fetch` the audio of `source` from, served by [`use_audio_route`].
 #[cfg(all(feature = "desktop", not(purr_web)))]
-pub fn url(file: &ChosenFile) -> miette::Result<String> {
-    Ok(format!("/{AUDIO_ROUTE}/{}", file.id))
+pub fn url(source: &AudioSource) -> miette::Result<String> {
+    Ok(match source {
+        AudioSource::Upload(file) => format!("/{AUDIO_ROUTE}/{}", file.id),
+        AudioSource::Original { id, .. } => format!("/{AUDIO_ROUTE}/{id}"),
+    })
 }
 
-/// Nothing to free on the desktop: the route serves the session's bytes.
+/// Nothing to free on the desktop: the route serves the files.
 #[cfg(all(feature = "desktop", not(purr_web)))]
 pub fn release(_url: &str) {}
 
-/// Serves the audio of the session's files to the webview; call once at the root.
+/// Serves the audio of the session's files and of saved transcriptions to the webview; call once
+/// at the root.
 #[cfg(all(feature = "desktop", not(purr_web)))]
 pub fn use_audio_route(session: crate::transcribe::session::TranscribeSession) {
+    use crate::utils::file_kind::audio_mime;
     use dioxus::desktop::wry::http::{Response, StatusCode, header::CONTENT_TYPE};
 
     dioxus::desktop::use_asset_handler(AUDIO_ROUTE, move |request, responder| {
@@ -55,17 +76,37 @@ pub fn use_audio_route(session: crate::transcribe::session::TranscribeSession) {
             .next()
             .unwrap_or_default()
             .to_owned();
-        let response = match session.file_by_id(&id) {
-            Some(file) => Response::builder()
+        let found: Option<(String, Vec<u8>)> = if let Some(file) = session.file_by_id(&id) {
+            Some((
+                file.content_type
+                    .filter(|kind| !kind.is_empty())
+                    .unwrap_or_else(|| "application/octet-stream".to_owned()),
+                file.bytes.to_vec(),
+            ))
+        } else {
+            session
+                .original_path(&id)
+                .and_then(|path| match std::fs::read(&path) {
+                    Ok(bytes) => {
+                        let name = path
+                            .file_name()
+                            .map_or_else(String::new, |name| name.to_string_lossy().into_owned());
+                        Some((audio_mime(&name).to_owned(), bytes))
+                    }
+                    Err(error) => {
+                        tracing::error!(
+                            "Could not read the original audio {}: {error}",
+                            path.display()
+                        );
+                        None
+                    }
+                })
+        };
+        let response = match found {
+            Some((content_type, body)) => Response::builder()
                 .status(StatusCode::OK)
-                .header(
-                    CONTENT_TYPE,
-                    file.content_type
-                        .as_deref()
-                        .filter(|kind| !kind.is_empty())
-                        .unwrap_or("application/octet-stream"),
-                )
-                .body(file.bytes.to_vec()),
+                .header(CONTENT_TYPE, content_type)
+                .body(body),
             None => Response::builder()
                 .status(StatusCode::NOT_FOUND)
                 .body(Vec::new()),
@@ -83,7 +124,7 @@ pub fn use_audio_route(_session: crate::transcribe::session::TranscribeSession) 
 
 /// Playback needs a desktop or web platform.
 #[cfg(not(any(purr_web, feature = "desktop")))]
-pub fn url(_file: &ChosenFile) -> miette::Result<String> {
+pub fn url(_source: &AudioSource) -> miette::Result<String> {
     Err(miette::miette!(
         "Playback is not supported on this platform"
     ))

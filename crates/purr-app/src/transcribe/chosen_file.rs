@@ -3,7 +3,10 @@
 use crate::utils::byte_size::ByteSize;
 use bytes::Bytes;
 use purr_common::platform::FileId;
-use std::rc::Rc;
+use std::{path::PathBuf, rc::Rc};
+
+/// Bars in the waveform: enough for a wide player, few enough to stay light.
+pub const WAVEFORM_BARS: usize = 120;
 
 /// A file the platform stored for transcription, with its bytes kept for playback.
 #[derive(Debug, Clone)]
@@ -13,6 +16,8 @@ pub struct ChosenFile {
     pub size: u64,
     pub content_type: Option<String>,
     pub bytes: Bytes,
+    /// Where the file was picked from on the computer, when the platform says.
+    pub source_path: Option<PathBuf>,
 }
 
 impl PartialEq for ChosenFile {
@@ -21,9 +26,9 @@ impl PartialEq for ChosenFile {
     }
 }
 
-/// What decoding the file once more revealed: its length and a waveform.
+/// What the platform's decoder revealed of the file: its length and a waveform.
 #[derive(Debug, Clone, PartialEq)]
-pub enum AudioOverview {
+pub enum OverviewState {
     Reading,
     Ready {
         duration_seconds: f64,
@@ -33,7 +38,7 @@ pub enum AudioOverview {
     Undecodable(String),
 }
 
-impl AudioOverview {
+impl OverviewState {
     /// The length of the audio, once known.
     #[must_use]
     pub const fn duration(&self) -> Option<f64> {
