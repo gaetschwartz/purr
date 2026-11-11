@@ -14,7 +14,14 @@ use std::{
     str::FromStr,
 };
 
-use crate::settings::Settings;
+use crate::{
+    audio_overview::AudioOverview,
+    history::{
+        entry::{HistoryEntry, HistoryId, HistoryRecord},
+        listing::{HistoryListing, Saved},
+    },
+    settings::Settings,
+};
 
 pub type TranscriptionStream =
     Pin<Box<dyn Stream<Item = Result<TranscriptionStatus, PlatformError>> + Send>>;
@@ -126,6 +133,17 @@ pub enum PlatformError {
         #[source]
         source: Box<dyn std::error::Error + Send + Sync>,
     },
+
+    #[error("History error: {source}")]
+    #[diagnostic(code(platform::history))]
+    History {
+        #[source]
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+
+    #[error("There is no saved transcription {id}")]
+    #[diagnostic(code(platform::history_entry_not_found))]
+    HistoryEntryNotFound { id: HistoryId },
 
     #[error(transparent)]
     #[diagnostic(transparent)]
@@ -290,6 +308,14 @@ impl PlatformError {
         E: Into<Box<dyn std::error::Error + Send + Sync>>,
     {
         Self::SettingsPersistence { source: err.into() }
+    }
+
+    /// Create a new `PlatformError::History`
+    pub fn history<E>(err: E) -> Self
+    where
+        E: Into<Box<dyn std::error::Error + Send + Sync>>,
+    {
+        Self::History { source: err.into() }
     }
 }
 
@@ -801,6 +827,84 @@ pub trait Platform: Send + Sync + 'static {
         &self,
         file_id: &str,
     ) -> impl std::future::Future<Output = Result<(), PlatformError>> + Send;
+
+    /// The largest upload the platform accepts, in bytes, when it has a limit
+    fn max_upload_bytes(&self) -> Option<u64>;
+
+    /// Measure the length and waveform of a processed file
+    ///
+    /// # Arguments
+    /// * `file_id` - ID returned from `process_file`
+    /// * `buckets` - How many waveform bars to draw
+    ///
+    /// # Platform Differences
+    /// - **Desktop**: Reads the stored file through the chunk stream the transcription reads
+    /// - **Web**: Decodes the stored file with the Web Audio API, as the transcription does
+    ///
+    /// # Implementation Requirements
+    /// - MUST NOT keep the decoded samples once the overview is made
+    fn audio_overview(
+        &self,
+        file_id: &FileId,
+        buckets: usize,
+    ) -> impl std::future::Future<Output = Result<AudioOverview, PlatformError>> + Send;
+
+    // ========================================
+    // History Operations
+    // ========================================
+
+    /// List the saved transcriptions, newest first
+    ///
+    /// # Returns
+    /// The readable entries as summaries and the stored entries that could not be read; one
+    /// unreadable entry never fails the listing.
+    ///
+    /// # Platform Differences
+    /// - **Desktop**: One JSON file per entry in the app's data directory
+    /// - **Web**: One JSON string per entry in an `IndexedDB` object store
+    fn list_history(
+        &self,
+    ) -> impl std::future::Future<Output = Result<HistoryListing, PlatformError>> + Send;
+
+    /// Load a saved transcription with whether its audio can still be played
+    ///
+    /// # Returns
+    /// `PlatformError::HistoryEntryNotFound` when there is no such entry
+    fn get_history_entry(
+        &self,
+        id: &HistoryId,
+    ) -> impl std::future::Future<Output = Result<HistoryRecord, PlatformError>> + Send;
+
+    /// Store an entry, replacing one with the same id, then enforce the retention limits
+    ///
+    /// # Returns
+    /// The entries dropped to stay within the limits, which can include `entry` itself when it
+    /// is older than everything that is kept
+    fn save_history_entry(
+        &self,
+        entry: &HistoryEntry,
+    ) -> impl std::future::Future<Output = Result<Saved, PlatformError>> + Send;
+
+    /// Change the title of a saved transcription; `title` must already be a valid one
+    fn rename_history_entry(
+        &self,
+        id: &HistoryId,
+        title: &str,
+    ) -> impl std::future::Future<Output = Result<(), PlatformError>> + Send;
+
+    /// Delete a saved transcription; the audio file it points at is not touched
+    fn delete_history_entry(
+        &self,
+        id: &HistoryId,
+    ) -> impl std::future::Future<Output = Result<(), PlatformError>> + Send;
+
+    /// Delete every saved transcription, including unreadable ones
+    ///
+    /// # Returns
+    /// How many stored entries were removed
+    fn clear_history(
+        &self,
+    ) -> impl std::future::Future<Output = Result<usize, PlatformError>> + Send;
 
     // ========================================
     // Model Management Operations

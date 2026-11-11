@@ -11,7 +11,7 @@ use tokio::sync::{RwLock, oneshot};
 use uuid::Uuid;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::{JsFuture, spawn_local};
-use web_sys::{IdbDatabase, IdbOpenDbRequest, IdbVersionChangeEvent};
+use web_sys::IdbDatabase;
 
 /// File metadata
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -332,86 +332,9 @@ impl WebStorage {
         Ok(())
     }
 
-    /// Initialize database and create object stores
-    async fn initialize_database(db_name: &str) -> WebResult<IdbDatabase> {
-        let window = web_sys::window().ok_or(StorageError::IndexedDbUnavailable {
-            js_error: "Window not available".to_owned(),
-        })?;
-
-        let idb = window
-            .indexed_db()
-            .map_err(|e| StorageError::IndexedDbUnavailable {
-                js_error: format_js_error(e),
-            })?
-            .ok_or(StorageError::IndexedDbUnavailable {
-                js_error: "IndexedDB not available".to_owned(),
-            })?;
-
-        let open_request =
-            idb.open_with_u32(db_name, 1)
-                .map_err(|e| StorageError::DatabaseOpenFailed {
-                    js_error: format_js_error(e),
-                })?;
-
-        // Set up upgrade handler
-        let upgrade_closure = Closure::wrap(Box::new(move |event: IdbVersionChangeEvent| {
-            let target = event.target().unwrap();
-            let request: IdbOpenDbRequest = target.dyn_into().unwrap();
-            let db: IdbDatabase = request.result().unwrap().dyn_into().unwrap();
-
-            // Create object stores
-            if !db.object_store_names().contains("files") {
-                let _ = db.create_object_store("files");
-            }
-            if !db.object_store_names().contains("metadata") {
-                let _ = db.create_object_store("metadata");
-            }
-        }) as Box<dyn FnMut(_)>);
-
-        open_request.set_onupgradeneeded(Some(upgrade_closure.as_ref().unchecked_ref()));
-        upgrade_closure.forget();
-
-        // Create a promise wrapper for the request
-        let promise = Promise::new(&mut |resolve, reject| {
-            let success_closure = Closure::once(move |event: web_sys::Event| {
-                let target = event.target().unwrap();
-                let request: IdbOpenDbRequest = target.dyn_into().unwrap();
-                resolve
-                    .call1(&JsValue::undefined(), &request.result().unwrap())
-                    .unwrap();
-            });
-
-            let error_closure = Closure::once(move |_event: web_sys::Event| {
-                reject
-                    .call1(
-                        &JsValue::undefined(),
-                        &JsValue::from_str("Failed to open database"),
-                    )
-                    .unwrap();
-            });
-
-            open_request.set_onsuccess(Some(success_closure.as_ref().unchecked_ref()));
-            open_request.set_onerror(Some(error_closure.as_ref().unchecked_ref()));
-
-            success_closure.forget();
-            error_closure.forget();
-        });
-
-        let db_result =
-            JsFuture::from(promise)
-                .await
-                .map_err(|e| StorageError::DatabaseConnectionFailed {
-                    js_error: format_js_error(e),
-                })?;
-
-        let db: IdbDatabase =
-            db_result
-                .dyn_into()
-                .map_err(|e| StorageError::DatabaseCastFailed {
-                    js_error: format_js_error(e),
-                })?;
-
-        Ok(db)
+    /// Opens the shared database, creating its object stores on first use or upgrade
+    async fn initialize_database(_db_name: &str) -> WebResult<IdbDatabase> {
+        crate::idb::connect().await
     }
 
     /// Store file data and metadata in `IndexedDB`

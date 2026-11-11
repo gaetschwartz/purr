@@ -1,15 +1,23 @@
 use ambassador::Delegate;
 use bytes::Bytes;
 pub use purr_common::platform::*;
-use purr_common::settings::Settings;
+use purr_common::{
+    audio_overview::AudioOverview,
+    history::{
+        entry::{HistoryEntry, HistoryId, HistoryRecord},
+        listing::{HistoryListing, Saved},
+    },
+    settings::Settings,
+};
 use std::path::Path;
 use std::sync::{Arc, LazyLock};
 
-/// Decoding an upload for its length and waveform
-pub mod audio_overview;
-
 /// Saving and copying text
 pub mod export;
+
+/// The directory of saved transcriptions on the desktop
+#[cfg(feature = "desktop")]
+mod history_store;
 
 /// Where the player loads audio from
 pub mod playback_source;

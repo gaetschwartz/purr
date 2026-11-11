@@ -6,6 +6,8 @@ use manganis::{Asset, AssetOptions, asset};
 
 pub mod audio;
 pub mod error;
+pub mod history_store;
+pub mod idb;
 pub mod integrity;
 pub mod local;
 pub mod logging;

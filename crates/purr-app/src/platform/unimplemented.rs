@@ -2,8 +2,15 @@
 
 use super::{Platform, PlatformError, TranscriptionRequest};
 use bytes::Bytes;
-use purr_common::platform::TranscriptionStream;
 use purr_common::settings::Settings;
+use purr_common::{
+    audio_overview::AudioOverview,
+    history::{
+        entry::{HistoryEntry, HistoryId, HistoryRecord},
+        listing::{HistoryListing, Saved},
+    },
+    platform::{FileId, TranscriptionStream},
+};
 use std::path::Path;
 
 pub type PlatformImpl = UnimplementedPlatformImpl;
@@ -23,6 +30,10 @@ impl UnimplementedPlatformImpl {
 }
 
 #[allow(unused)]
+#[allow(
+    clippy::unused_async_trait_impl,
+    reason = "the trait methods are async"
+)]
 impl Platform for UnimplementedPlatformImpl {
     fn install_logging_hooks(&self) {}
 
@@ -42,6 +53,42 @@ impl Platform for UnimplementedPlatformImpl {
     }
 
     async fn cleanup(&self, file_id: &str) -> Result<(), PlatformError> {
+        unsupported!()
+    }
+
+    fn max_upload_bytes(&self) -> Option<u64> {
+        None
+    }
+
+    async fn audio_overview(
+        &self,
+        file_id: &FileId,
+        buckets: usize,
+    ) -> Result<AudioOverview, PlatformError> {
+        unsupported!()
+    }
+
+    async fn list_history(&self) -> Result<HistoryListing, PlatformError> {
+        unsupported!()
+    }
+
+    async fn get_history_entry(&self, id: &HistoryId) -> Result<HistoryRecord, PlatformError> {
+        unsupported!()
+    }
+
+    async fn save_history_entry(&self, entry: &HistoryEntry) -> Result<Saved, PlatformError> {
+        unsupported!()
+    }
+
+    async fn rename_history_entry(&self, id: &HistoryId, title: &str) -> Result<(), PlatformError> {
+        unsupported!()
+    }
+
+    async fn delete_history_entry(&self, id: &HistoryId) -> Result<(), PlatformError> {
+        unsupported!()
+    }
+
+    async fn clear_history(&self) -> Result<usize, PlatformError> {
         unsupported!()
     }
 

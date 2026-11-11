@@ -2,6 +2,7 @@
 
 use crate::audio;
 use crate::error::{WebError, WebResult};
+use crate::history_store;
 use crate::local::run_local;
 use crate::model::WebModelManager;
 use crate::model_cache;
@@ -12,6 +13,12 @@ use crate::storage::WebStorage;
 use crate::worker_client::WorkerClient;
 use bytes::Bytes;
 use futures::StreamExt as _;
+use purr_common::audio_overview::{AudioOverview, peaks};
+use purr_common::history::{
+    entry::{HistoryEntry, HistoryId, HistoryRecord},
+    listing::{HistoryListing, Saved},
+    retention::Limits,
+};
 use purr_common::platform::{
     DeviceInfo, DeviceType, FileId, FileSource, ModelFailureKind, ModelInfo, ModelIntegrity,
     ModelOperationProgress, ModelProgressStream, Platform, PlatformError, TranscriptionRequest,
@@ -40,6 +47,8 @@ pub struct WasmPlatformImpl {
     worker: Arc<WorkerClient>,
     initialized: RwLock<bool>,
     config_mutex: Mutex<()>,
+    history_lock: Mutex<()>,
+    decode_lock: Arc<Mutex<()>>,
 }
 
 impl WasmPlatformImpl {
@@ -112,6 +121,8 @@ impl WasmPlatformImpl {
             worker,
             initialized: RwLock::new(false),
             config_mutex: Mutex::new(()),
+            history_lock: Mutex::new(()),
+            decode_lock: Arc::new(Mutex::new(())),
         })
     }
 }
@@ -144,22 +155,40 @@ fn send_status(
     tx.send(Ok(status)).is_ok()
 }
 
-async fn run_transcription(
+/// Everything one transcription needs besides the channel it reports on.
+struct Transcription {
+    decode_lock: Arc<Mutex<()>>,
     worker: Arc<WorkerClient>,
     spec: WebModelSpec,
     model_cached: bool,
     bytes: Bytes,
     language: Option<String>,
     translate: bool,
+}
+
+async fn run_transcription(
+    job: Transcription,
     tx: mpsc::UnboundedSender<Result<TranscriptionStatus, PlatformError>>,
 ) {
+    let Transcription {
+        decode_lock,
+        worker,
+        spec,
+        model_cached,
+        bytes,
+        language,
+        translate,
+    } = job;
     if !send_status(&tx, TranscriptionStatus::Starting)
         || !send_status(&tx, TranscriptionStatus::ProcessingAudio)
     {
         return;
     }
 
-    let decoded = match audio::decode(bytes).await {
+    let decoding = decode_lock.lock_owned().await;
+    let decoded = audio::decode(bytes).await;
+    drop(decoding);
+    let decoded = match decoded {
         Ok(decoded) => decoded,
         Err(error) => {
             send_status(
@@ -421,12 +450,15 @@ impl Platform for WasmPlatformImpl {
 
         let (tx, rx) = mpsc::unbounded_channel();
         spawn_local(run_transcription(
-            Arc::clone(&self.worker),
-            spec,
-            model_cached,
-            bytes,
-            language,
-            request.translate,
+            Transcription {
+                decode_lock: Arc::clone(&self.decode_lock),
+                worker: Arc::clone(&self.worker),
+                spec,
+                model_cached,
+                bytes,
+                language,
+                translate: request.translate,
+            },
             tx,
         ));
         Ok(Box::pin(UnboundedReceiverStream::new(rx)))
@@ -436,6 +468,65 @@ impl Platform for WasmPlatformImpl {
         self.ensure_initialized().await?;
         self.storage.delete_file(&FileId::from(file_id)).await?;
         Ok(())
+    }
+
+    fn max_upload_bytes(&self) -> Option<u64> {
+        Some(audio::MAX_AUDIO_BYTES as u64)
+    }
+
+    async fn audio_overview(
+        &self,
+        file_id: &FileId,
+        buckets: usize,
+    ) -> Result<AudioOverview, PlatformError> {
+        self.ensure_initialized().await?;
+        let bytes = self
+            .storage
+            .get_file(file_id)
+            .await?
+            .ok_or_else(|| PlatformError::file_processing("File not found".to_owned()))?;
+        let _one_decode_at_a_time = self.decode_lock.lock().await;
+        let decoded = audio::decode(bytes).await?;
+        Ok(AudioOverview {
+            duration_seconds: decoded.duration_seconds(),
+            peaks: peaks(&decoded.samples, buckets),
+        })
+    }
+
+    async fn list_history(&self) -> Result<HistoryListing, PlatformError> {
+        self.ensure_initialized().await?;
+        let _one_at_a_time = self.history_lock.lock().await;
+        Ok(history_store::list().await?)
+    }
+
+    async fn get_history_entry(&self, id: &HistoryId) -> Result<HistoryRecord, PlatformError> {
+        self.ensure_initialized().await?;
+        let _one_at_a_time = self.history_lock.lock().await;
+        Ok(history_store::get(id).await?)
+    }
+
+    async fn save_history_entry(&self, entry: &HistoryEntry) -> Result<Saved, PlatformError> {
+        self.ensure_initialized().await?;
+        let _one_at_a_time = self.history_lock.lock().await;
+        Ok(history_store::save(entry, Limits::STANDARD).await?)
+    }
+
+    async fn rename_history_entry(&self, id: &HistoryId, title: &str) -> Result<(), PlatformError> {
+        self.ensure_initialized().await?;
+        let _one_at_a_time = self.history_lock.lock().await;
+        Ok(history_store::rename(id, title).await?)
+    }
+
+    async fn delete_history_entry(&self, id: &HistoryId) -> Result<(), PlatformError> {
+        self.ensure_initialized().await?;
+        let _one_at_a_time = self.history_lock.lock().await;
+        Ok(history_store::delete(id).await?)
+    }
+
+    async fn clear_history(&self) -> Result<usize, PlatformError> {
+        self.ensure_initialized().await?;
+        let _one_at_a_time = self.history_lock.lock().await;
+        Ok(history_store::clear().await?)
     }
 
     async fn list_installed_models(&self) -> Result<Vec<ModelInfo>, PlatformError> {

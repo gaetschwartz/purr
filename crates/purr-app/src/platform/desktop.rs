@@ -1,8 +1,16 @@
 /// Default platform implementation for desktop/native builds
 /// This implementation uses direct file system access and native whisper transcription
-use super::{Platform, PlatformError, TranscriptionRequest, TranscriptionStatus};
+use super::{
+    Platform, PlatformError, TranscriptionRequest, TranscriptionStatus, history_store::HistoryDir,
+};
 use bytes::Bytes;
 use futures::{SinkExt, Stream, StreamExt, channel::mpsc};
+use purr_common::audio_overview::{AudioOverview, PeakFold};
+use purr_common::history::{
+    entry::{HistoryEntry, HistoryId, HistoryRecord},
+    listing::{HistoryListing, Saved},
+    retention::Limits,
+};
 use purr_common::platform::{
     DeviceInfo, DeviceType, FileId, FileSource, IntegrityProblem, ModelFailureKind, ModelInfo,
     ModelIntegrity, ModelMetadata, ModelOperationProgress, ModelProgressStream,
@@ -35,15 +43,11 @@ const SETTINGS_FILE: &str = "settings.toml";
 pub(super) struct DesktopPlatformImpl {
     temp_dir: PathBuf,
     model_manager: Arc<ModelManager>,
+    history_lock: tokio::sync::Mutex<()>,
 }
 
 fn upload_dir() -> PathBuf {
     std::env::temp_dir().join("purr-temp")
-}
-
-/// Where [`Platform::process_file`] stored the upload `file_id`.
-pub(super) fn stored_upload(file_id: &FileId) -> PathBuf {
-    upload_dir().join(file_id)
 }
 
 /// How long an upload a closed session left behind is kept.
@@ -82,6 +86,7 @@ impl DesktopPlatformImpl {
         Ok(Self {
             temp_dir,
             model_manager: Arc::new(model_manager),
+            history_lock: tokio::sync::Mutex::new(()),
         })
     }
 }
@@ -153,6 +158,71 @@ impl Platform for DesktopPlatformImpl {
             info!("Cleaned up temporary file: {}", file_id);
         }
         Ok(())
+    }
+
+    fn max_upload_bytes(&self) -> Option<u64> {
+        None
+    }
+
+    async fn audio_overview(
+        &self,
+        file_id: &FileId,
+        buckets: usize,
+    ) -> Result<AudioOverview, PlatformError> {
+        let mut stream = purr_core::AudioProcessor::stream_file(self.temp_dir.join(file_id))
+            .await
+            .map_err(PlatformError::audio_processing)?;
+        let mut fold: Option<PeakFold> = None;
+        let mut sample_rate = 0;
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk.map_err(PlatformError::audio_processing)?;
+            sample_rate = chunk.sample_rate;
+            fold.get_or_insert_with(|| PeakFold::new(chunk.sample_rate))
+                .push(&chunk.samples);
+            if chunk.is_final {
+                break;
+            }
+        }
+        let fold = fold
+            .filter(|_| sample_rate > 0)
+            .ok_or_else(|| PlatformError::audio_processing("the file holds no audio"))?;
+        Ok(AudioOverview {
+            duration_seconds: fold.samples() as f64 / f64::from(sample_rate),
+            peaks: fold.finish(buckets),
+        })
+    }
+
+    // ========================================
+    // History Implementation
+    // ========================================
+
+    async fn list_history(&self) -> Result<HistoryListing, PlatformError> {
+        self.history_task(|history| history.list()).await
+    }
+
+    async fn get_history_entry(&self, id: &HistoryId) -> Result<HistoryRecord, PlatformError> {
+        let id = id.clone();
+        self.history_task(move |history| history.get(&id)).await
+    }
+
+    async fn save_history_entry(&self, entry: &HistoryEntry) -> Result<Saved, PlatformError> {
+        let entry = entry.clone();
+        self.history_task(move |history| history.save(&entry)).await
+    }
+
+    async fn rename_history_entry(&self, id: &HistoryId, title: &str) -> Result<(), PlatformError> {
+        let (id, title) = (id.clone(), title.to_owned());
+        self.history_task(move |history| history.rename(&id, &title))
+            .await
+    }
+
+    async fn delete_history_entry(&self, id: &HistoryId) -> Result<(), PlatformError> {
+        let id = id.clone();
+        self.history_task(move |history| history.delete(&id)).await
+    }
+
+    async fn clear_history(&self) -> Result<usize, PlatformError> {
+        self.history_task(|history| history.clear()).await
     }
 
     // ========================================
@@ -740,6 +810,35 @@ fn model_metadata(model: &ModelSpec) -> ModelMetadata {
 }
 
 impl DesktopPlatformImpl {
+    fn history_dir() -> Result<HistoryDir, PlatformError> {
+        let dirs = directories::ProjectDirs::from("dev.gaetans", "", "purr").ok_or_else(|| {
+            PlatformError::history(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "Could not determine the data directory",
+            ))
+        })?;
+        Ok(HistoryDir::new(
+            dirs.data_dir().join("history"),
+            Limits::STANDARD,
+        ))
+    }
+
+    async fn history_task<T, E>(
+        &self,
+        work: impl FnOnce(HistoryDir) -> Result<T, E> + Send + 'static,
+    ) -> Result<T, PlatformError>
+    where
+        T: Send + 'static,
+        E: Into<PlatformError> + Send + 'static,
+    {
+        let history = Self::history_dir()?;
+        let _one_at_a_time = self.history_lock.lock().await;
+        tokio::task::spawn_blocking(move || work(history))
+            .await
+            .map_err(PlatformError::history)?
+            .map_err(Into::into)
+    }
+
     fn start_download(&self, model_id: &str) -> Result<ModelProgressStream, PlatformError> {
         let model = lookup_shared(&self.model_manager, model_id)?;
         let manager = Arc::clone(&self.model_manager);
