@@ -1,7 +1,7 @@
 //! One transcription run, folded from the platform's status updates.
 
 use super::transcript::Transcript;
-use purr_common::platform::TranscriptionStatus;
+use purr_common::{accel::LastRun, platform::TranscriptionStatus};
 
 /// The step a running transcription is in, in the order they happen.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -56,6 +56,8 @@ pub enum RunOutcome {
 pub struct Run {
     pub stage: Stage,
     pub model_load: Option<ModelLoad>,
+    /// What the engine ran on, once the model has loaded and the platform says.
+    pub engine: Option<LastRun>,
     pub transcript: Transcript,
     /// The Whisper code the platform recognised, when it was asked to detect the language.
     pub detected_language: Option<String>,
@@ -72,6 +74,7 @@ impl Run {
         Self {
             stage: Stage::LoadingModel,
             model_load: None,
+            engine: None,
             transcript: Transcript::default(),
             detected_language: None,
             outcome: RunOutcome::Running,
@@ -100,6 +103,9 @@ impl Run {
                     loaded_bytes: *loaded_bytes,
                     total_bytes: *total_bytes,
                 });
+            }
+            TranscriptionStatus::Engine { run } => {
+                self.engine = Some(run.clone());
             }
             TranscriptionStatus::Transcribing => {
                 self.transcribing_since_ms.get_or_insert(now_ms);
@@ -215,6 +221,20 @@ mod tests {
         let mut forced = Run::new(false, 0.0);
         forced.apply(&TranscriptionStatus::Transcribing, 1.0);
         assert_eq!(forced.stage, Stage::Transcribing);
+    }
+
+    #[test]
+    fn the_engine_the_platform_reports_is_kept() {
+        let mut run = Run::new(false, 0.0);
+        assert_eq!(run.engine, None);
+        let ran = LastRun {
+            backend: purr_common::accel::AccelBackend::Vulkan,
+            device: None,
+            passed_over: Vec::new(),
+        };
+        run.apply(&TranscriptionStatus::Engine { run: ran.clone() }, 1.0);
+        assert_eq!(run.engine, Some(ran));
+        assert_eq!(run.stage, Stage::LoadingModel);
     }
 
     #[test]

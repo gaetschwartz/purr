@@ -36,6 +36,7 @@ impl Transcript {
             | TranscriptionStatus::ProcessingAudio
             | TranscriptionStatus::LoadingModel { .. }
             | TranscriptionStatus::Transcribing
+            | TranscriptionStatus::Engine { .. }
             | TranscriptionStatus::LanguageDetected { .. }
             | TranscriptionStatus::Completed { .. }
             | TranscriptionStatus::Error { .. }

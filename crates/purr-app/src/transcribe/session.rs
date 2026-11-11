@@ -2,12 +2,13 @@
 
 use super::{
     chosen_file::{ChosenFile, FileProblem, OverviewState, WAVEFORM_BARS},
+    engine::RunMemory,
     language_choice::LanguageChoice,
     run::{Completion, Run, RunOutcome},
     timing,
 };
 use crate::{
-    components::toast::{Toast, ToastKind, Toasts, use_toasts},
+    components::toast::{Toasts, use_toasts},
     history::{
         entry_builder::{self, Finished},
         save_state::SaveState,
@@ -29,6 +30,7 @@ use dioxus::{
 };
 use futures::StreamExt as _;
 use purr_common::{
+    accel::AccelPolicy,
     history::entry::{HistoryEntry, HistoryId, LanguageOrigin},
     platform::{
         EngineOptions, FileId, FileSource, ModelId, Platform as _, PlatformError,
@@ -44,7 +46,29 @@ pub struct RunRecord {
     pub model: ModelEntry,
     /// The language that applied, after the English-only lock.
     pub language: LanguageChoice,
+    /// The hardware choice the run was started with.
+    pub accel: AccelPolicy,
     pub run: Run,
+}
+
+/// A run the user stopped, kept until they start again or move on.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Cancelled {
+    pub detail: &'static str,
+    record: RunRecord,
+}
+
+/// What stopping a run did, for the notice that stays on the Transcribe screen.
+const fn cancel_detail(web: bool, downloading: bool) -> &'static str {
+    match (web, downloading) {
+        (true, true) => {
+            "Nothing was saved and the file is still selected. Cancelling restarts the browser's transcription worker, which also stopped the model download; start it again from Models."
+        }
+        (true, false) => {
+            "Nothing was saved and the file is still selected. Cancelling restarts the browser's transcription worker, so the next run loads the model again."
+        }
+        (false, _) => "Nothing was saved and the file is still selected.",
+    }
 }
 
 impl RunRecord {
@@ -67,6 +91,8 @@ pub struct TranscribeSession {
     problem: Signal<Option<FileProblem>>,
     overviews: Signal<HashMap<FileId, OverviewState>>,
     record: Signal<Option<RunRecord>>,
+    cancelled: Signal<Option<Cancelled>>,
+    engine_memory: Signal<Option<RunMemory>>,
     task: Signal<Option<Task>>,
     saved: Signal<SaveState>,
     originals: Signal<HashMap<String, PathBuf>>,
@@ -99,6 +125,18 @@ impl TranscribeSession {
     #[must_use]
     pub fn record(&self) -> Option<RunRecord> {
         self.record.read().clone()
+    }
+
+    /// The run the user just stopped, until they start again or move on (subscribes the caller).
+    #[must_use]
+    pub fn cancelled(&self) -> Option<Cancelled> {
+        self.cancelled.read().clone()
+    }
+
+    /// What the last run ran on, with the hardware choice it was started with (subscribes the caller).
+    #[must_use]
+    pub fn engine_memory(&self) -> Option<RunMemory> {
+        self.engine_memory.read().clone()
     }
 
     /// Whether a run is going on.
@@ -155,6 +193,21 @@ impl TranscribeSession {
         self.problem.set(None);
     }
 
+    /// Forgets the notice about the run that was stopped.
+    pub fn dismiss_cancelled(mut self) {
+        self.cancelled.set(None);
+    }
+
+    /// Runs the stopped run again with the same file, model and language.
+    pub fn restart_cancelled(self) {
+        if let Some(cancelled) = self.cancelled.peek().clone() {
+            let record = cancelled.record;
+            if self.file_by_id(&record.file.id).is_some() {
+                self.launch(record.file, record.model, record.language);
+            }
+        }
+    }
+
     /// Reads, checks and stores `data` as the file for the next run.
     pub fn choose(self, data: FileData) {
         spawn_forever(async move { self.accept(data).await });
@@ -163,6 +216,7 @@ impl TranscribeSession {
     async fn accept(mut self, data: FileData) {
         let name = data.name();
         self.problem.set(None);
+        self.cancelled.set(None);
         let content_type = data.content_type().unwrap_or_default();
         if !may_contain_audio(&content_type, &name) {
             tracing::info!("Refused {name}: {content_type}");
@@ -273,6 +327,7 @@ impl TranscribeSession {
 
     /// Drops the chosen file, keeping it only if the last run still shows it.
     pub fn clear_file(mut self) {
+        self.cancelled.set(None);
         if let Some(previous) = self.file.take() {
             self.release(previous);
         }
@@ -336,6 +391,7 @@ impl TranscribeSession {
 
     fn launch(mut self, file: ChosenFile, model: ModelEntry, language: LanguageChoice) {
         self.stop_task();
+        self.cancelled.set(None);
         let language = language.for_model(model.language == Language::EnglishOnly);
         let settings = self.settings.peek();
         let request = TranscriptionRequest {
@@ -358,6 +414,7 @@ impl TranscribeSession {
             file: file.clone(),
             model,
             language,
+            accel: request.engine.accel,
             run,
         }));
         if let Some(previous) = previous
@@ -387,6 +444,14 @@ impl TranscribeSession {
                             | TranscriptionStatus::Error { .. }
                             | TranscriptionStatus::InitFailed { .. }
                     );
+                    if let TranscriptionStatus::Engine { run } = &status
+                        && let Some(record) = self.record.peek().as_ref()
+                    {
+                        self.engine_memory.set(Some(RunMemory {
+                            policy: record.accel,
+                            ran: run.clone(),
+                        }));
+                    }
                     if let Some(record) = self.record.write().as_mut() {
                         record.run.apply(&status, now_ms());
                     }
@@ -532,31 +597,15 @@ impl TranscribeSession {
         {
             self.file.set(Some(record.file.clone()));
         }
-        let detail = if IS_WEB && self.models.is_downloading() {
-            "Nothing was saved and the file is still selected. Cancelling restarts the browser's transcription worker, which also stopped the model download; start it again from Models."
-        } else if IS_WEB {
-            "Nothing was saved and the file is still selected. Cancelling restarts the browser's transcription worker, so the next run loads the model again."
-        } else {
-            "Nothing was saved and the file is still selected."
-        };
-        let mut toast = Toast::new(ToastKind::Info, "Transcription cancelled").with_detail(detail);
-        if let Some(record) = cancelled_record {
-            toast = toast.with_action("Start again", move || {
-                if self.file_by_id(&record.file.id).is_some() {
-                    self.launch(
-                        record.file.clone(),
-                        record.model.clone(),
-                        record.language.clone(),
-                    );
-                }
-            });
-        }
-        self.toasts.show(toast);
+        let detail = cancel_detail(IS_WEB, self.models.is_downloading());
+        self.cancelled
+            .set(cancelled_record.map(|record| Cancelled { detail, record }));
     }
 
     /// Leaves the result and the chosen file for a new pick.
     pub fn new_transcription(mut self) {
         self.stop_task();
+        self.cancelled.set(None);
         let record = self.record.take();
         let file = self.file.take();
         if let Some(record) = record {
@@ -589,6 +638,8 @@ pub fn use_transcribe_session_provider() -> TranscribeSession {
             problem: Signal::new(None),
             overviews: Signal::new(HashMap::new()),
             record: Signal::new(None),
+            cancelled: Signal::new(None),
+            engine_memory: Signal::new(None),
             task: Signal::new(None),
             saved: Signal::new(SaveState::Idle),
             originals: Signal::new(HashMap::new()),
@@ -604,4 +655,18 @@ pub fn use_transcribe_session_provider() -> TranscribeSession {
 /// The session provided at the root.
 pub fn use_transcribe_session() -> TranscribeSession {
     use_context::<TranscribeSession>()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_desktop_says_only_that_nothing_was_saved() {
+        assert_eq!(
+            cancel_detail(false, true),
+            "Nothing was saved and the file is still selected."
+        );
+        assert_eq!(cancel_detail(false, false), cancel_detail(false, true));
+    }
 }

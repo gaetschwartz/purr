@@ -220,6 +220,7 @@ fn Entry(record: HistoryRecord, audio: ResultAudio) -> Element {
                 model_label: entry.model_label.clone(),
                 language_text: language_text(entry.language.as_deref(), entry.language_origin),
                 took_seconds: entry.processing_seconds,
+                engine: None,
             },
             keeping: rsx! {
                 span {

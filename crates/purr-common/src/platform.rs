@@ -15,7 +15,7 @@ use std::{
 };
 
 use crate::{
-    accel::{AccelPolicy, SystemReport},
+    accel::{AccelPolicy, LastRun, SystemReport},
     audio_overview::AudioOverview,
     history::{
         entry::{HistoryEntry, HistoryId, HistoryRecord},
@@ -447,6 +447,8 @@ pub enum TranscriptionStatus {
     LoadingModel { loaded_bytes: u64, total_bytes: u64 },
     /// The model is ready and speech is being decoded; segments follow
     Transcribing,
+    /// The hardware the engine settled on, reported once the model has loaded
+    Engine { run: LastRun },
     /// The platform recognised the spoken language (a Whisper language code)
     LanguageDetected { language: String },
     /// Transcription in progress; `text` is the whole current text of segment `chunk_index`

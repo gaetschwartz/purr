@@ -4,17 +4,18 @@ use crate::{
         group::{Group, Item, ItemAction, TileColor},
         icon::IconName,
     },
-    platform::IS_WEB,
-    views::about::AboutSheet,
+    views::{
+        about::{AboutSheet, PLATFORM, VERSION},
+        shortcuts_sheet::ShortcutsSheet,
+    },
 };
 use dioxus::prelude::*;
-
-const PLATFORM: &str = if IS_WEB { "Web" } else { "Desktop" };
 
 /// Privacy, the version, and the reset button.
 #[component]
 pub fn AboutSection(on_reset: EventHandler<()>) -> Element {
     let mut privacy_open = use_signal(|| false);
+    let mut keys_open = use_signal(|| false);
 
     rsx! {
         div { class: "sect", id: SettingsSection::About.anchor(),
@@ -27,9 +28,16 @@ pub fn AboutSection(on_reset: EventHandler<()>) -> Element {
                     action: ItemAction::Press(EventHandler::new(move |_| privacy_open.set(true))),
                 }
                 Item {
+                    icon: IconName::Keyboard,
+                    tile: TileColor::Gray,
+                    title: "Keyboard shortcuts",
+                    value: "?",
+                    action: ItemAction::Press(EventHandler::new(move |_| keys_open.set(true))),
+                }
+                Item {
                     icon: IconName::Cat,
                     tile: TileColor::Indigo,
-                    title: "Purr {env!(\"CARGO_PKG_VERSION\")}",
+                    title: "Purr {VERSION}",
                     subtitle: PLATFORM,
                 }
             }
@@ -44,6 +52,9 @@ pub fn AboutSection(on_reset: EventHandler<()>) -> Element {
         }
         if privacy_open() {
             AboutSheet { on_close: move |()| privacy_open.set(false) }
+        }
+        if keys_open() {
+            ShortcutsSheet { on_close: move |()| keys_open.set(false) }
         }
     }
 }

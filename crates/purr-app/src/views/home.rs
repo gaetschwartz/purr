@@ -1,5 +1,7 @@
 //! The Transcribe screen: first run, the chosen file, the run and the result, in place on `/`.
 
+mod cancelled_notice;
+mod engine_notice;
 mod failed;
 mod first_run;
 mod model_notice;

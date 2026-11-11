@@ -25,6 +25,14 @@ pub enum GpuSupport {
     Available { name: String, shader_f16: bool },
 }
 
+impl GpuSupport {
+    /// Whether device detection found a graphics card.
+    #[must_use]
+    pub const fn found(&self) -> bool {
+        matches!(self, Self::Available { .. })
+    }
+}
+
 const ONLINE_WATCHER: &str = "const send = () => dioxus.send(navigator.onLine); send(); window.addEventListener('online', send); window.addEventListener('offline', send); await new Promise(() => {});";
 
 const CANCEL_SETTLE: Duration = Duration::from_millis(300);

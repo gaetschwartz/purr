@@ -11,3 +11,4 @@ pub mod result_frame;
 pub mod settings;
 pub mod settings_load_banner;
 pub mod shell;
+pub mod shortcuts_sheet;

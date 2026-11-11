@@ -1,3 +1,4 @@
+use super::engine_notice::EngineNotice;
 use crate::{
     components::{
         audio_player::use_audio_player,
@@ -107,6 +108,10 @@ pub fn ResultView(record: RunRecord, completion: Completion) -> Element {
                 model_label: record.model.label.clone(),
                 language_text,
                 took_seconds: completion.processing_seconds,
+                engine: record.run.engine.as_ref().map(|ran| ran.backend.label()),
+            },
+            notice: rsx! {
+                EngineNotice { record: record.clone() }
             },
             keeping,
             segments,

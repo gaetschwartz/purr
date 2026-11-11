@@ -530,7 +530,10 @@ impl DesktopRun {
             Phase::Load { audio_path, config } => {
                 match purr_core::transcribe_file_stream(&audio_path, config).await {
                     Ok(stream) => {
-                        *self.last_run.lock() = Some(last_run(stream.accel()));
+                        let ran = last_run(stream.accel());
+                        *self.last_run.lock() = Some(ran.clone());
+                        self.pending
+                            .push_back(Ok(TranscriptionStatus::Engine { run: ran }));
                         self.pending
                             .push_back(Ok(TranscriptionStatus::Transcribing));
                         self.phase = Phase::Decode(stream);

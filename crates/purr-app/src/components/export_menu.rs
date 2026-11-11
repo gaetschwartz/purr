@@ -12,10 +12,12 @@ use crate::{
         IS_WEB,
         export::{SaveOutcome, TextFile, copy_to_clipboard, save_text_file},
     },
-    transcribe::export_format::{ExportDocument, ExportFormat, render},
+    settings_store::use_settings,
+    shortcuts::{Key, KeyChord, Shortcut, use_shortcut},
+    transcribe::export_format::{ExportDocument, export_file_name, render},
 };
 use dioxus::{core::spawn_forever, prelude::*};
-use purr_common::platform::TranscriptSegment;
+use purr_common::{export_format::ExportFormat, platform::TranscriptSegment};
 use std::rc::Rc;
 
 const PREVIEW_CHARS: usize = 1400;
@@ -49,7 +51,7 @@ impl ExportSource {
 
 fn save(source: &ExportSource, format: ExportFormat, toasts: Toasts) {
     let rendered = source.render(format);
-    let file_name = format.file_name(&source.file_name);
+    let file_name = export_file_name(format, &source.file_name);
     spawn_forever(async move {
         let saved = match rendered {
             Ok(content) => save_text_file(TextFile {
@@ -116,8 +118,20 @@ pub fn ExportMenu(
     id: String,
     source: ExportSource,
 ) -> Element {
+    let settings = use_settings();
+    let preferred = settings.with(|settings| settings.ui.export_format);
     let mut menu_open = use_signal(|| false);
     let mut sheet = use_signal(|| None::<ExportFormat>);
+    let can_export = !source.segments.is_empty();
+    use_shortcut(
+        Shortcut::new(KeyChord::primary(Key::Char('e')), "Export the transcript").in_inputs(),
+        move || {
+            if can_export {
+                menu_open.set(false);
+                sheet.set(Some(preferred));
+            }
+        },
+    );
 
     rsx! {
         Button {
@@ -142,9 +156,10 @@ pub fn ExportMenu(
                         PopoverOption {
                             key: "{format.extension()}",
                             title: format.label(),
+                            subtitle: (format == preferred).then_some("Your default".to_owned()),
                             trailing: format.short_name(),
                             leading: rsx! {
-                                Icon { name: IconName::Doc, size: IconSize::Small }
+                                Icon { name: if format == preferred { IconName::Check } else { IconName::Doc }, size: IconSize::Small }
                             },
                             onselect: move |()| {
                                 menu_open.set(false);
@@ -186,7 +201,7 @@ pub fn ExportSheet(
         Ok(text) => text.clone(),
         Err(error) => format!("Nothing to preview: {error}"),
     };
-    let file_name = format.file_name(&source.file_name);
+    let file_name = export_file_name(format, &source.file_name);
     let copy_source = source.clone();
     rsx! {
         Sheet {

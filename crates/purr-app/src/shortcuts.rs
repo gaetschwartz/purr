@@ -1,7 +1,9 @@
 //! Keyboard shortcuts: views register chords with [`use_shortcut`] while they are mounted.
 //!
 //! One document listener reports key presses that match a registered chord; it never fires while
-//! a popover or sheet is open, nor in text fields unless the shortcut opts in with `in_inputs`.
+//! a popover or sheet is open, nor in text fields unless the shortcut opts in with `in_inputs`,
+//! nor on buttons and links when the shortcut says `off_controls`. Each shortcut carries the
+//! label the shortcuts sheet shows, so the sheet lists exactly what is registered.
 
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -71,6 +73,26 @@ impl Key {
         }
     }
 
+    /// The text on the key cap.
+    #[must_use]
+    pub fn cap(self) -> String {
+        match self {
+            Self::Char(c) => c.to_uppercase().collect(),
+            Self::Enter => "Enter".to_owned(),
+            Self::Escape => "Esc".to_owned(),
+            Self::Space => "Space".to_owned(),
+            Self::Tab => "Tab".to_owned(),
+            Self::Backspace => "Backspace".to_owned(),
+            Self::Delete => "Delete".to_owned(),
+            Self::Home => "Home".to_owned(),
+            Self::End => "End".to_owned(),
+            Self::ArrowUp => "↑".to_owned(),
+            Self::ArrowDown => "↓".to_owned(),
+            Self::ArrowLeft => "←".to_owned(),
+            Self::ArrowRight => "→".to_owned(),
+        }
+    }
+
     /// Punctuation such as `?` needs Shift on some layouts and not others, so Shift is not compared.
     const fn ignores_shift(self) -> bool {
         match self {
@@ -136,24 +158,54 @@ impl KeyChord {
         self.alt = true;
         self
     }
+
+    /// The key caps to draw, modifiers first; `primary_label` names Cmd or Ctrl on this computer.
+    #[must_use]
+    pub fn caps(&self, primary_label: &str) -> Vec<String> {
+        let mut caps = Vec::new();
+        if self.primary {
+            caps.push(primary_label.to_owned());
+        }
+        if self.alt {
+            caps.push(if primary_label == "⌘" { "⌥" } else { "Alt" }.to_owned());
+        }
+        if self.shift {
+            caps.push("Shift".to_owned());
+        }
+        caps.push(self.key.cap());
+        caps
+    }
 }
 
-/// A chord and where it applies.
+/// A chord, what it does and where it applies.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Shortcut {
     pub chord: KeyChord,
+    /// What the shortcut does, as the shortcuts sheet words it.
+    pub label: &'static str,
     /// Also fire while focus is in a text field, select or editable region.
     pub in_inputs: bool,
+    /// Stay silent while focus is on a button, link or other control that uses the key itself.
+    pub off_controls: bool,
 }
 
 impl Shortcut {
     /// A shortcut that stays out of the way of text fields.
     #[must_use]
-    pub const fn new(chord: KeyChord) -> Self {
+    pub const fn new(chord: KeyChord, label: &'static str) -> Self {
         Self {
             chord,
+            label,
             in_inputs: false,
+            off_controls: false,
         }
+    }
+
+    /// Keeps the shortcut off buttons, links and other controls, for keys such as Space.
+    #[must_use]
+    pub const fn off_controls(mut self) -> Self {
+        self.off_controls = true;
+        self
     }
 
     /// Lets the shortcut fire in text fields too, for chords that never type text (Cmd+O).
@@ -169,6 +221,7 @@ impl Shortcut {
 pub struct KeyPress {
     pub chord: KeyChord,
     pub in_editable: bool,
+    pub on_control: bool,
     pub modal_open: bool,
 }
 
@@ -179,6 +232,7 @@ pub fn matches(shortcut: &Shortcut, press: &KeyPress) -> bool {
     let got = press.chord;
     !press.modal_open
         && (shortcut.in_inputs || !press.in_editable)
+        && !(shortcut.off_controls && press.on_control)
         && wanted.key == got.key
         && wanted.primary == got.primary
         && wanted.alt == got.alt
@@ -188,6 +242,25 @@ pub fn matches(shortcut: &Shortcut, press: &KeyPress) -> bool {
 /// Identifies a registered shortcut.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ShortcutId(u64);
+
+/// A registered shortcut as the shortcuts sheet lists it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ShortcutInfo {
+    pub chord: KeyChord,
+    pub label: &'static str,
+}
+
+/// Keeps one entry per chord, the latest, in the order the chords first appeared.
+fn one_per_chord(entries: impl IntoIterator<Item = ShortcutInfo>) -> Vec<ShortcutInfo> {
+    let mut listed: Vec<ShortcutInfo> = Vec::new();
+    for info in entries {
+        match listed.iter_mut().find(|known| known.chord == info.chord) {
+            Some(known) => *known = info,
+            None => listed.push(info),
+        }
+    }
+    listed
+}
 
 /// The shortcuts of the mounted views; the latest registration wins a shared chord.
 #[derive(Default)]
@@ -225,6 +298,15 @@ impl ShortcutRegistry {
             .map(|(_, _, handler)| *handler)
     }
 
+    /// The shortcuts in force, one per chord, in registration order.
+    #[must_use]
+    pub fn listing(&self) -> Vec<ShortcutInfo> {
+        one_per_chord(self.entries.iter().map(|(_, shortcut, _)| ShortcutInfo {
+            chord: shortcut.chord,
+            label: shortcut.label,
+        }))
+    }
+
     fn wire_chords(&self) -> Vec<WireChord> {
         self.entries
             .iter()
@@ -235,6 +317,7 @@ impl ShortcutRegistry {
                 alt: shortcut.chord.alt,
                 any_shift: shortcut.chord.key.ignores_shift(),
                 in_inputs: shortcut.in_inputs,
+                off_controls: shortcut.off_controls,
             })
             .collect()
     }
@@ -248,6 +331,7 @@ struct WireChord {
     alt: bool,
     any_shift: bool,
     in_inputs: bool,
+    off_controls: bool,
 }
 
 #[derive(Deserialize)]
@@ -257,6 +341,7 @@ struct WirePress {
     shift: bool,
     alt: bool,
     editable: bool,
+    control: bool,
     modal: bool,
 }
 
@@ -270,6 +355,7 @@ impl WirePress {
                 alt: self.alt,
             },
             in_editable: self.editable,
+            on_control: self.control,
             modal_open: self.modal,
         })
     }
@@ -277,6 +363,7 @@ impl WirePress {
 
 const LISTENER: &str = r"
 let chords = [];
+const control = (target) => !!target && !!target.closest && !!target.closest('button,a[href],summary,audio,video,[role=button],[role=link],[role=slider],[role=switch],[role=checkbox],[role=radio],[role=menuitem],[role=option],[role=tab]');
 const editable = (target) => !!target && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName));
 document.addEventListener('keydown', (event) => {
   if (event.defaultPrevented || event.isComposing) return;
@@ -286,12 +373,13 @@ document.addEventListener('keydown', (event) => {
     shift: event.shiftKey,
     alt: event.altKey,
     editable: editable(event.target),
+    control: control(event.target),
     modal: !!document.querySelector('.app > .layer'),
   };
   if (press.modal) return;
   const key = event.key.toLowerCase();
   const hit = chords.some((chord) => chord.key === key && chord.primary === press.primary && chord.alt === press.alt
-    && (chord.any_shift || chord.shift === press.shift) && (chord.in_inputs || !press.editable));
+    && (chord.any_shift || chord.shift === press.shift) && (chord.in_inputs || !press.editable) && !(chord.off_controls && press.control));
   if (!hit) return;
   event.preventDefault();
   dioxus.send(press);
@@ -336,6 +424,11 @@ pub fn use_shortcut_provider() {
     });
 }
 
+/// The shortcuts in force right now (subscribes the caller).
+pub fn use_shortcut_listing() -> Vec<ShortcutInfo> {
+    use_context::<Signal<ShortcutRegistry>>().read().listing()
+}
+
 /// Runs `handler` when `shortcut` is pressed, for as long as the calling component is mounted.
 pub fn use_shortcut(shortcut: Shortcut, mut handler: impl FnMut() + 'static) {
     let mut registry = use_context::<Signal<ShortcutRegistry>>();
@@ -352,6 +445,7 @@ mod tests {
         KeyPress {
             chord,
             in_editable: false,
+            on_control: false,
             modal_open: false,
         }
     }
@@ -367,7 +461,7 @@ mod tests {
 
     #[test]
     fn modifiers_must_match() {
-        let open = Shortcut::new(KeyChord::primary(Key::Char('o')));
+        let open = Shortcut::new(KeyChord::primary(Key::Char('o')), "Open");
         assert!(matches(&open, &press(KeyChord::primary(Key::Char('o')))));
         assert!(!matches(&open, &press(KeyChord::key(Key::Char('o')))));
         assert!(!matches(
@@ -378,7 +472,7 @@ mod tests {
 
     #[test]
     fn punctuation_ignores_shift() {
-        let help = Shortcut::new(KeyChord::key(Key::Char('?')));
+        let help = Shortcut::new(KeyChord::key(Key::Char('?')), "Help");
         assert!(matches(
             &help,
             &press(KeyChord::key(Key::Char('?')).with_shift())
@@ -387,13 +481,13 @@ mod tests {
 
     #[test]
     fn text_fields_and_open_sheets_block_shortcuts_unless_allowed() {
-        let help = Shortcut::new(KeyChord::key(Key::Char('?')));
+        let help = Shortcut::new(KeyChord::key(Key::Char('?')), "Help");
         let typing = KeyPress {
             in_editable: true,
             ..press(KeyChord::key(Key::Char('?')))
         };
         assert!(!matches(&help, &typing));
-        let open = Shortcut::new(KeyChord::primary(Key::Char('o'))).in_inputs();
+        let open = Shortcut::new(KeyChord::primary(Key::Char('o')), "Open").in_inputs();
         let in_field = KeyPress {
             in_editable: true,
             ..press(KeyChord::primary(Key::Char('o')))
@@ -404,5 +498,52 @@ mod tests {
             ..press(KeyChord::primary(Key::Char('o')))
         };
         assert!(!matches(&open, &behind_sheet));
+    }
+
+    #[test]
+    fn a_key_that_buttons_use_stays_silent_on_them() {
+        let play = Shortcut::new(KeyChord::key(Key::Space), "Play or pause").off_controls();
+        assert!(matches(&play, &press(KeyChord::key(Key::Space))));
+        let on_button = KeyPress {
+            on_control: true,
+            ..press(KeyChord::key(Key::Space))
+        };
+        assert!(!matches(&play, &on_button));
+        let anywhere = Shortcut::new(KeyChord::primary(Key::Char('o')), "Open");
+        let on_button = KeyPress {
+            on_control: true,
+            ..press(KeyChord::primary(Key::Char('o')))
+        };
+        assert!(matches(&anywhere, &on_button));
+    }
+
+    #[test]
+    fn key_caps_list_modifiers_first() {
+        let copy = KeyChord::primary(Key::Char('c')).with_shift();
+        assert_eq!(copy.caps("Ctrl"), ["Ctrl", "Shift", "C"]);
+        assert_eq!(copy.caps("⌘"), ["⌘", "Shift", "C"]);
+        let nav = KeyChord::key(Key::Char('1')).with_alt();
+        assert_eq!(nav.caps("Ctrl"), ["Alt", "1"]);
+        assert_eq!(nav.caps("⌘"), ["⌥", "1"]);
+        assert_eq!(KeyChord::key(Key::Space).caps("Ctrl"), ["Space"]);
+        assert_eq!(KeyChord::key(Key::Char('?')).caps("Ctrl"), ["?"]);
+    }
+
+    #[test]
+    fn the_listing_shows_the_latest_shortcut_of_a_shared_chord() {
+        let open = KeyChord::primary(Key::Char('o'));
+        let help = KeyChord::key(Key::Char('?'));
+        let info = |chord, label| ShortcutInfo { chord, label };
+        assert_eq!(
+            one_per_chord([
+                info(open, "Open a file"),
+                info(help, "Show shortcuts"),
+                info(open, "Open another file"),
+            ]),
+            [
+                info(open, "Open another file"),
+                info(help, "Show shortcuts")
+            ]
+        );
     }
 }

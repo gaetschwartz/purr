@@ -3,8 +3,16 @@ use crate::{
         brand_mark::BrandMark,
         icon::{Icon, IconName, IconSize},
     },
+    history::store::use_history,
+    hooks::use_models::use_models,
     main_app::{NavSection, Route},
-    views::{about::AboutSheet, settings_load_banner::SettingsLoadBanner},
+    model_catalog::listing::summarize,
+    platform::IS_WEB,
+    shortcuts::{Key, KeyChord, Shortcut, use_shortcut},
+    views::{
+        about::AboutSheet, settings_load_banner::SettingsLoadBanner,
+        shortcuts_sheet::ShortcutsSheet,
+    },
 };
 use dioxus::prelude::*;
 use std::rc::Rc;
@@ -51,6 +59,15 @@ const fn entry(section: NavSection) -> NavEntry {
     }
 }
 
+/// The chord that opens the screen numbered `digit`; browsers keep Ctrl+digit for their own tabs.
+const fn screen_chord(web: bool, digit: char) -> KeyChord {
+    if web {
+        KeyChord::key(Key::Char(digit)).with_alt()
+    } else {
+        KeyChord::primary(Key::Char(digit))
+    }
+}
+
 /// The tab bar has no Logs tab; Logs is reached from Settings, so Settings stays lit there.
 const fn tab_is_current(tab: NavSection, current: Option<NavSection>) -> bool {
     match (tab, current) {
@@ -74,8 +91,39 @@ const fn tab_is_current(tab: NavSection, current: Option<NavSection>) -> bool {
 pub fn Shell() -> Element {
     let route = use_route::<Route>();
     let current = NavSection::of(&route);
+    let navigator = use_navigator();
     let mut about_open = use_signal(|| false);
+    let mut keys_open = use_signal(|| false);
     let mut main_area = use_signal(|| None::<Rc<MountedData>>);
+
+    use_shortcut(
+        Shortcut::new(screen_chord(IS_WEB, '1'), "Go to Transcribe").in_inputs(),
+        move || {
+            navigator.push(Route::Home {});
+        },
+    );
+    use_shortcut(
+        Shortcut::new(screen_chord(IS_WEB, '2'), "Go to History").in_inputs(),
+        move || {
+            navigator.push(Route::History {});
+        },
+    );
+    use_shortcut(
+        Shortcut::new(screen_chord(IS_WEB, '3'), "Go to Models").in_inputs(),
+        move || {
+            navigator.push(Route::Models {});
+        },
+    );
+    use_shortcut(
+        Shortcut::new(KeyChord::primary(Key::Char(',')), "Open Settings").in_inputs(),
+        move || {
+            navigator.push(Route::Settings {});
+        },
+    );
+    use_shortcut(
+        Shortcut::new(KeyChord::key(Key::Char('?')), "Show the keyboard shortcuts"),
+        move || keys_open.set(true),
+    );
 
     let skip = move |_| {
         if let Some(main) = main_area() {
@@ -143,11 +191,26 @@ pub fn Shell() -> Element {
         if about_open() {
             AboutSheet { on_close: move |()| about_open.set(false) }
         }
+        if keys_open() {
+            ShortcutsSheet { on_close: move |()| keys_open.set(false) }
+        }
     }
 }
 
 #[component]
 fn NavLink(section: NavSection, current: Option<NavSection>) -> Element {
+    let history = use_history();
+    let models = use_models();
+    let count = match section {
+        NavSection::History => history
+            .listing()
+            .map_or(0, |listing| listing.summaries.len()),
+        NavSection::Models => models
+            .rows()
+            .and_then(Result::ok)
+            .map_or(0, |rows| summarize(&rows).installed),
+        NavSection::Transcribe | NavSection::Settings | NavSection::Logs => 0,
+    };
     let NavEntry {
         section,
         to,
@@ -163,6 +226,9 @@ fn NavLink(section: NavSection, current: Option<NavSection>) -> Element {
             aria_current: here.then_some("page"),
             Icon { name: icon }
             span { class: "nav-text", "{label}" }
+            if count > 0 {
+                span { class: "count tnum", "{count}" }
+            }
         }
     }
 }
@@ -185,6 +251,15 @@ fn TabLink(section: NavSection, current: Option<NavSection>) -> Element {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn browsers_get_alt_for_the_screen_shortcuts() {
+        assert_eq!(
+            screen_chord(true, '2'),
+            KeyChord::key(Key::Char('2')).with_alt()
+        );
+        assert_eq!(screen_chord(false, '2'), KeyChord::primary(Key::Char('2')));
+    }
 
     #[test]
     fn the_settings_tab_stays_lit_on_the_logs_page() {

@@ -1,4 +1,5 @@
 use super::{
+    cancelled_notice::CancelledNotice,
     model_notice::{ModelNotice, is_ready, selected_model},
     recent::Recent,
 };
@@ -13,12 +14,12 @@ use crate::{
         model_picker::ModelPill,
         page::Page,
     },
-    hooks::use_models::{GpuSupport, use_models},
+    hooks::use_models::use_models,
     platform::{IS_WEB, Platform as _, get_platform},
     settings_store::use_settings,
     shortcuts::{Key, KeyChord, Shortcut, use_shortcut},
     transcribe::{
-        chosen_file::OverviewState, language_choice::LanguageChoice,
+        chosen_file::OverviewState, engine::Planned, language_choice::LanguageChoice,
         session::use_transcribe_session, timing,
     },
     utils::{byte_size::ByteSize, file_kind::kind_label, primary_key::use_primary_key_label},
@@ -44,7 +45,7 @@ pub fn Start() -> Element {
     let primary_key = use_primary_key_label();
 
     use_shortcut(
-        Shortcut::new(KeyChord::primary(Key::Char('o'))).in_inputs(),
+        Shortcut::new(KeyChord::primary(Key::Char('o')), "Choose an audio file").in_inputs(),
         move || {
             document::eval(OPEN_FILE_CHOOSER);
         },
@@ -68,12 +69,15 @@ pub fn Start() -> Element {
         "Turn a recording into text. Nothing leaves this computer."
     };
     let engine = if IS_WEB {
-        "WebGPU"
+        "WebGPU".to_owned()
     } else {
-        match *models.gpu.read() {
-            GpuSupport::Available { .. } => "your GPU",
-            GpuSupport::Checking | GpuSupport::Unavailable => "the CPU",
-        }
+        let policy = settings.with(|settings| settings.performance.accel_policy());
+        Planned::of(
+            policy,
+            session.engine_memory().as_ref(),
+            models.gpu.read().found(),
+        )
+        .sentence()
     };
 
     let start = move |_| {
@@ -93,6 +97,9 @@ pub fn Start() -> Element {
                         session.choose(dropped);
                     }
                 },
+                if let Some(cancelled) = session.cancelled() {
+                    CancelledNotice { cancelled, session }
+                }
                 if let Some(problem) = session.problem() {
                     Banner {
                         tone: BannerTone::Bad,

@@ -1,3 +1,4 @@
+use super::engine_notice::EngineNotice;
 use crate::{
     components::{
         button::Button,
@@ -7,9 +8,10 @@ use crate::{
         progress_bar::{Progress, ProgressBar},
         spinner::Spinner,
     },
-    hooks::use_models::{GpuSupport, use_models},
+    hooks::use_models::use_models,
     platform::IS_WEB,
     transcribe::{
+        engine::Planned,
         language_choice::LanguageChoice,
         run::{ModelLoad, Stage},
         session::{RunRecord, use_transcribe_session},
@@ -44,10 +46,15 @@ pub fn Running(record: RunRecord) -> Element {
     let engine = if IS_WEB {
         "WebGPU"
     } else {
-        match *models.gpu.read() {
-            GpuSupport::Available { .. } => "GPU",
-            GpuSupport::Checking | GpuSupport::Unavailable => "CPU",
+        match &run.engine {
+            Some(ran) => Planned::of_backend(ran.backend),
+            None => Planned::of(
+                record.accel,
+                session.engine_memory().as_ref(),
+                models.gpu.read().found(),
+            ),
         }
+        .label()
     };
     let file_meta = [
         duration.map(timing::clock),
@@ -119,6 +126,7 @@ pub fn Running(record: RunRecord) -> Element {
                     "Cancel"
                 }
             },
+            EngineNotice { record: record.clone() }
             section { class: "card glass stack", style: "gap:16px", aria_label: "Progress",
                 div { class: "row",
                     span { class: "fileicon", style: "width:44px;height:44px;border-radius:12px",

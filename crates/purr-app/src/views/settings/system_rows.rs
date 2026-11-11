@@ -1,6 +1,8 @@
 //! The read-only system panel as plain rows, made from what the platform reports.
 
-use crate::{hooks::use_models::GpuSupport, utils::byte_size::ByteSize};
+use crate::{
+    hooks::use_models::GpuSupport, transcribe::engine::why_passed_over, utils::byte_size::ByteSize,
+};
 use purr_common::{
     accel::{
         AccelBackend, AccelSelection, BackendReport, BackendStatus, BackendUnavailable, CpuReport,
@@ -173,24 +175,6 @@ pub struct LastRunNote {
     pub fell_back: bool,
     pub title: String,
     pub detail: String,
-}
-
-fn why_passed_over(reason: &PassedReason) -> String {
-    match reason {
-        PassedReason::Unavailable(BackendUnavailable::NotBuilt) => {
-            "it is not part of this build".to_owned()
-        }
-        PassedReason::Unavailable(BackendUnavailable::NotBuiltOrNoDevice) => {
-            "it is not built in, or no device was found".to_owned()
-        }
-        PassedReason::Unavailable(BackendUnavailable::NoDevice) => {
-            "no usable device responded".to_owned()
-        }
-        PassedReason::Unavailable(BackendUnavailable::RuntimeLibraryMissing { library }) => {
-            format!("{library} is missing")
-        }
-        PassedReason::Failed(failure) => failure.clone(),
-    }
 }
 
 const fn expected_to_be_skipped(reason: &PassedReason) -> bool {

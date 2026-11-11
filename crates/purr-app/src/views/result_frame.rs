@@ -2,6 +2,7 @@
 //!
 //! A fresh run and a saved transcription both render through it.
 
+mod playback_shortcut;
 mod transcript_card;
 
 use crate::{
@@ -14,11 +15,12 @@ use crate::{
         toast::use_toasts,
     },
     shortcuts::{Key, KeyChord, Shortcut, use_shortcut},
-    transcribe::{export_format::ExportFormat, timing},
+    transcribe::timing,
     utils::primary_key::use_primary_key_label,
 };
 use dioxus::prelude::*;
-use purr_common::platform::TranscriptSegment;
+use playback_shortcut::PlaybackShortcut;
+use purr_common::{export_format::ExportFormat, platform::TranscriptSegment};
 use std::rc::Rc;
 use transcript_card::{SEARCH_ID, TranscriptCard};
 
@@ -29,6 +31,8 @@ pub struct ResultDetails {
     pub model_label: String,
     pub language_text: String,
     pub took_seconds: f64,
+    /// The hardware the run used, when the platform reported it.
+    pub engine: Option<&'static str>,
 }
 
 /// What to show where the player goes.
@@ -53,6 +57,8 @@ pub fn ResultFrame(
     details: ResultDetails,
     /// A last detail, such as where the transcription is kept.
     keeping: Element,
+    /// A banner above the details.
+    notice: Option<Element>,
     segments: Rc<Vec<TranscriptSegment>>,
     export: ExportSource,
     audio: ResultAudio,
@@ -62,11 +68,15 @@ pub fn ResultFrame(
 
     let copy_source = export.clone();
     use_shortcut(
-        Shortcut::new(KeyChord::primary(Key::Char('c')).with_shift()).in_inputs(),
+        Shortcut::new(
+            KeyChord::primary(Key::Char('c')).with_shift(),
+            "Copy the transcript",
+        )
+        .in_inputs(),
         move || copy_export(&copy_source, ExportFormat::Txt, toasts),
     );
     use_shortcut(
-        Shortcut::new(KeyChord::primary(Key::Char('f'))).in_inputs(),
+        Shortcut::new(KeyChord::primary(Key::Char('f')), "Search the transcript").in_inputs(),
         move || {
             document::eval(&format!("document.getElementById({SEARCH_ID:?})?.focus()"));
         },
@@ -75,6 +85,10 @@ pub fn ResultFrame(
     let speed = timing::speed(details.duration_seconds, details.took_seconds)
         .map(|speed| format!(" · {} real time", timing::speed_text(speed)))
         .unwrap_or_default();
+    let engine = details
+        .engine
+        .map(|engine| format!(" · {engine}"))
+        .unwrap_or_default();
     let copy_now = export.clone();
     let player = match &audio {
         ResultAudio::Player { player, .. } => Some(*player),
@@ -82,7 +96,7 @@ pub fn ResultFrame(
     };
     let hint = if player.is_some() {
         format!(
-            "Click any line to play from there. {primary_key}+F searches, {primary_key}+Shift+C copies everything."
+            "Click any line to play from there. Space plays or pauses. {primary_key}+F searches, {primary_key}+Shift+C copies everything."
         )
     } else {
         format!("{primary_key}+F searches, {primary_key}+Shift+C copies everything.")
@@ -106,6 +120,7 @@ pub fn ResultFrame(
                     ExportMenu { id: "export-btn", source: export }
                 }
             },
+            {notice}
             div { class: "metas tnum", aria_label: "Details",
                 span {
                     Icon { name: IconName::Clock }
@@ -121,7 +136,7 @@ pub fn ResultFrame(
                 }
                 span {
                     Icon { name: IconName::Bolt }
-                    "Took {timing::took(details.took_seconds)}{speed}"
+                    "Took {timing::took(details.took_seconds)}{speed}{engine}"
                 }
                 {keeping}
             }
@@ -138,6 +153,9 @@ pub fn ResultFrame(
                         span { "{note}" }
                     }
                 },
+            }
+            if let Some(player) = player {
+                PlaybackShortcut { player }
             }
             TranscriptCard { segments: Rc::clone(&segments), player }
             p { class: "foot", style: "text-align:center", "{hint}" }
