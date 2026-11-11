@@ -14,6 +14,7 @@ use crate::{
     },
     hooks::use_models::{GpuSupport, ModelsHandle, use_models},
     model_catalog::{
+        entry::Precision,
         family::ModelGroup,
         format,
         listing::{Listing, ModelQuery, ModelRow, active_download, build_listing, summarize},
@@ -71,6 +72,9 @@ fn Catalog(models: ModelsHandle, rows: Vec<ModelRow>, selected: Option<String>) 
     let mut query = use_signal(ModelQuery::default);
     let mut delete_target = use_signal(|| None::<String>);
 
+    let has_q5 = rows
+        .iter()
+        .any(|row| row.entry.precision == Precision::Quantized { bits: 5 });
     let summary = summarize(&rows);
     let headline = headline(&rows, selected.as_deref());
     let groups: Vec<ModelGroup> = ModelGroup::ORDER
@@ -139,7 +143,10 @@ fn Catalog(models: ModelsHandle, rows: Vec<ModelRow>, selected: Option<String>) 
             }
         }
         p { class: "foot", style: "padding-left:16px",
-            "Models download over HTTPS and are checked against a published checksum. Q5 means quantized to 5-bit: about a third of the size, with a small loss in accuracy."
+            "Models download over HTTPS and are checked against a published checksum."
+            if has_q5 {
+                " Q5 means quantized to 5-bit: about a third of the size, with a small loss in accuracy."
+            }
         }
         if let Some(target) = delete_target() {
             if let Some(row) = rows.iter().find(|row| row.entry.id == target) {

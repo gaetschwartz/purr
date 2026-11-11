@@ -674,3 +674,54 @@ impl DesktopPlatformImpl {
         Ok(settings_dir.join("settings.toml"))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model_catalog::{
+        entry::{ModelEntry, Precision},
+        family::ModelGroup,
+    };
+    use purr_core::model::registry::Registry;
+    use std::collections::HashSet;
+
+    fn entries() -> Result<Vec<ModelEntry>, Box<dyn std::error::Error>> {
+        let manager = ModelManager::with_registry(PathBuf::new(), Registry::embedded()?);
+        Ok(manager
+            .registry()
+            .models()
+            .iter()
+            .map(|spec| ModelEntry::from_info(&model_info(&manager, spec, false)))
+            .collect())
+    }
+
+    #[test]
+    fn every_desktop_model_lands_in_a_known_group() -> Result<(), Box<dyn std::error::Error>> {
+        let unknown: Vec<String> = entries()?
+            .into_iter()
+            .filter(|entry| entry.group == ModelGroup::Other)
+            .map(|entry| entry.id)
+            .collect();
+        assert_eq!(unknown, Vec::<String>::new());
+        Ok(())
+    }
+
+    #[test]
+    fn desktop_model_labels_are_unique() -> Result<(), Box<dyn std::error::Error>> {
+        let entries = entries()?;
+        let labels: HashSet<&str> = entries.iter().map(|entry| entry.label.as_str()).collect();
+        assert_eq!(labels.len(), entries.len());
+        Ok(())
+    }
+
+    #[test]
+    fn desktop_precisions_are_all_understood() -> Result<(), Box<dyn std::error::Error>> {
+        let unknown: Vec<String> = entries()?
+            .into_iter()
+            .filter(|entry| matches!(entry.precision, Precision::Other(_)))
+            .map(|entry| entry.id)
+            .collect();
+        assert_eq!(unknown, Vec::<String>::new());
+        Ok(())
+    }
+}

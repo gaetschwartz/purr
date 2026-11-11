@@ -167,8 +167,9 @@ impl ModelEntry {
         }
         match (&self.precision, self.language) {
             (Precision::Other(_), _) => self.description.clone(),
-            (Precision::Quantized { .. }, _) => {
-                "Quantized: about a third of the size, slightly less accurate.".to_owned()
+            (Precision::Quantized { bits }, _) => {
+                let size = if *bits >= 8 { "half" } else { "a third" };
+                format!("Quantized: about {size} of the size, slightly less accurate.")
             }
             (Precision::Mixed, Language::Multilingual) => {
                 "Compressed for the browser. All 99 languages.".to_owned()
@@ -281,6 +282,11 @@ mod tests {
         assert_eq!(
             quantized.hint(),
             "Quantized: about a third of the size, slightly less accurate."
+        );
+        let eight_bit = ModelEntry::from_info(&info("small-q8_0", "small", "q8_0", false));
+        assert_eq!(
+            eight_bit.hint(),
+            "Quantized: about half of the size, slightly less accurate."
         );
         let old = ModelEntry::from_info(&info("large-v1", "large-v1", "fp16", false));
         assert_eq!(old.hint(), "First large model, superseded by v3.");
