@@ -1,4 +1,4 @@
-//! Decodes a stored upload for its length and waveform, with the decoder the platform transcribes with.
+//! Decodes a stored upload for its length and waveform, the way the platform reads it to transcribe.
 
 use crate::transcribe::waveform::{BARS, peaks};
 use bytes::Bytes;
@@ -19,20 +19,31 @@ pub struct Decoded {
     pub peaks: Vec<f32>,
 }
 
-/// Decodes the upload with FFmpeg, from the copy the platform stored.
+/// Decodes the copy the platform stored through the same chunk stream the transcription reads.
 #[cfg(all(feature = "desktop", not(purr_web)))]
 pub async fn decode(file_id: &FileId, _bytes: Bytes) -> miette::Result<Decoded> {
-    let audio = purr_core::AudioProcessor::load_audio(super::platform_impl::stored_upload(file_id))
-        .await
-        .map_err(|error| miette::miette!("{error}"))?;
-    let duration_seconds = if audio.duration > 0.0 {
-        f64::from(audio.duration)
-    } else {
-        audio.samples.len() as f64 / f64::from(audio.sample_rate.max(1))
-    };
+    use futures::StreamExt as _;
+
+    let mut stream =
+        purr_core::AudioProcessor::stream_file(super::platform_impl::stored_upload(file_id))
+            .await
+            .map_err(|error| miette::miette!("{error}"))?;
+    let mut samples = Vec::new();
+    let mut sample_rate = 0;
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|error| miette::miette!("{error}"))?;
+        sample_rate = chunk.sample_rate;
+        samples.extend_from_slice(&chunk.samples);
+        if chunk.is_final {
+            break;
+        }
+    }
+    if sample_rate == 0 {
+        return Err(miette::miette!("the file holds no audio"));
+    }
     Ok(Decoded {
-        duration_seconds,
-        peaks: peaks(&audio.samples, BARS),
+        duration_seconds: samples.len() as f64 / f64::from(sample_rate),
+        peaks: peaks(&samples, BARS),
     })
 }
 
