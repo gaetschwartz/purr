@@ -29,7 +29,7 @@ use std::{
 use tracing::{Level, debug, error, info, warn};
 use tracing_subscriber::{EnvFilter, fmt::time::Uptime};
 
-const APP_NAME: &str = env!("CARGO_PKG_NAME");
+const APP_NAME: &str = env!("CARGO_BIN_NAME");
 
 shadow!(build);
 
