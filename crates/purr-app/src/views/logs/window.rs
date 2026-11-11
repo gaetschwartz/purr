@@ -4,11 +4,14 @@ use std::{ops::Range, sync::Arc};
 /// How many rows the list shows at first, and how many more "Show earlier" adds.
 pub const ROW_STEP: usize = 400;
 
+/// The most rows a pinned window keeps while entries pile up below it.
+const PINNED_ROWS: usize = 2000;
+
 /// Which rows of the matching entries are on screen.
 ///
 /// While following, the window is the newest `limit` entries and slides as new ones arrive.
 /// Once following stops it is pinned to the entry it starts at, so the rows being read stay put
-/// and new entries only extend it at the end.
+/// and new entries extend it at the end, up to a bound after which it slides again.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RowWindow {
     limit: usize,
@@ -32,10 +35,11 @@ impl RowWindow {
         let start = self.pinned_from.map_or_else(
             || len.saturating_sub(self.limit),
             |id| {
-                entries
+                let pinned = entries
                     .iter()
                     .position(|entry| entry.id >= id)
-                    .unwrap_or(len)
+                    .unwrap_or(len);
+                pinned.max(len.saturating_sub(self.limit.max(PINNED_ROWS)))
             },
         );
         start..len
@@ -64,8 +68,9 @@ impl RowWindow {
                 .get(start.saturating_sub(ROW_STEP))
                 .map(|entry| entry.id)
         });
+        let shown = entries.len().saturating_sub(start);
         Self {
-            limit: self.limit.saturating_add(ROW_STEP),
+            limit: self.limit.max(shown).saturating_add(ROW_STEP),
             pinned_from,
         }
     }
@@ -126,6 +131,31 @@ mod tests {
         let window = RowWindow::default().pinned(&list, true);
         let trimmed = entries(701..=1100);
         assert_eq!(window.range(&trimmed), 0..400);
+    }
+
+    #[test]
+    fn a_pinned_window_stops_growing_at_its_bound() {
+        let list = entries(1..=1000);
+        let window = RowWindow::default().pinned(&list, true);
+        let piled_up = entries(1..=5000);
+        assert_eq!(window.range(&piled_up), 3000..5000);
+    }
+
+    #[test]
+    fn a_pinned_window_whose_first_entry_was_evicted_stays_bounded() {
+        let list = entries(1..=1000);
+        let window = RowWindow::default().pinned(&list, true);
+        let full_capture = entries(5001..=15000);
+        assert_eq!(window.range(&full_capture), 8000..10000);
+    }
+
+    #[test]
+    fn showing_earlier_from_a_bounded_window_still_adds_rows() {
+        let list = entries(1..=1000);
+        let window = RowWindow::default().pinned(&list, true);
+        let piled_up = entries(1..=5000);
+        let earlier = window.earlier(&piled_up);
+        assert_eq!(earlier.range(&piled_up), 2600..5000);
     }
 
     #[test]

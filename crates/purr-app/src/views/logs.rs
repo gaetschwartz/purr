@@ -17,7 +17,7 @@ use crate::{
     main_app::Route,
     platform::{
         get_platform,
-        logging::{env_overrides_log_level, get_logs_storage},
+        logging::{applied_log_level, env_overrides_log_level, get_logs_storage},
     },
     utils::delay::sleep,
 };
@@ -41,6 +41,16 @@ const fn level_name(level: &LogLevel) -> &'static str {
         LogLevel::Debug => "Debug",
         LogLevel::Trace => "Trace",
     }
+}
+
+const FOCUS_LIST: &str =
+    "requestAnimationFrame(() => document.getElementById('loglist')?.focus());";
+
+fn recorded_at(level: &LogLevel) -> String {
+    format!(
+        "Recorded at {} level. Logs stay on this device.",
+        level_name(level)
+    )
 }
 
 struct Tracker {
@@ -138,13 +148,16 @@ pub fn Logs() -> Element {
         document::eval(DISPOSE_WATCHER);
     });
 
-    let subtitle = match (env_overrides_log_level(), &*settings.read()) {
-        (true, _) => "Recorded at the level RUST_LOG sets. Logs stay on this device.".to_owned(),
-        (false, Some(Ok(settings))) => format!(
-            "Recorded at {} level. Logs stay on this device.",
-            level_name(&settings.logging.level)
-        ),
-        (false, Some(Err(_)) | None) => "Logs stay on this device.".to_owned(),
+    let saved_level = match &*settings.read() {
+        Some(Ok(settings)) => Some(settings.logging.level.clone()),
+        Some(Err(_)) | None => None,
+    };
+    let subtitle = match (applied_log_level(), env_overrides_log_level(), saved_level) {
+        (Some(level), _, _) | (None, false, Some(level)) => recorded_at(&level),
+        (None, true, _) => {
+            "Recorded at the level RUST_LOG sets. Logs stay on this device.".to_owned()
+        }
+        (None, false, None) => "Logs stay on this device.".to_owned(),
     };
     let settings_error = match &*settings.read() {
         Some(Err(error)) => Some(error.to_string()),
@@ -168,6 +181,7 @@ pub fn Logs() -> Element {
                     on_cleared: move |()| {
                         sync.call(());
                         tracker.announcer.set(Announcer::default());
+                        document::eval(FOCUS_LIST);
                     },
                 }
             },
