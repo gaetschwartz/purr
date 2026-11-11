@@ -8,25 +8,36 @@ env.allowLocalModels = false;
 env.backends.onnx.logLevel = "error";
 
 // Real PipelineFactory implementation following whisper-web patterns
+function modelKey(model) {
+    return `${model.repo}@${model.revision}:${model.encoder_dtype}/${model.decoder_dtype}`;
+}
+
+function requireModel(model) {
+    const fields = ["repo", "revision", "encoder_dtype", "decoder_dtype"];
+    const missing = fields.filter((field) => !model?.[field]);
+    if (missing.length > 0) {
+        throw new Error(`Pinned model is missing ${missing.join(", ")}`);
+    }
+    return model;
+}
+
 class PipelineFactory {
     static task = null;
-    static model = null;
+    static key = null;
     static instance = null;
 
-    constructor(tokenizer, model) {
-        this.tokenizer = tokenizer;
-        this.model = model;
-    }
-
-    static async getInstance(progress_callback = null) {
+    static async getInstance(model, progress_callback = null) {
+        const key = modelKey(model);
+        if (this.key !== key) {
+            this.dispose();
+            this.key = key;
+        }
         if (this.instance === null) {
-            this.instance = pipeline(this.task, this.model, {
+            this.instance = pipeline(this.task, model.repo, {
+                revision: model.revision,
                 dtype: {
-                    encoder_model:
-                        this.model === "onnx-community/whisper-large-v3-turbo"
-                            ? "fp16"
-                            : "fp32",
-                    decoder_model_merged: "q4", // or 'fp32' ('fp16' is broken)
+                    encoder_model: model.encoder_dtype,
+                    decoder_model_merged: model.decoder_dtype,
                 },
                 device: "webgpu",
                 progress_callback,
@@ -50,7 +61,6 @@ class PipelineFactory {
 
 class AutomaticSpeechRecognitionPipelineFactory extends PipelineFactory {
     static task = "automatic-speech-recognition";
-    static model = null;
 }
 
 // Global worker state
@@ -138,8 +148,7 @@ async function handleInitialize(message) {
         // Store config
         workerConfig = {
             model_config: {
-                model_name: config.model_name || "openai/whisper-tiny.en",
-                quantized: config.quantized !== false,
+                model: requireModel(config.model),
                 language: config.language,
                 translate: config.translate || false,
                 chunk_size: config.chunk_size || 30 * 16000,
@@ -198,7 +207,7 @@ async function handleStartTranscription(message) {
         // Real transcription using @huggingface/transformers with enhanced configuration
         await transcribeAudio({
             audio: audioSamples,
-            model: workerConfig.model_config.model_name,
+            model: workerConfig.model_config.model,
             subtask: translate ? "translate" : "transcribe",
             language: language || workerConfig.model_config.language,
             // Enhanced transcription options
@@ -226,7 +235,7 @@ async function handleStartTranscription(message) {
                         type: error.constructor.name,
                         stack: error.stack?.split('\n').slice(0, 5).join('\n'),
                         audioSampleCount: audioSamples?.length || 0,
-                        model: workerConfig?.model_config?.model_name || 'unknown',
+                        model: workerConfig?.model_config?.model?.repo || 'unknown',
                         webgpuAvailable: !!webgpuDevice
                     }
                 }
@@ -248,18 +257,9 @@ async function handleCancelTranscription(message) {
 
 // Real transcription function following whisper-web patterns exactly
 const transcribeAudio = async ({ audio, model, subtask, language }, sessionId, requestId) => {
-    const isDistilWhisper = model.startsWith("distil-whisper/");
+    const isDistilWhisper = model.repo.startsWith("distil-whisper/");
 
     const p = AutomaticSpeechRecognitionPipelineFactory;
-    if (p.model !== model) {
-        // Invalidate model if different
-        p.model = model;
-
-        if (p.instance !== null) {
-            (await p.getInstance()).dispose();
-            p.instance = null;
-        }
-    }
 
     // Send starting status
     self.postMessage({
@@ -270,7 +270,7 @@ const transcribeAudio = async ({ audio, model, subtask, language }, sessionId, r
     });
 
     // Load transcriber model with real progress reporting
-    const transcriber = await p.getInstance((data) => {
+    const transcriber = await p.getInstance(model, (data) => {
         if (data && data.progress !== undefined) {
             // Real progress reporting from model loading
             self.postMessage({

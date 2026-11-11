@@ -9,9 +9,10 @@ use bytes::Bytes;
 use futures::StreamExt;
 use js_sys::Reflect;
 use purr_common::platform::{Platform, TranscriptionRequest, TranscriptionStatus};
+use purr_common::web_model::registry::WebModelRegistry;
 use purr_wasm::{
-    AudioProcessingConfig, ModelInfo, PlatformImpl, TranscriptionConfig, TranscriptionWorker,
-    WebModelManager, WebStorage, start_transcription_process, validate_audio_file,
+    AudioProcessingConfig, PlatformImpl, TranscriptionConfig, TranscriptionWorker, WebModelManager,
+    start_transcription_process, validate_audio_file,
 };
 use std::sync::Arc;
 use wasm_bindgen::prelude::*;
@@ -20,17 +21,13 @@ use web_sys::console;
 
 wasm_bindgen_test_configure!(run_in_browser);
 
-// Test utilities for creating mock data
-#[allow(dead_code)]
-fn create_mock_model_info() -> ModelInfo {
-    ModelInfo {
-        id: "whisper-base-webgpu".to_owned(),
-        name: "Whisper Base WebGPU".to_owned(),
-        url: "https://example.com/whisper-base.onnx".to_owned(),
-        size: 145_000_000, // 145MB
-        checksum: Some("mock-checksum".to_owned()),
-        version: "1.0.0".to_owned(),
-        description: "WebGPU-optimized Whisper base model".to_owned(),
+mod common;
+
+fn test_config(language: &str, translate: bool) -> TranscriptionConfig {
+    TranscriptionConfig {
+        language: Some(language.to_owned()),
+        translate,
+        ..TranscriptionConfig::new(common::default_worker_model())
     }
 }
 
@@ -138,24 +135,18 @@ mod platform_integration_tests {
         };
 
         // Test model info retrieval
-        match platform.get_model_info("whisper-base").await {
+        match platform.get_model_info("base").await {
             Ok(model) => {
-                // Check WebGPU compatibility attributes
-                let is_webgpu_compatible = model.metadata.format.contains("webgpu");
-
-                if is_webgpu_compatible {
-                    console::log_1(&"✓ Model is WebGPU compatible".into());
-
-                    // Check quantization
-                    if let Some(quantization) = model.metadata.quantization {
-                        assert!(
-                            quantization == "fp16" || quantization == "fp32",
-                            "WebGPU models should use fp16 or fp32 quantization"
-                        );
-                    }
-                } else {
-                    console::log_1(&"Model is not WebGPU compatible".into());
-                }
+                assert_eq!(model.metadata.format, "onnx");
+                assert_eq!(model.metadata.quantization.as_deref(), Some("fp32/q4"));
+                assert_eq!(
+                    model
+                        .metadata
+                        .platform_specific
+                        .get("webgpu_compatible")
+                        .map(String::as_str),
+                    Some("true")
+                );
             }
             Err(e) => {
                 console::log_1(&format!("Failed to get model info: {e}").into());
@@ -266,20 +257,14 @@ mod worker_integration_tests {
     async fn test_webgpu_worker_initialization() {
         console::log_1(&"Testing WebGPU worker initialization".into());
 
-        // Create storage and model manager
-        let storage = Arc::new(WebStorage::new());
-        let model_manager = Arc::new(WebModelManager::with_storage(storage.clone()));
+        let model_manager =
+            Arc::new(WebModelManager::new().expect("the embedded manifest is valid"));
 
         // Create transcription worker
         let worker = TranscriptionWorker::new(model_manager.clone());
 
         // Test worker configuration
-        let config = TranscriptionConfig {
-            model_name: "whisper-base".to_owned(),
-            language: Some("en".to_owned()),
-            translate: false,
-            ..Default::default()
-        };
+        let config = test_config("en", false);
 
         // Initialize worker session
         let _session_id = "test-webgpu-session".to_owned();
@@ -344,12 +329,7 @@ mod worker_integration_tests {
         }
 
         // Configure transcription
-        let transcription_config = TranscriptionConfig {
-            model_name: "whisper-base".to_owned(),
-            language: Some("en".to_owned()),
-            translate: false,
-            ..Default::default()
-        };
+        let transcription_config = test_config("en", false);
 
         let audio_config = AudioProcessingConfig {
             target_sample_rate: 16000.0,
@@ -527,24 +507,11 @@ mod configuration_integration_tests {
         console::log_1(&"Testing WebGPU configuration validation".into());
 
         // Test transcription configuration for WebGPU
-        let valid_configs = vec![
-            TranscriptionConfig {
-                model_name: "whisper-tiny".to_owned(),
-                language: Some("en".to_owned()),
-                translate: false,
-                ..Default::default()
-            },
-            TranscriptionConfig {
-                model_name: "whisper-base".to_owned(),
-                language: Some("es".to_owned()),
-                translate: true,
-                ..Default::default()
-            },
-        ];
+        let valid_configs = vec![test_config("en", false), test_config("es", true)];
 
         for config in valid_configs {
             // Validate configuration
-            assert_ne!(config.model_name, "");
+            assert_ne!(config.model.repo, "");
 
             if let Some(lang) = &config.language {
                 assert!(
@@ -556,7 +523,7 @@ mod configuration_integration_tests {
             console::log_1(
                 &format!(
                     "✓ Valid config: {} (translate: {})",
-                    config.model_name, config.translate
+                    config.model.repo, config.translate
                 )
                 .into(),
             );
@@ -583,21 +550,19 @@ mod configuration_integration_tests {
     fn test_model_metadata_webgpu_attributes() {
         console::log_1(&"Testing model metadata WebGPU attributes".into());
 
-        let model = create_mock_model_info();
+        let registry = WebModelRegistry::embedded().expect("the embedded manifest is valid");
+        let model = registry.default_model();
 
-        // Test model attributes that would be relevant for WebGPU
         assert_ne!(model.id, "");
-        assert_ne!(model.name, "");
-        assert_ne!(model.url, "");
-        assert!(model.size > 0);
-        assert_ne!(model.version, "");
+        assert_ne!(model.repo, "");
+        assert_eq!(model.revision.len(), 40);
+        assert!(model.total_size_bytes() > 0);
 
-        // In a real implementation, we'd check WebGPU-specific metadata
         console::log_1(
             &format!(
                 "✓ Model validated: {} ({}MB)",
-                model.name,
-                model.size / (1024 * 1024)
+                model.display_name(),
+                model.total_size_bytes() / (1024 * 1024)
             )
             .into(),
         );

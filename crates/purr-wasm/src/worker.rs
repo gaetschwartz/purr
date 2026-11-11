@@ -5,6 +5,8 @@ use crate::error::{WebError, WebResult, WorkerError};
 use crate::model::WebModelManager;
 use crate::transcription::AudioMetadata;
 use purr_common::platform::{FileSource, TranscriptionRequest, TranscriptionStatus};
+use purr_common::web_model::attributes::OnnxDtype;
+use purr_common::web_model::registry::WebModelSpec;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::pin::Pin;
@@ -17,26 +19,45 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::spawn_local;
 use web_sys::{MessageEvent, Worker};
 
+/// Pinned model the worker hands to transformers.js
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WorkerModel {
+    pub repo: String,
+    pub revision: String,
+    pub encoder_dtype: OnnxDtype,
+    pub decoder_dtype: OnnxDtype,
+}
+
+impl From<&WebModelSpec> for WorkerModel {
+    fn from(spec: &WebModelSpec) -> Self {
+        Self {
+            repo: spec.repo.clone(),
+            revision: spec.revision.clone(),
+            encoder_dtype: spec.encoder_dtype,
+            decoder_dtype: spec.decoder_dtype,
+        }
+    }
+}
+
 /// Transcription configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TranscriptionConfig {
-    pub model_name: String,
+    pub model: WorkerModel,
     pub language: Option<String>,
     pub translate: bool,
-    pub quantized: bool,
     pub chunk_size: usize,
     pub temperature: f32,
     pub beam_size: usize,
     pub best_of: usize,
 }
 
-impl Default for TranscriptionConfig {
-    fn default() -> Self {
+impl TranscriptionConfig {
+    #[must_use]
+    pub const fn new(model: WorkerModel) -> Self {
         Self {
-            model_name: "onnx-community/whisper-base".to_owned(),
+            model,
             language: None,
             translate: false,
-            quantized: true,
             chunk_size: 30 * 16000, // 30 seconds at 16kHz
             temperature: 0.0,
             beam_size: 1,

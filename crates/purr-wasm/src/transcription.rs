@@ -876,11 +876,8 @@ pub async fn start_transcription_process(
     );
 
     // Create worker and processor
-    let worker = TranscriptionWorker::new(std::sync::Arc::new(
-        crate::model::WebModelManager::with_storage(std::sync::Arc::new(
-            crate::storage::WebStorage::new(),
-        )),
-    ));
+    let worker =
+        TranscriptionWorker::new(std::sync::Arc::new(crate::model::WebModelManager::new()?));
 
     let mut processor = AudioTranscriptionProcessor::new(worker).with_config(processing_config);
 

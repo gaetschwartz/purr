@@ -12,6 +12,8 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen_test::*;
 use web_sys::console;
 
+mod common;
+
 wasm_bindgen_test_configure!(run_in_browser);
 
 // Mock worker message types matching the Rust WorkerMessage enum
@@ -54,8 +56,8 @@ impl MockWorkerMessage {
                 let config_obj = Object::new();
                 Reflect::set(
                     &config_obj,
-                    &JsValue::from_str("model_name"),
-                    &JsValue::from_str(&config.model_name),
+                    &JsValue::from_str("repo"),
+                    &JsValue::from_str(&config.model.repo),
                 )
                 .unwrap();
                 Reflect::set(
@@ -109,8 +111,8 @@ impl MockWorkerMessage {
                 let config_obj = Object::new();
                 Reflect::set(
                     &config_obj,
-                    &JsValue::from_str("model_name"),
-                    &JsValue::from_str(&config.model_name),
+                    &JsValue::from_str("repo"),
+                    &JsValue::from_str(&config.model.repo),
                 )
                 .unwrap();
                 Reflect::set(&obj, &JsValue::from_str("config"), &config_obj).unwrap();
@@ -322,10 +324,8 @@ impl MockWorkerResponse {
 
 fn create_test_config() -> TranscriptionConfig {
     TranscriptionConfig {
-        model_name: "whisper-base".to_owned(),
         language: Some("en".to_owned()),
-        translate: false,
-        ..Default::default()
+        ..TranscriptionConfig::new(common::default_worker_model())
     }
 }
 
@@ -421,28 +421,27 @@ mod worker_initialization_tests {
         let config = create_test_config();
 
         // Test valid configuration
-        assert_ne!(config.model_name, "");
+        assert_ne!(config.model.repo, "");
         assert!(config.language.is_some());
         assert_eq!(config.language.as_ref().unwrap(), "en");
         assert!(!config.translate);
 
         // Test invalid configurations
+        let empty_repo = purr_wasm::WorkerModel {
+            repo: String::new(),
+            ..common::default_worker_model()
+        };
         let invalid_configs = vec![
+            TranscriptionConfig::new(empty_repo),
             TranscriptionConfig {
-                model_name: String::new(), // Empty model name
-                ..Default::default()
-            },
-            TranscriptionConfig {
-                model_name: "invalid-model".to_owned(),
                 language: Some("invalid-lang".to_owned()), // Invalid language code
-                ..Default::default()
+                ..create_test_config()
             },
         ];
 
         for invalid_config in invalid_configs {
-            if invalid_config.model_name.is_empty() {
-                // Model name should not be empty
-                assert_eq!(invalid_config.model_name, "");
+            if invalid_config.model.repo.is_empty() {
+                assert_eq!(invalid_config.model.repo, "");
             }
         }
 
@@ -744,7 +743,7 @@ mod worker_lifecycle_tests {
         console::log_1(&"Testing worker configuration updates".into());
 
         let mut config = create_test_config();
-        config.model_name = "whisper-large".to_owned();
+        config.model.repo = "onnx-community/whisper-large-v3-turbo".to_owned();
         config.language = Some("es".to_owned());
         config.translate = true;
 
@@ -756,8 +755,11 @@ mod worker_lifecycle_tests {
         assert_eq!(msg_type.as_string().unwrap(), "UpdateConfig");
 
         let config_obj = Reflect::get(&obj, &JsValue::from_str("config")).unwrap();
-        let model_name = Reflect::get(&config_obj, &JsValue::from_str("model_name")).unwrap();
-        assert_eq!(model_name.as_string().unwrap(), "whisper-large");
+        let model_name = Reflect::get(&config_obj, &JsValue::from_str("repo")).unwrap();
+        assert_eq!(
+            model_name.as_string().unwrap(),
+            "onnx-community/whisper-large-v3-turbo"
+        );
 
         console::log_1(&"✓ Worker configuration updates test successful".into());
     }

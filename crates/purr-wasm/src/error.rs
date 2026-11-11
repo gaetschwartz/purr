@@ -1,6 +1,7 @@
 //! Error types for the web platform implementation
 
 use purr_common::platform::PlatformError;
+use purr_common::web_model::error::{UnknownWebModelError, WebManifestError};
 use wasm_bindgen::JsValue;
 
 /// Helper function to format `JsValue` errors into strings while preserving information
@@ -458,6 +459,10 @@ pub enum WebError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     WebGpu(WebGpuError),
+
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    Manifest(WebManifestError),
 }
 
 impl WebError {
@@ -545,6 +550,7 @@ impl WebError {
             Self::AudioFileTooLarge { .. } => PlatformError::audio_processing(Box::new(self)),
             Self::WebAudioApi { .. } => PlatformError::audio_processing(Box::new(self)),
             Self::WebGpu { .. } => PlatformError::initialization(Box::new(self)),
+            Self::Manifest { .. } => PlatformError::model_management(Box::new(self)),
             Self::Worker { .. } => PlatformError::initialization(Box::new(self)),
             Self::Storage { .. } => PlatformError::io(Box::new(self)),
             Self::IndexedDb { .. } => PlatformError::io(Box::new(self)),
@@ -595,6 +601,18 @@ impl From<AudioFormatError> for WebError {
 impl From<WebGpuError> for WebError {
     fn from(error: WebGpuError) -> Self {
         Self::WebGpu(error)
+    }
+}
+
+impl From<WebManifestError> for WebError {
+    fn from(error: WebManifestError) -> Self {
+        Self::Manifest(error)
+    }
+}
+
+impl From<UnknownWebModelError> for WebError {
+    fn from(error: UnknownWebModelError) -> Self {
+        Self::model_not_found(error.model_id, "manifest")
     }
 }
 

@@ -6,18 +6,20 @@
 
 // Re-export main types
 pub use error::{AudioFormatError, StorageError, WebError, WebGpuError, WebResult, WorkerError};
-pub use model::{DownloadProgress, ModelInfo, ModelStorageStats, WebModelManager};
+pub use model::WebModelManager;
 pub use platform::PlatformImpl;
 pub use storage::{FileMetadata, WebStorage};
 pub use transcription::{
     AudioMetadata, AudioProcessingConfig, AudioProcessingProgress, AudioTranscriptionProcessor,
     get_supported_formats, start_transcription_process, validate_audio_file,
 };
-pub use worker::{TranscriptionConfig, TranscriptionWorker};
+pub use worker::{TranscriptionConfig, TranscriptionWorker, WorkerModel};
 
 // Module declarations
 mod error;
 mod model;
+mod model_cache;
+mod model_info;
 pub mod platform;
 mod storage;
 mod transcription;

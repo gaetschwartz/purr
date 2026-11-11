@@ -2,17 +2,19 @@
 
 use crate::error::{WebError, WebResult};
 use crate::model::WebModelManager;
+use crate::model_cache;
+use crate::model_info::model_info;
 use crate::storage::WebStorage;
 use crate::transcription::{
     AudioProcessingConfig, start_transcription_process, validate_audio_file,
 };
-use crate::worker::{TranscriptionConfig, TranscriptionWorker};
+use crate::worker::{TranscriptionConfig, TranscriptionWorker, WorkerModel};
 use bytes::Bytes;
 use futures::StreamExt;
 use js_sys::Error as JsError;
 use purr_common::platform::{
-    DeviceInfo, DeviceType, FileId, FileSource, ModelInfo, ModelMetadata, ModelOperationProgress,
-    ModelProgressStream, Platform, PlatformError, TranscriptionRequest, TranscriptionStream,
+    DeviceInfo, DeviceType, FileId, FileSource, ModelInfo, ModelProgressStream, Platform,
+    PlatformError, TranscriptionRequest, TranscriptionStream,
 };
 use purr_common::settings::Settings;
 use std::collections::HashMap;
@@ -41,76 +43,6 @@ pub struct WasmPlatformImpl {
 }
 
 impl WasmPlatformImpl {
-    /// Initialize default models available for web platform
-    async fn initialize_default_models(&self) -> WebResult<()> {
-        let default_models = vec![
-            ModelInfo::new(
-                "whisper-tiny".to_owned(),
-                "Whisper Tiny".to_owned(),
-                "Smallest Whisper model, fastest but least accurate".to_owned(),
-                39_000_000, // ~39MB
-                false,
-                ModelMetadata::new(
-                    "onnx".to_owned(),
-                    "whisper".to_owned(),
-                    "multilingual".to_owned(),
-                    "v1.0".to_owned(),
-                )
-                .with_download_url("https://huggingface.co/onnx-community/whisper-tiny/resolve/main/onnx/model.onnx".to_owned())
-                .with_quantization("fp16".to_owned())
-                .with_platform_attribute("webgpu_compatible".to_owned(), "true".to_owned()),
-            ),
-            ModelInfo::new(
-                "whisper-base".to_owned(),
-                "Whisper Base".to_owned(),
-                "Balanced size and accuracy for web usage".to_owned(),
-                145_000_000, // ~145MB
-                false,
-                ModelMetadata::new(
-                    "onnx".to_owned(),
-                    "whisper".to_owned(),
-                    "multilingual".to_owned(),
-                    "v1.0".to_owned(),
-                )
-                .with_download_url("https://huggingface.co/onnx-community/whisper-base/resolve/main/onnx/model.onnx".to_owned())
-                .with_quantization("fp16".to_owned())
-                .with_platform_attribute("webgpu_compatible".to_owned(), "true".to_owned()),
-            ),
-            ModelInfo::new(
-                "whisper-small".to_owned(),
-                "Whisper Small".to_owned(),
-                "Good balance of speed and accuracy".to_owned(),
-                488_000_000, // ~488MB
-                false,
-                ModelMetadata::new(
-                    "onnx".to_owned(),
-                    "whisper".to_owned(),
-                    "multilingual".to_owned(),
-                    "v1.0".to_owned(),
-                )
-                .with_download_url("https://huggingface.co/onnx-community/whisper-small/resolve/main/onnx/model.onnx".to_owned())
-                .with_quantization("fp16".to_owned())
-                .with_platform_attribute("webgpu_compatible".to_owned(), "true".to_owned()),
-            ),
-        ];
-
-        for platform_model in default_models {
-            // Convert from purr_common::ModelInfo to model::ModelInfo
-            let web_model = crate::model::ModelInfo {
-                id: platform_model.id,
-                name: platform_model.name,
-                url: platform_model.metadata.download_url.unwrap_or_default(),
-                size: platform_model.size_bytes as usize,
-                checksum: None,
-                version: platform_model.metadata.version,
-                description: platform_model.description,
-            };
-            self.model_manager.register_model(web_model).await?;
-        }
-
-        Ok(())
-    }
-
     /// Check if platform is properly initialized and initialize if needed
     async fn ensure_initialized(&self) -> Result<(), PlatformError> {
         let initialized = self.initialized.read().await;
@@ -132,11 +64,6 @@ impl WasmPlatformImpl {
         // Initialize storage
         self.storage
             .initialize()
-            .await
-            .map_err(Self::convert_error)?;
-
-        // Initialize default models
-        self.initialize_default_models()
             .await
             .map_err(Self::convert_error)?;
 
@@ -207,7 +134,7 @@ impl WasmPlatformImpl {
     /// Create a new `WebPlatform` instance
     fn new_inner() -> WebResult<Self> {
         let storage = Arc::new(WebStorage::new());
-        let model_manager = Arc::new(WebModelManager::with_storage(storage.clone()));
+        let model_manager = Arc::new(WebModelManager::new()?);
         let worker = Arc::new(TranscriptionWorker::new(model_manager.clone()));
 
         let platform = Self {
@@ -296,26 +223,17 @@ impl Platform for WasmPlatformImpl {
                 .ok_or_else(|| PlatformError::file_processing("File not found".to_owned()))?,
         };
 
-        // Create transcription configuration
-        let _config = TranscriptionConfig {
-            model_name: "whisper-base".to_owned(), // Default model
-            language: request.language.clone(),
-            translate: request.translate,
-            ..Default::default()
-        };
-
         // Note: Session management is now handled by start_transcription_process
 
         // Validate audio file before processing
         validate_audio_file(&file_data, 100 * 1024 * 1024) // 100MB limit
             .map_err(Self::convert_error)?;
 
-        // Use enhanced transcription process with real audio handling
+        let model = self.model_manager.default_model();
         let transcription_config = TranscriptionConfig {
-            model_name: "whisper-base".to_owned(),
             language: request.language.clone(),
             translate: request.translate,
-            ..Default::default()
+            ..TranscriptionConfig::new(WorkerModel::from(model))
         };
 
         // Configure audio processing with optimized settings
@@ -329,9 +247,10 @@ impl Platform for WasmPlatformImpl {
         };
 
         tracing::info!(
-            "Starting enhanced transcription for {} byte file with model: {}",
+            "Starting enhanced transcription for {} byte file with model: {}@{}",
             file_data.len(),
-            transcription_config.model_name
+            model.repo,
+            model.revision
         );
 
         // Start comprehensive transcription process
@@ -375,150 +294,59 @@ impl Platform for WasmPlatformImpl {
     async fn list_installed_models(&self) -> Result<Vec<ModelInfo>, PlatformError> {
         self.ensure_initialized().await?;
 
-        let all_models = self
-            .model_manager
-            .list_models()
-            .await
-            .map_err(Self::convert_error)?;
-
-        let mut installed_models = Vec::new();
-        for model in all_models {
-            if self.model_manager.is_model_downloaded(&model.id).await {
-                let mut model_info = ModelInfo::new(
-                    model.id.clone(),
-                    model.name.clone(),
-                    model.description.clone(),
-                    model.size as u64,
-                    true, // installed
-                    ModelMetadata::new(
-                        "onnx".to_owned(),
-                        "whisper".to_owned(),
-                        "multilingual".to_owned(),
-                        model.version.clone(),
-                    )
-                    .with_download_url(model.url.clone()),
-                );
-
-                // Mark as installed with storage key as path
-                model_info
-                    .mark_installed(std::path::PathBuf::from(format!("storage://{}", model.id)));
-                installed_models.push(model_info);
+        let mut installed = Vec::new();
+        for spec in self.model_manager.models() {
+            if self
+                .model_manager
+                .is_model_installed(&spec.id)
+                .await
+                .map_err(Self::convert_error)?
+            {
+                installed.push(model_info(spec, true));
             }
         }
-
-        Ok(installed_models)
+        Ok(installed)
     }
 
     async fn list_available_models(&self) -> Result<Vec<ModelInfo>, PlatformError> {
         self.ensure_initialized().await?;
 
-        let all_models = self
-            .model_manager
-            .list_models()
-            .await
-            .map_err(Self::convert_error)?;
-
-        let available_models = all_models
-            .into_iter()
-            .map(|model| {
-                let is_installed =
-                    futures::executor::block_on(self.model_manager.is_model_downloaded(&model.id));
-
-                ModelInfo::new(
-                    model.id.clone(),
-                    model.name.clone(),
-                    model.description.clone(),
-                    model.size as u64,
-                    is_installed,
-                    ModelMetadata::new(
-                        "onnx".to_owned(),
-                        "whisper".to_owned(),
-                        "multilingual".to_owned(),
-                        model.version.clone(),
-                    )
-                    .with_download_url(model.url),
-                )
-            })
-            .collect();
-
-        Ok(available_models)
+        let mut available = Vec::with_capacity(self.model_manager.models().len());
+        for spec in self.model_manager.models() {
+            let is_installed = self
+                .model_manager
+                .is_model_installed(&spec.id)
+                .await
+                .map_err(Self::convert_error)?;
+            available.push(model_info(spec, is_installed));
+        }
+        Ok(available)
     }
 
     async fn fetch_model(&self, model_id: &str) -> Result<ModelProgressStream, PlatformError> {
         self.ensure_initialized().await?;
 
-        // Check if model is already downloaded
-        if self.model_manager.is_model_downloaded(model_id).await {
-            // Return completed immediately
-            let progress = vec![ModelOperationProgress::Completed {
-                model_id: model_id.to_owned(),
-                local_path: std::path::PathBuf::from(format!("storage://{model_id}")),
-            }];
-
-            let stream = futures::stream::iter(progress.into_iter().map(Ok));
-            return Ok(Box::pin(stream));
-        }
-
-        // Start download
-        let download_stream = self
-            .model_manager
-            .download_model(model_id)
-            .await
+        self.model_manager
+            .model(model_id)
             .map_err(Self::convert_error)?;
-
-        // Convert download progress to model operation progress
-        let model_id_clone = model_id.to_owned();
-        let progress_stream = download_stream.map(move |download_progress| {
-            if download_progress.percentage == Some(100.0) {
-                Ok(ModelOperationProgress::Completed {
-                    model_id: model_id_clone.clone(),
-                    local_path: std::path::PathBuf::from(format!("storage://{model_id_clone}")),
-                })
-            } else {
-                Ok(ModelOperationProgress::Downloading {
-                    model_id: model_id_clone.clone(),
-                    bytes_downloaded: download_progress.bytes_downloaded as u64,
-                    total_bytes: download_progress.total_bytes.map(|b| b as u64),
-                    speed_bps: download_progress.speed_bps.map(|s| s as u64),
-                })
-            }
-        });
-
-        Ok(Box::pin(progress_stream))
+        Err(PlatformError::unsupported(
+            "fetch_model: transformers.js downloads the pinned files when the model is first used",
+        ))
     }
 
     async fn get_model_info(&self, model_id: &str) -> Result<ModelInfo, PlatformError> {
         self.ensure_initialized().await?;
 
-        let model = self
+        let spec = self
             .model_manager
-            .get_model_info(model_id)
+            .model(model_id)
+            .map_err(Self::convert_error)?;
+        let is_installed = self
+            .model_manager
+            .is_model_installed(model_id)
             .await
-            .map_err(Self::convert_error)?
-            .ok_or_else(|| PlatformError::model_not_found(model_id))?;
-
-        let is_installed = self.model_manager.is_model_downloaded(model_id).await;
-
-        let mut model_info = ModelInfo::new(
-            model.id.clone(),
-            model.name.clone(),
-            model.description.clone(),
-            model.size as u64,
-            is_installed,
-            ModelMetadata::new(
-                "onnx".to_owned(),
-                "whisper".to_owned(),
-                "multilingual".to_owned(),
-                model.version.clone(),
-            )
-            .with_download_url(model.url.clone()),
-        );
-
-        if is_installed {
-            model_info.mark_installed(std::path::PathBuf::from(format!("storage://{}", model.id)));
-        }
-
-        Ok(model_info)
+            .map_err(Self::convert_error)?;
+        Ok(model_info(spec, is_installed))
     }
 
     async fn remove_model(&self, model_id: &str) -> Result<(), PlatformError> {
@@ -535,18 +363,28 @@ impl Platform for WasmPlatformImpl {
     async fn is_model_installed(&self, model_id: &str) -> Result<bool, PlatformError> {
         self.ensure_initialized().await?;
 
-        Ok(self.model_manager.is_model_downloaded(model_id).await)
+        self.model_manager
+            .is_model_installed(model_id)
+            .await
+            .map_err(Self::convert_error)
     }
 
     async fn get_model_path(&self, model_id: &str) -> Result<String, PlatformError> {
         self.ensure_initialized().await?;
 
-        if !self.model_manager.is_model_downloaded(model_id).await {
+        let spec = self
+            .model_manager
+            .model(model_id)
+            .map_err(Self::convert_error)?;
+        if !self
+            .model_manager
+            .is_model_installed(model_id)
+            .await
+            .map_err(Self::convert_error)?
+        {
             return Err(PlatformError::model_not_found(model_id));
         }
-
-        // For web platform, return storage key
-        Ok(format!("storage://{model_id}"))
+        Ok(model_cache::location(spec))
     }
 
     async fn list_available_devices(&self) -> Result<Vec<DeviceInfo>, PlatformError> {
