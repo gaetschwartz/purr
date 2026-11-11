@@ -286,7 +286,7 @@ impl StreamWhisperTranscriber {
 
         // Process audio through whisper
         match streaming_state.whisper_state.full(params, &audio_buffer) {
-            Ok(_) => {
+            Ok(()) => {
                 let num_segments = streaming_state.whisper_state.full_n_segments();
 
                 if num_segments == 0 {
@@ -337,7 +337,7 @@ impl StreamWhisperTranscriber {
                 }
 
                 // Prepare final stats for the last chunk
-                let final_stats = if is_final_chunk {
+                let final_stats = is_final_chunk.then(|| {
                     let total_processing_time = std::time::Instant::now()
                         .duration_since(
                             std::time::Instant::now()
@@ -349,15 +349,13 @@ impl StreamWhisperTranscriber {
                         .as_secs_f64();
                     let word_count = chunk_text.split_whitespace().count();
 
-                    Some(TranscriptionStats {
+                    TranscriptionStats {
                         processing_time: total_processing_time,
                         audio_duration: streaming_state.total_duration,
                         segment_count: num_segments as usize,
                         word_count,
-                    })
-                } else {
-                    None
-                };
+                    }
+                });
 
                 // Ensure we have valid timing
                 if chunk_start_time == f64::MAX {

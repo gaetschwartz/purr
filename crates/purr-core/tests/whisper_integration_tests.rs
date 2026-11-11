@@ -311,7 +311,7 @@ async fn test_streaming_whisper_with_audio_stream() {
                     break;
                 }
             }
-            Err(e) => panic!("Streaming error: {:?}", e),
+            Err(e) => panic!("Streaming error: {e:?}"),
         }
     }
 
@@ -357,7 +357,7 @@ async fn test_streaming_transcription_high_level_api() {
                     break;
                 }
             }
-            Err(e) => panic!("Streaming error: {:?}", e),
+            Err(e) => panic!("Streaming error: {e:?}"),
         }
     }
 
@@ -372,7 +372,7 @@ async fn test_streaming_transcription_high_level_api() {
             "⚠ Warning: Only received 1 chunk - this might indicate streaming isn't working properly"
         );
     } else {
-        println!("✓ Received {} streaming chunks as expected", chunk_count);
+        println!("✓ Received {chunk_count} streaming chunks as expected");
     }
 }
 
@@ -412,7 +412,7 @@ async fn test_transcription_with_gpu_settings(#[case] use_gpu: bool) {
             if use_gpu && e.to_string().contains("GPU") {
                 println!("⚠ GPU not available, test skipped");
             } else {
-                panic!("Unexpected error with GPU {}: {}", use_gpu, e);
+                panic!("Unexpected error with GPU {use_gpu}: {e}");
             }
         }
     }
@@ -439,8 +439,7 @@ async fn test_transcription_with_language_settings(#[case] language: &'static st
     let result = transcribe_file_sync(temp_audio.path(), Some(config)).await;
     assert!(
         result.is_ok(),
-        "Should work with language setting: {}",
-        language
+        "Should work with language setting: {language}"
     );
 
     let transcription = result.unwrap();
@@ -466,7 +465,7 @@ async fn test_transcription_with_thread_settings(#[case] num_threads: usize) {
         .with_language("en");
 
     let result = transcribe_file_sync(temp_audio.path(), Some(config)).await;
-    assert!(result.is_ok(), "Should work with {} threads", num_threads);
+    assert!(result.is_ok(), "Should work with {num_threads} threads");
 
     let transcription = result.unwrap();
     assert!(validation::validate_sync_result(&transcription));
@@ -505,7 +504,7 @@ async fn test_transcription_performance_sync() {
     );
 
     let real_time_factor = transcription.stats.real_time_factor();
-    println!("Real-time factor: {:.2}x", real_time_factor);
+    println!("Real-time factor: {real_time_factor:.2}x");
 
     // Real-time factor should be reasonable (but depends on hardware)
     if real_time_factor > 0.0 {
@@ -551,7 +550,7 @@ async fn test_transcription_performance_streaming() {
                     break;
                 }
             }
-            Err(e) => panic!("Streaming performance error: {:?}", e),
+            Err(e) => panic!("Streaming performance error: {e:?}"),
         }
     }
 
@@ -616,14 +615,11 @@ async fn test_whisper_error_handling_empty_audio() {
 
     let result = transcriber.transcribe(audio_data).await;
     // This might succeed with empty transcription or fail - both are acceptable
-    match result {
-        Ok(transcription) => {
-            assert_eq!(transcription.audio_duration, 0.0);
-            assert!(transcription.text.is_empty() || transcription.text.trim().is_empty());
-        }
-        Err(_) => {
-            // Also acceptable - some implementations might reject empty audio
-        }
+    if let Ok(transcription) = result {
+        assert_eq!(transcription.audio_duration, 0.0);
+        assert!(transcription.text.is_empty() || transcription.text.trim().is_empty());
+    } else {
+        // Also acceptable - some implementations might reject empty audio
     }
 }
 

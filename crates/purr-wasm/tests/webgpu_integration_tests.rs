@@ -24,13 +24,13 @@ wasm_bindgen_test_configure!(run_in_browser);
 #[allow(dead_code)]
 fn create_mock_model_info() -> ModelInfo {
     ModelInfo {
-        id: "whisper-base-webgpu".to_string(),
-        name: "Whisper Base WebGPU".to_string(),
-        url: "https://example.com/whisper-base.onnx".to_string(),
+        id: "whisper-base-webgpu".to_owned(),
+        name: "Whisper Base WebGPU".to_owned(),
+        url: "https://example.com/whisper-base.onnx".to_owned(),
         size: 145_000_000, // 145MB
-        checksum: Some("mock-checksum".to_string()),
-        version: "1.0.0".to_string(),
-        description: "WebGPU-optimized Whisper base model".to_string(),
+        checksum: Some("mock-checksum".to_owned()),
+        version: "1.0.0".to_owned(),
+        description: "WebGPU-optimized Whisper base model".to_owned(),
     }
 }
 
@@ -92,7 +92,7 @@ mod platform_integration_tests {
         let platform = match PlatformImpl::new() {
             Ok(p) => p,
             Err(e) => {
-                console::log_1(&format!("Platform creation failed: {}", e).into());
+                console::log_1(&format!("Platform creation failed: {e}").into());
                 return; // Skip test if platform creation fails
             }
         };
@@ -121,7 +121,7 @@ mod platform_integration_tests {
                 }
             }
             Err(e) => {
-                console::log_1(&format!("Failed to list models: {}", e).into());
+                console::log_1(&format!("Failed to list models: {e}").into());
             }
         }
 
@@ -158,7 +158,7 @@ mod platform_integration_tests {
                 }
             }
             Err(e) => {
-                console::log_1(&format!("Failed to get model info: {}", e).into());
+                console::log_1(&format!("Failed to get model info: {e}").into());
             }
         }
 
@@ -184,12 +184,12 @@ mod platform_integration_tests {
             .await
         {
             Ok(file_id) => {
-                console::log_1(&format!("File processed with ID: {}", file_id).into());
+                console::log_1(&format!("File processed with ID: {file_id}").into());
 
                 // Create transcription request
                 let request = TranscriptionRequest {
                     file: audio_bytes.clone().into(),
-                    language: Some("en".to_string()),
+                    language: Some("en".to_owned()),
                     translate: false,
                 };
 
@@ -206,41 +206,35 @@ mod platform_integration_tests {
                             } // Limit test iterations
 
                             match result {
-                                Ok(status) => {
-                                    match status {
-                                        TranscriptionStatus::Starting => {
-                                            console::log_1(&"Starting transcription...".into());
-                                        }
-                                        TranscriptionStatus::ProcessingAudio => {
-                                            console::log_1(&"Processing audio...".into());
-                                        }
-                                        TranscriptionStatus::InProgress { text, .. } => {
-                                            console::log_1(&format!("Progress: {}", text).into());
-                                        }
-                                        TranscriptionStatus::Completed {
-                                            processing_time,
-                                            audio_duration,
-                                            word_count,
-                                        } => {
-                                            console::log_1(&format!("Completed in {:.2}s, duration: {:.2}s, words: {}", processing_time, audio_duration, word_count).into());
-                                            break;
-                                        }
-                                        TranscriptionStatus::Error { error_message, .. } => {
-                                            console::log_1(
-                                                &format!("Error: {}", error_message).into(),
-                                            );
-                                            break;
-                                        }
-                                        TranscriptionStatus::InitFailed { reason, .. } => {
-                                            console::log_1(
-                                                &format!("Init failed: {}", reason).into(),
-                                            );
-                                            break;
-                                        }
+                                Ok(status) => match status {
+                                    TranscriptionStatus::Starting => {
+                                        console::log_1(&"Starting transcription...".into());
                                     }
-                                }
+                                    TranscriptionStatus::ProcessingAudio => {
+                                        console::log_1(&"Processing audio...".into());
+                                    }
+                                    TranscriptionStatus::InProgress { text, .. } => {
+                                        console::log_1(&format!("Progress: {text}").into());
+                                    }
+                                    TranscriptionStatus::Completed {
+                                        processing_time,
+                                        audio_duration,
+                                        word_count,
+                                    } => {
+                                        console::log_1(&format!("Completed in {processing_time:.2}s, duration: {audio_duration:.2}s, words: {word_count}").into());
+                                        break;
+                                    }
+                                    TranscriptionStatus::Error { error_message, .. } => {
+                                        console::log_1(&format!("Error: {error_message}").into());
+                                        break;
+                                    }
+                                    TranscriptionStatus::InitFailed { reason, .. } => {
+                                        console::log_1(&format!("Init failed: {reason}").into());
+                                        break;
+                                    }
+                                },
                                 Err(e) => {
-                                    console::log_1(&format!("Stream error: {}", e).into());
+                                    console::log_1(&format!("Stream error: {e}").into());
                                     break;
                                 }
                             }
@@ -251,12 +245,12 @@ mod platform_integration_tests {
                         let _ = platform.cleanup(&file_id.to_string()).await;
                     }
                     Err(e) => {
-                        console::log_1(&format!("Transcription failed: {}", e).into());
+                        console::log_1(&format!("Transcription failed: {e}").into());
                     }
                 }
             }
             Err(e) => {
-                console::log_1(&format!("File processing failed: {}", e).into());
+                console::log_1(&format!("File processing failed: {e}").into());
             }
         }
 
@@ -281,14 +275,14 @@ mod worker_integration_tests {
 
         // Test worker configuration
         let config = TranscriptionConfig {
-            model_name: "whisper-base".to_string(),
-            language: Some("en".to_string()),
+            model_name: "whisper-base".to_owned(),
+            language: Some("en".to_owned()),
             translate: false,
             ..Default::default()
         };
 
         // Initialize worker session
-        let _session_id = "test-webgpu-session".to_string();
+        let _session_id = "test-webgpu-session".to_owned();
         match worker.create_session(config.clone()).await {
             Ok(created_session_id) => {
                 console::log_1(&"✓ Worker session created successfully".into());
@@ -310,12 +304,12 @@ mod worker_integration_tests {
                             if items_processed >= 2 {
                                 break;
                             } // Limit test
-                            console::log_1(&format!("Stream status: {:?}", status).into());
+                            console::log_1(&format!("Stream status: {status:?}").into());
                             items_processed += 1;
                         }
                     }
                     Err(e) => {
-                        console::log_1(&format!("Transcription failed: {}", e).into());
+                        console::log_1(&format!("Transcription failed: {e}").into());
                     }
                 }
 
@@ -323,7 +317,7 @@ mod worker_integration_tests {
                 let _ = worker.close_session(&created_session_id).await;
             }
             Err(e) => {
-                console::log_1(&format!("Worker initialization failed: {}", e).into());
+                console::log_1(&format!("Worker initialization failed: {e}").into());
                 // This is expected if WebGPU is not available
             }
         }
@@ -340,19 +334,19 @@ mod worker_integration_tests {
 
         // Validate audio file first
         match validate_audio_file(&audio_bytes, 100 * 1024 * 1024) {
-            Ok(_) => {
+            Ok(()) => {
                 console::log_1(&"✓ Audio file validation passed".into());
             }
             Err(e) => {
-                console::log_1(&format!("Audio validation failed: {}", e).into());
+                console::log_1(&format!("Audio validation failed: {e}").into());
                 return;
             }
         }
 
         // Configure transcription
         let transcription_config = TranscriptionConfig {
-            model_name: "whisper-base".to_string(),
-            language: Some("en".to_string()),
+            model_name: "whisper-base".to_owned(),
+            language: Some("en".to_owned()),
             translate: false,
             ..Default::default()
         };
@@ -388,24 +382,22 @@ mod worker_integration_tests {
                             console::log_1(&"Processing audio...".into());
                         }
                         TranscriptionStatus::InProgress { text, .. } => {
-                            console::log_1(&format!("Progress: {}", text).into());
+                            console::log_1(&format!("Progress: {text}").into());
                         }
                         TranscriptionStatus::Completed {
                             processing_time,
                             audio_duration,
                             word_count,
                         } => {
-                            console::log_1(&format!("Transcription completed in {:.2}s, duration: {:.2}s, words: {}", processing_time, audio_duration, word_count).into());
+                            console::log_1(&format!("Transcription completed in {processing_time:.2}s, duration: {audio_duration:.2}s, words: {word_count}").into());
                             break;
                         }
                         TranscriptionStatus::Error { error_message, .. } => {
-                            console::log_1(
-                                &format!("Transcription error: {}", error_message).into(),
-                            );
+                            console::log_1(&format!("Transcription error: {error_message}").into());
                             break;
                         }
                         TranscriptionStatus::InitFailed { reason, .. } => {
-                            console::log_1(&format!("Init failed: {}", reason).into());
+                            console::log_1(&format!("Init failed: {reason}").into());
                             break;
                         }
                     }
@@ -413,7 +405,7 @@ mod worker_integration_tests {
                 }
             }
             Err(e) => {
-                console::log_1(&format!("Transcription process failed: {}", e).into());
+                console::log_1(&format!("Transcription process failed: {e}").into());
                 // This may be expected if WebGPU is not available
             }
         }
@@ -442,7 +434,7 @@ mod performance_integration_tests {
         }
 
         let test_metrics = WebGPUPerformanceMetrics {
-            device_type: "integrated".to_string(),
+            device_type: "integrated".to_owned(),
             memory_usage: 512 * 1024 * 1024, // 512MB
             compute_units: 16,
             max_workgroup_size: [256, 256, 64],
@@ -452,7 +444,7 @@ mod performance_integration_tests {
         };
 
         // Validate performance metrics
-        assert!(!test_metrics.device_type.is_empty());
+        assert_ne!(test_metrics.device_type, "");
         assert!(test_metrics.memory_usage > 0);
         assert!(test_metrics.compute_units > 0);
         assert!(test_metrics.max_workgroup_size[0] > 0);
@@ -537,14 +529,14 @@ mod configuration_integration_tests {
         // Test transcription configuration for WebGPU
         let valid_configs = vec![
             TranscriptionConfig {
-                model_name: "whisper-tiny".to_string(),
-                language: Some("en".to_string()),
+                model_name: "whisper-tiny".to_owned(),
+                language: Some("en".to_owned()),
                 translate: false,
                 ..Default::default()
             },
             TranscriptionConfig {
-                model_name: "whisper-base".to_string(),
-                language: Some("es".to_string()),
+                model_name: "whisper-base".to_owned(),
+                language: Some("es".to_owned()),
                 translate: true,
                 ..Default::default()
             },
@@ -552,7 +544,7 @@ mod configuration_integration_tests {
 
         for config in valid_configs {
             // Validate configuration
-            assert!(!config.model_name.is_empty());
+            assert_ne!(config.model_name, "");
 
             if let Some(lang) = &config.language {
                 assert!(
@@ -594,11 +586,11 @@ mod configuration_integration_tests {
         let model = create_mock_model_info();
 
         // Test model attributes that would be relevant for WebGPU
-        assert!(!model.id.is_empty());
-        assert!(!model.name.is_empty());
-        assert!(!model.url.is_empty());
+        assert_ne!(model.id, "");
+        assert_ne!(model.name, "");
+        assert_ne!(model.url, "");
         assert!(model.size > 0);
-        assert!(!model.version.is_empty());
+        assert_ne!(model.version, "");
 
         // In a real implementation, we'd check WebGPU-specific metadata
         console::log_1(

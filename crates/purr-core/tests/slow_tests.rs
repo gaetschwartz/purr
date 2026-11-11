@@ -96,9 +96,8 @@ async fn test_transcribe_sample_files(#[files("../../samples/*")] sample_path: P
                             sample_path.display()
                         );
                         return; // Skip this test rather than fail
-                    } else {
-                        panic!("Failed to transcribe {}: {}", sample_path.display(), e);
                     }
+                    panic!("Failed to transcribe {}: {}", sample_path.display(), e);
                 }
             }
         }

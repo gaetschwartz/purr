@@ -155,16 +155,16 @@ impl VerbosityLevel {
     pub const DEBUG_VALUE: u8 = 2;
     pub const VERBOSE_VALUE: u8 = 1;
     pub const NORMAL_VALUE: u8 = 0;
-    pub const TRACE: VerbosityLevel = VerbosityLevel {
+    pub const TRACE: Self = Self {
         verbose: Self::TRACE_VALUE,
     };
-    pub const DEBUG: VerbosityLevel = VerbosityLevel {
+    pub const DEBUG: Self = Self {
         verbose: Self::DEBUG_VALUE,
     };
-    pub const VERBOSE: VerbosityLevel = VerbosityLevel {
+    pub const VERBOSE: Self = Self {
         verbose: Self::VERBOSE_VALUE,
     };
-    pub const NORMAL: VerbosityLevel = VerbosityLevel {
+    pub const NORMAL: Self = Self {
         verbose: Self::NORMAL_VALUE,
     };
 }

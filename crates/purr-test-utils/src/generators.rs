@@ -34,35 +34,35 @@ pub fn confidence_score() -> impl Strategy<Value = f32> {
 /// Generate valid model names
 pub fn model_name() -> impl Strategy<Value = String> {
     prop_oneof![
-        Just("tiny".to_string()),
-        Just("tiny.en".to_string()),
-        Just("base".to_string()),
-        Just("base.en".to_string()),
-        Just("small".to_string()),
-        Just("small.en".to_string()),
-        Just("medium".to_string()),
-        Just("medium.en".to_string()),
-        Just("large".to_string()),
-        Just("large-v1".to_string()),
-        Just("large-v2".to_string()),
-        Just("large-v3".to_string()),
+        Just("tiny".to_owned()),
+        Just("tiny.en".to_owned()),
+        Just("base".to_owned()),
+        Just("base.en".to_owned()),
+        Just("small".to_owned()),
+        Just("small.en".to_owned()),
+        Just("medium".to_owned()),
+        Just("medium.en".to_owned()),
+        Just("large".to_owned()),
+        Just("large-v1".to_owned()),
+        Just("large-v2".to_owned()),
+        Just("large-v3".to_owned()),
     ]
 }
 
 /// Generate language codes
 pub fn language_code() -> impl Strategy<Value = String> {
     prop_oneof![
-        Just("auto".to_string()),
-        Just("en".to_string()),
-        Just("es".to_string()),
-        Just("fr".to_string()),
-        Just("de".to_string()),
-        Just("it".to_string()),
-        Just("pt".to_string()),
-        Just("ru".to_string()),
-        Just("ja".to_string()),
-        Just("ko".to_string()),
-        Just("zh".to_string()),
+        Just("auto".to_owned()),
+        Just("en".to_owned()),
+        Just("es".to_owned()),
+        Just("fr".to_owned()),
+        Just("de".to_owned()),
+        Just("it".to_owned()),
+        Just("pt".to_owned()),
+        Just("ru".to_owned()),
+        Just("ja".to_owned()),
+        Just("ko".to_owned()),
+        Just("zh".to_owned()),
     ]
 }
 
@@ -85,16 +85,16 @@ pub fn timestamp() -> impl Strategy<Value = Duration> {
 pub fn transcription_text() -> impl Strategy<Value = String> {
     prop_oneof![
         // Common English phrases
-        Just("Hello, world!".to_string()),
-        Just("The quick brown fox jumps over the lazy dog.".to_string()),
-        Just("This is a test transcription.".to_string()),
+        Just("Hello, world!".to_owned()),
+        Just("The quick brown fox jumps over the lazy dog.".to_owned()),
+        Just("This is a test transcription.".to_owned()),
         // Multi-language samples
-        Just("Bonjour le monde!".to_string()),
-        Just("Hola mundo!".to_string()),
-        Just("Hallo Welt!".to_string()),
+        Just("Bonjour le monde!".to_owned()),
+        Just("Hola mundo!".to_owned()),
+        Just("Hallo Welt!".to_owned()),
         // Technical terms
-        Just("WebGPU compute shader optimization".to_string()),
-        Just("Neural network inference pipeline".to_string()),
+        Just("WebGPU compute shader optimization".to_owned()),
+        Just("Neural network inference pipeline".to_owned()),
         // Random text generation
         "[a-zA-Z0-9 .,!?'-]{10,200}".prop_map(|s| s),
     ]
@@ -141,7 +141,7 @@ impl Dummy<Faker> for AudioData {
             .map(|_| rng.random_range(-1.0..=1.0))
             .collect();
 
-        AudioData {
+        Self {
             samples,
             sample_rate,
             channels,
@@ -174,12 +174,12 @@ impl Dummy<Faker> for TranscriptionResult {
             let word_duration = Duration::from_millis(rng.random_range(100..=500));
             let start = current_time;
             let end = current_time + word_duration;
-            timestamps.push((start, end, word.to_string()));
+            timestamps.push((start, end, word.to_owned()));
             current_time = end + Duration::from_millis(rng.random_range(10..=100));
             // pause
         }
 
-        TranscriptionResult {
+        Self {
             text,
             confidence,
             duration,
@@ -276,12 +276,12 @@ pub fn url_string() -> impl Strategy<Value = String> {
 /// Generate error messages for testing error handling
 pub fn error_message() -> impl Strategy<Value = String> {
     prop_oneof![
-        Just("Network connection failed".to_string()),
-        Just("Invalid audio format".to_string()),
-        Just("Model not found".to_string()),
-        Just("Insufficient memory".to_string()),
-        Just("WebGPU device lost".to_string()),
-        Just("Transcription timeout".to_string()),
+        Just("Network connection failed".to_owned()),
+        Just("Invalid audio format".to_owned()),
+        Just("Model not found".to_owned()),
+        Just("Insufficient memory".to_owned()),
+        Just("WebGPU device lost".to_owned()),
+        Just("Transcription timeout".to_owned()),
         "[A-Z][a-z ]{10,50}".prop_map(|s| s),
     ]
 }
@@ -313,7 +313,7 @@ mod tests {
     #[test]
     fn test_fake_audio_data() {
         let audio: AudioData = Faker.fake();
-        assert!(!audio.samples.is_empty());
+        assert_ne!(audio.samples, [] as [f32; 0]);
         assert!([8000, 16000, 44100, 48000].contains(&audio.sample_rate));
         assert!(audio.channels >= 1 && audio.channels <= 2);
         assert!(audio.samples.iter().all(|&s| (-1.0..=1.0).contains(&s)));
@@ -322,9 +322,16 @@ mod tests {
     #[test]
     fn test_fake_transcription_result() {
         let transcription: TranscriptionResult = Faker.fake();
-        assert!(!transcription.text.is_empty());
+        assert_ne!(transcription.text, "");
         assert!(transcription.confidence >= 0.0 && transcription.confidence <= 1.0);
         assert!(transcription.duration > Duration::ZERO);
-        assert!(!transcription.timestamps.is_empty());
+        assert_ne!(
+            transcription.timestamps,
+            [] as [(
+                std::time::Duration,
+                std::time::Duration,
+                std::string::String
+            ); 0]
+        );
     }
 }

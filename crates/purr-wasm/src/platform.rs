@@ -45,52 +45,52 @@ impl WasmPlatformImpl {
     async fn initialize_default_models(&self) -> WebResult<()> {
         let default_models = vec![
             ModelInfo::new(
-                "whisper-tiny".to_string(),
-                "Whisper Tiny".to_string(),
-                "Smallest Whisper model, fastest but least accurate".to_string(),
+                "whisper-tiny".to_owned(),
+                "Whisper Tiny".to_owned(),
+                "Smallest Whisper model, fastest but least accurate".to_owned(),
                 39_000_000, // ~39MB
                 false,
                 ModelMetadata::new(
-                    "onnx".to_string(),
-                    "whisper".to_string(),
-                    "multilingual".to_string(),
-                    "v1.0".to_string(),
+                    "onnx".to_owned(),
+                    "whisper".to_owned(),
+                    "multilingual".to_owned(),
+                    "v1.0".to_owned(),
                 )
-                .with_download_url("https://huggingface.co/onnx-community/whisper-tiny/resolve/main/onnx/model.onnx".to_string())
-                .with_quantization("fp16".to_string())
-                .with_platform_attribute("webgpu_compatible".to_string(), "true".to_string()),
+                .with_download_url("https://huggingface.co/onnx-community/whisper-tiny/resolve/main/onnx/model.onnx".to_owned())
+                .with_quantization("fp16".to_owned())
+                .with_platform_attribute("webgpu_compatible".to_owned(), "true".to_owned()),
             ),
             ModelInfo::new(
-                "whisper-base".to_string(),
-                "Whisper Base".to_string(),
-                "Balanced size and accuracy for web usage".to_string(),
+                "whisper-base".to_owned(),
+                "Whisper Base".to_owned(),
+                "Balanced size and accuracy for web usage".to_owned(),
                 145_000_000, // ~145MB
                 false,
                 ModelMetadata::new(
-                    "onnx".to_string(),
-                    "whisper".to_string(),
-                    "multilingual".to_string(),
-                    "v1.0".to_string(),
+                    "onnx".to_owned(),
+                    "whisper".to_owned(),
+                    "multilingual".to_owned(),
+                    "v1.0".to_owned(),
                 )
-                .with_download_url("https://huggingface.co/onnx-community/whisper-base/resolve/main/onnx/model.onnx".to_string())
-                .with_quantization("fp16".to_string())
-                .with_platform_attribute("webgpu_compatible".to_string(), "true".to_string()),
+                .with_download_url("https://huggingface.co/onnx-community/whisper-base/resolve/main/onnx/model.onnx".to_owned())
+                .with_quantization("fp16".to_owned())
+                .with_platform_attribute("webgpu_compatible".to_owned(), "true".to_owned()),
             ),
             ModelInfo::new(
-                "whisper-small".to_string(),
-                "Whisper Small".to_string(),
-                "Good balance of speed and accuracy".to_string(),
+                "whisper-small".to_owned(),
+                "Whisper Small".to_owned(),
+                "Good balance of speed and accuracy".to_owned(),
                 488_000_000, // ~488MB
                 false,
                 ModelMetadata::new(
-                    "onnx".to_string(),
-                    "whisper".to_string(),
-                    "multilingual".to_string(),
-                    "v1.0".to_string(),
+                    "onnx".to_owned(),
+                    "whisper".to_owned(),
+                    "multilingual".to_owned(),
+                    "v1.0".to_owned(),
                 )
-                .with_download_url("https://huggingface.co/onnx-community/whisper-small/resolve/main/onnx/model.onnx".to_string())
-                .with_quantization("fp16".to_string())
-                .with_platform_attribute("webgpu_compatible".to_string(), "true".to_string()),
+                .with_download_url("https://huggingface.co/onnx-community/whisper-small/resolve/main/onnx/model.onnx".to_owned())
+                .with_quantization("fp16".to_owned())
+                .with_platform_attribute("webgpu_compatible".to_owned(), "true".to_owned()),
             ),
         ];
 
@@ -154,16 +154,15 @@ impl WasmPlatformImpl {
 
     /// Get browser localStorage
     fn get_local_storage() -> Result<Storage, PlatformError> {
-        let window = web_sys::window().ok_or_else(|| {
-            PlatformError::settings_persistence("No window available".to_string())
-        })?;
+        let window = web_sys::window()
+            .ok_or_else(|| PlatformError::settings_persistence("No window available".to_owned()))?;
         window
             .local_storage()
             .map_err(|e| {
                 PlatformError::settings_persistence(format!("Failed to access localStorage: {e:?}"))
             })?
             .ok_or_else(|| {
-                PlatformError::settings_persistence("localStorage not available".to_string())
+                PlatformError::settings_persistence("localStorage not available".to_owned())
             })
     }
 
@@ -172,8 +171,7 @@ impl WasmPlatformImpl {
         let storage = Self::get_local_storage()?;
         storage.get_item(key).map_err(|e| {
             PlatformError::settings_persistence(format!(
-                "Failed to get item '{}' from localStorage: {e:?}",
-                key
+                "Failed to get item '{key}' from localStorage: {e:?}"
             ))
         })
     }
@@ -194,13 +192,11 @@ impl WasmPlatformImpl {
                 || error_msg.contains("22") // DOM_QUOTA_EXCEEDED_ERR
             {
                 PlatformError::settings_persistence(format!(
-                    "localStorage quota exceeded. Please clear browser storage or reduce settings size: {}",
-                    error_msg
+                    "localStorage quota exceeded. Please clear browser storage or reduce settings size: {error_msg}"
                 ))
             } else {
                 PlatformError::settings_persistence(format!(
-                    "Failed to set item '{}' in localStorage: {}",
-                    key, error_msg
+                    "Failed to set item '{key}' in localStorage: {error_msg}"
                 ))
             }
         })
@@ -297,12 +293,12 @@ impl Platform for WasmPlatformImpl {
                 .get_file(file_id)
                 .await
                 .map_err(Self::convert_error)?
-                .ok_or_else(|| PlatformError::file_processing("File not found".to_string()))?,
+                .ok_or_else(|| PlatformError::file_processing("File not found".to_owned()))?,
         };
 
         // Create transcription configuration
         let _config = TranscriptionConfig {
-            model_name: "whisper-base".to_string(), // Default model
+            model_name: "whisper-base".to_owned(), // Default model
             language: request.language.clone(),
             translate: request.translate,
             ..Default::default()
@@ -316,7 +312,7 @@ impl Platform for WasmPlatformImpl {
 
         // Use enhanced transcription process with real audio handling
         let transcription_config = TranscriptionConfig {
-            model_name: "whisper-base".to_string(),
+            model_name: "whisper-base".to_owned(),
             language: request.language.clone(),
             translate: request.translate,
             ..Default::default()
@@ -395,9 +391,9 @@ impl Platform for WasmPlatformImpl {
                     model.size as u64,
                     true, // installed
                     ModelMetadata::new(
-                        "onnx".to_string(),
-                        "whisper".to_string(),
-                        "multilingual".to_string(),
+                        "onnx".to_owned(),
+                        "whisper".to_owned(),
+                        "multilingual".to_owned(),
                         model.version.clone(),
                     )
                     .with_download_url(model.url.clone()),
@@ -435,12 +431,12 @@ impl Platform for WasmPlatformImpl {
                     model.size as u64,
                     is_installed,
                     ModelMetadata::new(
-                        "onnx".to_string(),
-                        "whisper".to_string(),
-                        "multilingual".to_string(),
+                        "onnx".to_owned(),
+                        "whisper".to_owned(),
+                        "multilingual".to_owned(),
                         model.version.clone(),
                     )
-                    .with_download_url(model.url.clone()),
+                    .with_download_url(model.url),
                 )
             })
             .collect();
@@ -455,7 +451,7 @@ impl Platform for WasmPlatformImpl {
         if self.model_manager.is_model_downloaded(model_id).await {
             // Return completed immediately
             let progress = vec![ModelOperationProgress::Completed {
-                model_id: model_id.to_string(),
+                model_id: model_id.to_owned(),
                 local_path: std::path::PathBuf::from(format!("storage://{model_id}")),
             }];
 
@@ -471,7 +467,7 @@ impl Platform for WasmPlatformImpl {
             .map_err(Self::convert_error)?;
 
         // Convert download progress to model operation progress
-        let model_id_clone = model_id.to_string();
+        let model_id_clone = model_id.to_owned();
         let progress_stream = download_stream.map(move |download_progress| {
             if download_progress.percentage == Some(100.0) {
                 Ok(ModelOperationProgress::Completed {
@@ -510,9 +506,9 @@ impl Platform for WasmPlatformImpl {
             model.size as u64,
             is_installed,
             ModelMetadata::new(
-                "onnx".to_string(),
-                "whisper".to_string(),
-                "multilingual".to_string(),
+                "onnx".to_owned(),
+                "whisper".to_owned(),
+                "multilingual".to_owned(),
                 model.version.clone(),
             )
             .with_download_url(model.url.clone()),
@@ -559,8 +555,8 @@ impl Platform for WasmPlatformImpl {
         // CPU is always available
         devices.push(DeviceInfo {
             id: 0,
-            name: "CPU".to_string(),
-            description: Some("CPU-based transcription".to_string()),
+            name: "CPU".to_owned(),
+            description: Some("CPU-based transcription".to_owned()),
             device_type: DeviceType::Cpu,
             memory_free: None, // Don't guess values
             memory_total: None,
@@ -576,14 +572,14 @@ impl Platform for WasmPlatformImpl {
                 // Move all window/navigator access inside spawn_local
                 let window = match web_sys::window() {
                     Some(w) => w,
-                    None => return Err("No window available".to_string()),
+                    None => return Err("No window available".to_owned()),
                 };
 
                 let navigator = window.navigator();
 
                 // Check if WebGPU GPU interface exists
                 if navigator.gpu().is_undefined() {
-                    return Err("WebGPU not available".to_string());
+                    return Err("WebGPU not available".to_owned());
                 }
 
                 let adapter_promise = navigator.gpu().request_adapter();
@@ -592,7 +588,7 @@ impl Platform for WasmPlatformImpl {
                     .map_err(|e| format!("Failed to get WebGPU adapter: {e:?}"))?;
 
                 let Some(adapter) = adapter.into_option() else {
-                    return Err("No WebGPU adapter found".to_string());
+                    return Err("No WebGPU adapter found".to_owned());
                 };
                 let info = adapter.info();
                 let vendor = info.vendor();
@@ -610,7 +606,7 @@ impl Platform for WasmPlatformImpl {
                 Ok::<DeviceInfo, String>(DeviceInfo {
                     id: 1,
                     name: format!("{vendor} {device}"),
-                    description: Some("WebGPU-based transcription".to_string()),
+                    description: Some("WebGPU-based transcription".to_owned()),
                     device_type: DeviceType::Gpu,
                     memory_free: None, // WebGPU does not expose memory info
                     memory_total: None,
@@ -645,24 +641,21 @@ impl Platform for WasmPlatformImpl {
     async fn load_settings(&self) -> Result<Settings, PlatformError> {
         const SETTINGS_KEY: &str = "purr-settings";
 
-        match Self::get_storage_value(SETTINGS_KEY)? {
-            Some(json_str) => {
-                // Try to parse stored settings
-                match serde_json::from_str(&json_str) {
-                    Ok(settings) => Ok(settings),
-                    Err(e) => {
-                        tracing::warn!("Failed to parse stored settings, using defaults: {}", e);
-                        // If parsing fails, fall back to default settings
-                        // This provides automatic recovery from corrupted settings
-                        Ok(Settings::default())
-                    }
+        if let Some(json_str) = Self::get_storage_value(SETTINGS_KEY)? {
+            // Try to parse stored settings
+            match serde_json::from_str(&json_str) {
+                Ok(settings) => Ok(settings),
+                Err(e) => {
+                    tracing::warn!("Failed to parse stored settings, using defaults: {}", e);
+                    // If parsing fails, fall back to default settings
+                    // This provides automatic recovery from corrupted settings
+                    Ok(Settings::default())
                 }
             }
-            None => {
-                // No settings found, return default settings
-                tracing::info!("No settings found in localStorage, using defaults");
-                Ok(Settings::default())
-            }
+        } else {
+            // No settings found, return default settings
+            tracing::info!("No settings found in localStorage, using defaults");
+            Ok(Settings::default())
         }
     }
 
@@ -684,7 +677,7 @@ impl Platform for WasmPlatformImpl {
 
         // Serialize settings to JSON
         let json_str = serde_json::to_string_pretty(settings).map_err(|e| {
-            PlatformError::settings_persistence(format!("Failed to serialize settings: {}", e))
+            PlatformError::settings_persistence(format!("Failed to serialize settings: {e}"))
         })?;
 
         // Save to localStorage with quota handling
@@ -695,7 +688,7 @@ impl Platform for WasmPlatformImpl {
     }
 
     async fn get_settings_location(&self) -> Result<Option<String>, PlatformError> {
-        Ok(Some("localStorage:purr-settings".to_string()))
+        Ok(Some("localStorage:purr-settings".to_owned()))
     }
 
     // ========================================

@@ -11,7 +11,7 @@ use std::pin::Pin;
 use tokio_stream::Stream;
 
 /// Audio format enumeration
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AudioFormat {
     Wav,
     Mp3,
@@ -24,12 +24,12 @@ pub enum AudioFormat {
 impl AudioFormat {
     pub fn as_str(&self) -> &'static str {
         match self {
-            AudioFormat::Wav => "wav",
-            AudioFormat::Mp3 => "mp3",
-            AudioFormat::Flac => "flac",
-            AudioFormat::Ogg => "ogg",
-            AudioFormat::M4a => "m4a",
-            AudioFormat::WebM => "webm",
+            Self::Wav => "wav",
+            Self::Mp3 => "mp3",
+            Self::Flac => "flac",
+            Self::Ogg => "ogg",
+            Self::M4a => "m4a",
+            Self::WebM => "webm",
         }
     }
 }
@@ -204,11 +204,7 @@ impl AudioTranscriptionProcessor {
         };
 
         let mp3_start = 10 + id3_size;
-        if mp3_start < data.len() {
-            Some(mp3_start)
-        } else {
-            None
-        }
+        (mp3_start < data.len()).then_some(mp3_start)
     }
 
     /// Parse WAV file metadata
@@ -281,10 +277,10 @@ impl AudioTranscriptionProcessor {
         };
 
         let codec = match audio_format {
-            1 => "PCM".to_string(),
-            3 => "IEEE Float".to_string(),
-            6 => "A-law".to_string(),
-            7 => "μ-law".to_string(),
+            1 => "PCM".to_owned(),
+            3 => "IEEE Float".to_owned(),
+            6 => "A-law".to_owned(),
+            7 => "μ-law".to_owned(),
             _ => format!("Unknown ({audio_format})"),
         };
 
@@ -314,18 +310,19 @@ impl AudioTranscriptionProcessor {
         // Find first valid MP3 frame header
         let mut frame_start = mp3_start;
         while frame_start < data.len() - 4 {
-            if data[frame_start] == 0xFF && (data[frame_start + 1] & 0xE0) == 0xE0 {
-                if let Ok(metadata) = self.parse_mp3_frame_header(&data[frame_start..]) {
-                    return Ok(AudioMetadata {
-                        format: AudioFormat::Mp3,
-                        sample_rate: metadata.0,
-                        channels: metadata.1,
-                        duration: self.estimate_mp3_duration(data, metadata.0, frame_start),
-                        file_size: data.len(),
-                        bit_depth: None, // MP3 doesn't have fixed bit depth
-                        codec: "MPEG Audio".to_string(),
-                    });
-                }
+            if data[frame_start] == 0xFF
+                && (data[frame_start + 1] & 0xE0) == 0xE0
+                && let Ok(metadata) = self.parse_mp3_frame_header(&data[frame_start..])
+            {
+                return Ok(AudioMetadata {
+                    format: AudioFormat::Mp3,
+                    sample_rate: metadata.0,
+                    channels: metadata.1,
+                    duration: self.estimate_mp3_duration(data, metadata.0, frame_start),
+                    file_size: data.len(),
+                    bit_depth: None, // MP3 doesn't have fixed bit depth
+                    codec: "MPEG Audio".to_owned(),
+                });
             }
             frame_start += 1;
         }
@@ -495,7 +492,7 @@ impl AudioTranscriptionProcessor {
             duration,
             file_size: data.len(),
             bit_depth: Some(u16::from(bits_per_sample)),
-            codec: "FLAC".to_string(),
+            codec: "FLAC".to_owned(),
         })
     }
 
@@ -508,7 +505,7 @@ impl AudioTranscriptionProcessor {
             duration: 0.0,
             file_size: data.len(),
             bit_depth: None,
-            codec: "Vorbis".to_string(),
+            codec: "Vorbis".to_owned(),
         })
     }
 
@@ -521,7 +518,7 @@ impl AudioTranscriptionProcessor {
             duration: 0.0,
             file_size: data.len(),
             bit_depth: None,
-            codec: "AAC".to_string(),
+            codec: "AAC".to_owned(),
         })
     }
 
@@ -534,7 +531,7 @@ impl AudioTranscriptionProcessor {
             duration: 0.0,
             file_size: data.len(),
             bit_depth: None,
-            codec: "Opus".to_string(),
+            codec: "Opus".to_owned(),
         })
     }
 
@@ -612,7 +609,7 @@ impl AudioTranscriptionProcessor {
             16 => {
                 // 16-bit signed PCM
                 let mut samples = Vec::with_capacity(pcm_data.len() / 2);
-                for chunk in pcm_data.chunks_exact(2) {
+                for chunk in pcm_data.as_chunks::<2>().0 {
                     let sample16 = i16::from_le_bytes([chunk[0], chunk[1]]);
                     samples.push(f32::from(sample16) / 32768.0);
                 }
@@ -621,7 +618,7 @@ impl AudioTranscriptionProcessor {
             24 => {
                 // 24-bit signed PCM
                 let mut samples = Vec::with_capacity(pcm_data.len() / 3);
-                for chunk in pcm_data.chunks_exact(3) {
+                for chunk in pcm_data.as_chunks::<3>().0 {
                     let sample24 = i32::from_le_bytes([chunk[0], chunk[1], chunk[2], 0]) >> 8;
                     samples.push(sample24 as f32 / 8388608.0); // 2^23
                 }
@@ -630,7 +627,7 @@ impl AudioTranscriptionProcessor {
             32 => {
                 // 32-bit signed PCM or float
                 let mut samples = Vec::with_capacity(pcm_data.len() / 4);
-                for chunk in pcm_data.chunks_exact(4) {
+                for chunk in pcm_data.as_chunks::<4>().0 {
                     // Try as float first
                     let sample_f32 = f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
                     if sample_f32.is_finite() && sample_f32.abs() <= 1.0 {
@@ -638,7 +635,7 @@ impl AudioTranscriptionProcessor {
                     } else {
                         // Treat as 32-bit signed integer
                         let sample32 = i32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
-                        samples.push(sample32 as f32 / 2147483648.0); // 2^31
+                        samples.push(sample32 as f32 / 2_147_483_600.0); // 2^31
                     }
                 }
                 samples
@@ -674,8 +671,8 @@ impl AudioTranscriptionProcessor {
             }
         }
         Err(WebError::UnsupportedAudioFormat {
-            format: "ogg".to_string(),
-            supported_formats: "wav, mp3, flac".to_string(),
+            format: "ogg".to_owned(),
+            supported_formats: "wav, mp3, flac".to_owned(),
         })
     }
 
@@ -688,44 +685,40 @@ impl AudioTranscriptionProcessor {
             }
         }
         Err(WebError::UnsupportedAudioFormat {
-            format: "ogg".to_string(),
-            supported_formats: "wav, mp3, flac".to_string(),
+            format: "ogg".to_owned(),
+            supported_formats: "wav, mp3, flac".to_owned(),
         })
     }
 
     fn parse_m4a_sample_rate(&self, data: &[u8]) -> WebResult<f32> {
         // Parse MP4 atoms to find sample rate
-        if let Some(stsd_pos) = self.find_mp4_atom(data, b"stsd") {
-            if data.len() > stsd_pos + 32 {
-                let rate_bytes = &data[stsd_pos + 24..stsd_pos + 28];
-                let sample_rate = u32::from_be_bytes([
-                    rate_bytes[0],
-                    rate_bytes[1],
-                    rate_bytes[2],
-                    rate_bytes[3],
-                ]);
-                return Ok(sample_rate as f32);
-            }
+        if let Some(stsd_pos) = self.find_mp4_atom(data, b"stsd")
+            && data.len() > stsd_pos + 32
+        {
+            let rate_bytes = &data[stsd_pos + 24..stsd_pos + 28];
+            let sample_rate =
+                u32::from_be_bytes([rate_bytes[0], rate_bytes[1], rate_bytes[2], rate_bytes[3]]);
+            return Ok(sample_rate as f32);
         }
         Err(WebError::UnsupportedAudioFormat {
-            format: "m4a".to_string(),
-            supported_formats: "wav, mp3, flac".to_string(),
+            format: "m4a".to_owned(),
+            supported_formats: "wav, mp3, flac".to_owned(),
         })
     }
 
     fn parse_m4a_channels(&self, data: &[u8]) -> WebResult<u32> {
         // Parse MP4 atoms to find channel count
-        if let Some(stsd_pos) = self.find_mp4_atom(data, b"stsd") {
-            if data.len() > stsd_pos + 20 {
-                return Ok(u32::from(u16::from_be_bytes([
-                    data[stsd_pos + 16],
-                    data[stsd_pos + 17],
-                ])));
-            }
+        if let Some(stsd_pos) = self.find_mp4_atom(data, b"stsd")
+            && data.len() > stsd_pos + 20
+        {
+            return Ok(u32::from(u16::from_be_bytes([
+                data[stsd_pos + 16],
+                data[stsd_pos + 17],
+            ])));
         }
         Err(WebError::UnsupportedAudioFormat {
-            format: "m4a".to_string(),
-            supported_formats: "wav, mp3, flac".to_string(),
+            format: "m4a".to_owned(),
+            supported_formats: "wav, mp3, flac".to_owned(),
         })
     }
 
@@ -750,8 +743,8 @@ impl AudioTranscriptionProcessor {
             }
         }
         Err(WebError::UnsupportedAudioFormat {
-            format: "webm".to_string(),
-            supported_formats: "wav, mp3, flac".to_string(),
+            format: "webm".to_owned(),
+            supported_formats: "wav, mp3, flac".to_owned(),
         })
     }
 
@@ -764,8 +757,8 @@ impl AudioTranscriptionProcessor {
             }
         }
         Err(WebError::UnsupportedAudioFormat {
-            format: "webm".to_string(),
-            supported_formats: "wav, mp3, flac".to_string(),
+            format: "webm".to_owned(),
+            supported_formats: "wav, mp3, flac".to_owned(),
         })
     }
 
@@ -824,7 +817,7 @@ impl AudioTranscriptionProcessor {
             if index + 1 < samples.len() {
                 // Linear interpolation
                 let frac = src_index - index as f32;
-                let sample = samples[index] * (1.0 - frac) + samples[index + 1] * frac;
+                let sample = samples[index + 1].mul_add(frac, samples[index] * (1.0 - frac));
                 resampled.push(sample);
             } else if index < samples.len() {
                 resampled.push(samples[index]);
@@ -910,7 +903,7 @@ pub async fn start_transcription_process(
             }
             AudioProcessingProgress::Failed { error } => {
                 let _ = tx_clone.send(TranscriptionStatus::Error {
-                    context: "Transcription error".to_string(),
+                    context: "Transcription error".to_owned(),
                     error_message: error,
                 });
             }
@@ -986,19 +979,19 @@ pub fn get_supported_formats() -> HashMap<String, Vec<String>> {
     let mut formats = HashMap::new();
 
     formats.insert(
-        "wav".to_string(),
-        vec!["PCM".to_string(), "IEEE Float".to_string()],
+        "wav".to_owned(),
+        vec!["PCM".to_owned(), "IEEE Float".to_owned()],
     );
-    formats.insert("mp3".to_string(), vec!["MPEG Audio".to_string()]);
-    formats.insert("flac".to_string(), vec!["FLAC".to_string()]);
+    formats.insert("mp3".to_owned(), vec!["MPEG Audio".to_owned()]);
+    formats.insert("flac".to_owned(), vec!["FLAC".to_owned()]);
     formats.insert(
-        "ogg".to_string(),
-        vec!["Vorbis".to_string(), "Opus".to_string()],
+        "ogg".to_owned(),
+        vec!["Vorbis".to_owned(), "Opus".to_owned()],
     );
-    formats.insert("m4a".to_string(), vec!["AAC".to_string()]);
+    formats.insert("m4a".to_owned(), vec!["AAC".to_owned()]);
     formats.insert(
-        "webm".to_string(),
-        vec!["Opus".to_string(), "Vorbis".to_string()],
+        "webm".to_owned(),
+        vec!["Opus".to_owned(), "Vorbis".to_owned()],
     );
 
     formats

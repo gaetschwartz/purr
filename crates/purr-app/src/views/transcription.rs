@@ -54,7 +54,7 @@ pub fn Transcription(file: FileId) -> Element {
                     TranscriptionDisplay {
                         status: transcription_status(),
                         text: transcription_text(),
-                        file_name: file_for_ui.clone(),
+                        file_name: file_for_ui,
                     }
 
                     // Add back button for error state
@@ -129,7 +129,7 @@ fn start_transcription_process(
                         Err(e) => {
                             error!("Stream error: {}", e);
                             status_signal.set(Some(TranscriptionStatus::Error {
-                                context: "stream".to_string(),
+                                context: "stream".to_owned(),
                                 error_message: format!("Stream error: {e}"),
                             }));
                             break;
@@ -140,7 +140,7 @@ fn start_transcription_process(
             Err(e) => {
                 error!("Failed to start transcription: {}", e);
                 status_signal.set(Some(TranscriptionStatus::Error {
-                    context: "transcription_start".to_string(),
+                    context: "transcription_start".to_owned(),
                     error_message: format!("Failed to start transcription: {e}"),
                 }));
             }

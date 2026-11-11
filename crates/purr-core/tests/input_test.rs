@@ -44,7 +44,7 @@ async fn test_async_stream_buffer_concurrent_write_read() {
     // Spawn a task to write data
     let write_handle = tokio::spawn(async move {
         for i in 0..10 {
-            let data = format!("chunk-{}", i);
+            let data = format!("chunk-{i}");
             buffer_clone.write(data.as_bytes());
             tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
         }
@@ -70,10 +70,7 @@ async fn test_async_stream_buffer_concurrent_write_read() {
     write_handle.await.unwrap();
 
     // Verify we read all the expected data
-    let expected = (0..10)
-        .map(|i| format!("chunk-{}", i))
-        .collect::<Vec<_>>()
-        .join("");
+    let expected = (0..10).map(|i| format!("chunk-{i}")).collect::<String>();
     assert_eq!(String::from_utf8(total_read).unwrap(), expected);
 }
 
@@ -97,7 +94,7 @@ async fn test_async_custom_input_creation() {
         Err(e) => {
             // Expected - our test data isn't valid audio format
             // But we can verify it's an FFmpeg error, not a creation error
-            println!("Expected FFmpeg error: {:?}", e);
+            println!("Expected FFmpeg error: {e:?}");
         }
     }
 }
@@ -107,10 +104,7 @@ async fn test_url_vs_file_streaming_comparison() {
     // Skip test if samples directory doesn't exist
     let samples_dir = get_samples_dir();
     if !samples_dir.exists() {
-        println!(
-            "Skipping test: samples directory not found at {:?}",
-            samples_dir
-        );
+        println!("Skipping test: samples directory not found at {samples_dir:?}");
         return;
     }
 
@@ -122,28 +116,27 @@ async fn test_url_vs_file_streaming_comparison() {
 
     // Create mock HTTP server
     let server = create_mock_server().await;
-    let base_url = match server.server_address() {
-        Some(url) => url,
-        None => {
-            println!("Skipping test: Server has no address (likely in mock mode)");
-            return;
-        }
+    let base_url = if let Some(url) = server.server_address() {
+        url
+    } else {
+        println!("Skipping test: Server has no address (likely in mock mode)");
+        return;
     };
 
     // Create URL for the test file
-    let audio_url = format!("{}/audio/jfk.wav", base_url);
+    let audio_url = format!("{base_url}/audio/jfk.wav");
 
     // Configuration for both tests
     let config = TranscriptionConfig::default();
 
-    println!("Testing URL: {}", audio_url);
-    println!("Testing file: {:?}", test_file);
+    println!("Testing URL: {audio_url}");
+    println!("Testing file: {test_file:?}");
 
     // Test file streaming
     let mut file_stream = match AudioProcessor::stream_file(&test_file).await {
         Ok(stream) => stream,
         Err(e) => {
-            println!("File streaming failed: {:?}", e);
+            println!("File streaming failed: {e:?}");
             return;
         }
     };
@@ -153,7 +146,7 @@ async fn test_url_vs_file_streaming_comparison() {
         match AudioProcessor::stream_url_with_config(audio_url.parse().unwrap(), &config).await {
             Ok(stream) => stream,
             Err(e) => {
-                println!("URL streaming failed: {:?}", e);
+                println!("URL streaming failed: {e:?}");
                 return;
             }
         };
@@ -169,7 +162,7 @@ async fn test_url_vs_file_streaming_comparison() {
                 file_chunks.push(chunk);
             }
             Err(e) => {
-                println!("File stream error: {:?}", e);
+                println!("File stream error: {e:?}");
                 break;
             }
         }
@@ -182,7 +175,7 @@ async fn test_url_vs_file_streaming_comparison() {
                 url_chunks.push(chunk);
             }
             Err(e) => {
-                println!("URL stream error: {:?}", e);
+                println!("URL stream error: {e:?}");
                 break;
             }
         }
@@ -258,10 +251,7 @@ async fn test_url_vs_file_sync_load_comparison() {
     // Skip test if samples directory doesn't exist
     let samples_dir = get_samples_dir();
     if !samples_dir.exists() {
-        println!(
-            "Skipping test: samples directory not found at {:?}",
-            samples_dir
-        );
+        println!("Skipping test: samples directory not found at {samples_dir:?}");
         return;
     }
 
@@ -273,28 +263,27 @@ async fn test_url_vs_file_sync_load_comparison() {
 
     // Create mock HTTP server
     let server = create_mock_server().await;
-    let base_url = match server.server_address() {
-        Some(url) => url,
-        None => {
-            println!("Skipping test: Server has no address (likely in mock mode)");
-            return;
-        }
+    let base_url = if let Some(url) = server.server_address() {
+        url
+    } else {
+        println!("Skipping test: Server has no address (likely in mock mode)");
+        return;
     };
 
     // Create URL for the test file
-    let audio_url = format!("{}/audio/jfk.wav", base_url);
+    let audio_url = format!("{base_url}/audio/jfk.wav");
 
     // Configuration for both tests
     let config = TranscriptionConfig::default();
 
-    println!("Testing URL: {}", audio_url);
-    println!("Testing file: {:?}", test_file);
+    println!("Testing URL: {audio_url}");
+    println!("Testing file: {test_file:?}");
 
     // Test file loading
     let file_audio = match AudioProcessor::load_audio(&test_file).await {
         Ok(audio) => audio,
         Err(e) => {
-            println!("File loading failed: {:?}", e);
+            println!("File loading failed: {e:?}");
             return;
         }
     };
@@ -306,7 +295,7 @@ async fn test_url_vs_file_sync_load_comparison() {
         {
             Ok(audio) => audio,
             Err(e) => {
-                println!("URL loading failed: {:?}", e);
+                println!("URL loading failed: {e:?}");
                 return;
             }
         };
@@ -385,16 +374,15 @@ async fn test_url_vs_file_sync_load_comparison() {
 async fn test_http_server_error_handling() {
     // Create mock HTTP server
     let server = create_mock_server().await;
-    let base_url = match server.server_address() {
-        Some(url) => url,
-        None => {
-            println!("Skipping test: Server has no address (likely in mock mode)");
-            return;
-        }
+    let base_url = if let Some(url) = server.server_address() {
+        url
+    } else {
+        println!("Skipping test: Server has no address (likely in mock mode)");
+        return;
     };
 
     // Test 404 error
-    let nonexistent_url = format!("{}/audio/nonexistent.wav", base_url);
+    let nonexistent_url = format!("{base_url}/audio/nonexistent.wav");
     let config = TranscriptionConfig::default();
 
     let result =
@@ -409,7 +397,7 @@ async fn test_http_server_error_handling() {
             // Expected network error
         }
         other => {
-            println!("Unexpected error type: {:?}", other);
+            println!("Unexpected error type: {other:?}");
         }
     }
 }

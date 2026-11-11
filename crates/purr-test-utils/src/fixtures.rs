@@ -45,7 +45,7 @@ impl AudioFixtures {
 
         let num_samples = (duration_secs * sample_rate as f32) as usize;
         (0..num_samples)
-            .map(|_| Faker.fake::<f32>() * 2.0 - 1.0) // Range [-1.0, 1.0]
+            .map(|_| f32::mul_add(Faker.fake::<f32>(), 2.0, -1.0)) // Range [-1.0, 1.0]
             .collect()
     }
 
@@ -214,13 +214,13 @@ impl NetworkFixtures {
     pub fn mock_model_download_response() -> HashMap<String, Value> {
         let mut response = HashMap::new();
         response.insert(
-            "headers".to_string(),
+            "headers".to_owned(),
             serde_json::json!({
                 "content-length": "1048576",
                 "content-type": "application/octet-stream"
             }),
         );
-        response.insert("status".to_string(), serde_json::json!(200));
+        response.insert("status".to_owned(), serde_json::json!(200));
         response
     }
 
@@ -228,9 +228,9 @@ impl NetworkFixtures {
     #[must_use]
     pub fn mock_error_response(status: u16, message: &str) -> HashMap<String, Value> {
         let mut response = HashMap::new();
-        response.insert("status".to_string(), serde_json::json!(status));
+        response.insert("status".to_owned(), serde_json::json!(status));
         response.insert(
-            "error".to_string(),
+            "error".to_owned(),
             serde_json::json!({
                 "message": message,
                 "code": status
@@ -262,10 +262,10 @@ impl PerformanceFixtures {
     #[must_use]
     pub fn stress_test_scenarios() -> Vec<(String, usize)> {
         vec![
-            ("Small file".to_string(), 1024),
-            ("Medium file".to_string(), 1024 * 1024),
-            ("Large file".to_string(), 10 * 1024 * 1024),
-            ("Extra large file".to_string(), 100 * 1024 * 1024),
+            ("Small file".to_owned(), 1024),
+            ("Medium file".to_owned(), 1024 * 1024),
+            ("Large file".to_owned(), 10 * 1024 * 1024),
+            ("Extra large file".to_owned(), 100 * 1024 * 1024),
         ]
     }
 }
@@ -313,7 +313,7 @@ mod tests {
     #[test]
     fn test_performance_fixtures() {
         let scenarios = PerformanceFixtures::stress_test_scenarios();
-        assert!(!scenarios.is_empty());
+        assert_ne!(scenarios, [] as [(std::string::String, usize); 0]);
         assert!(
             scenarios
                 .iter()

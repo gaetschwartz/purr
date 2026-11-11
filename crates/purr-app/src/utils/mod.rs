@@ -7,7 +7,7 @@ pub trait BytesExt {
 }
 
 impl BytesExt for Bytes {
-    fn chunks(&self, chunk_size: usize) -> impl Iterator<Item = Bytes> + '_ {
+    fn chunks(&self, chunk_size: usize) -> impl Iterator<Item = Self> + '_ {
         ByteChunks {
             bytes: self,
             chunk_size,

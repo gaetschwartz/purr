@@ -104,8 +104,8 @@ impl WebModelManager {
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
 
         // Start download
-        let model_id = model_id.to_string();
-        let url = model_info.url.clone();
+        let model_id = model_id.to_owned();
+        let url = model_info.url;
 
         let downloads = Arc::clone(&self.downloads);
         wasm_bindgen_futures::spawn_local(async move {

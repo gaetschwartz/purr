@@ -28,10 +28,7 @@ async fn test_missing_audio_file() {
     assert!(result.is_err());
     match result.unwrap_err() {
         WhisperError::AudioProcessing { .. } | WhisperError::Configuration { .. } => {}
-        e => panic!(
-            "Expected AudioProcessing or Configuration error, got: {}",
-            e
-        ),
+        e => panic!("Expected AudioProcessing or Configuration error, got: {e}"),
     }
 }
 
@@ -62,7 +59,7 @@ async fn test_transcription_configurations() {
 
         match result {
             Ok(transcription) => {
-                assert!(!transcription.text.is_empty());
+                assert_ne!(transcription.text, "");
                 assert!(transcription.audio_duration > 0.0);
                 println!(
                     "✓ Configuration {} successful: \"{}...\"",
@@ -74,9 +71,8 @@ async fn test_transcription_configurations() {
                 if e.to_string().contains("No Whisper model found") {
                     println!("⚠ Skipping configuration {} - no model available", i + 1);
                     continue;
-                } else {
-                    panic!("Configuration {} failed: {}", i + 1, e);
                 }
+                panic!("Configuration {} failed: {}", i + 1, e);
             }
         }
     }
@@ -105,7 +101,7 @@ async fn test_transcription_output_formats() {
 
     match result {
         Ok(transcription) => {
-            assert!(!transcription.text.is_empty());
+            assert_ne!(transcription.text, "");
             assert!(!transcription.segments.is_empty());
 
             // Validate timestamp format
@@ -123,9 +119,8 @@ async fn test_transcription_output_formats() {
             if e.to_string().contains("No Whisper model found") {
                 println!("⚠ Skipping timestamps test - no model available");
                 return;
-            } else {
-                panic!("Timestamps test failed: {}", e);
             }
+            panic!("Timestamps test failed: {e}");
         }
     }
 }
@@ -141,20 +136,16 @@ async fn test_transcription_error_handling(#[case] invalid_path: &str) {
 
     assert!(
         result.is_err(),
-        "Should fail for invalid file: {}",
-        invalid_path
+        "Should fail for invalid file: {invalid_path}"
     );
 
     let error = result.unwrap_err();
     match error {
         WhisperError::AudioProcessing { .. } | WhisperError::Io { .. } => {
-            println!(
-                "✓ Correctly handled invalid file: {} -> {}",
-                invalid_path, error
-            );
+            println!("✓ Correctly handled invalid file: {invalid_path} -> {error}");
         }
         _ => {
-            println!("⚠ Unexpected error type for {}: {}", invalid_path, error);
+            println!("⚠ Unexpected error type for {invalid_path}: {error}");
         }
     }
 }

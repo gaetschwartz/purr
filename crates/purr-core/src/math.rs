@@ -30,39 +30,39 @@ pub struct ByteSpeed {
 }
 
 impl ByteSpeed {
-    pub const BPS: ByteSpeed = ByteSpeed {
+    pub const BPS: Self = Self {
         dividend: (1, "B"),
         divisor: (Duration::from_secs(1), "s"),
     };
-    pub const KBPS: ByteSpeed = ByteSpeed {
+    pub const KBPS: Self = Self {
         dividend: (1_000, "KB"),
         divisor: (Duration::from_secs(1), "s"),
     };
-    pub const MBPS: ByteSpeed = ByteSpeed {
+    pub const MBPS: Self = Self {
         dividend: (1_000_000, "MB"),
         divisor: (Duration::from_secs(1), "s"),
     };
-    pub const GBPS: ByteSpeed = ByteSpeed {
+    pub const GBPS: Self = Self {
         dividend: (1_000_000_000, "GB"),
         divisor: (Duration::from_secs(1), "s"),
     };
-    pub const TBPS: ByteSpeed = ByteSpeed {
+    pub const TBPS: Self = Self {
         dividend: (1_000_000_000_000, "TB"),
         divisor: (Duration::from_secs(1), "s"),
     };
-    pub const KIBPS: ByteSpeed = ByteSpeed {
+    pub const KIBPS: Self = Self {
         dividend: (1 << 10, "KiB"),
         divisor: (Duration::from_secs(1), "s"),
     };
-    pub const MIBPS: ByteSpeed = ByteSpeed {
+    pub const MIBPS: Self = Self {
         dividend: (1 << 20, "MiB"),
         divisor: (Duration::from_secs(1), "s"),
     };
-    pub const GIBPS: ByteSpeed = ByteSpeed {
+    pub const GIBPS: Self = Self {
         dividend: (1 << 30, "GiB"),
         divisor: (Duration::from_secs(1), "s"),
     };
-    pub const TIBPS: ByteSpeed = ByteSpeed {
+    pub const TIBPS: Self = Self {
         dividend: (1 << 40, "TiB"),
         divisor: (Duration::from_secs(1), "s"),
     };
@@ -86,23 +86,23 @@ impl ByteSpeed {
     #[must_use]
     pub const fn throughput(qty: usize, duration: Duration) -> Self {
         if qty == 0 || duration.is_zero() {
-            return ByteSpeed::BPS; // Avoid division by zero
+            return Self::BPS; // Avoid division by zero
         }
         let speed = qty as f64 / duration.as_secs_f64();
-        Self::mul_f64(speed, ByteSpeed::BPS)
+        Self::mul_f64(speed, Self::BPS)
     }
 
     #[must_use]
-    pub const fn mul(value: usize, speed: ByteSpeed) -> Self {
-        ByteSpeed {
+    pub const fn mul(value: usize, speed: Self) -> Self {
+        Self {
             dividend: (value * speed.dividend.0, speed.dividend.1),
             divisor: speed.divisor,
         }
     }
 
     #[must_use]
-    pub const fn mul_f64(value: f64, speed: ByteSpeed) -> Self {
-        ByteSpeed {
+    pub const fn mul_f64(value: f64, speed: Self) -> Self {
+        Self {
             dividend: ((speed.dividend.0 as f64 * value) as usize, speed.dividend.1),
             divisor: speed.divisor,
         }
@@ -119,7 +119,7 @@ impl ByteSpeed {
             }
             unit_index += 1;
         }
-        ByteSpeed {
+        Self {
             dividend: (
                 dividend / Self::SI_SIZE_UNITS[unit_index - 1].0,
                 Self::SI_SIZE_UNITS[unit_index - 1].1,

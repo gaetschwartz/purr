@@ -130,9 +130,9 @@ pub mod mocks {
     impl MockWhisperResponse {
         pub fn new_simple(text: &str, duration: f64) -> Self {
             Self {
-                text: text.to_string(),
+                text: text.to_owned(),
                 segments: vec![MockSegment {
-                    text: text.to_string(),
+                    text: text.to_owned(),
                     start: 0.0,
                     end: duration,
                 }],
@@ -204,10 +204,7 @@ async fn test_audio_processor_load_nonexistent_file() {
         WhisperError::AudioProcessing {
             source: AudioProcessingError::ProcessingFailed { .. },
         } => {}
-        e => panic!(
-            "Expected ReadFailed or ProcessingFailed error, got: {:?}",
-            e
-        ),
+        e => panic!("Expected ReadFailed or ProcessingFailed error, got: {e:?}"),
     }
 }
 
@@ -234,7 +231,7 @@ async fn test_audio_processor_load_valid_wav() {
     let audio_data = result.unwrap();
     assert_eq!(audio_data.sample_rate, 16000);
     assert!(audio_data.duration > 0.0);
-    assert!(!audio_data.samples.is_empty());
+    assert_ne!(audio_data.samples, [] as [f32; 0]);
 }
 
 #[tokio::test]
@@ -244,19 +241,16 @@ async fn test_audio_processor_stream_nonexistent() {
     let result = AudioProcessor::stream_file("nonexistent_file.wav").await;
 
     // Stream creation might succeed, but the first chunk should contain an error
-    match result {
-        Ok(mut stream) => {
-            // Try to get the first chunk - this should fail
-            if let Some(chunk_result) = stream.next().await {
-                assert!(
-                    chunk_result.is_err(),
-                    "Should get an error for nonexistent file"
-                );
-            }
+    if let Ok(mut stream) = result {
+        // Try to get the first chunk - this should fail
+        if let Some(chunk_result) = stream.next().await {
+            assert!(
+                chunk_result.is_err(),
+                "Should get an error for nonexistent file"
+            );
         }
-        Err(_) => {
-            // Also acceptable - immediate failure
-        }
+    } else {
+        // Also acceptable - immediate failure
     }
 }
 
@@ -286,7 +280,7 @@ async fn test_audio_processor_stream_valid_file() {
                     break;
                 }
             }
-            Err(e) => panic!("Stream error: {:?}", e),
+            Err(e) => panic!("Stream error: {e:?}"),
         }
     }
 

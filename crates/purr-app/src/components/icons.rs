@@ -1,7 +1,7 @@
 use dioxus::prelude::*;
 
 /// Available icon types
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum IconType {
     Upload,
     Check,
@@ -14,7 +14,7 @@ pub enum IconType {
 }
 
 /// Props for the Icon component
-#[derive(Props, Clone, PartialEq)]
+#[derive(Props, Clone, PartialEq, Eq)]
 pub struct IconProps {
     /// The type of icon to display
     pub icon_type: IconType,

@@ -49,7 +49,7 @@ pub fn Logs() -> Element {
     let mut logs = use_signal(Vec::<LogEntry>::new);
     let mut navbar_state = use_context::<NavBarState>();
     use_effect(move || {
-        navbar_state.title.set("Logs".to_string());
+        navbar_state.title.set("Logs".to_owned());
         navbar_state.show_back.set(true);
         navbar_state.top_right.set(None);
     });
@@ -373,7 +373,7 @@ fn LogEntryRow(entry: LogEntry, search_query: String) -> Element {
                     div { class: "text-gray-900 dark:text-white leading-relaxed",
                         LogMessage {
                             message: entry.message.clone(),
-                            search_query: search_query.clone(),
+                            search_query: search_query,
                         }
                     }
 
@@ -418,7 +418,7 @@ fn LogMessage(message: String, search_query: String) -> Element {
         rsx! {
             {before}
             mark { class: "bg-yellow-200 dark:bg-yellow-600 px-1 rounded", {matched} }
-            LogMessage { message: after.to_string(), search_query }
+            LogMessage { message: after.to_owned(), search_query }
         }
     } else {
         rsx! {

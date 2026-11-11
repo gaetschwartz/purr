@@ -138,7 +138,7 @@ impl PlatformError {
     where
         E: Into<Box<dyn std::error::Error + Send + Sync>>,
     {
-        PlatformError::FileProcessing { source: err.into() }
+        Self::FileProcessing { source: err.into() }
     }
 
     /// Create a new `PlatformError::Transcription`
@@ -146,7 +146,7 @@ impl PlatformError {
     where
         E: Into<Box<dyn std::error::Error + Send + Sync>>,
     {
-        PlatformError::Transcription { source: err.into() }
+        Self::Transcription { source: err.into() }
     }
 
     /// Create a new `PlatformError::AudioProcessing`
@@ -154,7 +154,7 @@ impl PlatformError {
     where
         E: Into<Box<dyn std::error::Error + Send + Sync>>,
     {
-        PlatformError::AudioProcessing { source: err.into() }
+        Self::AudioProcessing { source: err.into() }
     }
 
     /// Create a new `PlatformError::Initialization`
@@ -162,7 +162,7 @@ impl PlatformError {
     where
         E: Into<Box<dyn std::error::Error + Send + Sync>>,
     {
-        PlatformError::Initialization { source: err.into() }
+        Self::Initialization { source: err.into() }
     }
 
     /// Create a new `PlatformError::Io`
@@ -170,7 +170,7 @@ impl PlatformError {
     where
         E: Into<Box<dyn std::error::Error + Send + Sync>>,
     {
-        PlatformError::Io { source: err.into() }
+        Self::Io { source: err.into() }
     }
 
     /// Create a new `PlatformError::Unsupported`
@@ -178,7 +178,7 @@ impl PlatformError {
     where
         S: Into<Cow<'static, str>>,
     {
-        PlatformError::Unsupported {
+        Self::Unsupported {
             operation: operation.into(),
         }
     }
@@ -186,7 +186,7 @@ impl PlatformError {
     /// Create a new `PlatformError::Unsupported`Platform
     #[must_use]
     pub fn unsupported_platform() -> Self {
-        PlatformError::UnsupportedPlatform(UnsupportedPlatformError)
+        Self::UnsupportedPlatform(UnsupportedPlatformError)
     }
 
     /// Create a new `PlatformError::ModelManagement`
@@ -194,7 +194,7 @@ impl PlatformError {
     where
         E: Into<Box<dyn std::error::Error + Send + Sync>>,
     {
-        PlatformError::ModelManagement { source: err.into() }
+        Self::ModelManagement { source: err.into() }
     }
 
     /// Create a new `PlatformError::ModelNotFound`
@@ -202,7 +202,7 @@ impl PlatformError {
     where
         S: Into<String>,
     {
-        PlatformError::ModelNotFound {
+        Self::ModelNotFound {
             model_id: model_id.into(),
         }
     }
@@ -214,7 +214,7 @@ impl PlatformError {
         S2: Into<String>,
         E: Into<Box<dyn std::error::Error + Send + Sync>>,
     {
-        PlatformError::ModelDownloadFailed {
+        Self::ModelDownloadFailed {
             model_id: model_id.into(),
             url: url.into(),
             source: source.into(),
@@ -228,7 +228,7 @@ impl PlatformError {
         P: Into<PathBuf>,
         E: Into<Box<dyn std::error::Error + Send + Sync>>,
     {
-        PlatformError::ModelInstallationFailed {
+        Self::ModelInstallationFailed {
             model_id: model_id.into(),
             path: path.into(),
             source: source.into(),
@@ -242,7 +242,7 @@ impl PlatformError {
         S2: Into<String>,
         S3: Into<String>,
     {
-        PlatformError::InvalidModelMetadata {
+        Self::InvalidModelMetadata {
             model_id: model_id.into(),
             field: field.into(),
             issue: issue.into(),
@@ -260,7 +260,7 @@ impl PlatformError {
         S2: Into<String>,
         S3: Into<String>,
     {
-        PlatformError::ModelVerificationFailed {
+        Self::ModelVerificationFailed {
             model_id: model_id.into(),
             expected_checksum: expected_checksum.into(),
             actual_checksum: actual_checksum.into(),
@@ -270,7 +270,7 @@ impl PlatformError {
     /// Create a new `PlatformError::StorageQuotaExceeded`
     #[must_use]
     pub fn storage_quota_exceeded(requested: u64, available: u64) -> Self {
-        PlatformError::StorageQuotaExceeded {
+        Self::StorageQuotaExceeded {
             requested,
             available,
         }
@@ -281,7 +281,7 @@ impl PlatformError {
     where
         E: Into<Box<dyn std::error::Error + Send + Sync>>,
     {
-        PlatformError::DeviceDetection { source: err.into() }
+        Self::DeviceDetection { source: err.into() }
     }
 
     /// Create a new `PlatformError::SettingsPersistence`
@@ -289,11 +289,11 @@ impl PlatformError {
     where
         E: Into<Box<dyn std::error::Error + Send + Sync>>,
     {
-        PlatformError::SettingsPersistence { source: err.into() }
+        Self::SettingsPersistence { source: err.into() }
     }
 }
 
-#[derive(Debug, Clone, Copy, thiserror::Error, Diagnostic, PartialEq)]
+#[derive(Debug, Clone, Copy, thiserror::Error, Diagnostic, PartialEq, Eq)]
 #[diagnostic(code(platform::unsupported_platform))]
 pub struct UnsupportedPlatformError;
 
@@ -343,34 +343,34 @@ pub enum FileSource {
 impl std::fmt::Display for FileSource {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            FileSource::Path(p) => write!(f, "[{}]", p.display()),
-            FileSource::Bytes(b) => write!(f, "[{} bytes]", b.len()),
-            FileSource::Uploaded(id) => write!(f, "[#{id}]"),
+            Self::Path(p) => write!(f, "[{}]", p.display()),
+            Self::Bytes(b) => write!(f, "[{} bytes]", b.len()),
+            Self::Uploaded(id) => write!(f, "[#{id}]"),
         }
     }
 }
 
 impl From<PathBuf> for FileSource {
     fn from(path: PathBuf) -> Self {
-        FileSource::Path(path)
+        Self::Path(path)
     }
 }
 
 impl From<&Path> for FileSource {
     fn from(path: &Path) -> Self {
-        FileSource::Path(path.to_path_buf())
+        Self::Path(path.to_path_buf())
     }
 }
 
 impl From<FileId> for FileSource {
     fn from(file_id: FileId) -> Self {
-        FileSource::Uploaded(file_id)
+        Self::Uploaded(file_id)
     }
 }
 
 impl From<Bytes> for FileSource {
     fn from(bytes: Bytes) -> Self {
-        FileSource::Bytes(bytes)
+        Self::Bytes(bytes)
     }
 }
 
@@ -414,7 +414,7 @@ impl FileId {
     /// Create a new `FileId`
     #[must_use]
     pub fn new(id: String) -> Self {
-        FileId(id)
+        Self(id)
     }
 }
 
@@ -443,7 +443,7 @@ where
     S: Into<String>,
 {
     fn from(s: S) -> Self {
-        FileId::new(s.into())
+        Self::new(s.into())
     }
 }
 
@@ -451,12 +451,12 @@ impl FromStr for FileId {
     type Err = std::convert::Infallible;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(FileId::new(s.to_string()))
+        Ok(Self::new(s.to_owned()))
     }
 }
 
 /// Model information containing metadata about available models
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ModelInfo {
     /// Unique identifier for the model
     pub id: String,
@@ -517,7 +517,7 @@ impl ModelInfo {
 }
 
 /// Platform-specific metadata for models
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ModelMetadata {
     /// Download URL for the model (if available)
     pub download_url: Option<String>,
@@ -581,7 +581,7 @@ impl ModelMetadata {
 }
 
 /// Progress information for model operations
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum ModelOperationProgress {
     /// Operation starting
     Starting { model_id: String },

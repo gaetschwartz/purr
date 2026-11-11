@@ -247,19 +247,19 @@ mod tests {
 
         for code in Language::VARIANTS_CODES {
             let opts = Opts::try_parse_from(["test", code]).unwrap_or_else(|e| {
-                panic!("Failed to parse '{}': {}", code, e);
+                panic!("Failed to parse '{code}': {e}");
             });
             assert_eq!(opts.lang.code(), *code);
         }
         for lang in Language::VARIANTS_LANGUAGES {
             let opts = Opts::try_parse_from(["test", lang]).unwrap_or_else(|e| {
-                panic!("Failed to parse '{}': {}", lang, e);
+                panic!("Failed to parse '{lang}': {e}");
             });
             assert_eq!(opts.lang.name(), *lang);
         }
         for (lang, code) in Language::ADDITIONAL_MAPPINGS {
             let opts = Opts::try_parse_from(["test", lang]).unwrap_or_else(|e| {
-                panic!("Failed to parse '{}': {}", lang, e);
+                panic!("Failed to parse '{lang}': {e}");
             });
             assert_eq!(opts.lang.code(), *code);
         }
@@ -274,7 +274,7 @@ mod tests {
         }
 
         let opts = Opts::try_parse_from(["test", "auto"]).unwrap_or_else(|e| {
-            panic!("Failed to parse 'auto': {}", e);
+            panic!("Failed to parse 'auto': {e}");
         });
         assert_eq!(opts.lang.code(), "auto");
         assert_eq!(opts.lang.name(), "auto");

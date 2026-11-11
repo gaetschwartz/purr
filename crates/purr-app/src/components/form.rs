@@ -123,7 +123,7 @@ pub struct SelectProps {
 }
 
 /// Option for Select component
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct SelectOption {
     pub value: String,
     pub label: String,
@@ -189,11 +189,10 @@ pub fn NumberInput(props: NumberInputProps) -> Element {
                 max: "{props.max}",
                 value: "{props.value}",
                 oninput: move |event| {
-                    if let Ok(value) = event.value().parse::<u32>() {
-                        if value >= props.min && value <= props.max {
+                    if let Ok(value) = event.value().parse::<u32>()
+                        && value >= props.min && value <= props.max {
                             props.onchange.call(value);
                         }
-                    }
                 }
             }
         }

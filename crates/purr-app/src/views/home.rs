@@ -13,7 +13,7 @@ use dioxus::prelude::*;
 pub fn Home() -> Element {
     let mut navbar_state = use_context::<NavBarState>();
     use_effect(move || {
-        navbar_state.title.set("Purr".to_string());
+        navbar_state.title.set("Purr".to_owned());
         navbar_state.show_back.set(false);
         navbar_state.top_right.set(Some(rsx! {
             Link {

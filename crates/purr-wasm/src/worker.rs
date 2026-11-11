@@ -33,7 +33,7 @@ pub struct TranscriptionConfig {
 impl Default for TranscriptionConfig {
     fn default() -> Self {
         Self {
-            model_name: "onnx-community/whisper-base".to_string(),
+            model_name: "onnx-community/whisper-base".to_owned(),
             language: None,
             translate: false,
             quantized: true,
@@ -208,7 +208,7 @@ impl TranscriptionWorker {
 
         // Send transcription request to worker.js
         let transcription_message = WorkerMessage::StartTranscription {
-            session_id: session_id.to_string(),
+            session_id: session_id.to_owned(),
             request_id: request_id.clone(),
             audio_data: if let FileSource::Bytes(bytes) = request.file {
                 bytes.to_vec()
@@ -290,10 +290,10 @@ impl TranscriptionWorker {
                 while let Some(command) = command_rx.recv().await {
                     match command {
                         WorkerCommand::SendMessage(message) => {
-                            if let Ok(js_value) = serde_wasm_bindgen::to_value(&message) {
-                                if let Err(e) = worker.post_message(&js_value) {
-                                    tracing::error!("Failed to send message to worker: {:?}", e);
-                                }
+                            if let Ok(js_value) = serde_wasm_bindgen::to_value(&message)
+                                && let Err(e) = worker.post_message(&js_value)
+                            {
+                                tracing::error!("Failed to send message to worker: {:?}", e);
                             }
                         }
                         WorkerCommand::InitializeWorker => {
@@ -328,7 +328,7 @@ impl TranscriptionWorker {
         // Store the ready callback for this session
         {
             let mut ready_callbacks = self.ready_callbacks.write().await;
-            ready_callbacks.insert(session_id.to_string(), ready_tx);
+            ready_callbacks.insert(session_id.to_owned(), ready_tx);
         }
 
         // Wait for actual WorkerReady message from worker.js with timeout
@@ -400,47 +400,47 @@ impl TranscriptionWorker {
         ready_callbacks: Arc<RwLock<HashMap<String, oneshot::Sender<()>>>>,
         event: MessageEvent,
     ) {
-        if let Some(response_text) = event.data().as_string() {
-            if let Ok(response) = serde_json::from_str::<WorkerResponse>(&response_text) {
-                match response {
-                    WorkerResponse::WorkerReady { session_id } => {
-                        tracing::info!("Worker ready for session: {}", session_id);
+        if let Some(response_text) = event.data().as_string()
+            && let Ok(response) = serde_json::from_str::<WorkerResponse>(&response_text)
+        {
+            match response {
+                WorkerResponse::WorkerReady { session_id } => {
+                    tracing::info!("Worker ready for session: {}", session_id);
 
-                        // Signal the waiting thread that worker is ready
-                        let mut callbacks = ready_callbacks.write().await;
-                        if let Some(callback) = callbacks.remove(&session_id) {
-                            let _ = callback.send(());
+                    // Signal the waiting thread that worker is ready
+                    let mut callbacks = ready_callbacks.write().await;
+                    if let Some(callback) = callbacks.remove(&session_id) {
+                        let _ = callback.send(());
+                    }
+                }
+                WorkerResponse::TranscriptionProgress {
+                    session_id,
+                    request_id,
+                    status,
+                } => {
+                    let sessions_guard = sessions.read().await;
+                    if let Some(session) = sessions_guard.get(&session_id)
+                        && let Some(sender) = session.active_requests.get(&request_id)
+                    {
+                        let transcription_status = Self::convert_progress_status(status);
+                        let _ = sender.send(transcription_status);
+                    }
+                }
+                WorkerResponse::WorkerError { session_id, error } => {
+                    tracing::error!("Worker error for session {}: {}", session_id, error);
+                    let sessions_guard = sessions.read().await;
+                    if let Some(session) = sessions_guard.get(&session_id) {
+                        for sender in session.active_requests.values() {
+                            let _ = sender.send(TranscriptionStatus::Error {
+                                context: "Worker error".to_owned(),
+                                error_message: error.clone(),
+                            });
                         }
                     }
-                    WorkerResponse::TranscriptionProgress {
-                        session_id,
-                        request_id,
-                        status,
-                    } => {
-                        let sessions_guard = sessions.read().await;
-                        if let Some(session) = sessions_guard.get(&session_id) {
-                            if let Some(sender) = session.active_requests.get(&request_id) {
-                                let transcription_status = Self::convert_progress_status(status);
-                                let _ = sender.send(transcription_status);
-                            }
-                        }
-                    }
-                    WorkerResponse::WorkerError { session_id, error } => {
-                        tracing::error!("Worker error for session {}: {}", session_id, error);
-                        let sessions_guard = sessions.read().await;
-                        if let Some(session) = sessions_guard.get(&session_id) {
-                            for sender in session.active_requests.values() {
-                                let _ = sender.send(TranscriptionStatus::Error {
-                                    context: "Worker error".to_string(),
-                                    error_message: error.clone(),
-                                });
-                            }
-                        }
-                    }
-                    WorkerResponse::AudioMetadataResponse { metadata } => {
-                        // This is handled here for future extensibility
-                        tracing::info!("Received audio metadata response: {:?}", metadata);
-                    }
+                }
+                WorkerResponse::AudioMetadataResponse { metadata } => {
+                    // This is handled here for future extensibility
+                    tracing::info!("Received audio metadata response: {:?}", metadata);
                 }
             }
         }
@@ -476,7 +476,7 @@ impl TranscriptionWorker {
                 word_count,
             },
             TranscriptionProgressStatus::Error { message } => TranscriptionStatus::Error {
-                context: "Progress error".to_string(),
+                context: "Progress error".to_owned(),
                 error_message: message,
             },
         }

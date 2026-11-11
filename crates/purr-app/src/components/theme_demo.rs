@@ -5,8 +5,8 @@ use dioxus::prelude::*;
 #[component]
 pub fn ThemeEditor() -> Element {
     let theme_ctx = use_theme();
-    let current_theme = theme_ctx.theme.clone();
-    let resolved = theme_ctx.resolved_theme.clone();
+    let current_theme = theme_ctx.theme;
+    let resolved = theme_ctx.resolved_theme;
 
     rsx! {
         div { class: "p-6 max-w-4xl mx-auto",
@@ -38,20 +38,20 @@ pub fn ThemeEditor() -> Element {
                     ThemeButton {
                         theme: Theme::Light,
                         label: "Light",
-                        current: current_theme.clone(),
-                        on_select: theme_ctx.set_theme.clone(),
+                        current: current_theme,
+                        on_select: theme_ctx.set_theme,
                     }
                     ThemeButton {
                         theme: Theme::Dark,
                         label: "Dark",
-                        current: current_theme.clone(),
-                        on_select: theme_ctx.set_theme.clone(),
+                        current: current_theme,
+                        on_select: theme_ctx.set_theme,
                     }
                     ThemeButton {
                         theme: Theme::System,
                         label: "System",
-                        current: current_theme.clone(),
-                        on_select: theme_ctx.set_theme.clone(),
+                        current: current_theme,
+                        on_select: theme_ctx.set_theme,
                     }
                 }
             }
@@ -122,7 +122,7 @@ fn ThemeButton(theme: Theme, label: String, current: Theme, on_select: Callback<
     let is_active = theme == current;
 
     let handle_click = move |_| {
-        on_select.call(theme.clone());
+        on_select.call(theme);
     };
 
     rsx! {

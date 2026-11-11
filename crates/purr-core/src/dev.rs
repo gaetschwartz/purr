@@ -30,10 +30,10 @@ pub struct SystemInfo {
 impl SystemInfo {
     /// Check system capabilities and available GPU devices
     #[must_use]
-    pub fn get() -> SystemInfo {
+    pub fn get() -> Self {
         let devices = list_devices();
 
-        SystemInfo {
+        Self {
             backends: WhisperGpuBackend::ALL
                 .iter()
                 .map(|backend| {
@@ -189,14 +189,14 @@ pub enum WhisperGpuBackend {
 
 impl WhisperGpuBackend {
     /// All possible backends
-    pub const ALL: &'static [WhisperGpuBackend] = <Self as strum::VariantArray>::VARIANTS;
+    pub const ALL: &'static [Self] = <Self as strum::VariantArray>::VARIANTS;
 
     /// Check if a backend is enabled at compile time
     #[must_use]
     pub fn is_enabled(&self) -> bool {
         match self {
-            WhisperGpuBackend::Vulkan => cfg!(feature = "vulkan"),
-            WhisperGpuBackend::Cuda => cfg!(feature = "cuda"),
+            Self::Vulkan => cfg!(feature = "vulkan"),
+            Self::Cuda => cfg!(feature = "cuda"),
             #[cfg(target_os = "macos")]
             WhisperGpuBackend::Metal => cfg!(feature = "metal"),
             #[cfg(target_os = "macos")]
@@ -208,8 +208,8 @@ impl WhisperGpuBackend {
     #[must_use]
     pub fn pretty_name(&self) -> &'static str {
         match self {
-            WhisperGpuBackend::Vulkan => "Vulkan",
-            WhisperGpuBackend::Cuda => "CUDA",
+            Self::Vulkan => "Vulkan",
+            Self::Cuda => "CUDA",
             #[cfg(target_os = "macos")]
             WhisperGpuBackend::Metal => "Metal",
             #[cfg(target_os = "macos")]
@@ -347,10 +347,10 @@ mod serde_ggml_backend_dev_caps {
                 events: false,
             };
             let serialized = serde_json::to_string(&CapsWrapper(Some(caps))).unwrap();
-            println!("Serialized: {:?}", serialized);
+            println!("Serialized: {serialized:?}");
             let deserialized: CapsWrapper =
                 serde_json::from_str(&serialized).expect("Failed to deserialize");
-            println!("Deserialized: {:?}", deserialized);
+            println!("Deserialized: {deserialized:?}");
             assert!(deserialized.0.is_some());
             let caps = deserialized.0.unwrap();
             assert!(caps.async_);
@@ -362,10 +362,10 @@ mod serde_ggml_backend_dev_caps {
         #[test]
         fn test_roundtrip_none() {
             let serialized = serde_json::to_string(&CapsWrapper(None)).unwrap();
-            println!("Serialized: {:?}", serialized);
+            println!("Serialized: {serialized:?}");
             let deserialized: CapsWrapper =
                 serde_json::from_str(&serialized).expect("Failed to deserialize");
-            println!("Deserialized: {:?}", deserialized);
+            println!("Deserialized: {deserialized:?}");
             assert!(deserialized.0.is_none());
         }
     }

@@ -45,7 +45,7 @@ pub struct ModelSettings {
 }
 
 /// Audio processing settings
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AudioSettings {
     /// Audio sample rate in Hz
     pub sample_rate: SampleRate,
@@ -56,7 +56,7 @@ pub struct AudioSettings {
 }
 
 /// User interface settings
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UiSettings {
     /// Application color theme
     pub theme: Theme,
@@ -67,7 +67,7 @@ pub struct UiSettings {
 }
 
 /// Performance and optimization settings
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PerformanceSettings {
     /// Enable GPU acceleration for transcription
     pub gpu_acceleration: bool,
@@ -78,7 +78,7 @@ pub struct PerformanceSettings {
 }
 
 /// Logging configuration settings
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LoggingSettings {
     /// Minimum log level to record
     pub level: LogLevel,
@@ -89,7 +89,7 @@ pub struct LoggingSettings {
 }
 
 /// Audio sample rate options
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SampleRate {
     /// 8 kHz - Phone quality
     Hz8000,
@@ -104,7 +104,7 @@ pub enum SampleRate {
 }
 
 /// Audio processing quality levels
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AudioQuality {
     /// Low quality, fastest processing
     Low,
@@ -117,7 +117,7 @@ pub enum AudioQuality {
 }
 
 /// Supported audio file formats
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AudioFormat {
     /// MP3 format
     Mp3,
@@ -141,7 +141,7 @@ pub enum Theme {
 }
 
 /// Logging levels
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum LogLevel {
     /// Only log errors
     Error,
@@ -171,7 +171,7 @@ impl Default for Settings {
 impl Default for ModelSettings {
     fn default() -> Self {
         Self {
-            model_name: "whisper-1".to_string(),
+            model_name: "whisper-1".to_owned(),
             temperature: 0.0,
             max_tokens: 4096,
         }
@@ -193,7 +193,7 @@ impl Default for UiSettings {
         Self {
             theme: Theme::Light,
             compact_mode: false,
-            language: "en".to_string(),
+            language: "en".to_owned(),
         }
     }
 }
@@ -223,33 +223,33 @@ impl SampleRate {
     /// Convert to Hz value as a string
     pub fn to_hz_string(&self) -> &'static str {
         match self {
-            SampleRate::Hz8000 => "8000",
-            SampleRate::Hz16000 => "16000",
-            SampleRate::Hz22050 => "22050",
-            SampleRate::Hz44100 => "44100",
-            SampleRate::Hz48000 => "48000",
+            Self::Hz8000 => "8000",
+            Self::Hz16000 => "16000",
+            Self::Hz22050 => "22050",
+            Self::Hz44100 => "44100",
+            Self::Hz48000 => "48000",
         }
     }
 
     /// Convert to Hz value as a number
     pub fn to_hz(&self) -> u32 {
         match self {
-            SampleRate::Hz8000 => 8000,
-            SampleRate::Hz16000 => 16000,
-            SampleRate::Hz22050 => 22050,
-            SampleRate::Hz44100 => 44100,
-            SampleRate::Hz48000 => 48000,
+            Self::Hz8000 => 8000,
+            Self::Hz16000 => 16000,
+            Self::Hz22050 => 22050,
+            Self::Hz44100 => 44100,
+            Self::Hz48000 => 48000,
         }
     }
 
     /// Parse from Hz value string
     pub fn from_hz_string(hz: &str) -> Option<Self> {
         match hz {
-            "8000" => Some(SampleRate::Hz8000),
-            "16000" => Some(SampleRate::Hz16000),
-            "22050" => Some(SampleRate::Hz22050),
-            "44100" => Some(SampleRate::Hz44100),
-            "48000" => Some(SampleRate::Hz48000),
+            "8000" => Some(Self::Hz8000),
+            "16000" => Some(Self::Hz16000),
+            "22050" => Some(Self::Hz22050),
+            "44100" => Some(Self::Hz44100),
+            "48000" => Some(Self::Hz48000),
             _ => None,
         }
     }
@@ -259,20 +259,20 @@ impl AudioQuality {
     /// Convert to string representation
     pub fn to_string(&self) -> &'static str {
         match self {
-            AudioQuality::Low => "low",
-            AudioQuality::Medium => "medium",
-            AudioQuality::High => "high",
-            AudioQuality::Ultra => "ultra",
+            Self::Low => "low",
+            Self::Medium => "medium",
+            Self::High => "high",
+            Self::Ultra => "ultra",
         }
     }
 
     /// Parse from string representation
     pub fn from_string(quality: &str) -> Option<Self> {
         match quality {
-            "low" => Some(AudioQuality::Low),
-            "medium" => Some(AudioQuality::Medium),
-            "high" => Some(AudioQuality::High),
-            "ultra" => Some(AudioQuality::Ultra),
+            "low" => Some(Self::Low),
+            "medium" => Some(Self::Medium),
+            "high" => Some(Self::High),
+            "ultra" => Some(Self::Ultra),
             _ => None,
         }
     }
@@ -282,30 +282,30 @@ impl AudioFormat {
     /// Convert to file extension string
     pub fn to_extension(&self) -> &'static str {
         match self {
-            AudioFormat::Mp3 => "mp3",
-            AudioFormat::Wav => "wav",
-            AudioFormat::Flac => "flac",
-            AudioFormat::Ogg => "ogg",
+            Self::Mp3 => "mp3",
+            Self::Wav => "wav",
+            Self::Flac => "flac",
+            Self::Ogg => "ogg",
         }
     }
 
     /// Convert to MIME type string
     pub fn to_mime_type(&self) -> &'static str {
         match self {
-            AudioFormat::Mp3 => "audio/mpeg",
-            AudioFormat::Wav => "audio/wav",
-            AudioFormat::Flac => "audio/flac",
-            AudioFormat::Ogg => "audio/ogg",
+            Self::Mp3 => "audio/mpeg",
+            Self::Wav => "audio/wav",
+            Self::Flac => "audio/flac",
+            Self::Ogg => "audio/ogg",
         }
     }
 
     /// Parse from file extension
     pub fn from_extension(ext: &str) -> Option<Self> {
         match ext.to_lowercase().as_str() {
-            "mp3" => Some(AudioFormat::Mp3),
-            "wav" => Some(AudioFormat::Wav),
-            "flac" => Some(AudioFormat::Flac),
-            "ogg" => Some(AudioFormat::Ogg),
+            "mp3" => Some(Self::Mp3),
+            "wav" => Some(Self::Wav),
+            "flac" => Some(Self::Flac),
+            "ogg" => Some(Self::Ogg),
             _ => None,
         }
     }
@@ -395,7 +395,7 @@ impl Theme {
             let mut hkey: HKEY = HKEY::default();
 
             // Open registry key
-            if RegOpenKeyExW(HKEY_CURRENT_USER, subkey, Some(0), KEY_READ, &mut hkey).is_ok() {
+            if RegOpenKeyExW(HKEY_CURRENT_USER, subkey, Some(0), KEY_READ, &raw mut hkey).is_ok() {
                 let mut buffer = [0u8; 4];
                 let mut buffer_size = buffer.len() as u32;
                 let mut value_type = REG_VALUE_TYPE::default();
@@ -405,9 +405,9 @@ impl Theme {
                     hkey,
                     value_name,
                     None,
-                    Some(&mut value_type),
+                    Some(&raw mut value_type),
                     Some(buffer.as_mut_ptr()),
-                    Some(&mut buffer_size),
+                    Some(&raw mut buffer_size),
                 )
                 .is_ok()
                 {
@@ -543,22 +543,22 @@ impl LogLevel {
     /// Convert to string representation
     pub fn to_string(&self) -> &'static str {
         match self {
-            LogLevel::Error => "error",
-            LogLevel::Warn => "warn",
-            LogLevel::Info => "info",
-            LogLevel::Debug => "debug",
-            LogLevel::Trace => "trace",
+            Self::Error => "error",
+            Self::Warn => "warn",
+            Self::Info => "info",
+            Self::Debug => "debug",
+            Self::Trace => "trace",
         }
     }
 
     /// Parse from string representation
     pub fn from_string(level: &str) -> Option<Self> {
         match level {
-            "error" => Some(LogLevel::Error),
-            "warn" => Some(LogLevel::Warn),
-            "info" => Some(LogLevel::Info),
-            "debug" => Some(LogLevel::Debug),
-            "trace" => Some(LogLevel::Trace),
+            "error" => Some(Self::Error),
+            "warn" => Some(Self::Warn),
+            "info" => Some(Self::Info),
+            "debug" => Some(Self::Debug),
+            "trace" => Some(Self::Trace),
             _ => None,
         }
     }
@@ -600,10 +600,10 @@ impl Settings {
         }
 
         // Validate logging settings
-        if let Some(ref path) = self.logging.log_file_path {
-            if path.as_os_str().is_empty() {
-                errors.push(SettingsError::InvalidLogPath);
-            }
+        if let Some(ref path) = self.logging.log_file_path
+            && path.as_os_str().is_empty()
+        {
+            errors.push(SettingsError::InvalidLogPath);
         }
 
         errors
@@ -799,7 +799,7 @@ mod tests {
     fn test_settings_builder() {
         let settings = SettingsBuilder::new()
             .model(ModelSettings {
-                model_name: "whisper-large".to_string(),
+                model_name: "whisper-large".to_owned(),
                 temperature: 0.2,
                 max_tokens: 8192,
             })

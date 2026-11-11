@@ -12,7 +12,7 @@ pub struct AsyncStreamBuffer {
 
 impl AsyncStreamBuffer {
     pub fn new() -> Arc<Self> {
-        Arc::new(AsyncStreamBuffer {
+        Arc::new(Self {
             buffer: Mutex::new(VecDeque::new()),
             eof: Mutex::new(false),
             notify: Notify::new(),
@@ -83,7 +83,7 @@ impl AsyncCustomInput {
     pub fn create_blocking(buffer: Arc<AsyncStreamBuffer>) -> Result<Self, ffmpeg::Error> {
         unsafe {
             let buffer_size = 32768;
-            let avio_buffer = ffmpeg_next::sys::av_malloc(buffer_size) as *mut u8;
+            let avio_buffer = ffmpeg_next::sys::av_malloc(buffer_size).cast::<u8>();
 
             if avio_buffer.is_null() {
                 return Err(ffmpeg::Error::Bug);
@@ -102,15 +102,15 @@ impl AsyncCustomInput {
             );
 
             if avio_ctx.is_null() {
-                ffmpeg_next::sys::av_free(avio_buffer as *mut c_void);
+                ffmpeg_next::sys::av_free(avio_buffer.cast::<c_void>());
                 Arc::from_raw(opaque as *const AsyncStreamBuffer);
                 return Err(ffmpeg::Error::Bug);
             }
 
             let mut format_ctx = ffmpeg_next::sys::avformat_alloc_context();
             if format_ctx.is_null() {
-                ffmpeg_next::sys::av_free(avio_ctx as *mut c_void);
-                ffmpeg_next::sys::av_free(avio_buffer as *mut c_void);
+                ffmpeg_next::sys::av_free(avio_ctx.cast::<c_void>());
+                ffmpeg_next::sys::av_free(avio_buffer.cast::<c_void>());
                 Arc::from_raw(opaque as *const AsyncStreamBuffer);
                 return Err(ffmpeg::Error::Bug);
             }
@@ -119,7 +119,7 @@ impl AsyncCustomInput {
             (*format_ctx).flags |= ffmpeg_next::sys::AVFMT_FLAG_CUSTOM_IO;
 
             let ret = ffmpeg_next::sys::avformat_open_input(
-                &mut format_ctx,
+                &raw mut format_ctx,
                 std::ptr::null(),
                 std::ptr::null_mut(),
                 std::ptr::null_mut(),
@@ -135,12 +135,12 @@ impl AsyncCustomInput {
             let ret = ffmpeg_next::sys::avformat_find_stream_info(format_ctx, std::ptr::null_mut());
 
             if ret < 0 {
-                ffmpeg_next::sys::avformat_close_input(&mut format_ctx);
+                ffmpeg_next::sys::avformat_close_input(&raw mut format_ctx);
                 Arc::from_raw(opaque as *const AsyncStreamBuffer);
                 return Err(ffmpeg::Error::from(ret));
             }
 
-            Ok(AsyncCustomInput {
+            Ok(Self {
                 _buffer: buffer,
                 context: ffmpeg::format::context::Input::wrap(format_ctx),
             })
@@ -175,7 +175,7 @@ impl AsyncCustomInput {
         // Create a dummy buffer since we're wrapping an existing context
         let buffer = AsyncStreamBuffer::new();
 
-        Ok(AsyncCustomInput {
+        Ok(Self {
             _buffer: buffer,
             context: input_ctx,
         })

@@ -110,7 +110,7 @@ impl AudioProcessor {
 
         // Run FFmpeg processing in a blocking task to avoid blocking the async runtime
         task::spawn_blocking(move || {
-            let mut processor = AudioProcessor::new()?;
+            let mut processor = Self::new()?;
             processor.load_audio_sync(&path)
         })
         .await
@@ -125,7 +125,7 @@ impl AudioProcessor {
 
         // Process audio in a background task
         task::spawn_blocking(move || {
-            let mut processor = match AudioProcessor::new() {
+            let mut processor = match Self::new() {
                 Err(e) => {
                     let _ = tx.send(Err(e));
                     return;
@@ -510,7 +510,7 @@ impl AudioProcessor {
 
         // Process the streaming input
         let audio_data = task::spawn_blocking(move || {
-            let mut processor = AudioProcessor::new()?;
+            let mut processor = Self::new()?;
             processor.load_audio_from_input(custom_input)
         })
         .await
@@ -554,7 +554,7 @@ impl AudioProcessor {
 
         // Process audio in a background task
         task::spawn_blocking(move || {
-            let mut processor = match AudioProcessor::new() {
+            let mut processor = match Self::new() {
                 Err(e) => {
                     let _ = tx.send(Err(e));
                     return;
@@ -765,7 +765,7 @@ impl AudioProcessor {
                     Err(e) => {
                         let whisper_error = WhisperError::from(e);
                         let _ = tx.send(Err(WhisperError::NetworkError {
-                            message: format!("Failed to decode audio packet: {}", e),
+                            message: format!("Failed to decode audio packet: {e}"),
                         }));
                         return Err(whisper_error);
                     }
@@ -1053,8 +1053,7 @@ mod tests {
                 assert!(operation.contains("not found"));
             }
             _ => panic!(
-                "Expected ReadFailed or ProcessingFailed error with 'not found', got: {:?}",
-                error
+                "Expected ReadFailed or ProcessingFailed error with 'not found', got: {error:?}"
             ),
         }
     }
@@ -1090,7 +1089,7 @@ mod tests {
         let audio_data = result.unwrap();
         assert_eq!(audio_data.sample_rate, 16000);
         assert!(audio_data.duration > 0.9 && audio_data.duration < 1.1); // ~1 second
-        assert!(!audio_data.samples.is_empty());
+        assert_ne!(audio_data.samples, [] as [f32; 0]);
     }
 
     #[tokio::test]
@@ -1100,19 +1099,16 @@ mod tests {
         let result = AudioProcessor::stream_file("nonexistent_file.wav").await;
 
         // Stream creation might succeed, but the first chunk should contain an error
-        match result {
-            Ok(mut stream) => {
-                // Try to get the first chunk - this should fail
-                if let Some(chunk_result) = stream.next().await {
-                    assert!(
-                        chunk_result.is_err(),
-                        "Should get an error for nonexistent file"
-                    );
-                }
+        if let Ok(mut stream) = result {
+            // Try to get the first chunk - this should fail
+            if let Some(chunk_result) = stream.next().await {
+                assert!(
+                    chunk_result.is_err(),
+                    "Should get an error for nonexistent file"
+                );
             }
-            Err(_) => {
-                // Also acceptable - immediate failure
-            }
+        } else {
+            // Also acceptable - immediate failure
         }
     }
 
@@ -1148,7 +1144,7 @@ mod tests {
                     assert_eq!(chunk.index, chunk_count);
                     assert!(chunk.start_time >= 0.0);
                     assert!(chunk.duration > 0.0);
-                    assert!(!chunk.samples.is_empty());
+                    assert_ne!(chunk.samples, [] as [f32; 0]);
 
                     last_was_final = chunk.is_final;
                     chunk_count += 1;
@@ -1157,7 +1153,7 @@ mod tests {
                         break;
                     }
                 }
-                Err(e) => panic!("Stream error: {:?}", e),
+                Err(e) => panic!("Stream error: {e:?}"),
             }
         }
 
@@ -1176,8 +1172,7 @@ mod tests {
         for &sample in &valid_samples {
             assert!(
                 (-1.0..=1.0).contains(&sample),
-                "Sample {} should be in valid range [-1.0, 1.0]",
-                sample
+                "Sample {sample} should be in valid range [-1.0, 1.0]"
             );
         }
     }
@@ -1186,7 +1181,10 @@ mod tests {
     fn test_audio_sample_conversion_i16_to_f32() {
         let i16_samples = [32767i16, 0, -32768, 16384, -16384];
 
-        let f32_samples: Vec<f32> = i16_samples.iter().map(|&s| s as f32 / 32768.0).collect();
+        let f32_samples: Vec<f32> = i16_samples
+            .iter()
+            .map(|&s| f32::from(s) / 32768.0)
+            .collect();
 
         // Verify conversion accuracy
         assert!((f32_samples[0] - 0.99997).abs() < 0.001); // Close to 1.0
@@ -1229,8 +1227,7 @@ mod tests {
             let start_time = index as f32 * AudioChunk::TARGET_DURATION;
             assert_eq!(
                 start_time, expected_start,
-                "Chunk {} should start at {} seconds",
-                index, expected_start
+                "Chunk {index} should start at {expected_start} seconds"
             );
         }
     }

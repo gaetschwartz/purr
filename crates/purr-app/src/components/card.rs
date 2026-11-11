@@ -2,7 +2,7 @@ use dioxus::prelude::*;
 
 /// Card variants for different styles
 #[allow(dead_code)]
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum CardVariant {
     Default,
     Success,

@@ -23,12 +23,10 @@ fn test_missing_audio_file() {
 #[tokio::test]
 async fn slow_test_cli_transcribe_sample_files(#[files("../../samples/*")] sample_path: PathBuf) {
     use purr_core::SyncTranscriptionResult;
-    if !Path::new(&TINY_MODEL).exists() {
-        panic!(
-            "Tiny model not found at {}. Please download it to run tests.",
-            TINY_MODEL
-        );
-    }
+    assert!(
+        Path::new(&TINY_MODEL).exists(),
+        "Tiny model not found at {TINY_MODEL}. Please download it to run tests."
+    );
 
     let sample_path = sample_path.canonicalize().unwrap();
     println!("Testing CLI transcription of: {}", sample_path.display());
@@ -43,7 +41,7 @@ async fn slow_test_cli_transcribe_sample_files(#[files("../../samples/*")] sampl
         .arg("--model")
         .arg(TINY_MODEL);
 
-    println!("Running command: {:?}", cmd);
+    println!("Running command: {cmd:?}");
 
     let output = cmd.output().unwrap();
 
@@ -82,12 +80,10 @@ enum OutputFormat {
 #[tokio::test]
 async fn slow_test_cli_output_formats(#[case] format: OutputFormat) {
     let sample_path = Path::new("../../samples/jfk.wav");
-    if !Path::new(&TINY_MODEL).exists() {
-        panic!(
-            "Tiny model not found at {}. Please download it to run tests.",
-            TINY_MODEL
-        );
-    }
+    assert!(
+        Path::new(&TINY_MODEL).exists(),
+        "Tiny model not found at {TINY_MODEL}. Please download it to run tests."
+    );
 
     let mut cmd = Command::cargo_bin("purr").unwrap();
     cmd.arg(sample_path)
@@ -104,8 +100,7 @@ async fn slow_test_cli_output_formats(#[case] format: OutputFormat) {
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(
         !stdout.trim().is_empty(),
-        "Output should not be empty for format: {}",
-        format
+        "Output should not be empty for format: {format}"
     );
 
     match format {
@@ -114,8 +109,7 @@ async fn slow_test_cli_output_formats(#[case] format: OutputFormat) {
             let json_result = serde_json::from_str::<serde_json::Value>(&stdout);
             assert!(
                 json_result.is_ok(),
-                "Should produce valid JSON for format: {}",
-                format
+                "Should produce valid JSON for format: {format}"
             );
             println!("✓ CLI JSON format test successful");
         }
@@ -130,7 +124,7 @@ async fn slow_test_cli_output_formats(#[case] format: OutputFormat) {
         OutputFormat::Text => {
             // Text should be readable
             assert!(
-                stdout.chars().any(|c| c.is_alphabetic()),
+                stdout.chars().any(char::is_alphabetic),
                 "Text format should contain readable text"
             );
             println!("✓ CLI text format test successful");
@@ -148,18 +142,12 @@ fn test_cli_error_handling(#[case] invalid_path: &str, #[case] description: &str
     cmd.arg(invalid_path).timeout(Duration::from_secs(30));
 
     let output = cmd.output().unwrap();
-    assert!(
-        !output.status.success(),
-        "{}: {}",
-        description,
-        invalid_path
-    );
+    assert!(!output.status.success(), "{description}: {invalid_path}");
 
     let stderr = String::from_utf8(output.stderr).unwrap();
     assert!(
         !stderr.is_empty(),
-        "Should produce error message for: {}",
-        invalid_path
+        "Should produce error message for: {invalid_path}"
     );
 
     println!(

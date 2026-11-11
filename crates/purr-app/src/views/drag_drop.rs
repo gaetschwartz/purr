@@ -27,7 +27,7 @@ pub fn DragDropZone() -> Element {
         } else {
             UploadState::Uploading {
                 progress: 0.0,
-                file_name: "Unknown".to_string(),
+                file_name: "Unknown".to_owned(),
             }
         }
     } else if let Some(file_name) = uploaded_file() {

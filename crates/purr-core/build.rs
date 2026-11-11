@@ -6,7 +6,7 @@ use std::path::PathBuf;
 
 fn main() {
     let os = target_os();
-    println!("cargo:rustc-env=TARGET_OS={:?}", os);
+    println!("cargo:rustc-env=TARGET_OS={os:?}");
 
     // Capture environment for debugging vulkan feature propagation
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
@@ -19,7 +19,7 @@ fn main() {
 
     let env_vars: Vec<(String, String)> = env::vars().collect();
     for (key, value) in env_vars {
-        writeln!(f, "{} = {:?}", key, value).unwrap();
+        writeln!(f, "{key} = {value:?}").unwrap();
     }
 
     println!(

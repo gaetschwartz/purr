@@ -17,7 +17,7 @@ use crate::platform::get_platform;
 pub use purr_common::settings::Theme;
 
 /// Storage type for theme persistence
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum StorageType {
     /// Browser localStorage or desktop settings
     LocalStorage,
@@ -26,7 +26,7 @@ pub enum StorageType {
 }
 
 /// Color token definitions for theme styling
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ColorTokens {
     /// Primary brand color
     pub primary: String,
@@ -45,7 +45,7 @@ pub struct ColorTokens {
 }
 
 /// Custom theme definition with color tokens
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CustomTheme {
     /// Theme name identifier
     pub name: String,
@@ -83,12 +83,12 @@ pub struct ThemeProviderProps {
 pub fn ThemeProvider(props: ThemeProviderProps) -> Element {
     let storage_name = props.storage_name.clone();
     let storage_name_load = storage_name.clone();
-    let storage_name_save = storage_name.clone();
-    let default_theme = props.default_theme.clone();
-    let default_theme_load = default_theme.clone();
-    let forced_theme = props.forced_theme.clone();
-    let forced_theme_save = forced_theme.clone();
-    let forced_theme_ctx = forced_theme.clone();
+    let storage_name_save = storage_name;
+    let default_theme = props.default_theme;
+    let default_theme_load = default_theme;
+    let forced_theme = props.forced_theme;
+    let forced_theme_save = forced_theme;
+    let forced_theme_ctx = forced_theme;
 
     // Convert Vec to HashMap for efficient lookup (unused but kept for future use)
     let _custom_themes: HashMap<String, Rc<CustomTheme>> = props
@@ -99,7 +99,7 @@ pub fn ThemeProvider(props: ThemeProviderProps) -> Element {
         .map(|theme| (theme.name.clone(), Rc::new(theme)))
         .collect();
 
-    let mut theme_state = use_signal(|| default_theme.clone());
+    let mut theme_state = use_signal(|| default_theme);
 
     // Load theme from Platform on mount
     use_effect(move || {
@@ -141,9 +141,7 @@ pub fn ThemeProvider(props: ThemeProviderProps) -> Element {
     });
 
     // Create context
-    let current_theme = forced_theme_ctx
-        .clone()
-        .unwrap_or_else(|| theme_state.read().clone());
+    let current_theme = forced_theme_ctx.unwrap_or_else(|| *theme_state.read());
 
     let resolved_theme = use_memo(move || current_theme.resolve());
 
@@ -156,16 +154,16 @@ pub fn ThemeProvider(props: ThemeProviderProps) -> Element {
     let themes = vec![Theme::Light, Theme::Dark, Theme::System];
 
     let ctx = UseThemeContext {
-        resolved_theme: resolved_theme.read().clone(),
+        resolved_theme: *resolved_theme.read(),
         set_theme,
-        theme: current_theme.clone(),
+        theme: current_theme,
         themes,
     };
 
     use_context_provider(|| ctx);
 
     // Apply theme class to root element
-    let theme_class = match resolved_theme.read().clone() {
+    let theme_class = match *resolved_theme.read() {
         Theme::Light => "light",
         Theme::Dark => "dark",
         Theme::System => unreachable!("System theme should be resolved"),
@@ -219,13 +217,13 @@ pub fn use_theme() -> UseThemeContext {
 impl Default for ColorTokens {
     fn default() -> Self {
         Self {
-            primary: "#3b82f6".to_string(),
-            secondary: "#6366f1".to_string(),
-            background: "#ffffff".to_string(),
-            text: "#1f2937".to_string(),
-            error: Some("#ef4444".to_string()),
-            warning: Some("#f59e0b".to_string()),
-            success: Some("#10b981".to_string()),
+            primary: "#3b82f6".to_owned(),
+            secondary: "#6366f1".to_owned(),
+            background: "#ffffff".to_owned(),
+            text: "#1f2937".to_owned(),
+            error: Some("#ef4444".to_owned()),
+            warning: Some("#f59e0b".to_owned()),
+            success: Some("#10b981".to_owned()),
         }
     }
 }

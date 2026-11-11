@@ -83,36 +83,36 @@ impl WhisperModel {
     #[must_use]
     pub const fn as_str(&self) -> &'static str {
         match self {
-            WhisperModel::Tiny => "tiny",
-            WhisperModel::TinyEn => "tiny.en",
-            WhisperModel::TinyQ5_1 => "tiny-q5_1",
-            WhisperModel::TinyEnQ5_1 => "tiny.en-q5_1",
-            WhisperModel::TinyQ8_0 => "tiny-q8_0",
-            WhisperModel::Base => "base",
-            WhisperModel::BaseEn => "base.en",
-            WhisperModel::BaseQ5_1 => "base-q5_1",
-            WhisperModel::BaseEnQ5_1 => "base.en-q5_1",
-            WhisperModel::BaseQ8_0 => "base-q8_0",
-            WhisperModel::Small => "small",
-            WhisperModel::SmallEn => "small.en",
-            WhisperModel::SmallEnTdrz => "small.en-tdrz",
-            WhisperModel::SmallQ5_1 => "small-q5_1",
-            WhisperModel::SmallEnQ5_1 => "small.en-q5_1",
-            WhisperModel::SmallQ8_0 => "small-q8_0",
-            WhisperModel::Medium => "medium",
-            WhisperModel::MediumEn => "medium.en",
-            WhisperModel::MediumQ5_0 => "medium-q5_0",
-            WhisperModel::MediumEnQ5_0 => "medium.en-q5_0",
-            WhisperModel::MediumQ8_0 => "medium-q8_0",
-            WhisperModel::LargeV1 => "large-v1",
-            WhisperModel::LargeV2 => "large-v2",
-            WhisperModel::LargeV2Q5_0 => "large-v2-q5_0",
-            WhisperModel::LargeV2Q8_0 => "large-v2-q8_0",
-            WhisperModel::LargeV3 => "large-v3",
-            WhisperModel::LargeV3Q5_0 => "large-v3-q5_0",
-            WhisperModel::LargeV3Turbo => "large-v3-turbo",
-            WhisperModel::LargeV3TurboQ5_0 => "large-v3-turbo-q5_0",
-            WhisperModel::LargeV3TurboQ8_0 => "large-v3-turbo-q8_0",
+            Self::Tiny => "tiny",
+            Self::TinyEn => "tiny.en",
+            Self::TinyQ5_1 => "tiny-q5_1",
+            Self::TinyEnQ5_1 => "tiny.en-q5_1",
+            Self::TinyQ8_0 => "tiny-q8_0",
+            Self::Base => "base",
+            Self::BaseEn => "base.en",
+            Self::BaseQ5_1 => "base-q5_1",
+            Self::BaseEnQ5_1 => "base.en-q5_1",
+            Self::BaseQ8_0 => "base-q8_0",
+            Self::Small => "small",
+            Self::SmallEn => "small.en",
+            Self::SmallEnTdrz => "small.en-tdrz",
+            Self::SmallQ5_1 => "small-q5_1",
+            Self::SmallEnQ5_1 => "small.en-q5_1",
+            Self::SmallQ8_0 => "small-q8_0",
+            Self::Medium => "medium",
+            Self::MediumEn => "medium.en",
+            Self::MediumQ5_0 => "medium-q5_0",
+            Self::MediumEnQ5_0 => "medium.en-q5_0",
+            Self::MediumQ8_0 => "medium-q8_0",
+            Self::LargeV1 => "large-v1",
+            Self::LargeV2 => "large-v2",
+            Self::LargeV2Q5_0 => "large-v2-q5_0",
+            Self::LargeV2Q8_0 => "large-v2-q8_0",
+            Self::LargeV3 => "large-v3",
+            Self::LargeV3Q5_0 => "large-v3-q5_0",
+            Self::LargeV3Turbo => "large-v3-turbo",
+            Self::LargeV3TurboQ5_0 => "large-v3-turbo-q5_0",
+            Self::LargeV3TurboQ8_0 => "large-v3-turbo-q8_0",
         }
     }
 
@@ -120,115 +120,113 @@ impl WhisperModel {
     #[must_use]
     pub const fn description(&self) -> &'static str {
         match self {
-            WhisperModel::Tiny => "Tiny model (39 MB, fastest, lowest accuracy)",
-            WhisperModel::TinyEn => "Tiny English-only model (39 MB, fastest for English)",
-            WhisperModel::TinyQ5_1 => "Tiny quantized Q5_1 (31 MB, fastest)",
-            WhisperModel::TinyEnQ5_1 => "Tiny English-only quantized Q5_1 (31 MB)",
-            WhisperModel::TinyQ8_0 => "Tiny quantized Q8_0 (42 MB)",
-            WhisperModel::Base => "Base model (142 MB, good balance of speed and accuracy)",
-            WhisperModel::BaseEn => "Base English-only model (142 MB, good for English)",
-            WhisperModel::BaseQ5_1 => "Base quantized Q5_1 (103 MB)",
-            WhisperModel::BaseEnQ5_1 => "Base English-only quantized Q5_1 (103 MB)",
-            WhisperModel::BaseQ8_0 => "Base quantized Q8_0 (149 MB)",
-            WhisperModel::Small => "Small model (466 MB, good accuracy)",
-            WhisperModel::SmallEn => "Small English-only model (466 MB)",
-            WhisperModel::SmallEnTdrz => {
-                "Small English-only TinyDiarize model (speaker diarization)"
-            }
-            WhisperModel::SmallQ5_1 => "Small quantized Q5_1 (340 MB)",
-            WhisperModel::SmallEnQ5_1 => "Small English-only quantized Q5_1 (340 MB)",
-            WhisperModel::SmallQ8_0 => "Small quantized Q8_0 (488 MB)",
-            WhisperModel::Medium => "Medium model (1.5 GB, high accuracy)",
-            WhisperModel::MediumEn => "Medium English-only model (1.5 GB)",
-            WhisperModel::MediumQ5_0 => "Medium quantized Q5_0 (1.1 GB)",
-            WhisperModel::MediumEnQ5_0 => "Medium English-only quantized Q5_0 (1.1 GB)",
-            WhisperModel::MediumQ8_0 => "Medium quantized Q8_0 (1.6 GB)",
-            WhisperModel::LargeV1 => "Large v1 model (3.0 GB, highest accuracy)",
-            WhisperModel::LargeV2 => "Large v2 model (3.0 GB, improved accuracy)",
-            WhisperModel::LargeV2Q5_0 => "Large v2 quantized Q5_0 (2.3 GB)",
-            WhisperModel::LargeV2Q8_0 => "Large v2 quantized Q8_0 (3.2 GB)",
-            WhisperModel::LargeV3 => "Large v3 model (3.0 GB, most accurate)",
-            WhisperModel::LargeV3Q5_0 => "Large v3 quantized Q5_0 (2.3 GB)",
-            WhisperModel::LargeV3Turbo => "Large v3 Turbo model (1.5 GB, faster large model)",
-            WhisperModel::LargeV3TurboQ5_0 => "Large v3 Turbo quantized Q5_0 (1.2 GB)",
-            WhisperModel::LargeV3TurboQ8_0 => "Large v3 Turbo quantized Q8_0 (1.6 GB)",
+            Self::Tiny => "Tiny model (39 MB, fastest, lowest accuracy)",
+            Self::TinyEn => "Tiny English-only model (39 MB, fastest for English)",
+            Self::TinyQ5_1 => "Tiny quantized Q5_1 (31 MB, fastest)",
+            Self::TinyEnQ5_1 => "Tiny English-only quantized Q5_1 (31 MB)",
+            Self::TinyQ8_0 => "Tiny quantized Q8_0 (42 MB)",
+            Self::Base => "Base model (142 MB, good balance of speed and accuracy)",
+            Self::BaseEn => "Base English-only model (142 MB, good for English)",
+            Self::BaseQ5_1 => "Base quantized Q5_1 (103 MB)",
+            Self::BaseEnQ5_1 => "Base English-only quantized Q5_1 (103 MB)",
+            Self::BaseQ8_0 => "Base quantized Q8_0 (149 MB)",
+            Self::Small => "Small model (466 MB, good accuracy)",
+            Self::SmallEn => "Small English-only model (466 MB)",
+            Self::SmallEnTdrz => "Small English-only TinyDiarize model (speaker diarization)",
+            Self::SmallQ5_1 => "Small quantized Q5_1 (340 MB)",
+            Self::SmallEnQ5_1 => "Small English-only quantized Q5_1 (340 MB)",
+            Self::SmallQ8_0 => "Small quantized Q8_0 (488 MB)",
+            Self::Medium => "Medium model (1.5 GB, high accuracy)",
+            Self::MediumEn => "Medium English-only model (1.5 GB)",
+            Self::MediumQ5_0 => "Medium quantized Q5_0 (1.1 GB)",
+            Self::MediumEnQ5_0 => "Medium English-only quantized Q5_0 (1.1 GB)",
+            Self::MediumQ8_0 => "Medium quantized Q8_0 (1.6 GB)",
+            Self::LargeV1 => "Large v1 model (3.0 GB, highest accuracy)",
+            Self::LargeV2 => "Large v2 model (3.0 GB, improved accuracy)",
+            Self::LargeV2Q5_0 => "Large v2 quantized Q5_0 (2.3 GB)",
+            Self::LargeV2Q8_0 => "Large v2 quantized Q8_0 (3.2 GB)",
+            Self::LargeV3 => "Large v3 model (3.0 GB, most accurate)",
+            Self::LargeV3Q5_0 => "Large v3 quantized Q5_0 (2.3 GB)",
+            Self::LargeV3Turbo => "Large v3 Turbo model (1.5 GB, faster large model)",
+            Self::LargeV3TurboQ5_0 => "Large v3 Turbo quantized Q5_0 (1.2 GB)",
+            Self::LargeV3TurboQ8_0 => "Large v3 Turbo quantized Q8_0 (1.6 GB)",
         }
     }
 
     /// Get all available models
     #[must_use]
-    pub const fn all_models() -> &'static [WhisperModel] {
+    pub const fn all_models() -> &'static [Self] {
         &[
-            WhisperModel::Tiny,
-            WhisperModel::TinyEn,
-            WhisperModel::TinyQ5_1,
-            WhisperModel::TinyEnQ5_1,
-            WhisperModel::TinyQ8_0,
-            WhisperModel::Base,
-            WhisperModel::BaseEn,
-            WhisperModel::BaseQ5_1,
-            WhisperModel::BaseEnQ5_1,
-            WhisperModel::BaseQ8_0,
-            WhisperModel::Small,
-            WhisperModel::SmallEn,
-            WhisperModel::SmallEnTdrz,
-            WhisperModel::SmallQ5_1,
-            WhisperModel::SmallEnQ5_1,
-            WhisperModel::SmallQ8_0,
-            WhisperModel::Medium,
-            WhisperModel::MediumEn,
-            WhisperModel::MediumQ5_0,
-            WhisperModel::MediumEnQ5_0,
-            WhisperModel::MediumQ8_0,
-            WhisperModel::LargeV1,
-            WhisperModel::LargeV2,
-            WhisperModel::LargeV2Q5_0,
-            WhisperModel::LargeV2Q8_0,
-            WhisperModel::LargeV3,
-            WhisperModel::LargeV3Q5_0,
-            WhisperModel::LargeV3Turbo,
-            WhisperModel::LargeV3TurboQ5_0,
-            WhisperModel::LargeV3TurboQ8_0,
+            Self::Tiny,
+            Self::TinyEn,
+            Self::TinyQ5_1,
+            Self::TinyEnQ5_1,
+            Self::TinyQ8_0,
+            Self::Base,
+            Self::BaseEn,
+            Self::BaseQ5_1,
+            Self::BaseEnQ5_1,
+            Self::BaseQ8_0,
+            Self::Small,
+            Self::SmallEn,
+            Self::SmallEnTdrz,
+            Self::SmallQ5_1,
+            Self::SmallEnQ5_1,
+            Self::SmallQ8_0,
+            Self::Medium,
+            Self::MediumEn,
+            Self::MediumQ5_0,
+            Self::MediumEnQ5_0,
+            Self::MediumQ8_0,
+            Self::LargeV1,
+            Self::LargeV2,
+            Self::LargeV2Q5_0,
+            Self::LargeV2Q8_0,
+            Self::LargeV3,
+            Self::LargeV3Q5_0,
+            Self::LargeV3Turbo,
+            Self::LargeV3TurboQ5_0,
+            Self::LargeV3TurboQ8_0,
         ]
     }
 
     #[must_use]
     pub const fn size(&self) -> u64 {
         match self {
-            WhisperModel::Tiny => 39 * 1024 * 1024,        // 39 MB
-            WhisperModel::TinyEn => 39 * 1024 * 1024,      // 39 MB
-            WhisperModel::TinyQ5_1 => 31 * 1024 * 1024,    // 31 MB
-            WhisperModel::TinyEnQ5_1 => 31 * 1024 * 1024,  // 31 MB
-            WhisperModel::TinyQ8_0 => 42 * 1024 * 1024,    // 42 MB
-            WhisperModel::Base => 142 * 1024 * 1024,       // 142 MB
-            WhisperModel::BaseEn => 142 * 1024 * 1024,     // 142 MB
-            WhisperModel::BaseQ5_1 => 103 * 1024 * 1024,   // 103 MB
-            WhisperModel::BaseEnQ5_1 => 103 * 1024 * 1024, // 103 MB
-            WhisperModel::BaseQ8_0 => 149 * 1024 * 1024,   // 149 MB
-            WhisperModel::Small => 466 * 1024 * 1024,      // 466 MB
-            WhisperModel::SmallEn => 466 * 1024 * 1024,    // 466 MB
+            Self::Tiny => 39 * 1024 * 1024,        // 39 MB
+            Self::TinyEn => 39 * 1024 * 1024,      // 39 MB
+            Self::TinyQ5_1 => 31 * 1024 * 1024,    // 31 MB
+            Self::TinyEnQ5_1 => 31 * 1024 * 1024,  // 31 MB
+            Self::TinyQ8_0 => 42 * 1024 * 1024,    // 42 MB
+            Self::Base => 142 * 1024 * 1024,       // 142 MB
+            Self::BaseEn => 142 * 1024 * 1024,     // 142 MB
+            Self::BaseQ5_1 => 103 * 1024 * 1024,   // 103 MB
+            Self::BaseEnQ5_1 => 103 * 1024 * 1024, // 103 MB
+            Self::BaseQ8_0 => 149 * 1024 * 1024,   // 149 MB
+            Self::Small => 466 * 1024 * 1024,      // 466 MB
+            Self::SmallEn => 466 * 1024 * 1024,    // 466 MB
             // TinyDiarize model size is not specified, assuming similar to SmallEn
             // Adjust if actual size is known
-            WhisperModel::SmallEnTdrz => {
+            Self::SmallEnTdrz => {
                 466 * 1024 * 1024 // Assuming ~50MB extra for diarization features
             }
-            WhisperModel::SmallQ5_1 => 340 * 1024 * 1024, // 340 MB
-            WhisperModel::SmallEnQ5_1 => 340 * 1024 * 1024, // 340 MB
-            WhisperModel::SmallQ8_0 => 488 * 1024 * 1024, // 488 MB
-            WhisperModel::Medium => 1_500 * 1024 * 1024,  // 1.5 GB
-            WhisperModel::MediumEn => 1_500 * 1024 * 1024, // 1.5 GB
-            WhisperModel::MediumQ5_0 => 1_100 * 1024 * 1024, // 1.1 GB
-            WhisperModel::MediumEnQ5_0 => 1_100 * 1024 * 1024, // 1.1 GB
-            WhisperModel::MediumQ8_0 => 1_600 * 1024 * 1024, // 1.6 GB
-            WhisperModel::LargeV1 => 3_000 * 1024 * 1024, // 3.0 GB
-            WhisperModel::LargeV2 => 3_000 * 1024 * 1024, // 3.0 GB
-            WhisperModel::LargeV2Q5_0 => 2_300 * 1024 * 1024, // 2.3 GB
-            WhisperModel::LargeV2Q8_0 => 3_200 * 1024 * 1024, // 3.2 GB
-            WhisperModel::LargeV3 => 3_000 * 1024 * 1024, // 3.0 GB
-            WhisperModel::LargeV3Q5_0 => 2_300 * 1024 * 1024, // 2.3 GB
-            WhisperModel::LargeV3Turbo => 1_500 * 1024 * 1024, // 1.5 GB
-            WhisperModel::LargeV3TurboQ5_0 => 1_200 * 1024 * 1024, // 1.2 GB
-            WhisperModel::LargeV3TurboQ8_0 => 1_600 * 1024 * 1024, // 1.6 GB
+            Self::SmallQ5_1 => 340 * 1024 * 1024,      // 340 MB
+            Self::SmallEnQ5_1 => 340 * 1024 * 1024,    // 340 MB
+            Self::SmallQ8_0 => 488 * 1024 * 1024,      // 488 MB
+            Self::Medium => 1_500 * 1024 * 1024,       // 1.5 GB
+            Self::MediumEn => 1_500 * 1024 * 1024,     // 1.5 GB
+            Self::MediumQ5_0 => 1_100 * 1024 * 1024,   // 1.1 GB
+            Self::MediumEnQ5_0 => 1_100 * 1024 * 1024, // 1.1 GB
+            Self::MediumQ8_0 => 1_600 * 1024 * 1024,   // 1.6 GB
+            Self::LargeV1 => 3_000 * 1024 * 1024,      // 3.0 GB
+            Self::LargeV2 => 3_000 * 1024 * 1024,      // 3.0 GB
+            Self::LargeV2Q5_0 => 2_300 * 1024 * 1024,  // 2.3 GB
+            Self::LargeV2Q8_0 => 3_200 * 1024 * 1024,  // 3.2 GB
+            Self::LargeV3 => 3_000 * 1024 * 1024,      // 3.0 GB
+            Self::LargeV3Q5_0 => 2_300 * 1024 * 1024,  // 2.3 GB
+            Self::LargeV3Turbo => 1_500 * 1024 * 1024, // 1.5 GB
+            Self::LargeV3TurboQ5_0 => 1_200 * 1024 * 1024, // 1.2 GB
+            Self::LargeV3TurboQ8_0 => 1_600 * 1024 * 1024, // 1.6 GB
         }
     }
 
@@ -261,36 +259,36 @@ impl FromStr for WhisperModel {
 
     fn from_str(s: &str) -> Result<Self> {
         match s {
-            "tiny" => Ok(WhisperModel::Tiny),
-            "tiny.en" => Ok(WhisperModel::TinyEn),
-            "tiny-q5_1" => Ok(WhisperModel::TinyQ5_1),
-            "tiny.en-q5_1" => Ok(WhisperModel::TinyEnQ5_1),
-            "tiny-q8_0" => Ok(WhisperModel::TinyQ8_0),
-            "base" => Ok(WhisperModel::Base),
-            "base.en" => Ok(WhisperModel::BaseEn),
-            "base-q5_1" => Ok(WhisperModel::BaseQ5_1),
-            "base.en-q5_1" => Ok(WhisperModel::BaseEnQ5_1),
-            "base-q8_0" => Ok(WhisperModel::BaseQ8_0),
-            "small" => Ok(WhisperModel::Small),
-            "small.en" => Ok(WhisperModel::SmallEn),
-            "small.en-tdrz" => Ok(WhisperModel::SmallEnTdrz),
-            "small-q5_1" => Ok(WhisperModel::SmallQ5_1),
-            "small.en-q5_1" => Ok(WhisperModel::SmallEnQ5_1),
-            "small-q8_0" => Ok(WhisperModel::SmallQ8_0),
-            "medium" => Ok(WhisperModel::Medium),
-            "medium.en" => Ok(WhisperModel::MediumEn),
-            "medium-q5_0" => Ok(WhisperModel::MediumQ5_0),
-            "medium.en-q5_0" => Ok(WhisperModel::MediumEnQ5_0),
-            "medium-q8_0" => Ok(WhisperModel::MediumQ8_0),
-            "large-v1" => Ok(WhisperModel::LargeV1),
-            "large-v2" => Ok(WhisperModel::LargeV2),
-            "large-v2-q5_0" => Ok(WhisperModel::LargeV2Q5_0),
-            "large-v2-q8_0" => Ok(WhisperModel::LargeV2Q8_0),
-            "large-v3" => Ok(WhisperModel::LargeV3),
-            "large-v3-q5_0" => Ok(WhisperModel::LargeV3Q5_0),
-            "large-v3-turbo" => Ok(WhisperModel::LargeV3Turbo),
-            "large-v3-turbo-q5_0" => Ok(WhisperModel::LargeV3TurboQ5_0),
-            "large-v3-turbo-q8_0" => Ok(WhisperModel::LargeV3TurboQ8_0),
+            "tiny" => Ok(Self::Tiny),
+            "tiny.en" => Ok(Self::TinyEn),
+            "tiny-q5_1" => Ok(Self::TinyQ5_1),
+            "tiny.en-q5_1" => Ok(Self::TinyEnQ5_1),
+            "tiny-q8_0" => Ok(Self::TinyQ8_0),
+            "base" => Ok(Self::Base),
+            "base.en" => Ok(Self::BaseEn),
+            "base-q5_1" => Ok(Self::BaseQ5_1),
+            "base.en-q5_1" => Ok(Self::BaseEnQ5_1),
+            "base-q8_0" => Ok(Self::BaseQ8_0),
+            "small" => Ok(Self::Small),
+            "small.en" => Ok(Self::SmallEn),
+            "small.en-tdrz" => Ok(Self::SmallEnTdrz),
+            "small-q5_1" => Ok(Self::SmallQ5_1),
+            "small.en-q5_1" => Ok(Self::SmallEnQ5_1),
+            "small-q8_0" => Ok(Self::SmallQ8_0),
+            "medium" => Ok(Self::Medium),
+            "medium.en" => Ok(Self::MediumEn),
+            "medium-q5_0" => Ok(Self::MediumQ5_0),
+            "medium.en-q5_0" => Ok(Self::MediumEnQ5_0),
+            "medium-q8_0" => Ok(Self::MediumQ8_0),
+            "large-v1" => Ok(Self::LargeV1),
+            "large-v2" => Ok(Self::LargeV2),
+            "large-v2-q5_0" => Ok(Self::LargeV2Q5_0),
+            "large-v2-q8_0" => Ok(Self::LargeV2Q8_0),
+            "large-v3" => Ok(Self::LargeV3),
+            "large-v3-q5_0" => Ok(Self::LargeV3Q5_0),
+            "large-v3-turbo" => Ok(Self::LargeV3Turbo),
+            "large-v3-turbo-q5_0" => Ok(Self::LargeV3TurboQ5_0),
+            "large-v3-turbo-q8_0" => Ok(Self::LargeV3TurboQ8_0),
             _ => Err(WhisperError::from(ConfigurationError::unknown_model(s))),
         }
     }
@@ -402,7 +400,7 @@ impl ModelManager {
 
         if !response.status().is_success() {
             return Err(WhisperError::from(ConfigurationError::DownloadHttpError {
-                model_name: model.as_str().to_string(),
+                model_name: model.as_str().to_owned(),
                 status_code: response.status().as_u16(),
             }));
         }
@@ -483,10 +481,10 @@ impl ModelManager {
     /// Find a default model file
     pub async fn find_default_model(&self) -> Result<PathBuf> {
         // First try to find a model using the model manager (XDG compliant)
-        if let Ok(model_manager) = crate::model::ModelManager::new() {
-            if let Some(model_path) = model_manager.find_first_available_model().await {
-                return Ok(model_path);
-            }
+        if let Ok(model_manager) = Self::new()
+            && let Some(model_path) = model_manager.find_first_available_model().await
+        {
+            return Ok(model_path);
         }
 
         // Fallback to legacy locations for backward compatibility
@@ -525,16 +523,16 @@ mod tests {
         // Test successful parsing
         match WhisperModel::from_str("base") {
             Ok(WhisperModel::Base) => {}
-            other => panic!("Expected Ok(WhisperModel::Base), got: {:?}", other),
+            other => panic!("Expected Ok(WhisperModel::Base), got: {other:?}"),
         }
 
         match WhisperModel::from_str("base.en") {
             Ok(WhisperModel::BaseEn) => {}
-            other => panic!("Expected Ok(WhisperModel::BaseEn), got: {:?}", other),
+            other => panic!("Expected Ok(WhisperModel::BaseEn), got: {other:?}"),
         }
 
         // Test error case
         let invalid = WhisperModel::from_str("invalid_model");
-        assert!(invalid.is_err(), "Expected an error but got: {:?}", invalid);
+        assert!(invalid.is_err(), "Expected an error but got: {invalid:?}");
     }
 }

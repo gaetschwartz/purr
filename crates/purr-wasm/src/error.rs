@@ -4,32 +4,32 @@ use purr_common::platform::PlatformError;
 use wasm_bindgen::JsValue;
 
 /// Helper function to format `JsValue` errors into strings while preserving information
-pub(crate) fn format_js_error(js_error: JsValue) -> String {
+pub fn format_js_error(js_error: JsValue) -> String {
     if js_error.is_string() {
         js_error
             .as_string()
-            .unwrap_or_else(|| "Unknown JS error".to_string())
+            .unwrap_or_else(|| "Unknown JS error".to_owned())
     } else if js_error.is_object() {
         // Try to get error message, name, and stack if available
         let obj = js_sys::Object::from(js_error);
         let mut parts = Vec::new();
 
-        if let Ok(name) = js_sys::Reflect::get(&obj, &"name".into()) {
-            if let Some(name_str) = name.as_string() {
-                parts.push(format!("name: {name_str}"));
-            }
+        if let Ok(name) = js_sys::Reflect::get(&obj, &"name".into())
+            && let Some(name_str) = name.as_string()
+        {
+            parts.push(format!("name: {name_str}"));
         }
 
-        if let Ok(message) = js_sys::Reflect::get(&obj, &"message".into()) {
-            if let Some(message_str) = message.as_string() {
-                parts.push(format!("message: {message_str}"));
-            }
+        if let Ok(message) = js_sys::Reflect::get(&obj, &"message".into())
+            && let Some(message_str) = message.as_string()
+        {
+            parts.push(format!("message: {message_str}"));
         }
 
-        if let Ok(stack) = js_sys::Reflect::get(&obj, &"stack".into()) {
-            if let Some(stack_str) = stack.as_string() {
-                parts.push(format!("stack: {stack_str}"));
-            }
+        if let Ok(stack) = js_sys::Reflect::get(&obj, &"stack".into())
+            && let Some(stack_str) = stack.as_string()
+        {
+            parts.push(format!("stack: {stack_str}"));
         }
 
         if parts.is_empty() {
@@ -525,13 +525,13 @@ impl WebError {
         let message = if value.is_string() {
             value
                 .as_string()
-                .unwrap_or_else(|| "Unknown JS error".to_string())
+                .unwrap_or_else(|| "Unknown JS error".to_owned())
         } else {
             format!("{value:?}")
         };
 
-        WebError::JavaScript {
-            context: "JavaScript execution".to_string(),
+        Self::JavaScript {
+            context: "JavaScript execution".to_owned(),
             js_error: message,
         }
     }
@@ -540,18 +540,16 @@ impl WebError {
     #[must_use]
     pub fn into_platform_error(self) -> PlatformError {
         match self {
-            WebError::AudioFormat { .. } => PlatformError::audio_processing(Box::new(self)),
-            WebError::UnsupportedAudioFormat { .. } => {
-                PlatformError::audio_processing(Box::new(self))
-            }
-            WebError::AudioFileTooLarge { .. } => PlatformError::audio_processing(Box::new(self)),
-            WebError::WebAudioApi { .. } => PlatformError::audio_processing(Box::new(self)),
-            WebError::WebGpu { .. } => PlatformError::initialization(Box::new(self)),
-            WebError::Worker { .. } => PlatformError::initialization(Box::new(self)),
-            WebError::Storage { .. } => PlatformError::io(Box::new(self)),
-            WebError::IndexedDb { .. } => PlatformError::io(Box::new(self)),
-            WebError::WebApi { .. } => PlatformError::io(Box::new(self)),
-            WebError::JavaScript { .. } => PlatformError::io(Box::new(self)),
+            Self::AudioFormat { .. } => PlatformError::audio_processing(Box::new(self)),
+            Self::UnsupportedAudioFormat { .. } => PlatformError::audio_processing(Box::new(self)),
+            Self::AudioFileTooLarge { .. } => PlatformError::audio_processing(Box::new(self)),
+            Self::WebAudioApi { .. } => PlatformError::audio_processing(Box::new(self)),
+            Self::WebGpu { .. } => PlatformError::initialization(Box::new(self)),
+            Self::Worker { .. } => PlatformError::initialization(Box::new(self)),
+            Self::Storage { .. } => PlatformError::io(Box::new(self)),
+            Self::IndexedDb { .. } => PlatformError::io(Box::new(self)),
+            Self::WebApi { .. } => PlatformError::io(Box::new(self)),
+            Self::JavaScript { .. } => PlatformError::io(Box::new(self)),
             _ => PlatformError::io(Box::new(self)),
         }
     }
@@ -559,13 +557,13 @@ impl WebError {
 
 impl From<JsValue> for WebError {
     fn from(value: JsValue) -> Self {
-        WebError::from_js_value(value)
+        Self::from_js_value(value)
     }
 }
 
 impl From<WebError> for JsValue {
     fn from(error: WebError) -> Self {
-        JsValue::from_str(&error.to_string())
+        Self::from_str(&error.to_string())
     }
 }
 
@@ -578,25 +576,25 @@ impl From<WebError> for PlatformError {
 // From implementations for specialized error enums
 impl From<WorkerError> for WebError {
     fn from(error: WorkerError) -> Self {
-        WebError::Worker(error)
+        Self::Worker(error)
     }
 }
 
 impl From<StorageError> for WebError {
     fn from(error: StorageError) -> Self {
-        WebError::Storage(error)
+        Self::Storage(error)
     }
 }
 
 impl From<AudioFormatError> for WebError {
     fn from(error: AudioFormatError) -> Self {
-        WebError::AudioFormat(error)
+        Self::AudioFormat(error)
     }
 }
 
 impl From<WebGpuError> for WebError {
     fn from(error: WebGpuError) -> Self {
-        WebError::WebGpu(error)
+        Self::WebGpu(error)
     }
 }
 

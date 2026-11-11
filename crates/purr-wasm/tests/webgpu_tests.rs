@@ -77,7 +77,7 @@ fn create_buffer_descriptor(size: u64, usage: u32) -> Object {
     Reflect::set(
         &descriptor,
         &JsValue::from_str("usage"),
-        &JsValue::from_f64(usage as f64),
+        &JsValue::from_f64(f64::from(usage)),
     )
     .unwrap();
     descriptor
@@ -93,7 +93,7 @@ mod webgpu_device_tests {
 
         // Test WebGPU error creation
         let webgpu_error = WebError::WebGpu(purr_wasm::WebGpuError::FeatureNotSupported {
-            feature: "Test WebGPU error".to_string(),
+            feature: "Test WebGPU error".to_owned(),
         });
 
         match &webgpu_error {
@@ -147,7 +147,7 @@ mod webgpu_shader_tests {
         console::log_1(&"Testing WGSL shader validation".into());
 
         // Test basic compute shader structure
-        let compute_shader = r#"
+        let compute_shader = r"
             @group(0) @binding(0) var<storage, read_write> data: array<f32>;
 
             @compute @workgroup_size(64)
@@ -158,7 +158,7 @@ mod webgpu_shader_tests {
                 }
                 data[index] = data[index] * 2.0;
             }
-        "#;
+        ";
 
         // Basic syntax validation
         assert!(compute_shader.contains("@compute"));
@@ -169,7 +169,7 @@ mod webgpu_shader_tests {
         console::log_1(&"✓ Compute shader structure validation passed".into());
 
         // Test vertex shader structure
-        let vertex_shader = r#"
+        let vertex_shader = r"
             struct VertexInput {
                 @location(0) position: vec2<f32>,
                 @location(1) tex_coords: vec2<f32>,
@@ -187,7 +187,7 @@ mod webgpu_shader_tests {
                 output.tex_coords = input.tex_coords;
                 return output;
             }
-        "#;
+        ";
 
         assert!(vertex_shader.contains("@vertex"));
         assert!(vertex_shader.contains("@location"));
@@ -300,7 +300,7 @@ mod webgpu_texture_tests {
         Reflect::set(
             &descriptor,
             &JsValue::from_str("usage"),
-            &JsValue::from_f64(0x0014 as f64),
+            &JsValue::from_f64(f64::from(0x0014)),
         )
         .unwrap(); // TEXTURE_BINDING | COPY_DST
 
@@ -348,7 +348,7 @@ mod webgpu_integration_tests {
 
         for error_msg in test_errors {
             let webgpu_error = WebError::WebGpu(purr_wasm::WebGpuError::FeatureNotSupported {
-                feature: error_msg.to_string(),
+                feature: error_msg.to_owned(),
             });
             let platform_error = webgpu_error.into_platform_error();
 

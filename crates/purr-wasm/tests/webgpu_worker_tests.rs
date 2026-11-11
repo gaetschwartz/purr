@@ -37,7 +37,7 @@ impl MockWorkerMessage {
         let obj = Object::new();
 
         match self {
-            MockWorkerMessage::Initialize { config, session_id } => {
+            Self::Initialize { config, session_id } => {
                 Reflect::set(
                     &obj,
                     &JsValue::from_str("type"),
@@ -75,7 +75,7 @@ impl MockWorkerMessage {
                 .unwrap();
                 Reflect::set(&obj, &JsValue::from_str("config"), &config_obj).unwrap();
             }
-            MockWorkerMessage::ProcessAudio {
+            Self::ProcessAudio {
                 audio_data,
                 session_id,
             } => {
@@ -98,7 +98,7 @@ impl MockWorkerMessage {
                 }
                 Reflect::set(&obj, &JsValue::from_str("audio_data"), &array).unwrap();
             }
-            MockWorkerMessage::UpdateConfig { config } => {
+            Self::UpdateConfig { config } => {
                 Reflect::set(
                     &obj,
                     &JsValue::from_str("type"),
@@ -115,7 +115,7 @@ impl MockWorkerMessage {
                 .unwrap();
                 Reflect::set(&obj, &JsValue::from_str("config"), &config_obj).unwrap();
             }
-            MockWorkerMessage::GetStatus => {
+            Self::GetStatus => {
                 Reflect::set(
                     &obj,
                     &JsValue::from_str("type"),
@@ -123,7 +123,7 @@ impl MockWorkerMessage {
                 )
                 .unwrap();
             }
-            MockWorkerMessage::Shutdown => {
+            Self::Shutdown => {
                 Reflect::set(
                     &obj,
                     &JsValue::from_str("type"),
@@ -171,7 +171,7 @@ impl MockWorkerResponse {
         let obj = Object::new();
 
         match self {
-            MockWorkerResponse::Initialized {
+            Self::Initialized {
                 session_id,
                 webgpu_available,
                 model_loaded,
@@ -201,7 +201,7 @@ impl MockWorkerResponse {
                 )
                 .unwrap();
             }
-            MockWorkerResponse::TranscriptionProgress {
+            Self::TranscriptionProgress {
                 session_id,
                 progress,
                 text,
@@ -221,7 +221,7 @@ impl MockWorkerResponse {
                 Reflect::set(
                     &obj,
                     &JsValue::from_str("progress"),
-                    &JsValue::from_f64(*progress as f64),
+                    &JsValue::from_f64(f64::from(*progress)),
                 )
                 .unwrap();
                 if let Some(text) = text {
@@ -229,7 +229,7 @@ impl MockWorkerResponse {
                         .unwrap();
                 }
             }
-            MockWorkerResponse::TranscriptionComplete {
+            Self::TranscriptionComplete {
                 session_id,
                 text,
                 metadata,
@@ -259,7 +259,7 @@ impl MockWorkerResponse {
                 }
                 Reflect::set(&obj, &JsValue::from_str("metadata"), &metadata_obj).unwrap();
             }
-            MockWorkerResponse::Error {
+            Self::Error {
                 message,
                 session_id,
             } => {
@@ -284,7 +284,7 @@ impl MockWorkerResponse {
                     .unwrap();
                 }
             }
-            MockWorkerResponse::Status {
+            Self::Status {
                 webgpu_available,
                 active_sessions,
                 memory_usage,
@@ -304,7 +304,7 @@ impl MockWorkerResponse {
                 Reflect::set(
                     &obj,
                     &JsValue::from_str("active_sessions"),
-                    &JsValue::from_f64(*active_sessions as f64),
+                    &JsValue::from_f64(f64::from(*active_sessions)),
                 )
                 .unwrap();
                 Reflect::set(
@@ -322,8 +322,8 @@ impl MockWorkerResponse {
 
 fn create_test_config() -> TranscriptionConfig {
     TranscriptionConfig {
-        model_name: "whisper-base".to_string(),
-        language: Some("en".to_string()),
+        model_name: "whisper-base".to_owned(),
+        language: Some("en".to_owned()),
         translate: false,
         ..Default::default()
     }
@@ -368,10 +368,10 @@ mod worker_initialization_tests {
         console::log_1(&"Testing worker message serialization".into());
 
         let config = create_test_config();
-        let session_id = "test-session-123".to_string();
+        let session_id = "test-session-123".to_owned();
 
         let message = MockWorkerMessage::Initialize {
-            config: config.clone(),
+            config,
             session_id: session_id.clone(),
         };
 
@@ -393,7 +393,7 @@ mod worker_initialization_tests {
         console::log_1(&"Testing worker response deserialization".into());
 
         let response = MockWorkerResponse::Initialized {
-            session_id: "test-session-123".to_string(),
+            session_id: "test-session-123".to_owned(),
             webgpu_available: true,
             model_loaded: true,
         };
@@ -421,7 +421,7 @@ mod worker_initialization_tests {
         let config = create_test_config();
 
         // Test valid configuration
-        assert!(!config.model_name.is_empty());
+        assert_ne!(config.model_name, "");
         assert!(config.language.is_some());
         assert_eq!(config.language.as_ref().unwrap(), "en");
         assert!(!config.translate);
@@ -429,12 +429,12 @@ mod worker_initialization_tests {
         // Test invalid configurations
         let invalid_configs = vec![
             TranscriptionConfig {
-                model_name: "".to_string(), // Empty model name
+                model_name: String::new(), // Empty model name
                 ..Default::default()
             },
             TranscriptionConfig {
-                model_name: "invalid-model".to_string(),
-                language: Some("invalid-lang".to_string()), // Invalid language code
+                model_name: "invalid-model".to_owned(),
+                language: Some("invalid-lang".to_owned()), // Invalid language code
                 ..Default::default()
             },
         ];
@@ -442,7 +442,7 @@ mod worker_initialization_tests {
         for invalid_config in invalid_configs {
             if invalid_config.model_name.is_empty() {
                 // Model name should not be empty
-                assert!(invalid_config.model_name.is_empty());
+                assert_eq!(invalid_config.model_name, "");
             }
         }
 
@@ -459,11 +459,11 @@ mod worker_processing_tests {
         console::log_1(&"Testing audio data processing".into());
 
         let audio_data = create_test_audio_data();
-        let session_id = "test-session-456".to_string();
+        let session_id = "test-session-456".to_owned();
 
         let message = MockWorkerMessage::ProcessAudio {
             audio_data: audio_data.clone(),
-            session_id: session_id.clone(),
+            session_id,
         };
 
         let js_value = message.to_js_value();
@@ -488,18 +488,14 @@ mod worker_processing_tests {
     fn test_transcription_progress_tracking() {
         console::log_1(&"Testing transcription progress tracking".into());
 
-        let session_id = "test-session-789".to_string();
+        let session_id = "test-session-789".to_owned();
         let progress_steps = vec![0.0, 0.25, 0.5, 0.75, 1.0];
 
         for progress in progress_steps {
             let response = MockWorkerResponse::TranscriptionProgress {
                 session_id: session_id.clone(),
                 progress,
-                text: if progress > 0.0 {
-                    Some("Partial text".to_string())
-                } else {
-                    None
-                },
+                text: (progress > 0.0).then(|| "Partial text".to_owned()),
             };
 
             let js_value = response.to_js_value();
@@ -521,15 +517,15 @@ mod worker_processing_tests {
     fn test_transcription_completion() {
         console::log_1(&"Testing transcription completion".into());
 
-        let session_id = "test-session-complete".to_string();
-        let final_text = "Hello, this is a test transcription.".to_string();
+        let session_id = "test-session-complete".to_owned();
+        let final_text = "Hello, this is a test transcription.".to_owned();
         let mut metadata = HashMap::new();
-        metadata.insert("duration".to_string(), "5.2".to_string());
-        metadata.insert("language".to_string(), "en".to_string());
-        metadata.insert("confidence".to_string(), "0.95".to_string());
+        metadata.insert("duration".to_owned(), "5.2".to_owned());
+        metadata.insert("language".to_owned(), "en".to_owned());
+        metadata.insert("confidence".to_owned(), "0.95".to_owned());
 
         let response = MockWorkerResponse::TranscriptionComplete {
-            session_id: session_id.clone(),
+            session_id,
             text: final_text.clone(),
             metadata,
         };
@@ -558,19 +554,16 @@ mod worker_error_handling_tests {
         console::log_1(&"Testing worker error handling".into());
 
         let error_scenarios = vec![
-            ("WebGPU device lost", Some("session-123".to_string())),
+            ("WebGPU device lost", Some("session-123".to_owned())),
             ("Model loading failed", None),
-            (
-                "Audio format not supported",
-                Some("session-456".to_string()),
-            ),
-            ("Out of memory", Some("session-789".to_string())),
+            ("Audio format not supported", Some("session-456".to_owned())),
+            ("Out of memory", Some("session-789".to_owned())),
             ("Network timeout", None),
         ];
 
         for (error_message, session_id) in error_scenarios {
             let response = MockWorkerResponse::Error {
-                message: error_message.to_string(),
+                message: error_message.to_owned(),
                 session_id,
             };
 
@@ -613,7 +606,7 @@ mod worker_error_handling_tests {
 
         for error_msg in webgpu_errors {
             let webgpu_error = WebError::WebGpu(purr_wasm::WebGpuError::FeatureNotSupported {
-                feature: error_msg.to_string(),
+                feature: error_msg.to_owned(),
             });
 
             match webgpu_error {
@@ -704,11 +697,11 @@ mod worker_lifecycle_tests {
         console::log_1(&"Testing worker initialization sequence".into());
 
         let config = create_test_config();
-        let session_id = "test-init-sequence".to_string();
+        let session_id = "test-init-sequence".to_owned();
 
         // Step 1: Initialize worker
         let init_message = MockWorkerMessage::Initialize {
-            config: config.clone(),
+            config,
             session_id: session_id.clone(),
         };
 
@@ -717,7 +710,7 @@ mod worker_lifecycle_tests {
 
         // Step 2: Expect initialization response
         let init_response = MockWorkerResponse::Initialized {
-            session_id: session_id.clone(),
+            session_id,
             webgpu_available: true,
             model_loaded: true,
         };
@@ -751,13 +744,11 @@ mod worker_lifecycle_tests {
         console::log_1(&"Testing worker configuration updates".into());
 
         let mut config = create_test_config();
-        config.model_name = "whisper-large".to_string();
-        config.language = Some("es".to_string());
+        config.model_name = "whisper-large".to_owned();
+        config.language = Some("es".to_owned());
         config.translate = true;
 
-        let update_message = MockWorkerMessage::UpdateConfig {
-            config: config.clone(),
-        };
+        let update_message = MockWorkerMessage::UpdateConfig { config };
         let update_js = update_message.to_js_value();
 
         let obj: Object = update_js.dyn_into().unwrap();

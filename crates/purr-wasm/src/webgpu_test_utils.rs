@@ -149,7 +149,7 @@ pub fn create_test_buffer_descriptor(size: u64, usage: u32) -> Object {
     Reflect::set(
         &descriptor,
         &JsValue::from_str("usage"),
-        &JsValue::from_f64(usage as f64),
+        &JsValue::from_f64(f64::from(usage)),
     )
     .expect("Failed to set buffer usage");
     descriptor
@@ -206,7 +206,7 @@ pub fn create_test_bind_group_layout(bindings: &[(u32, &str, &str)]) -> Object {
         Reflect::set(
             &entry,
             &JsValue::from_str("binding"),
-            &JsValue::from_f64(binding as f64),
+            &JsValue::from_f64(f64::from(binding)),
         )
         .expect("Failed to set binding");
 
@@ -219,7 +219,7 @@ pub fn create_test_bind_group_layout(bindings: &[(u32, &str, &str)]) -> Object {
         Reflect::set(
             &entry,
             &JsValue::from_str("visibility"),
-            &JsValue::from_f64(visibility_flags as f64),
+            &JsValue::from_f64(f64::from(visibility_flags)),
         )
         .expect("Failed to set visibility");
 
@@ -259,7 +259,7 @@ pub fn validate_device_limits(limits: &Object) -> WebResult<()> {
             Ok(limit_val) => {
                 if limit_val.is_undefined() {
                     return Err(WebGpuError::MissingLimit {
-                        limit_name: limit_name.to_string(),
+                        limit_name: limit_name.to_owned(),
                     }
                     .into());
                 }
@@ -267,7 +267,7 @@ pub fn validate_device_limits(limits: &Object) -> WebResult<()> {
             }
             Err(_) => {
                 return Err(WebGpuError::FailedToGetLimit {
-                    limit_name: limit_name.to_string(),
+                    limit_name: limit_name.to_owned(),
                 }
                 .into());
             }
@@ -358,7 +358,7 @@ pub fn test_webgpu_features(
     for &feature in required_features {
         let feature_js = JsValue::from_str(feature);
         if !features.has(&feature_js) {
-            missing_features.push(feature.to_string());
+            missing_features.push(feature.to_owned());
         }
     }
 
@@ -381,13 +381,13 @@ pub fn create_test_texture_descriptor(width: u32, height: u32, format: &str) -> 
     Reflect::set(
         &size,
         &JsValue::from_str("width"),
-        &JsValue::from_f64(width as f64),
+        &JsValue::from_f64(f64::from(width)),
     )
     .expect("Failed to set texture width");
     Reflect::set(
         &size,
         &JsValue::from_str("height"),
-        &JsValue::from_f64(height as f64),
+        &JsValue::from_f64(f64::from(height)),
     )
     .expect("Failed to set texture height");
     Reflect::set(
@@ -408,7 +408,7 @@ pub fn create_test_texture_descriptor(width: u32, height: u32, format: &str) -> 
     Reflect::set(
         &descriptor,
         &JsValue::from_str("usage"),
-        &JsValue::from_f64(0x0014 as f64),
+        &JsValue::from_f64(f64::from(0x0014)),
     ) // TEXTURE_BINDING | COPY_DST
     .expect("Failed to set texture usage");
 
@@ -444,8 +444,8 @@ impl WebGPUPerformanceTimer {
 
     pub fn measure(&mut self, operation: &str) {
         let elapsed = js_sys::Date::now() - self.start_time;
-        self.measurements.push((operation.to_string(), elapsed));
-        console::log_1(&format!("WebGPU {}: {:.2}ms", operation, elapsed).into());
+        self.measurements.push((operation.to_owned(), elapsed));
+        console::log_1(&format!("WebGPU {operation}: {elapsed:.2}ms").into());
     }
 
     pub fn get_measurements(&self) -> &[(String, f64)] {

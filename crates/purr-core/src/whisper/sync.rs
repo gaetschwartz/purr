@@ -108,7 +108,7 @@ impl SyncWhisperTranscriber {
                         full_text.push_str(text);
 
                         segments.push(TranscriptionSegment {
-                            text: text.to_string(),
+                            text: text.to_owned(),
                             start,
                             end,
                             confidence: None, // whisper-rs doesn't expose confidence scores yet

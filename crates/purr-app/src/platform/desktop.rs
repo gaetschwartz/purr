@@ -18,7 +18,7 @@ use std::{
 use tokio::sync::Mutex;
 use tracing::{debug, error, info, warn};
 
-pub(crate) type PlatformImpl = DesktopPlatformImpl;
+pub type PlatformImpl = DesktopPlatformImpl;
 
 pub(super) struct DesktopPlatformImpl {
     temp_dir: PathBuf,
@@ -32,13 +32,14 @@ impl DesktopPlatformImpl {
         let _ = std::fs::create_dir_all(&temp_dir);
 
         // Initialize model manager (will create XDG-compliant directories)
-        let model_manager = ModelManager::new()
-            .map(|mm| Arc::new(Mutex::new(mm)))
-            .unwrap_or_else(|err| {
+        let model_manager = ModelManager::new().map_or_else(
+            |err| {
                 warn!("Failed to initialize model manager: {}", err);
                 // Create a fallback model manager with temp directory
                 Arc::new(Mutex::new(ModelManager::default()))
-            });
+            },
+            |mm| Arc::new(Mutex::new(mm)),
+        );
 
         Ok(Self {
             temp_dir,
@@ -199,9 +200,9 @@ impl Platform for DesktopPlatformImpl {
             let metadata = self.create_model_metadata(&model);
 
             let mut model_info = ModelInfo::new(
-                model.as_str().to_string(),
-                model.as_str().to_string(),
-                model.description().to_string(),
+                model.as_str().to_owned(),
+                model.as_str().to_owned(),
+                model.description().to_owned(),
                 model.size(),
                 true,
                 metadata,
@@ -219,18 +220,14 @@ impl Platform for DesktopPlatformImpl {
 
         for &model in WhisperModel::all_models() {
             let is_installed = manager.is_model_downloaded(model).await;
-            let model_path = if is_installed {
-                Some(manager.get_model_path(model))
-            } else {
-                None
-            };
+            let model_path = is_installed.then(|| manager.get_model_path(model));
 
             let metadata = self.create_model_metadata(&model);
 
             let mut model_info = ModelInfo::new(
-                model.as_str().to_string(),
-                model.as_str().to_string(),
-                model.description().to_string(),
+                model.as_str().to_owned(),
+                model.as_str().to_owned(),
+                model.description().to_owned(),
                 model.size(),
                 is_installed,
                 metadata,
@@ -248,10 +245,10 @@ impl Platform for DesktopPlatformImpl {
 
     async fn fetch_model(&self, model_id: &str) -> Result<ModelProgressStream, PlatformError> {
         let model = WhisperModel::from_str(model_id)
-            .map_err(|_| PlatformError::model_not_found(model_id.to_string()))?;
+            .map_err(|_| PlatformError::model_not_found(model_id.to_owned()))?;
 
         let manager = Arc::clone(&self.model_manager);
-        let model_id = model_id.to_string();
+        let model_id = model_id.to_owned();
 
         let (mut tx, rx) = mpsc::channel(10);
 
@@ -302,7 +299,7 @@ impl Platform for DesktopPlatformImpl {
                     let _ = tx
                         .send(Ok(ModelOperationProgress::Failed {
                             model_id: model_id.clone(),
-                            operation: "model_loading".to_string(),
+                            operation: "model_loading".to_owned(),
                             error_message: e.to_string(),
                         }))
                         .await;
@@ -315,22 +312,18 @@ impl Platform for DesktopPlatformImpl {
 
     async fn get_model_info(&self, model_id: &str) -> Result<ModelInfo, PlatformError> {
         let model = WhisperModel::from_str(model_id)
-            .map_err(|_| PlatformError::model_not_found(model_id.to_string()))?;
+            .map_err(|_| PlatformError::model_not_found(model_id.to_owned()))?;
 
         let manager = self.model_manager.lock().await;
         let is_installed = manager.is_model_downloaded(model).await;
-        let model_path = if is_installed {
-            Some(manager.get_model_path(model))
-        } else {
-            None
-        };
+        let model_path = is_installed.then(|| manager.get_model_path(model));
 
         let metadata = self.create_model_metadata(&model);
 
         let mut model_info = ModelInfo::new(
-            model.as_str().to_string(),
-            model.as_str().to_string(),
-            model.description().to_string(),
+            model.as_str().to_owned(),
+            model.as_str().to_owned(),
+            model.description().to_owned(),
             model.size(),
             is_installed,
             metadata,
@@ -345,7 +338,7 @@ impl Platform for DesktopPlatformImpl {
 
     async fn remove_model(&self, model_id: &str) -> Result<(), PlatformError> {
         let model = WhisperModel::from_str(model_id)
-            .map_err(|_| PlatformError::model_not_found(model_id.to_string()))?;
+            .map_err(|_| PlatformError::model_not_found(model_id.to_owned()))?;
 
         let manager = self.model_manager.lock().await;
         manager
@@ -358,7 +351,7 @@ impl Platform for DesktopPlatformImpl {
 
     async fn is_model_installed(&self, model_id: &str) -> Result<bool, PlatformError> {
         let model = WhisperModel::from_str(model_id)
-            .map_err(|_| PlatformError::model_not_found(model_id.to_string()))?;
+            .map_err(|_| PlatformError::model_not_found(model_id.to_owned()))?;
 
         let manager = self.model_manager.lock().await;
         Ok(manager.is_model_downloaded(model).await)
@@ -366,11 +359,11 @@ impl Platform for DesktopPlatformImpl {
 
     async fn get_model_path(&self, model_id: &str) -> Result<String, PlatformError> {
         let model = WhisperModel::from_str(model_id)
-            .map_err(|_| PlatformError::model_not_found(model_id.to_string()))?;
+            .map_err(|_| PlatformError::model_not_found(model_id.to_owned()))?;
 
         let manager = self.model_manager.lock().await;
         if !manager.is_model_downloaded(model).await {
-            return Err(PlatformError::model_not_found(model_id.to_string()));
+            return Err(PlatformError::model_not_found(model_id.to_owned()));
         }
 
         let model_path = manager.get_model_path(model);
@@ -397,16 +390,16 @@ impl Platform for DesktopPlatformImpl {
                 memory_total: Some(device.vram_total),
                 capabilities: device.caps.map(|caps| {
                     let mut cap_map = std::collections::HashMap::new();
-                    cap_map.insert("async".to_string(), serde_json::Value::Bool(caps.async_));
+                    cap_map.insert("async".to_owned(), serde_json::Value::Bool(caps.async_));
                     cap_map.insert(
-                        "host_buffer".to_string(),
+                        "host_buffer".to_owned(),
                         serde_json::Value::Bool(caps.host_buffer),
                     );
                     cap_map.insert(
-                        "buffer_from_host_ptr".to_string(),
+                        "buffer_from_host_ptr".to_owned(),
                         serde_json::Value::Bool(caps.buffer_from_host_ptr),
                     );
-                    cap_map.insert("events".to_string(), serde_json::Value::Bool(caps.events));
+                    cap_map.insert("events".to_owned(), serde_json::Value::Bool(caps.events));
                     cap_map
                 }),
             })
@@ -537,7 +530,7 @@ impl Platform for DesktopPlatformImpl {
         let theme_str = settings.ui.theme.to_storage_string();
 
         debug!("Loaded theme setting: {}", theme_str);
-        Ok(Some(theme_str.to_string()))
+        Ok(Some(theme_str.to_owned()))
     }
 
     async fn save_theme_setting(
@@ -565,24 +558,24 @@ impl DesktopPlatformImpl {
     /// Helper method to create model metadata for `WhisperModel`
     fn create_model_metadata(&self, model: &WhisperModel) -> ModelMetadata {
         ModelMetadata::new(
-            "ggml".to_string(),
-            "whisper".to_string(),
+            "ggml".to_owned(),
+            "whisper".to_owned(),
             if model.as_str().contains(".en") {
-                "en-only".to_string()
+                "en-only".to_owned()
             } else {
-                "multilingual".to_string()
+                "multilingual".to_owned()
             },
-            "v1".to_string(),
+            "v1".to_owned(),
         )
         .with_download_url(Self::get_model_download_url(model))
         .with_quantization(if model.as_str().contains("q5_1") {
-            "q5_1".to_string()
+            "q5_1".to_owned()
         } else if model.as_str().contains("q8_0") {
-            "q8_0".to_string()
+            "q8_0".to_owned()
         } else if model.as_str().contains("q5_0") {
-            "q5_0".to_string()
+            "q5_0".to_owned()
         } else {
-            "fp16".to_string()
+            "fp16".to_owned()
         })
     }
 

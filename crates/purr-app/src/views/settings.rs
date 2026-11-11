@@ -23,7 +23,7 @@ pub fn Settings() -> Element {
     let mut models = use_signal(|| Ok(Vec::<ModelInfo>::new()));
     let mut navbar_state = use_context::<NavBarState>();
     use_effect(move || {
-        navbar_state.title.set("Settings".to_string());
+        navbar_state.title.set("Settings".to_owned());
         navbar_state.show_back.set(true);
         navbar_state.top_right.set(Some(
             rsx! {
@@ -56,8 +56,7 @@ pub fn Settings() -> Element {
             Err(err) => {
                 tracing::warn!("Failed to load settings, using defaults: {}", err);
                 save_status.set(Some(SaveStatus::LoadError(format!(
-                    "Failed to load settings: {}",
-                    err
+                    "Failed to load settings: {err}"
                 ))));
             }
         }
@@ -86,8 +85,7 @@ pub fn Settings() -> Element {
                 Err(err) => {
                     tracing::error!("Failed to save settings: {}", err);
                     save_status.set(Some(SaveStatus::SaveError(format!(
-                        "Failed to save settings: {}",
-                        err
+                        "Failed to save settings: {err}"
                     ))));
                 }
             }
@@ -122,19 +120,19 @@ pub fn Settings() -> Element {
                                 Select {
                                     label: "Theme",
                                     description: "Choose your preferred color scheme",
-                                    value: settings.read().ui.theme.to_storage_string().to_string(),
+                                    value: settings.read().ui.theme.to_storage_string().to_owned(),
                                     options: vec![
                                         SelectOption {
-                                            value: "light".to_string(),
-                                            label: "Light".to_string(),
+                                            value: "light".to_owned(),
+                                            label: "Light".to_owned(),
                                         },
                                         SelectOption {
-                                            value: "dark".to_string(),
-                                            label: "Dark".to_string(),
+                                            value: "dark".to_owned(),
+                                            label: "Dark".to_owned(),
                                         },
                                         SelectOption {
-                                            value: "system".to_string(),
-                                            label: "System".to_string(),
+                                            value: "system".to_owned(),
+                                            label: "System".to_owned(),
                                         },
                                     ],
                                     onchange: move |value: String| {
@@ -151,8 +149,8 @@ pub fn Settings() -> Element {
                                     options: purr_common::Language::VARIANTS
                                         .iter()
                                         .map(|lang| SelectOption {
-                                            value: lang.code().to_string(),
-                                            label: lang.name().to_string(),
+                                            value: lang.code().to_owned(),
+                                            label: lang.name().to_owned(),
                                         })
                                         .collect(),
                                     onchange: move |value: String| {
@@ -231,27 +229,27 @@ pub fn Settings() -> Element {
                                 Select {
                                     label: "Sample Rate",
                                     description: "Audio sample rate in Hz",
-                                    value: settings.read().audio.sample_rate.to_hz_string().to_string(),
+                                    value: settings.read().audio.sample_rate.to_hz_string().to_owned(),
                                     options: vec![
                                         SelectOption {
-                                            value: "8000".to_string(),
-                                            label: "8 kHz".to_string(),
+                                            value: "8000".to_owned(),
+                                            label: "8 kHz".to_owned(),
                                         },
                                         SelectOption {
-                                            value: "16000".to_string(),
-                                            label: "16 kHz".to_string(),
+                                            value: "16000".to_owned(),
+                                            label: "16 kHz".to_owned(),
                                         },
                                         SelectOption {
-                                            value: "22050".to_string(),
-                                            label: "22.05 kHz".to_string(),
+                                            value: "22050".to_owned(),
+                                            label: "22.05 kHz".to_owned(),
                                         },
                                         SelectOption {
-                                            value: "44100".to_string(),
-                                            label: "44.1 kHz".to_string(),
+                                            value: "44100".to_owned(),
+                                            label: "44.1 kHz".to_owned(),
                                         },
                                         SelectOption {
-                                            value: "48000".to_string(),
-                                            label: "48 kHz".to_string(),
+                                            value: "48000".to_owned(),
+                                            label: "48 kHz".to_owned(),
                                         },
                                     ],
                                     onchange: move |value: String| {
@@ -265,23 +263,23 @@ pub fn Settings() -> Element {
                                 Select {
                                     label: "Audio Quality",
                                     description: "Processing quality level",
-                                    value: settings.read().audio.quality.to_string().to_string(),
+                                    value: settings.read().audio.quality.to_string().to_owned(),
                                     options: vec![
                                         SelectOption {
-                                            value: "low".to_string(),
-                                            label: "Low (Fast)".to_string(),
+                                            value: "low".to_owned(),
+                                            label: "Low (Fast)".to_owned(),
                                         },
                                         SelectOption {
-                                            value: "medium".to_string(),
-                                            label: "Medium".to_string(),
+                                            value: "medium".to_owned(),
+                                            label: "Medium".to_owned(),
                                         },
                                         SelectOption {
-                                            value: "high".to_string(),
-                                            label: "High (Slow)".to_string(),
+                                            value: "high".to_owned(),
+                                            label: "High (Slow)".to_owned(),
                                         },
                                         SelectOption {
-                                            value: "ultra".to_string(),
-                                            label: "Ultra (Slowest)".to_string(),
+                                            value: "ultra".to_owned(),
+                                            label: "Ultra (Slowest)".to_owned(),
                                         },
                                     ],
                                     onchange: move |value: String| {
@@ -295,23 +293,23 @@ pub fn Settings() -> Element {
                                 Select {
                                     label: "File Format",
                                     description: "Preferred audio file format",
-                                    value: settings.read().audio.file_format.to_extension().to_string(),
+                                    value: settings.read().audio.file_format.to_extension().to_owned(),
                                     options: vec![
                                         SelectOption {
-                                            value: "mp3".to_string(),
-                                            label: "MP3".to_string(),
+                                            value: "mp3".to_owned(),
+                                            label: "MP3".to_owned(),
                                         },
                                         SelectOption {
-                                            value: "wav".to_string(),
-                                            label: "WAV".to_string(),
+                                            value: "wav".to_owned(),
+                                            label: "WAV".to_owned(),
                                         },
                                         SelectOption {
-                                            value: "flac".to_string(),
-                                            label: "FLAC".to_string(),
+                                            value: "flac".to_owned(),
+                                            label: "FLAC".to_owned(),
                                         },
                                         SelectOption {
-                                            value: "ogg".to_string(),
-                                            label: "OGG".to_string(),
+                                            value: "ogg".to_owned(),
+                                            label: "OGG".to_owned(),
                                         },
                                     ],
                                     onchange: move |value: String| {
@@ -375,27 +373,27 @@ pub fn Settings() -> Element {
                                 Select {
                                     label: "Log Level",
                                     description: "Minimum level of messages to log",
-                                    value: settings.read().logging.level.to_string().to_string(),
+                                    value: settings.read().logging.level.to_string().to_owned(),
                                     options: vec![
                                         SelectOption {
-                                            value: "error".to_string(),
-                                            label: "Error".to_string(),
+                                            value: "error".to_owned(),
+                                            label: "Error".to_owned(),
                                         },
                                         SelectOption {
-                                            value: "warn".to_string(),
-                                            label: "Warning".to_string(),
+                                            value: "warn".to_owned(),
+                                            label: "Warning".to_owned(),
                                         },
                                         SelectOption {
-                                            value: "info".to_string(),
-                                            label: "Info".to_string(),
+                                            value: "info".to_owned(),
+                                            label: "Info".to_owned(),
                                         },
                                         SelectOption {
-                                            value: "debug".to_string(),
-                                            label: "Debug".to_string(),
+                                            value: "debug".to_owned(),
+                                            label: "Debug".to_owned(),
                                         },
                                         SelectOption {
-                                            value: "trace".to_string(),
-                                            label: "Trace".to_string(),
+                                            value: "trace".to_owned(),
+                                            label: "Trace".to_owned(),
                                         },
                                     ],
                                     onchange: move |value: String| {
@@ -463,7 +461,7 @@ pub fn Settings() -> Element {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SaveStatus {
     Saving,
     Success,
@@ -475,14 +473,14 @@ pub enum SaveStatus {
 impl std::fmt::Display for SaveStatus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            SaveStatus::Saving => write!(f, "Saving settings..."),
-            SaveStatus::Success => write!(f, "Settings saved successfully!"),
-            SaveStatus::ResetToDefaults => write!(
+            Self::Saving => write!(f, "Saving settings..."),
+            Self::Success => write!(f, "Settings saved successfully!"),
+            Self::ResetToDefaults => write!(
                 f,
                 "Settings reset to defaults. Click Save to persist changes."
             ),
-            SaveStatus::LoadError(err) => write!(f, "Failed to load settings: {}", err),
-            SaveStatus::SaveError(err) => write!(f, "Failed to save settings: {}", err),
+            Self::LoadError(err) => write!(f, "Failed to load settings: {err}"),
+            Self::SaveError(err) => write!(f, "Failed to save settings: {err}"),
         }
     }
 }
@@ -490,11 +488,11 @@ impl std::fmt::Display for SaveStatus {
 impl SaveStatus {
     pub const fn text_color(&self) -> &'static str {
         match self {
-            SaveStatus::Saving => "text-blue-600",
-            SaveStatus::Success => "text-green-600",
-            SaveStatus::ResetToDefaults => "text-orange-600",
-            SaveStatus::LoadError(_) => "text-red-600",
-            SaveStatus::SaveError(_) => "text-red-600",
+            Self::Saving => "text-blue-600",
+            Self::Success => "text-green-600",
+            Self::ResetToDefaults => "text-orange-600",
+            Self::LoadError(_) => "text-red-600",
+            Self::SaveError(_) => "text-red-600",
         }
     }
 }

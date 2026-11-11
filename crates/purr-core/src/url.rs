@@ -80,7 +80,7 @@ impl HttpStreamer {
             .redirect(reqwest::redirect::Policy::limited(config.max_redirects))
             .build()
             .map_err(|e| WhisperError::NetworkError {
-                message: format!("Failed to create HTTP client: {}", e),
+                message: format!("Failed to create HTTP client: {e}"),
             })?;
 
         Ok(Self { client, config })
@@ -94,7 +94,7 @@ impl HttpStreamer {
     ) -> Result<JoinHandle<Result<()>>> {
         if !matches!(url.scheme(), "http" | "https") {
             return Err(WhisperError::InvalidInput {
-                message: "Only HTTP and HTTPS URLs are supported".to_string(),
+                message: "Only HTTP and HTTPS URLs are supported".to_owned(),
             });
         }
 
@@ -107,7 +107,7 @@ impl HttpStreamer {
                 .send()
                 .await
                 .map_err(|e| WhisperError::NetworkError {
-                    message: format!("Failed to connect to URL: {}", e),
+                    message: format!("Failed to connect to URL: {e}"),
                 })?;
 
         // Check response status
@@ -171,7 +171,7 @@ impl HttpStreamer {
                     Err(e) => {
                         error!("Error receiving chunk: {}", e);
                         return Err(WhisperError::NetworkError {
-                            message: format!("Error receiving data chunk: {}", e),
+                            message: format!("Error receiving data chunk: {e}"),
                         });
                     }
                 }
@@ -188,7 +188,7 @@ impl HttpStreamer {
     /// Get the content length of a URL without downloading it
     pub async fn get_content_info(&self, url: &str) -> Result<UrlContentInfo> {
         let url = Url::parse(url).map_err(|e| WhisperError::InvalidInput {
-            message: format!("Invalid URL: {}", e),
+            message: format!("Invalid URL: {e}"),
         })?;
 
         let response =
@@ -197,7 +197,7 @@ impl HttpStreamer {
                 .send()
                 .await
                 .map_err(|e| WhisperError::NetworkError {
-                    message: format!("Failed to get URL info: {}", e),
+                    message: format!("Failed to get URL info: {e}"),
                 })?;
 
         if !response.status().is_success() {
@@ -236,21 +236,16 @@ pub struct UrlContentInfo {
 impl UrlContentInfo {
     /// Check if the content type suggests this is an audio file
     pub fn is_likely_audio(&self) -> bool {
-        self.content_type
-            .as_ref()
-            .map(|ct| {
-                ct.starts_with("audio/")
-                    || ct.starts_with("video/")
-                    || ct == "application/octet-stream"
-            })
-            .unwrap_or(true) // If no content type, assume it might be audio
+        self.content_type.as_ref().is_none_or(|ct| {
+            ct.starts_with("audio/") || ct.starts_with("video/") || ct == "application/octet-stream"
+        }) // If no content type, assume it might be audio
     }
 
     /// Get a human-readable size string
     pub fn size_string(&self) -> String {
         match self.content_length {
             Some(size) => format_bytes(size),
-            None => "Unknown size".to_string(),
+            None => "Unknown size".to_owned(),
         }
     }
 }

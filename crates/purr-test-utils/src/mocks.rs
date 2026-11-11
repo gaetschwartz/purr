@@ -246,7 +246,7 @@ pub fn create_mock_audio_processor() -> MockAudioProcessor {
     });
 
     mock.expect_supported_formats()
-        .returning(|| vec!["wav".to_string(), "mp3".to_string(), "flac".to_string()]);
+        .returning(|| vec!["wav".to_owned(), "mp3".to_owned(), "flac".to_owned()]);
 
     mock
 }
@@ -257,13 +257,13 @@ pub fn create_mock_transcription_engine() -> MockTranscriptionEngine {
 
     mock.expect_transcribe().returning(|_audio_data, _options| {
         Ok(TranscriptionResult {
-            text: "Mock transcription result".to_string(),
+            text: "Mock transcription result".to_owned(),
             confidence: 0.95,
             duration: Duration::from_secs(1),
             segments: vec![TranscriptionSegment {
                 start: Duration::ZERO,
                 end: Duration::from_secs(1),
-                text: "Mock transcription result".to_string(),
+                text: "Mock transcription result".to_owned(),
                 confidence: 0.95,
             }],
         })
@@ -272,7 +272,7 @@ pub fn create_mock_transcription_engine() -> MockTranscriptionEngine {
     mock.expect_is_model_loaded().returning(|| true);
 
     mock.expect_supported_languages()
-        .returning(|| vec!["en".to_string(), "es".to_string(), "fr".to_string()]);
+        .returning(|| vec!["en".to_owned(), "es".to_owned(), "fr".to_owned()]);
 
     mock
 }
@@ -287,8 +287,8 @@ pub fn create_mock_network_client() -> MockNetworkClient {
     mock.expect_head_request().returning(|_url| {
         Ok(ResponseHeaders {
             content_length: Some(1024 * 1024),
-            content_type: Some("application/octet-stream".to_string()),
-            last_modified: Some("Wed, 21 Oct 2015 07:28:00 GMT".to_string()),
+            content_type: Some("application/octet-stream".to_owned()),
+            last_modified: Some("Wed, 21 Oct 2015 07:28:00 GMT".to_owned()),
         })
     });
 
@@ -314,8 +314,8 @@ mod tests {
         let engine = create_mock_transcription_engine();
         let audio_data = vec![0.1, 0.2, 0.3];
         let options = TranscriptionOptions {
-            language: "en".to_string(),
-            model: "base".to_string(),
+            language: "en".to_owned(),
+            model: "base".to_owned(),
             beam_size: 5,
             temperature: 0.0,
         };
@@ -324,7 +324,7 @@ mod tests {
         assert!(result.is_ok());
 
         let transcription = result.unwrap();
-        assert!(!transcription.text.is_empty());
+        assert_ne!(transcription.text, "");
         assert!(transcription.confidence > 0.0);
     }
 

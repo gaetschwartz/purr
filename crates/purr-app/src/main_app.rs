@@ -11,7 +11,7 @@ use dioxus::prelude::*;
 use purr_common::platform::FileId;
 
 /// The Route enum defines the structure of internal routes in our app
-#[derive(Debug, Clone, Routable, PartialEq)]
+#[derive(Debug, Clone, Routable, PartialEq, Eq)]
 #[rustfmt::skip]
 pub enum Route {
     #[layout(Navbar)]
@@ -36,7 +36,7 @@ pub fn MainApp() -> Element {
     // Log when the app renders
     tracing::debug!("MainApp component rendering");
     let _ = use_context_provider(|| NavBarState {
-        title: Signal::new("Purr".to_string()),
+        title: Signal::new("Purr".to_owned()),
         show_back: Signal::new(false),
         top_right: Signal::new(None),
     });

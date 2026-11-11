@@ -2,7 +2,7 @@ use dioxus::prelude::*;
 
 /// Status types for different states
 #[allow(dead_code)]
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum StatusType {
     Processing,
     Success,
@@ -12,7 +12,7 @@ pub enum StatusType {
 }
 
 /// Props for the `StatusBadge` component
-#[derive(Props, Clone, PartialEq)]
+#[derive(Props, Clone, PartialEq, Eq)]
 pub struct StatusBadgeProps {
     /// Badge text
     pub text: String,

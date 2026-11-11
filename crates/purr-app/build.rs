@@ -39,7 +39,7 @@ fn main() {
     for var in TRACKED_VARS {
         warn(format_args!(
             "{var}: {}",
-            env::var(var).unwrap_or_else(|_| "NOT SET".to_string())
+            env::var(var).unwrap_or_else(|_| "NOT SET".to_owned())
         ));
     }
 }

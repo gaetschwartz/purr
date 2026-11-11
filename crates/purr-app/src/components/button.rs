@@ -3,7 +3,7 @@ use dioxus::prelude::*;
 
 /// Button variants for different styles
 #[allow(dead_code)]
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum ButtonVariant {
     Primary,
     Secondary,
@@ -13,7 +13,7 @@ pub enum ButtonVariant {
 
 /// Button sizes
 #[allow(dead_code)]
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum ButtonSize {
     Small,
     Medium,
@@ -87,11 +87,10 @@ pub fn Button(props: ButtonProps) -> Element {
             class: "{full_classes}",
             disabled: props.disabled,
             onclick: move |evt| {
-                if !props.disabled {
-                    if let Some(handler) = &props.onclick {
+                if !props.disabled
+                    && let Some(handler) = &props.onclick {
                         handler.call(evt);
                     }
-                }
             },
 
             if let Some(icon_type) = props.icon {

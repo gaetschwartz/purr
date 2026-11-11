@@ -36,16 +36,16 @@ pub fn App() -> Element {
 
     // Setup custom themes as specified
     let solarized_theme = CustomTheme {
-        name: "solarized".to_string(),
+        name: "solarized".to_owned(),
         base: Some(Theme::Light),
         tokens: ColorTokens {
-            primary: "#268bd2".to_string(),
-            secondary: "#2aa198".to_string(),
-            background: "#fdf6e3".to_string(),
-            text: "#657b83".to_string(),
-            error: Some("#dc322f".to_string()),
-            warning: Some("#cb4b16".to_string()),
-            success: Some("#859900".to_string()),
+            primary: "#268bd2".to_owned(),
+            secondary: "#2aa198".to_owned(),
+            background: "#fdf6e3".to_owned(),
+            text: "#657b83".to_owned(),
+            error: Some("#dc322f".to_owned()),
+            warning: Some("#cb4b16".to_owned()),
+            success: Some("#859900".to_owned()),
         },
     };
 
@@ -62,7 +62,7 @@ pub fn App() -> Element {
         ThemeProvider {
             default_theme: Theme::System,
             storage_type: StorageType::LocalStorage,
-            storage_name: "theme".to_string(),
+            storage_name: "theme".to_owned(),
             custom_themes: Some(custom_themes),
             MainApp {}
         }

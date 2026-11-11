@@ -92,7 +92,7 @@ impl WebStorage {
                             Self::store_file_internal(database, &file_id, &data, &metadata).await
                         } else {
                             Err(WebError::from(StorageError::DatabaseConnectionFailed {
-                                js_error: "Database not available".to_string(),
+                                js_error: "Database not available".to_owned(),
                             }))
                         };
                         let _ = response.send(result);
@@ -102,7 +102,7 @@ impl WebStorage {
                             Self::get_file_internal(database, &file_id).await
                         } else {
                             Err(WebError::from(StorageError::DatabaseConnectionFailed {
-                                js_error: "Database not available".to_string(),
+                                js_error: "Database not available".to_owned(),
                             }))
                         };
                         let _ = response.send(result);
@@ -112,7 +112,7 @@ impl WebStorage {
                             Self::delete_file_internal(database, &file_id).await
                         } else {
                             Err(WebError::from(StorageError::DatabaseConnectionFailed {
-                                js_error: "Database not available".to_string(),
+                                js_error: "Database not available".to_owned(),
                             }))
                         };
                         let _ = response.send(result);
@@ -122,7 +122,7 @@ impl WebStorage {
                             Self::load_metadata_internal(database).await
                         } else {
                             Err(WebError::from(StorageError::DatabaseConnectionFailed {
-                                js_error: "Database not available".to_string(),
+                                js_error: "Database not available".to_owned(),
                             }))
                         };
                         let _ = response.send(result);
@@ -132,7 +132,7 @@ impl WebStorage {
         });
 
         Self {
-            db_name: "PurrWebStorage".to_string(),
+            db_name: "PurrWebStorage".to_owned(),
             metadata_cache: Arc::new(RwLock::new(HashMap::new())),
             command_sender,
         }
@@ -150,8 +150,8 @@ impl WebStorage {
 
         let metadata = FileMetadata {
             id: file_id.to_string(),
-            original_name: filename.to_string(),
-            mime_type: mime_type.to_string(),
+            original_name: filename.to_owned(),
+            mime_type: mime_type.to_owned(),
             size: data.len(),
             created_at: timestamp,
             last_accessed: timestamp,
@@ -174,7 +174,7 @@ impl WebStorage {
 
         self.command_sender.send(command).map_err(|_| {
             WebError::from(StorageError::ObjectStoreAccessFailed {
-                js_error: "Command send failed".to_string(),
+                js_error: "Command send failed".to_owned(),
             })
         })?;
 
@@ -207,7 +207,7 @@ impl WebStorage {
 
         self.command_sender.send(command).map_err(|_| {
             WebError::from(StorageError::ObjectStoreAccessFailed {
-                js_error: "Command send failed".to_string(),
+                js_error: "Command send failed".to_owned(),
             })
         })?;
 
@@ -238,7 +238,7 @@ impl WebStorage {
 
         self.command_sender.send(command).map_err(|_| {
             WebError::from(StorageError::ObjectStoreAccessFailed {
-                js_error: "Command send failed".to_string(),
+                js_error: "Command send failed".to_owned(),
             })
         })?;
 
@@ -274,7 +274,7 @@ impl WebStorage {
 
         self.command_sender.send(command).map_err(|_| {
             WebError::from(StorageError::ObjectStoreAccessFailed {
-                js_error: "Command send failed".to_string(),
+                js_error: "Command send failed".to_owned(),
             })
         })?;
 
@@ -300,7 +300,7 @@ impl WebStorage {
 
         self.command_sender.send(command).map_err(|_| {
             WebError::from(StorageError::ObjectStoreAccessFailed {
-                js_error: "Command send failed".to_string(),
+                js_error: "Command send failed".to_owned(),
             })
         })?;
 
@@ -323,7 +323,7 @@ impl WebStorage {
     /// Initialize database and create object stores
     async fn initialize_database(db_name: &str) -> WebResult<IdbDatabase> {
         let window = web_sys::window().ok_or(StorageError::IndexedDbUnavailable {
-            js_error: "Window not available".to_string(),
+            js_error: "Window not available".to_owned(),
         })?;
 
         let idb = window
@@ -332,7 +332,7 @@ impl WebStorage {
                 js_error: format_js_error(e),
             })?
             .ok_or(StorageError::IndexedDbUnavailable {
-                js_error: "IndexedDB not available".to_string(),
+                js_error: "IndexedDB not available".to_owned(),
             })?;
 
         let open_request =
@@ -527,13 +527,13 @@ impl WebStorage {
     async fn get_file_internal(db: &IdbDatabase, file_id: &str) -> WebResult<Option<Vec<u8>>> {
         let transaction = db.transaction_with_str("files").map_err(|_| {
             WebError::from(StorageError::TransactionCreationFailed {
-                js_error: "Transaction creation failed".to_string(),
+                js_error: "Transaction creation failed".to_owned(),
             })
         })?;
 
         let object_store = transaction.object_store("files").map_err(|_| {
             WebError::from(StorageError::ObjectStoreAccessFailed {
-                js_error: "Command send failed".to_string(),
+                js_error: "Command send failed".to_owned(),
             })
         })?;
 
@@ -571,7 +571,7 @@ impl WebStorage {
 
         let result = JsFuture::from(promise).await.map_err(|_| {
             WebError::from(StorageError::GetOperationFailed {
-                js_error: "Get operation failed".to_string(),
+                js_error: "Get operation failed".to_owned(),
             })
         })?;
 
@@ -597,13 +597,13 @@ impl WebStorage {
             .transaction_with_str_and_mode("files", web_sys::IdbTransactionMode::Readwrite)
             .map_err(|_| {
                 WebError::from(StorageError::TransactionCreationFailed {
-                    js_error: "Transaction creation failed".to_string(),
+                    js_error: "Transaction creation failed".to_owned(),
                 })
             })?;
 
         let files_store = file_transaction.object_store("files").map_err(|_| {
             WebError::from(StorageError::ObjectStoreAccessFailed {
-                js_error: "Command send failed".to_string(),
+                js_error: "Command send failed".to_owned(),
             })
         })?;
 
@@ -705,13 +705,13 @@ impl WebStorage {
     async fn load_metadata_internal(db: &IdbDatabase) -> WebResult<HashMap<String, FileMetadata>> {
         let transaction = db.transaction_with_str("metadata").map_err(|_| {
             WebError::from(StorageError::TransactionCreationFailed {
-                js_error: "Transaction creation failed".to_string(),
+                js_error: "Transaction creation failed".to_owned(),
             })
         })?;
 
         let object_store = transaction.object_store("metadata").map_err(|_| {
             WebError::from(StorageError::ObjectStoreAccessFailed {
-                js_error: "Command send failed".to_string(),
+                js_error: "Command send failed".to_owned(),
             })
         })?;
 

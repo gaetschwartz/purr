@@ -218,7 +218,7 @@ async fn handle_streaming_output(
             if !matches!(cli.output, OutputFormat::Txt) {
                 output_buffer.push('\n');
             }
-        } else if let OutputFormat::Json = cli.output {
+        } else if matches!(cli.output, OutputFormat::Json) {
             writeln!(stdout, "{chunk_text}").into_diagnostic()?;
         } else {
             write!(stdout, "{chunk_text}").into_diagnostic()?;
@@ -479,7 +479,7 @@ async fn handle_model_command(command: ModelCommands, verbosity: Verbosity) -> m
                         let size = if let Ok(metadata) = std::fs::metadata(&path) {
                             format_file_size(metadata.len())
                         } else {
-                            "unknown size".to_string()
+                            "unknown size".to_owned()
                         };
 
                         println!(
@@ -760,10 +760,10 @@ fn print_model_groups() {
             for model in &group.quantized {
                 let name = model.as_str();
                 // Extract quantization type (q5_0, q5_1, q8_0)
-                if let Some(q_part) = name.split('-').next_back() {
-                    if q_part.starts_with('q') {
-                        quantized_types.insert(q_part.to_string());
-                    }
+                if let Some(q_part) = name.split('-').next_back()
+                    && q_part.starts_with('q')
+                {
+                    quantized_types.insert(q_part.to_owned());
                 }
             }
             let mut sorted_types: Vec<String> = quantized_types.into_iter().collect();

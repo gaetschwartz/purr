@@ -51,7 +51,7 @@ extern "C" {
 }
 
 /// Audio processing compute shader for WebGPU
-const AUDIO_PROCESSING_COMPUTE_SHADER: &str = r#"
+const AUDIO_PROCESSING_COMPUTE_SHADER: &str = r"
     @group(0) @binding(0) var<storage, read> input_buffer: array<f32>;
     @group(0) @binding(1) var<storage, read_write> output_buffer: array<f32>;
     @group(0) @binding(2) var<uniform> params: ProcessingParams;
@@ -112,10 +112,10 @@ const AUDIO_PROCESSING_COMPUTE_SHADER: &str = r#"
             output_buffer[index] = magnitude;
         }
     }
-"#;
+";
 
 /// Audio visualization vertex shader
-const AUDIO_VISUALIZATION_VERTEX_SHADER: &str = r#"
+const AUDIO_VISUALIZATION_VERTEX_SHADER: &str = r"
     struct VertexInput {
         @location(0) position: vec2<f32>,
         @location(1) audio_sample: f32,
@@ -151,10 +151,10 @@ const AUDIO_VISUALIZATION_VERTEX_SHADER: &str = r#"
 
         return output;
     }
-"#;
+";
 
 /// Audio visualization fragment shader
-const AUDIO_VISUALIZATION_FRAGMENT_SHADER: &str = r#"
+const AUDIO_VISUALIZATION_FRAGMENT_SHADER: &str = r"
     @fragment
     fn fs_main(@location(0) audio_level: f32) -> @location(0) vec4<f32> {
         // Color based on audio level
@@ -167,7 +167,7 @@ const AUDIO_VISUALIZATION_FRAGMENT_SHADER: &str = r#"
 
         return vec4<f32>(color, 1.0);
     }
-"#;
+";
 
 fn create_compute_pipeline_descriptor() -> Object {
     let descriptor = Object::new();
@@ -543,7 +543,7 @@ mod render_pipeline_tests {
 
         let mut offset = 0u64;
         for (name, location, format, expected_offset) in vertex_attributes {
-            assert!(!name.is_empty());
+            assert_ne!(name, "");
             assert!(location < 16); // Max vertex attributes
 
             // Verify format
@@ -552,7 +552,7 @@ mod render_pipeline_tests {
                 "float32x2" => assert_eq!(offset, expected_offset),
                 "float32x3" => assert_eq!(offset, expected_offset),
                 "float32x4" => assert_eq!(offset, expected_offset),
-                _ => panic!("Unsupported vertex format: {}", format),
+                _ => panic!("Unsupported vertex format: {format}"),
             }
 
             // Update offset for next attribute
@@ -817,7 +817,7 @@ mod pipeline_integration_tests {
 
         for error_msg in error_scenarios {
             let pipeline_error = WebError::WebGpu(purr_wasm::WebGpuError::FeatureNotSupported {
-                feature: format!("Pipeline error: {}", error_msg),
+                feature: format!("Pipeline error: {error_msg}"),
             });
 
             match pipeline_error {
@@ -849,13 +849,13 @@ mod pipeline_integration_tests {
             PipelineOptimization {
                 workgroup_size: 64,
                 buffer_usage: 0x0084, // STORAGE | COPY_SRC
-                memory_layout: "interleaved".to_string(),
+                memory_layout: "interleaved".to_owned(),
                 batch_size: 4096,
             },
             PipelineOptimization {
                 workgroup_size: 256,
                 buffer_usage: 0x0088, // STORAGE | COPY_DST
-                memory_layout: "planar".to_string(),
+                memory_layout: "planar".to_owned(),
                 batch_size: 16384,
             },
         ];
@@ -864,7 +864,7 @@ mod pipeline_integration_tests {
             // Validate optimization parameters
             assert!(opt.workgroup_size > 0 && opt.workgroup_size <= 256);
             assert!(opt.buffer_usage > 0);
-            assert!(!opt.memory_layout.is_empty());
+            assert_ne!(opt.memory_layout, "");
             assert!(opt.batch_size > 0);
 
             // Test batch size efficiency

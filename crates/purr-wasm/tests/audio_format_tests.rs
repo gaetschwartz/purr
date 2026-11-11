@@ -174,8 +174,8 @@ mod tests {
         assert!(formats.contains_key("webm"));
 
         // WAV should support PCM
-        let wav_codecs = formats.get("wav").unwrap();
-        assert!(wav_codecs.contains(&"PCM".to_string()));
+        let wav_codecs = &formats["wav"];
+        assert!(wav_codecs.contains(&"PCM".to_owned()));
     }
 
     #[test]

@@ -29,7 +29,7 @@ use crate::platform::get_platform;
 const MAX_LOG_ENTRIES: usize = 10000;
 
 /// A log entry captured by our custom layer
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct LogEntry {
     /// Unique ID for the log entry
     pub id: u64,
@@ -132,11 +132,11 @@ pub enum SerdeTracingLevel {
 impl From<&Level> for SerdeTracingLevel {
     fn from(level: &Level) -> Self {
         match *level {
-            Level::ERROR => SerdeTracingLevel::ERROR,
-            Level::WARN => SerdeTracingLevel::WARN,
-            Level::INFO => SerdeTracingLevel::INFO,
-            Level::DEBUG => SerdeTracingLevel::DEBUG,
-            Level::TRACE => SerdeTracingLevel::TRACE,
+            Level::ERROR => Self::ERROR,
+            Level::WARN => Self::WARN,
+            Level::INFO => Self::INFO,
+            Level::DEBUG => Self::DEBUG,
+            Level::TRACE => Self::TRACE,
         }
     }
 }
@@ -144,11 +144,11 @@ impl From<&Level> for SerdeTracingLevel {
 impl From<SerdeTracingLevel> for Level {
     fn from(level: SerdeTracingLevel) -> Self {
         match level {
-            SerdeTracingLevel::ERROR => Level::ERROR,
-            SerdeTracingLevel::WARN => Level::WARN,
-            SerdeTracingLevel::INFO => Level::INFO,
-            SerdeTracingLevel::DEBUG => Level::DEBUG,
-            SerdeTracingLevel::TRACE => Level::TRACE,
+            SerdeTracingLevel::ERROR => Self::ERROR,
+            SerdeTracingLevel::WARN => Self::WARN,
+            SerdeTracingLevel::INFO => Self::INFO,
+            SerdeTracingLevel::DEBUG => Self::DEBUG,
+            SerdeTracingLevel::TRACE => Self::TRACE,
         }
     }
 }
@@ -196,20 +196,20 @@ impl LogsStorage {
             .entries
             .iter(&guard)
             .filter(|entry| {
-                if let Some(search_query) = &query.search_query {
-                    if !entry.matches_search(search_query) {
-                        return false;
-                    }
+                if let Some(search_query) = &query.search_query
+                    && !entry.matches_search(search_query)
+                {
+                    return false;
                 }
-                if let Some(level_filters) = &query.level_filters {
-                    if !entry.matches_level(level_filters) {
-                        return false;
-                    }
+                if let Some(level_filters) = &query.level_filters
+                    && !entry.matches_level(level_filters)
+                {
+                    return false;
                 }
-                if let Some(target_filters) = &query.target_filters {
-                    if !entry.matches_target(target_filters) {
-                        return false;
-                    }
+                if let Some(target_filters) = &query.target_filters
+                    && !entry.matches_target(target_filters)
+                {
+                    return false;
                 }
                 true
             })
@@ -230,12 +230,11 @@ impl LogsStorage {
     /// Get unique targets from all entries
     pub fn get_unique_targets(&self) -> HashSet<String> {
         let guard = scc::Guard::new();
-        let targets = self
-            .entries
+
+        self.entries
             .iter(&guard)
             .map(|entry| entry.target.clone())
-            .collect::<HashSet<_>>();
-        targets
+            .collect::<HashSet<_>>()
     }
 
     /// Get entry count
@@ -290,10 +289,10 @@ where
                 .unwrap_or_default()
                 .as_millis() as u64,
             level: SerdeTracingLevel::from(metadata.level()),
-            target: metadata.target().to_string(),
+            target: metadata.target().to_owned(),
             message: String::new(),
             fields: Vec::new(),
-            file: metadata.file().map(std::string::ToString::to_string),
+            file: metadata.file().map(str::to_owned),
             line: metadata.line(),
         };
 
@@ -329,42 +328,42 @@ impl tracing::field::Visit for LogFieldVisitor<'_> {
         } else {
             self.entry
                 .fields
-                .push((field.name().to_string(), format!("{value:?}")));
+                .push((field.name().to_owned(), format!("{value:?}")));
         }
     }
 
     fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
         if field.name() == "message" {
-            self.entry.message = value.to_string();
+            self.entry.message = value.to_owned();
         } else {
             self.entry
                 .fields
-                .push((field.name().to_string(), value.to_string()));
+                .push((field.name().to_owned(), value.to_owned()));
         }
     }
 
     fn record_i64(&mut self, field: &tracing::field::Field, value: i64) {
         self.entry
             .fields
-            .push((field.name().to_string(), value.to_string()));
+            .push((field.name().to_owned(), value.to_string()));
     }
 
     fn record_u64(&mut self, field: &tracing::field::Field, value: u64) {
         self.entry
             .fields
-            .push((field.name().to_string(), value.to_string()));
+            .push((field.name().to_owned(), value.to_string()));
     }
 
     fn record_f64(&mut self, field: &tracing::field::Field, value: f64) {
         self.entry
             .fields
-            .push((field.name().to_string(), value.to_string()));
+            .push((field.name().to_owned(), value.to_string()));
     }
 
     fn record_bool(&mut self, field: &tracing::field::Field, value: bool) {
         self.entry
             .fields
-            .push((field.name().to_string(), value.to_string()));
+            .push((field.name().to_owned(), value.to_string()));
     }
 }
 
@@ -505,6 +504,12 @@ impl<'a> LogsQuery<'a> {
     }
 }
 
+impl Default for LogsQuery<'_> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -517,14 +522,14 @@ mod tests {
             id: 0,
             timestamp: 1234567890,
             level: SerdeTracingLevel::INFO,
-            target: "test::module".to_string(),
-            message: "Test message".to_string(),
+            target: "test::module".to_owned(),
+            message: "Test message".to_owned(),
             fields: vec![],
-            file: Some("test.rs".to_string()),
+            file: Some("test.rs".to_owned()),
             line: Some(42),
         };
 
-        storage.add_entry(entry.clone());
+        storage.add_entry(entry);
         assert_eq!(storage.count(), 1);
 
         let entries = storage.get_entries();
@@ -538,10 +543,10 @@ mod tests {
             id: 1,
             timestamp: 1234567890,
             level: SerdeTracingLevel::INFO,
-            target: "test::module".to_string(),
-            message: "Important test message".to_string(),
-            fields: vec![("key".to_string(), "value".to_string())],
-            file: Some("test.rs".to_string()),
+            target: "test::module".to_owned(),
+            message: "Important test message".to_owned(),
+            fields: vec![("key".to_owned(), "value".to_owned())],
+            file: Some("test.rs".to_owned()),
             line: Some(42),
         };
 
@@ -557,9 +562,9 @@ mod tests {
         assert!(entry.matches_level(&[].into_iter().collect())); // Empty filter matches all
 
         // Test target filtering
-        assert!(entry.matches_target(&["test".to_string()]));
-        assert!(entry.matches_target(&["test::module".to_string()]));
-        assert!(!entry.matches_target(&["other".to_string()]));
+        assert!(entry.matches_target(&["test".to_owned()]));
+        assert!(entry.matches_target(&["test::module".to_owned()]));
+        assert!(!entry.matches_target(&["other".to_owned()]));
         assert!(entry.matches_target(&[])); // Empty filter matches all
     }
 }
