@@ -8,7 +8,7 @@ out_dir = "dist"
 identifier = "dev.gaetans.purr"
 version = "0.1.0"
 publisher = "Gaëtan Schwatz"
-icon = ["res/icons/icon.png"]
+icon = ["../../res/icons/icon.png"]
 category = "Utility"
 
 
