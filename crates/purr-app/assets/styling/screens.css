@@ -41,6 +41,7 @@
 .reco{border-radius:18px;padding:18px;background:var(--glass-3);box-shadow:var(--shadow-1);border:1px solid var(--edge-low);display:flex;flex-direction:column;gap:12px}
 .reco .top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
 .reco .nm{font-weight:650;font-size:17px;letter-spacing:-.01em}
+.reco .btn.lg{white-space:normal;height:auto;min-height:44px;padding-block:10px;text-align:center}
 .meters{display:flex;gap:18px;font-size:12px;color:var(--fg-2)}
 .meter{display:flex;align-items:center;gap:6px}
 .dots{display:inline-flex;gap:3px}
@@ -169,7 +170,7 @@ mark.cur{background:var(--accent);color:#fff}
 .lv.trace{background:var(--fill-hover);color:var(--fg-3)}
 
 @container app (max-width:1000px){
-  .welcome{grid-template-columns:1fr;padding:26px}
+  .welcome{grid-template-columns:minmax(0,1fr);padding:26px}
   .recent{grid-template-columns:repeat(2,minmax(0,1fr))}
   .recent button:nth-child(3){display:none}
   .log{grid-template-columns:90px 70px minmax(0,1fr)} .log .tg{display:none}
