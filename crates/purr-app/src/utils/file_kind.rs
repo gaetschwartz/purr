@@ -52,6 +52,16 @@ pub fn may_contain_audio(content_type: &str, file_name: &str) -> bool {
         )
 }
 
+/// The short type shown next to a file: its extension in capitals, or `Audio` without one.
+#[must_use]
+pub fn kind_label(file_name: &str) -> String {
+    file_name
+        .rsplit_once('.')
+        .map(|(_, extension)| extension.trim())
+        .filter(|extension| !extension.is_empty() && extension.len() <= 5)
+        .map_or_else(|| "Audio".to_owned(), str::to_ascii_uppercase)
+}
+
 /// The file name without its extension, or `transcript` when nothing usable is left.
 #[must_use]
 pub fn file_stem(file_name: &str) -> String {
@@ -77,6 +87,14 @@ mod tests {
             "WhatsApp Ptt 2026-11-11"
         );
         assert_eq!(file_stem("talk.final.mp3"), "talk.final");
+    }
+
+    #[test]
+    fn kind_is_the_upper_case_extension() {
+        assert_eq!(kind_label("memo.ogg"), "OGG");
+        assert_eq!(kind_label("talk.final.m4a"), "M4A");
+        assert_eq!(kind_label("recording"), "Audio");
+        assert_eq!(kind_label("weird.something-long"), "Audio");
     }
 
     #[test]

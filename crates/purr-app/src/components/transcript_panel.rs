@@ -5,7 +5,11 @@ use super::{
 };
 use crate::{
     platform::export::{SaveOutcome, TextFile, copy_to_clipboard, save_text_file},
-    transcript::{Transcript, clock_time},
+    transcribe::{
+        export_format::{self, ExportFormat},
+        timing::clock as clock_time,
+        transcript::Transcript,
+    },
 };
 use dioxus::prelude::*;
 
@@ -55,7 +59,18 @@ pub fn TranscriptPanel(transcript: Transcript, complete: bool, file_stem: String
     let save_srt = {
         let file_name = format!("{file_stem}.srt");
         move |_| {
-            let subtitles = transcript.to_srt();
+            let segments = transcript.segments();
+            let subtitles = export_format::render(
+                ExportFormat::Srt,
+                &export_format::ExportDocument {
+                    file_name: "",
+                    model: "",
+                    language: None,
+                    duration_seconds: 0.0,
+                    segments: &segments,
+                },
+            )
+            .unwrap_or_default();
             let file_name = file_name.clone();
             spawn(async move {
                 let saved = save_text_file(TextFile {

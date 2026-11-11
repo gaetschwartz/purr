@@ -17,7 +17,8 @@ pub mod platform;
 pub mod settings_store;
 /// Keyboard shortcut registry
 pub mod shortcuts;
-mod transcript;
+/// Choosing a file, running a transcription and the result
+pub mod transcribe;
 /// Utilities module
 mod utils;
 /// The shell layout and the routed views

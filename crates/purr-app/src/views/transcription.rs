@@ -8,7 +8,7 @@ use crate::{
     },
     main_app::{Route, UploadNames},
     platform::{self, TranscriptionRequest, TranscriptionStatus},
-    transcript::Transcript,
+    transcribe::transcript::Transcript,
 };
 use dioxus::prelude::*;
 use futures::StreamExt as _;

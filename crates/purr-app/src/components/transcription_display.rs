@@ -8,7 +8,7 @@ use super::{
     transcript_panel::TranscriptPanel,
 };
 use crate::{
-    transcript::Transcript,
+    transcribe::transcript::Transcript,
     utils::{file_kind::file_stem, language_label::language_label},
 };
 use dioxus::prelude::*;

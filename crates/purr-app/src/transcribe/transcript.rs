@@ -1,4 +1,4 @@
-//! The transcript assembled from a stream of transcription updates, and its text exports.
+//! The transcript assembled from a stream of transcription updates.
 
 use purr_common::platform::{TranscriptSegment, TranscriptionStatus};
 use std::collections::BTreeMap;
@@ -66,44 +66,6 @@ impl Transcript {
             .collect::<Vec<_>>()
             .join(" ")
     }
-
-    /// The transcript as SubRip subtitles.
-    #[must_use]
-    pub fn to_srt(&self) -> String {
-        self.segments()
-            .iter()
-            .enumerate()
-            .map(|(index, segment)| {
-                let end = segment.end_time.max(segment.start_time);
-                format!(
-                    "{}\n{} --> {}\n{}\n",
-                    index + 1,
-                    srt_time(segment.start_time),
-                    srt_time(end),
-                    segment.text.trim()
-                )
-            })
-            .collect::<Vec<_>>()
-            .join("\n")
-    }
-}
-
-fn srt_time(seconds: f64) -> String {
-    let total_ms = (seconds.max(0.0) * 1000.0).round() as u64;
-    format!(
-        "{:02}:{:02}:{:02},{:03}",
-        total_ms / 3_600_000,
-        (total_ms / 60_000) % 60,
-        (total_ms / 1000) % 60,
-        total_ms % 1000
-    )
-}
-
-/// `m:ss` clock text for a position in the audio.
-#[must_use]
-pub fn clock_time(seconds: f64) -> String {
-    let total = seconds.max(0.0).floor() as u64;
-    format!("{}:{:02}", total / 60, total % 60)
 }
 
 #[cfg(test)]
@@ -170,36 +132,5 @@ mod tests {
             total_bytes: 2,
         });
         assert_eq!(transcript, Transcript::default());
-    }
-
-    #[test]
-    fn srt_numbers_cues_and_formats_times() {
-        let mut transcript = Transcript::default();
-        transcript.apply(&TranscriptionStatus::Segments {
-            segments: vec![
-                segment(" Bonjour", 0.0, 1.5),
-                segment(" tout le monde", 3_725.25, 3_727.0),
-            ],
-        });
-        assert_eq!(
-            transcript.to_srt(),
-            "1\n00:00:00,000 --> 00:00:01,500\nBonjour\n\n2\n01:02:05,250 --> 01:02:07,000\ntout le monde\n"
-        );
-    }
-
-    #[test]
-    fn srt_never_ends_a_cue_before_it_starts() {
-        let mut transcript = Transcript::default();
-        transcript.apply(&TranscriptionStatus::Segments {
-            segments: vec![segment("x", 4.0, 0.0)],
-        });
-        assert_eq!(transcript.to_srt(), "1\n00:00:04,000 --> 00:00:04,000\nx\n");
-    }
-
-    #[test]
-    fn clock_time_shows_minutes_and_padded_seconds() {
-        assert_eq!(clock_time(0.0), "0:00");
-        assert_eq!(clock_time(75.9), "1:15");
-        assert_eq!(clock_time(-3.0), "0:00");
     }
 }
