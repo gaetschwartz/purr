@@ -154,10 +154,13 @@ h1[tabindex="-1"]:focus{outline:none}
 .app{position:relative;height:100vh;height:100dvh;overflow:hidden;container-type:inline-size;container-name:app;background:var(--base);color:var(--fg);isolation:isolate}
 .ambient{position:absolute;inset:-10%;z-index:0;pointer-events:none;opacity:var(--blob-alpha);transition:opacity .4s}
 .blob{position:absolute;border-radius:50%;filter:blur(70px);will-change:transform}
-.b1{width:46%;height:52%;left:6%;top:4%;background:var(--blob-1);animation:drift1 38s ease-in-out infinite alternate}
-.b2{width:40%;height:46%;right:4%;top:10%;background:var(--blob-2);animation:drift2 44s ease-in-out infinite alternate}
-.b3{width:44%;height:42%;left:30%;bottom:2%;background:var(--blob-3);animation:drift3 52s ease-in-out infinite alternate}
-.b4{width:30%;height:32%;right:10%;bottom:10%;background:var(--blob-4);animation:drift1 60s ease-in-out infinite alternate-reverse}
+/* stepped at 4 fps: the drift is a few pixels a second under a 70px blur, and every frame re-blurs all the glass above it */
+.b1{width:46%;height:52%;left:6%;top:4%;background:var(--blob-1);animation:drift1 38s steps(152) infinite alternate}
+.b2{width:40%;height:46%;right:4%;top:10%;background:var(--blob-2);animation:drift2 44s steps(176) infinite alternate}
+.b3{width:44%;height:42%;left:30%;bottom:2%;background:var(--blob-3);animation:drift3 52s steps(208) infinite alternate}
+.b4{width:30%;height:32%;right:10%;bottom:10%;background:var(--blob-4);animation:drift1 60s steps(240) infinite alternate-reverse}
+:root[data-inactive] .blob{animation-play-state:paused}
+:root[data-transparency="reduced"] .blob{animation:none}
 @keyframes drift1{to{transform:translate(12%,10%) scale(1.08)}}
 @keyframes drift2{to{transform:translate(-14%,12%) scale(.94)}}
 @keyframes drift3{to{transform:translate(10%,-12%) scale(1.06)}}
@@ -171,7 +174,7 @@ h1[tabindex="-1"]:focus{outline:none}
 .g1{background:var(--glass-1)} .g3{background:var(--glass-3);box-shadow:var(--spec),var(--shadow-3)}
 :root[data-transparency="reduced"] .glass{-webkit-backdrop-filter:none;backdrop-filter:none;border-color:var(--separator)}
 :root[data-transparency="reduced"] .glass::before{display:none}
-@media (prefers-reduced-transparency:reduce){.glass{-webkit-backdrop-filter:none;backdrop-filter:none;border-color:var(--separator)}.glass::before{display:none}}
+@media (prefers-reduced-transparency:reduce){.blob{animation:none}.glass{-webkit-backdrop-filter:none;backdrop-filter:none;border-color:var(--separator)}.glass::before{display:none}}
 
 /* ---------- Shell ---------- */
 .shell{position:relative;z-index:1;display:grid;grid-template-columns:248px minmax(0,1fr);height:100%}

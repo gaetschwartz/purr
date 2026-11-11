@@ -55,8 +55,12 @@ fn root_script(attributes: RootAttributes) -> String {
     )
 }
 
+/// Marks the root `data-inactive` while the window is hidden or unfocused, which pauses the ambient field.
+const INACTIVE_WATCHER: &str = "const root = document.documentElement; const mark = () => root.toggleAttribute('data-inactive', document.hidden || !document.hasFocus()); window.addEventListener('focus', mark); window.addEventListener('blur', mark); document.addEventListener('visibilitychange', mark); mark();";
+
 /// Keeps the document root in step with the theme and transparency held by the settings store.
 pub fn use_appearance_provider(store: SettingsStore) {
+    use_hook(|| document::eval(INACTIVE_WATCHER));
     let appearance = use_memo(move || {
         store.with(|settings| Appearance {
             theme: settings.ui.theme,
