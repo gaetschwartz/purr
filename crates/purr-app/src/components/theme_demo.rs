@@ -5,8 +5,8 @@ use dioxus::prelude::*;
 #[component]
 pub fn ThemeEditor() -> Element {
     let theme_ctx = use_theme();
-    let current_theme = theme_ctx.theme;
-    let resolved = theme_ctx.resolved_theme;
+    let current_theme = (theme_ctx.theme)();
+    let resolved = (theme_ctx.resolved_theme)();
 
     rsx! {
         div { class: "p-6 max-w-4xl mx-auto",

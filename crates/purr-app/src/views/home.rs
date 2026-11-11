@@ -18,8 +18,9 @@ pub fn Home() -> Element {
         navbar_state.top_right.set(Some(rsx! {
             Link {
                 to: Route::Settings {},
-                class: "p-2 rounded-lg text-gray-600 hover:text-teal-600 hover:bg-gray-100 transition-colors",
+                class: "p-2 rounded-lg text-gray-600 dark:text-gray-300 hover:text-teal-600 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors",
                 title: "Settings",
+                aria_label: "Settings",
                 onclick: move |_| {
                     tracing::info!("Navigating to Settings page");
                 },
@@ -35,6 +36,7 @@ pub fn Home() -> Element {
     });
 
     rsx! {
+        document::Title { "Purr - Speech to text" }
         DragDropZone {}
     }
 }

@@ -1,3 +1,51 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  html {
+    color-scheme: light;
+  }
+
+  html.dark {
+    color-scheme: dark;
+  }
+
+  body {
+    @apply bg-gray-50 text-gray-900 dark:bg-gray-900 dark:text-gray-100;
+  }
+}
+
+@layer components {
+  .main-layout {
+    @apply min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800;
+  }
+
+  .content-container {
+    @apply max-w-4xl mx-auto w-full px-6 py-8;
+  }
+
+  .main-content {
+    @apply pb-8;
+  }
+
+  .full-height-content {
+    @apply min-h-[calc(100vh-4rem)];
+  }
+
+  .centered-content {
+    @apply flex items-center justify-center min-h-[calc(100vh-4rem)];
+  }
+
+  .navbar {
+    @apply bg-white/95 dark:bg-gray-800/95 backdrop-blur-sm shadow-sm border-b border-gray-200 dark:border-gray-700 fixed top-0 left-0 right-0 z-50;
+  }
+
+  .text-gradient {
+    @apply bg-gradient-to-r from-teal-600 to-blue-600 bg-clip-text text-transparent;
+  }
+
+  .backdrop-glass {
+    @apply bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm;
+  }
+}

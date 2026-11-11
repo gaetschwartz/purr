@@ -55,13 +55,13 @@ pub fn Button(props: ButtonProps) -> Element {
             "bg-teal-500 text-white hover:bg-teal-600 focus:ring-teal-500 shadow-md hover:shadow-lg"
         }
         ButtonVariant::Secondary => {
-            "bg-gray-100 text-gray-700 hover:bg-gray-200 focus:ring-gray-500"
+            "bg-gray-100 text-gray-700 hover:bg-gray-200 focus:ring-gray-500 dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600"
         }
         ButtonVariant::Danger => {
             "bg-red-500 text-white hover:bg-red-600 focus:ring-red-500 shadow-md hover:shadow-lg"
         }
         ButtonVariant::Ghost => {
-            "text-gray-600 hover:text-teal-600 hover:bg-teal-50 focus:ring-teal-500"
+            "text-gray-600 hover:text-teal-600 hover:bg-teal-50 focus:ring-teal-500 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-teal-300"
         }
     };
 

@@ -1,48 +1,10 @@
-/* Main styles for Purr transcription app */
+/* Main styles for Purr transcription app. Tailwind-processed rules live in tailwind.css. */
 
 body {
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     margin: 0;
     padding: 0;
     line-height: 1.6;
-}
-
-/* Global layout styles */
-.main-layout {
-    @apply min-h-screen bg-gradient-to-br from-gray-50 to-gray-100;
-}
-
-.content-container {
-    @apply max-w-4xl mx-auto w-full px-6 py-8;
-}
-
-/* Layout compensation for fixed header (64px / h-16) */
-.main-content {
-    @apply pt-16;
-}
-
-/* Full height content that accounts for header */
-.full-height-content {
-    @apply min-h-[calc(100vh-4rem)];
-}
-
-/* Centered content with header compensation */
-.centered-content {
-    @apply flex items-center justify-center min-h-[calc(100vh-4rem)];
-}
-
-/* Navigation styles */
-.navbar {
-    @apply bg-white/95 backdrop-blur-sm shadow-sm border-b border-gray-200 fixed top-0 left-0 right-0 z-50;
-}
-
-/* Utility classes */
-.text-gradient {
-    @apply bg-gradient-to-r from-teal-600 to-blue-600 bg-clip-text text-transparent;
-}
-
-.backdrop-glass {
-    @apply bg-white/90 backdrop-blur-sm;
 }
 
 /* Form component styles */

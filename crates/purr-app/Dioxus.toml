@@ -4,6 +4,9 @@ name = "purr-app"
 default_platform = "desktop"
 out_dir = "dist"
 
+[web.app]
+title = "Purr"
+
 [bundle]
 identifier = "dev.gaetans.purr"
 version = "0.1.0"

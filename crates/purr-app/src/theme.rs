@@ -78,6 +78,19 @@ pub struct ThemeProviderProps {
     children: Element,
 }
 
+fn resolve_theme(theme: Theme, system_is_dark: bool) -> Theme {
+    match theme {
+        Theme::Light | Theme::Dark => theme,
+        Theme::System => {
+            if system_is_dark {
+                Theme::Dark
+            } else {
+                Theme::Light
+            }
+        }
+    }
+}
+
 /// ThemeProvider component that wraps the app with theme context
 #[component]
 pub fn ThemeProvider(props: ThemeProviderProps) -> Element {
@@ -140,10 +153,26 @@ pub fn ThemeProvider(props: ThemeProviderProps) -> Element {
         });
     });
 
-    // Create context
-    let current_theme = forced_theme_ctx.unwrap_or_else(|| *theme_state.read());
+    let current_theme = use_memo(move || forced_theme_ctx.unwrap_or_else(|| *theme_state.read()));
 
-    let resolved_theme = use_memo(move || current_theme.resolve());
+    let mut system_is_dark = use_signal(|| Theme::detect_system_preference() == Theme::Dark);
+    use_future(move || async move {
+        let mut watcher = document::eval(
+            "const query = window.matchMedia('(prefers-color-scheme: dark)');              dioxus.send(query.matches);              query.addEventListener('change', (event) => dioxus.send(event.matches));              await new Promise(() => {});",
+        );
+        while let Ok(dark) = watcher.recv::<bool>().await {
+            system_is_dark.set(dark);
+        }
+    });
+
+    let resolved_theme = use_memo(move || resolve_theme(current_theme(), system_is_dark()));
+
+    use_effect(move || {
+        let dark = resolved_theme() == Theme::Dark;
+        document::eval(&format!(
+            "document.documentElement.classList.toggle('dark', {dark});"
+        ));
+    });
 
     let set_theme = use_callback(move |new_theme: Theme| {
         if forced_theme.is_none() {
@@ -153,20 +182,16 @@ pub fn ThemeProvider(props: ThemeProviderProps) -> Element {
 
     let themes = vec![Theme::Light, Theme::Dark, Theme::System];
 
-    let ctx = UseThemeContext {
-        resolved_theme: *resolved_theme.read(),
+    use_context_provider(|| UseThemeContext {
+        resolved_theme,
         set_theme,
         theme: current_theme,
         themes,
-    };
+    });
 
-    use_context_provider(|| ctx);
-
-    // Apply theme class to root element
-    let theme_class = match *resolved_theme.read() {
-        Theme::Light => "light",
+    let theme_class = match resolved_theme() {
         Theme::Dark => "dark",
-        Theme::System => unreachable!("System theme should be resolved"),
+        Theme::Light | Theme::System => "light",
     };
 
     rsx! {
@@ -184,11 +209,11 @@ pub fn ThemeProvider(props: ThemeProviderProps) -> Element {
 #[derive(Clone)]
 pub struct UseThemeContext {
     /// Currently resolved theme (Light or Dark, never System)
-    pub resolved_theme: Theme,
+    pub resolved_theme: Memo<Theme>,
     /// Callback to set the theme
     pub set_theme: Callback<Theme>,
     /// Current theme (may be System)
-    pub theme: Theme,
+    pub theme: Memo<Theme>,
     /// Available themes
     pub themes: Vec<Theme>,
 }

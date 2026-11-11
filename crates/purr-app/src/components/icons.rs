@@ -49,11 +49,11 @@ pub fn Icon(props: IconProps) -> Element {
         ),
         IconType::Settings => (
             include_str!("../../assets/icons/settings.svg"),
-            "w-5 h-5 text-gray-600",
+            "w-5 h-5 text-gray-600 dark:text-gray-300",
         ),
         IconType::Logs => (
             include_str!("../../assets/icons/logs.svg"),
-            "w-5 h-5 text-gray-600",
+            "w-5 h-5 text-gray-600 dark:text-gray-300",
         ),
     };
 

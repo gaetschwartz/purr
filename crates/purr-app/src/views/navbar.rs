@@ -26,8 +26,9 @@ pub fn Navbar() -> Element {
                         // Back button
                         Link {
                             to: route.parent().unwrap_or(Route::Home {}),
-                            class: "p-2 rounded-lg text-gray-600 hover:text-teal-600 hover:bg-gray-100 transition-colors",
+                            class: "p-2 rounded-lg text-gray-600 dark:text-gray-300 hover:text-teal-600 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors",
                             title: "Back",
+                            aria_label: "Back",
                             onclick: move |_| {
                                 tracing::info!("Navigating back to Home page");
                             },
@@ -40,7 +41,7 @@ pub fn Navbar() -> Element {
                     div { class: "flex-shrink-0 flex items-center",
                         Link {
                             to: Route::Home {},
-                            class: "flex items-center space-x-2 text-xl font-bold text-gray-900 hover:text-teal-600 transition-colors",
+                            class: "flex items-center space-x-2 text-xl font-bold text-gray-900 dark:text-gray-100 hover:text-teal-600 transition-colors",
                             Icon { icon_type: IconType::Logo }
                             span { "{title}" }
                         }
@@ -52,8 +53,7 @@ pub fn Navbar() -> Element {
             }
         }
 
-        // The `Outlet` component is used to render the next component inside the layout
-        Outlet::<Route> {}
+        div { class: "pt-16", Outlet::<Route> {} }
     }
 }
 
