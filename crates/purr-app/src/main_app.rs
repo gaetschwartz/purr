@@ -3,10 +3,11 @@
 use crate::platform::logging::apply_saved_log_level;
 use crate::settings_store::use_settings;
 use crate::views::{
-    history::History, home::Home, logs::Logs, models::Models, not_found::NotFound,
-    settings::Settings, shell::Shell,
+    history::History, history_item::HistoryItem, home::Home, logs::Logs, models::Models,
+    not_found::NotFound, settings::Settings, shell::Shell,
 };
 use dioxus::prelude::*;
+use purr_common::history::entry::HistoryId;
 
 /// The app's routes.
 #[derive(Debug, Clone, Routable, PartialEq, Eq)]
@@ -17,6 +18,8 @@ pub enum Route {
         Home {},
         #[route("/history")]
         History {},
+        #[route("/history/:id")]
+        HistoryItem { id: HistoryId },
         #[route("/models")]
         Models {},
         #[route("/settings")]
@@ -43,7 +46,7 @@ impl NavSection {
     pub const fn of(route: &Route) -> Option<Self> {
         match route {
             Route::Home {} => Some(Self::Transcribe),
-            Route::History {} => Some(Self::History),
+            Route::History {} | Route::HistoryItem { .. } => Some(Self::History),
             Route::Models {} => Some(Self::Models),
             Route::Settings {} => Some(Self::Settings),
             Route::Logs {} => Some(Self::Logs),
@@ -75,6 +78,11 @@ mod tests {
             Some(NavSection::Transcribe)
         );
         assert_eq!(NavSection::of(&Route::Logs {}), Some(NavSection::Logs));
+        let saved = HistoryId::parse("0d6c-41af").unwrap();
+        assert_eq!(
+            NavSection::of(&Route::HistoryItem { id: saved }),
+            Some(NavSection::History)
+        );
         assert_eq!(
             NavSection::of(&Route::Settings {}),
             Some(NavSection::Settings)
@@ -87,5 +95,21 @@ mod tests {
         assert_eq!("/history".parse::<Route>().ok(), Some(Route::History {}));
         assert_eq!("/models".parse::<Route>().ok(), Some(Route::Models {}));
         assert_eq!("/settings/logs".parse::<Route>().ok(), Some(Route::Logs {}));
+        assert_eq!(
+            "/history/0d6c-41af".parse::<Route>().ok(),
+            HistoryId::parse("0d6c-41af")
+                .ok()
+                .map(|id| Route::HistoryItem { id })
+        );
+    }
+
+    #[test]
+    fn a_history_link_that_is_not_an_id_is_not_found() {
+        assert_eq!(
+            "/history/../x".parse::<Route>().ok(),
+            Some(Route::NotFound {
+                segments: vec!["history".to_owned(), "..".to_owned(), "x".to_owned()]
+            })
+        );
     }
 }

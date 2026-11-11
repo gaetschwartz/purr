@@ -47,7 +47,11 @@ fn ranges_of(matches: &[Match], segment: usize) -> (Vec<Range<usize>>, usize) {
 
 /// The transcript with search, the Segments or Reading layout and the timestamps toggle.
 #[component]
-pub fn TranscriptCard(segments: Rc<Vec<TranscriptSegment>>, player: PlayerHandle) -> Element {
+pub fn TranscriptCard(
+    segments: Rc<Vec<TranscriptSegment>>,
+    /// Absent when the audio is not available, which turns the lines into plain text.
+    player: Option<PlayerHandle>,
+) -> Element {
     let mut query = use_signal(String::new);
     let mut current = use_signal(|| 0_usize);
     let mut layout = use_signal(|| Layout::Segments);
@@ -58,8 +62,10 @@ pub fn TranscriptCard(segments: Rc<Vec<TranscriptSegment>>, player: PlayerHandle
     let count = matches.len();
     let active = current().min(count.saturating_sub(1));
     let has_query = !query().trim().is_empty();
-    let playing = segment_at(&segments, player.position())
-        .filter(|_| player.is_playing() || player.position() > 0.0);
+    let playing = player.and_then(|player| {
+        segment_at(&segments, player.position())
+            .filter(|_| player.is_playing() || player.position() > 0.0)
+    });
 
     let mut step = move |forward: bool| {
         if count == 0 {
@@ -193,28 +199,39 @@ fn SegmentRow(
     matches: (Vec<Range<usize>>, usize),
     current: Option<usize>,
     playing: bool,
-    player: PlayerHandle,
+    player: Option<PlayerHandle>,
 ) -> Element {
     let start = segment.start_time;
     let clock = timing::clock(start);
-    rsx! {
-        button {
-            class: if playing { "seg-row playing" } else { "seg-row" },
-            r#type: "button",
-            aria_current: playing.then_some("true"),
-            onclick: move |_| player.play_from(start),
-            span { class: "ts",
-                span { class: "sr", "Play from " }
-                "{clock}"
-            }
-            span { class: "tx",
-                Marked {
-                    text: segment.text.trim().to_owned(),
-                    matches,
-                    current,
-                }
+    let line = rsx! {
+        span { class: "tx",
+            Marked {
+                text: segment.text.trim().to_owned(),
+                matches,
+                current,
             }
         }
+    };
+    match player {
+        Some(player) => rsx! {
+            button {
+                class: if playing { "seg-row playing" } else { "seg-row" },
+                r#type: "button",
+                aria_current: playing.then_some("true"),
+                onclick: move |_| player.play_from(start),
+                span { class: "ts",
+                    span { class: "sr", "Play from " }
+                    "{clock}"
+                }
+                {line}
+            }
+        },
+        None => rsx! {
+            div { class: "seg-row still",
+                span { class: "ts", "{clock}" }
+                {line}
+            }
+        },
     }
 }
 

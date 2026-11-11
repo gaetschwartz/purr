@@ -1,42 +1,37 @@
-mod transcript_card;
-
 use crate::{
     components::{
-        audio_player::{AudioPlayer, use_audio_player},
+        audio_player::use_audio_player,
         button::{Button, ButtonSize, ButtonVariant},
-        export_menu::{ExportMenu, ExportSource, copy_export},
+        export_menu::ExportSource,
         icon::{Icon, IconName},
         model_picker::ModelPicker,
-        page::Page,
-        toast::use_toasts,
     },
-    shortcuts::{Key, KeyChord, Shortcut, use_shortcut},
+    history::save_state::SaveState,
+    main_app::Route,
+    platform::playback_source::AudioSource,
     transcribe::{
-        export_format::ExportFormat,
+        chosen_file::OverviewState,
         language_choice::LanguageChoice,
         run::Completion,
         session::{RunRecord, use_transcribe_session},
-        timing,
     },
-    utils::{language_label::language_label, primary_key::use_primary_key_label},
+    utils::language_label::language_label,
+    views::result_frame::{ResultAudio, ResultDetails, ResultFrame},
 };
 use dioxus::prelude::*;
 use std::rc::Rc;
-use transcript_card::{SEARCH_ID, TranscriptCard};
 
 /// A finished transcription: details, the player, the transcript and its exports.
 #[component]
 pub fn ResultView(record: RunRecord, completion: Completion) -> Element {
     let session = use_transcribe_session();
-    let toasts = use_toasts();
-    let primary_key = use_primary_key_label();
-    let player = use_audio_player(&record.file);
+    let player = use_audio_player(&AudioSource::Upload(record.file.clone()));
     let mut picking = use_signal(|| false);
 
     let segments = Rc::new(record.run.transcript.segments());
     let overview = session.overview(&record.file.id);
     let duration = overview.duration().unwrap_or(completion.audio_seconds);
-    let source = ExportSource {
+    let export = ExportSource {
         file_name: record.file.name.clone(),
         model: record.model.id.clone(),
         language: record.language_code(),
@@ -44,39 +39,47 @@ pub fn ResultView(record: RunRecord, completion: Completion) -> Element {
         segments: Rc::clone(&segments),
     };
 
-    let copy_source = source.clone();
-    use_shortcut(
-        Shortcut::new(KeyChord::primary(Key::Char('c')).with_shift()).in_inputs(),
-        move || copy_export(&copy_source, ExportFormat::Txt, toasts),
-    );
-    use_shortcut(
-        Shortcut::new(KeyChord::primary(Key::Char('f'))).in_inputs(),
-        move || {
-            document::eval(&format!("document.getElementById({SEARCH_ID:?})?.focus()"));
-        },
-    );
-
     let language_text = match (&record.language, record.language_code()) {
         (LanguageChoice::Automatic, Some(code)) => format!("{} (detected)", language_label(&code)),
         (LanguageChoice::Automatic, None) => "Language not reported".to_owned(),
         (LanguageChoice::Spoken(_), _) => record.language.label(),
     };
-    let speed = timing::speed(duration, completion.processing_seconds)
-        .map(|speed| format!(" · {} real time", timing::speed_text(speed)))
-        .unwrap_or_default();
     let peaks = match &overview {
-        crate::transcribe::chosen_file::AudioOverview::Ready { peaks, .. } => {
-            Some(Rc::clone(peaks))
-        }
-        crate::transcribe::chosen_file::AudioOverview::Reading
-        | crate::transcribe::chosen_file::AudioOverview::Undecodable(_) => None,
+        OverviewState::Ready { peaks, .. } => Some(Rc::clone(peaks)),
+        OverviewState::Reading | OverviewState::Undecodable(_) => None,
     };
-    let copy_now = source.clone();
+    let keeping = match session.save_state() {
+        SaveState::Idle => rsx! {},
+        SaveState::Saving => rsx! {
+            span {
+                Icon { name: IconName::Lock }
+                "Saving to History…"
+            }
+        },
+        SaveState::Saved(id) => rsx! {
+            span {
+                Icon { name: IconName::Lock }
+                Link { to: Route::HistoryItem { id }, "Saved to History" }
+            }
+        },
+        SaveState::Failed { .. } => rsx! {
+            span { role: "alert",
+                Icon { name: IconName::Warning }
+                "Not saved to History"
+                Button {
+                    variant: ButtonVariant::Plain,
+                    size: ButtonSize::Small,
+                    id: "save-retry",
+                    onclick: move |_| session.retry_save(),
+                    "Try again"
+                }
+            }
+        },
+    };
 
     rsx! {
-        Page {
+        ResultFrame {
             title: record.file.name.clone(),
-            file_title: true,
             eyebrow: rsx! {
                 p { class: "sub", style: "margin:0 0 2px",
                     Button {
@@ -91,51 +94,24 @@ pub fn ResultView(record: RunRecord, completion: Completion) -> Element {
                 }
             },
             actions: rsx! {
-                div { class: "row wrap",
-                    Button {
-                        icon: IconName::Retry,
-                        id: "run-again",
-                        aria_haspopup: "dialog",
-                        onclick: move |_| picking.toggle(),
-                        "Run again"
-                    }
-                    Button {
-                        icon: IconName::Copy,
-                        id: "copy-btn",
-                        disabled: segments.is_empty(),
-                        onclick: move |_| copy_export(&copy_now, ExportFormat::Txt, toasts),
-                        "Copy"
-                    }
-                    ExportMenu { id: "export-btn", source }
+                Button {
+                    icon: IconName::Retry,
+                    id: "run-again",
+                    aria_haspopup: "dialog",
+                    onclick: move |_| picking.toggle(),
+                    "Run again"
                 }
             },
-            div { class: "metas tnum", aria_label: "Details",
-                span {
-                    Icon { name: IconName::Clock }
-                    {timing::clock(duration)}
-                }
-                span {
-                    Icon { name: IconName::Cube }
-                    "{record.model.label}"
-                }
-                span {
-                    Icon { name: IconName::Globe }
-                    "{language_text}"
-                }
-                span {
-                    Icon { name: IconName::Bolt }
-                    "Took {timing::took(completion.processing_seconds)}{speed}"
-                }
-                span {
-                    Icon { name: IconName::Lock }
-                    "Kept on this device until you close Purr"
-                }
-            }
-            AudioPlayer { player, duration: Some(duration), peaks }
-            TranscriptCard { segments: Rc::clone(&segments), player }
-            p { class: "foot", style: "text-align:center",
-                "Click any line to play from there. {primary_key}+F searches, {primary_key}+Shift+C copies everything."
-            }
+            details: ResultDetails {
+                duration_seconds: duration,
+                model_label: record.model.label.clone(),
+                language_text,
+                took_seconds: completion.processing_seconds,
+            },
+            keeping,
+            segments,
+            export,
+            audio: ResultAudio::Player { player, peaks },
         }
         if picking() {
             ModelPicker {

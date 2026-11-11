@@ -3,6 +3,7 @@
 mod failed;
 mod first_run;
 mod model_notice;
+mod recent;
 mod result;
 mod running;
 mod start;

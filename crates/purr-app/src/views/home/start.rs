@@ -1,4 +1,7 @@
-use super::model_notice::{ModelNotice, is_ready, selected_model};
+use super::{
+    model_notice::{ModelNotice, is_ready, selected_model},
+    recent::Recent,
+};
 use crate::{
     components::{
         banner::{Banner, BannerTone},
@@ -11,11 +14,11 @@ use crate::{
         page::Page,
     },
     hooks::use_models::{GpuSupport, use_models},
-    platform::{IS_WEB, audio_overview::UPLOAD_LIMIT_BYTES},
+    platform::{IS_WEB, Platform as _, get_platform},
     settings_store::use_settings,
     shortcuts::{Key, KeyChord, Shortcut, use_shortcut},
     transcribe::{
-        chosen_file::AudioOverview, language_choice::LanguageChoice,
+        chosen_file::OverviewState, language_choice::LanguageChoice,
         session::use_transcribe_session, timing,
     },
     utils::{byte_size::ByteSize, file_kind::kind_label, primary_key::use_primary_key_label},
@@ -26,7 +29,7 @@ const OPEN_FILE_CHOOSER: &str = "document.getElementById('file-input')?.click();
 
 fn formats_line() -> String {
     let formats = "MP3, WAV, AAC, FLAC, OGG, Opus, M4A or WebM";
-    UPLOAD_LIMIT_BYTES.map_or_else(
+    get_platform().max_upload_bytes().map_or_else(
         || formats.to_owned(),
         |limit| format!("{formats} · up to {}", ByteSize(limit)),
     )
@@ -56,7 +59,7 @@ pub fn Start() -> Element {
     let selected = selected_model(models, &model_id);
     let file = session.file();
     let overview = file.as_ref().map(|file| session.overview(&file.id));
-    let decodable = !matches!(overview, Some(AudioOverview::Undecodable(_)));
+    let decodable = !matches!(overview, Some(OverviewState::Undecodable(_)));
     let can_start = file.is_some() && decodable && is_ready(selected.as_ref());
 
     let subtitle = if IS_WEB {
@@ -166,27 +169,28 @@ pub fn Start() -> Element {
                     Icon { name: IconName::Lock, size: IconSize::Small }
                     "Processed on this device with {engine}. Audio is never uploaded."
                 }
+                Recent {}
             }
         }
     }
 }
 
-fn file_details(overview: Option<&AudioOverview>, size: u64, name: &str) -> String {
+fn file_details(overview: Option<&OverviewState>, size: u64, name: &str) -> String {
     let length = match overview {
-        Some(AudioOverview::Ready {
+        Some(OverviewState::Ready {
             duration_seconds, ..
         }) => timing::clock(*duration_seconds),
-        Some(AudioOverview::Reading) | None => "Reading…".to_owned(),
-        Some(AudioOverview::Undecodable(_)) => "Unknown length".to_owned(),
+        Some(OverviewState::Reading) | None => "Reading…".to_owned(),
+        Some(OverviewState::Undecodable(_)) => "Unknown length".to_owned(),
     };
     format!("{length} · {} · {}", ByteSize(size), kind_label(name))
 }
 
-fn undecodable(overview: Option<&AudioOverview>, name: &str) -> Option<String> {
+fn undecodable(overview: Option<&OverviewState>, name: &str) -> Option<String> {
     match overview {
-        Some(AudioOverview::Undecodable(detail)) => Some(format!(
+        Some(OverviewState::Undecodable(detail)) => Some(format!(
             "{name} can't be decoded as audio ({detail}). Try exporting it again from the app that recorded it, or choose another file."
         )),
-        Some(AudioOverview::Reading | AudioOverview::Ready { .. }) | None => None,
+        Some(OverviewState::Reading | OverviewState::Ready { .. }) | None => None,
     }
 }

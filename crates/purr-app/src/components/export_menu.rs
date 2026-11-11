@@ -166,8 +166,9 @@ pub fn ExportMenu(
     }
 }
 
+/// The export sheet: a format switch, a preview, Copy and Save. Render it only while open.
 #[component]
-fn ExportSheet(
+pub fn ExportSheet(
     source: ExportSource,
     format: ExportFormat,
     on_format: EventHandler<ExportFormat>,
