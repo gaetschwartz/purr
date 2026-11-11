@@ -1,4 +1,4 @@
-//! `models` subcommand: download, list, delete and inspect Whisper models
+//! `models` subcommand: download, list, delete, inspect and verify Whisper models
 
 use crate::cli::ModelCommands;
 use crate::fmt::Verbosity;
@@ -7,12 +7,13 @@ use miette::IntoDiagnostic as _;
 use owo_colors::OwoColorize as _;
 use purr_core::ModelManager;
 use purr_core::model::registry::ModelSpec;
-use purr_core::model::status::ModelFileStatus;
+use purr_core::model::status::{ModelFileStatus, ModelIntegrity};
 use std::fmt::Write as _;
 
 const DOWNLOAD_BAR_TEMPLATE: &str = "{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({bytes_per_sec}, {eta})";
 const DOWNLOAD_SPINNER_TEMPLATE: &str =
     "{spinner:.green} [{elapsed_precise}] {bytes} downloaded... {msg}";
+const VERIFY_SPINNER_TEMPLATE: &str = "{spinner:.green} [{elapsed_precise}] {msg}";
 
 /// Handle model management subcommands
 pub async fn handle_model_command(
@@ -41,6 +42,7 @@ pub async fn handle_model_command(
             let spec = model_manager.model(&model)?;
             info(&model_manager, spec).await
         }
+        ModelCommands::Verify { model } => verify(&model_manager, model.as_deref()).await,
     }
 }
 
@@ -277,6 +279,75 @@ async fn info(manager: &ModelManager, spec: &ModelSpec) -> miette::Result<()> {
             println!("Path: {}", path.display());
         }
         ModelFileStatus::Missing => println!("Downloaded: {}", "no".red()),
+    }
+    Ok(())
+}
+
+async fn verify(manager: &ModelManager, model: Option<&str>) -> miette::Result<()> {
+    let specs: Vec<&ModelSpec> = if let Some(id) = model {
+        vec![manager.model(id)?]
+    } else {
+        manager
+            .local_models()
+            .await?
+            .into_iter()
+            .map(|(spec, _)| spec)
+            .collect()
+    };
+
+    if specs.is_empty() {
+        println!("{} No models downloaded yet.", "Info:".blue().bold());
+        return Ok(());
+    }
+
+    let spinner_style = ProgressStyle::with_template(VERIFY_SPINNER_TEMPLATE).into_diagnostic()?;
+    let mut failed = 0usize;
+
+    for spec in specs {
+        let spinner = ProgressBar::new_spinner();
+        spinner.set_style(spinner_style.clone());
+        spinner.set_message(format!(
+            "Verifying {} ({})",
+            spec.id,
+            HumanBytes(spec.size_bytes)
+        ));
+        spinner.enable_steady_tick(std::time::Duration::from_millis(100));
+        let integrity = manager.verify_model(spec).await;
+        spinner.finish_and_clear();
+
+        match integrity? {
+            ModelIntegrity::Verified => {
+                println!("{} {}", "ok     ".green().bold(), spec.id);
+            }
+            ModelIntegrity::Missing => {
+                println!("{} {}", "missing".yellow().bold(), spec.id);
+            }
+            ModelIntegrity::SizeMismatch { expected, actual } => {
+                failed += 1;
+                println!(
+                    "{} {}: {} bytes, expected {} bytes",
+                    "corrupt".red().bold(),
+                    spec.id,
+                    actual,
+                    expected
+                );
+            }
+            ModelIntegrity::ChecksumMismatch { expected, actual } => {
+                failed += 1;
+                println!(
+                    "{} {}: SHA-256 {actual}, expected {expected}",
+                    "corrupt".red().bold(),
+                    spec.id,
+                );
+            }
+        }
+    }
+
+    if failed > 0 {
+        return Err(miette::miette!(
+            help = "Download the affected models again with 'models download <model> --force'",
+            "{failed} model(s) failed verification"
+        ));
     }
     Ok(())
 }

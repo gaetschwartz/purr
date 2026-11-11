@@ -165,6 +165,12 @@ pub enum ModelCommands {
         #[arg(value_name = "MODEL")]
         model: String,
     },
+    /// Verify the SHA-256 of downloaded models (all downloaded models by default)
+    Verify {
+        /// Model to verify (e.g., base, small, large-v3)
+        #[arg(value_name = "MODEL")]
+        model: Option<String>,
+    },
 }
 
 #[derive(Subcommand, Debug)]
