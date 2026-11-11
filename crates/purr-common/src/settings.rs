@@ -242,7 +242,9 @@ impl Settings {
     /// Brings settings read from schema version `from_version` up to [`CURRENT_VERSION`].
     ///
     /// Version 1 saved `gpu_acceleration` as off without anything reading it, so it moves to
-    /// the new default instead of silently switching acceleration off.
+    /// the new default instead of silently switching acceleration off. Its `ui.language` was the
+    /// interface language, `en` by default; read as the spoken language it would force English
+    /// on every recording, so `en` becomes detection.
     pub fn migrate_from_version(&mut self, from_version: u32) -> Result<(), SettingsError> {
         if from_version > CURRENT_VERSION {
             return Err(SettingsError::UnsupportedVersion {
@@ -253,7 +255,12 @@ impl Settings {
         for step in from_version..CURRENT_VERSION {
             match step {
                 0 => {}
-                1 => self.performance.gpu_acceleration = true,
+                1 => {
+                    self.performance.gpu_acceleration = true;
+                    if self.ui.language == "en" {
+                        "auto".clone_into(&mut self.ui.language);
+                    }
+                }
                 other => {
                     return Err(SettingsError::UnsupportedMigration {
                         from: other,
@@ -401,8 +408,22 @@ log_file_path = "C:/logs/purr.log"
         assert_eq!(settings.performance.accel_backend, AccelSelection::Auto);
         assert_eq!(settings.performance.threads, None);
         assert_eq!(settings.ui.export_format, ExportFormat::Txt);
+        assert_eq!(settings.ui.language, "auto");
         assert_eq!(settings.logging.level, LogLevel::Info);
         assert_eq!(settings.validate(), []);
+    }
+
+    #[test]
+    fn a_spoken_language_chosen_in_version_one_survives_the_migration() {
+        let mut settings = Settings {
+            ui: UiSettings {
+                language: "fr".to_owned(),
+                ..UiSettings::default()
+            },
+            ..Settings::default()
+        };
+        assert_eq!(settings.migrate_from_version(1), Ok(()));
+        assert_eq!(settings.ui.language, "fr");
     }
 
     #[test]
