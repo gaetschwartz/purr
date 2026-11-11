@@ -113,6 +113,7 @@ pub fn App() -> Element {
     history::store::use_history_provider();
     let session = transcribe::session::use_transcribe_session_provider();
     platform::playback_source::use_audio_route(session);
+    hooks::leave_guard::use_leave_guard_during_runs();
     use_layer_host_provider();
     use_shortcut_provider();
     let loading = settings.load_state() == LoadState::Loading;
