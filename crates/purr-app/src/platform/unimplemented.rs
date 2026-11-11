@@ -101,11 +101,18 @@ impl Platform for UnimplementedPlatformImpl {
         unsupported!()
     }
 
-    async fn load_theme_setting(&self, _storage_key: &str) -> Result<Option<String>, PlatformError> {
+    async fn load_theme_setting(
+        &self,
+        _storage_key: &str,
+    ) -> Result<Option<String>, PlatformError> {
         unsupported!()
     }
 
-    async fn save_theme_setting(&self, _storage_key: &str, _theme: &str) -> Result<(), PlatformError> {
+    async fn save_theme_setting(
+        &self,
+        _storage_key: &str,
+        _theme: &str,
+    ) -> Result<(), PlatformError> {
         unsupported!()
     }
 }

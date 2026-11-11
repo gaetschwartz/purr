@@ -4,10 +4,7 @@ use crate::{
     platform,
 };
 use bytes::Bytes;
-use dioxus::{
-    html::HasFileData,
-    prelude::*,
-};
+use dioxus::{html::HasFileData, prelude::*};
 use purr_common::platform::{FileId, Platform as _};
 use tracing::{error, info};
 

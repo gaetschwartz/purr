@@ -10,7 +10,7 @@ use miette::IntoDiagnostic as _;
 use owo_colors::OwoColorize as _;
 use purr_core::{
     dev::{FeatureStatus, WhisperGpuBackend},
-    install_logging_hooks, is_valid_url, is_file_path, list_devices, transcribe_file_stream,
+    install_logging_hooks, is_file_path, is_valid_url, list_devices, transcribe_file_stream,
     transcribe_file_sync, transcribe_url_stream, transcribe_url_sync, ModelManager,
     StreamingTranscription, TranscriptionConfig, WhisperModel,
 };
@@ -69,7 +69,10 @@ async fn main_impl() -> miette::Result<()> {
     let is_path = is_file_path(&audio_input);
 
     if !is_url && !is_path {
-        error!("Invalid input: '{}'. Please provide a valid file path or URL.", audio_input.bold());
+        error!(
+            "Invalid input: '{}'. Please provide a valid file path or URL.",
+            audio_input.bold()
+        );
         process::exit(1);
     }
 

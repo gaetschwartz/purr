@@ -2,7 +2,7 @@
 /// This implementation uses direct file system access and native whisper transcription
 use super::{Platform, PlatformError, TranscriptionRequest, TranscriptionStatus};
 use bytes::Bytes;
-use futures::{channel::mpsc, SinkExt, StreamExt};
+use futures::{SinkExt, StreamExt, channel::mpsc};
 use purr_common::platform::{
     DeviceInfo, DeviceType, FileId, FileSource, ModelInfo, ModelMetadata, ModelOperationProgress,
     ModelProgressStream, TranscriptionStream,
@@ -85,9 +85,9 @@ impl Platform for DesktopPlatformImpl {
         &self,
         request: TranscriptionRequest,
     ) -> Result<TranscriptionStream, PlatformError> {
-        use futures::channel::mpsc;
         use futures::SinkExt;
-        use purr_core::{transcribe_file_stream, TranscriptionConfig};
+        use futures::channel::mpsc;
+        use purr_core::{TranscriptionConfig, transcribe_file_stream};
 
         // Create a channel for status updates
         let (mut tx, rx) = mpsc::channel(10);
@@ -528,7 +528,10 @@ impl Platform for DesktopPlatformImpl {
     // Theme Storage Implementation
     // ========================================
 
-    async fn load_theme_setting(&self, _storage_key: &str) -> Result<Option<String>, PlatformError> {
+    async fn load_theme_setting(
+        &self,
+        _storage_key: &str,
+    ) -> Result<Option<String>, PlatformError> {
         // Load settings and extract theme
         let settings = self.load_settings().await?;
         let theme_str = settings.ui.theme.to_storage_string();
@@ -537,7 +540,11 @@ impl Platform for DesktopPlatformImpl {
         Ok(Some(theme_str.to_string()))
     }
 
-    async fn save_theme_setting(&self, _storage_key: &str, theme: &str) -> Result<(), PlatformError> {
+    async fn save_theme_setting(
+        &self,
+        _storage_key: &str,
+        theme: &str,
+    ) -> Result<(), PlatformError> {
         debug!("Saving theme setting: {}", theme);
 
         // Load current settings

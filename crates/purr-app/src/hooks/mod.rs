@@ -5,4 +5,4 @@
 
 pub mod use_theme;
 
-pub use use_theme::{use_theme, UseThemeResult};
+pub use use_theme::{UseThemeResult, use_theme};

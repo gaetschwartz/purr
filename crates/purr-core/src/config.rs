@@ -82,9 +82,9 @@ impl Default for TranscriptionConfig {
             beam_size: Some(5), // Default to beam search with 5 beams for better quality
             output_format: OutputFormat::default(),
             verbose: false,
-            chunk_size: 4.0,    // 4 seconds
-            chunk_overlap: 0.5, // 0.5 seconds
-            http_timeout: 30,        // 30 seconds
+            chunk_size: 4.0,          // 4 seconds
+            chunk_overlap: 0.5,       // 0.5 seconds
+            http_timeout: 30,         // 30 seconds
             http_connect_timeout: 10, // 10 seconds
         }
     }

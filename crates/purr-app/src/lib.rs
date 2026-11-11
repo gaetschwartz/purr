@@ -20,7 +20,6 @@ mod views;
 use main_app::MainApp;
 use theme::{ColorTokens, CustomTheme, StorageType, Theme, ThemeProvider};
 
-
 // We can import assets in dioxus with the `asset!` macro. This macro takes a path to an asset relative to the crate root.
 // The macro returns an `Asset` type that will display as the path to the asset in the browser or a local path in desktop bundles.
 const FAVICON: Asset = asset!("/assets/favicon.ico");

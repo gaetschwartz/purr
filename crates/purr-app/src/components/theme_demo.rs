@@ -1,4 +1,4 @@
-use crate::theme::{use_theme, Theme};
+use crate::theme::{Theme, use_theme};
 use dioxus::prelude::*;
 
 /// Theme component
@@ -118,12 +118,7 @@ pub fn ThemeEditor() -> Element {
 
 /// Theme button component
 #[component]
-fn ThemeButton(
-    theme: Theme,
-    label: String,
-    current: Theme,
-    on_select: Callback<Theme>,
-) -> Element {
+fn ThemeButton(theme: Theme, label: String, current: Theme, on_select: Callback<Theme>) -> Element {
     let is_active = theme == current;
 
     let handle_click = move |_| {
@@ -134,10 +129,10 @@ fn ThemeButton(
         button {
             class: format!(
                 "px-4 py-2 rounded font-medium border-2 transition-all {}",
-                if is_active { 
-                    "bg-blue-500 border-blue-500 text-white ring-2 ring-offset-2 ring-blue-300" 
-                } else { 
-                    "bg-transparent border-blue-500 text-blue-500 hover:bg-blue-50" 
+                if is_active {
+                    "bg-blue-500 border-blue-500 text-white ring-2 ring-offset-2 ring-blue-300"
+                } else {
+                    "bg-transparent border-blue-500 text-blue-500 hover:bg-blue-50"
                 },
             ),
             onclick: handle_click,

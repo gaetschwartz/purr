@@ -170,7 +170,7 @@ pub fn ThemeProvider(props: ThemeProviderProps) -> Element {
         Theme::Dark => "dark",
         Theme::System => unreachable!("System theme should be resolved"),
     };
-    
+
     rsx! {
         div { class: theme_class,
             {props.children}
@@ -200,11 +200,11 @@ pub struct UseThemeContext {
 /// # Example
 /// ```rust,no_run
 /// use purr_app::theme::{use_theme, Theme};
-/// 
+///
 /// // In a component:
 /// let theme_ctx = use_theme();
 /// let current = (theme_ctx.resolved_theme)();
-/// 
+///
 /// // Change theme
 /// theme_ctx.set_theme.call(Theme::Dark);
 /// ```
