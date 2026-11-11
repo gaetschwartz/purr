@@ -10,7 +10,7 @@ use crate::{
 };
 use dioxus::prelude::*;
 
-const FONT_LICENCE: Asset = asset!("/assets/fonts/OFL.txt");
+const FONT_LICENCE: &str = include_str!("../../assets/fonts/OFL.txt");
 
 /// What Purr keeps on this device and the one thing that uses the network.
 #[component]
@@ -71,14 +71,9 @@ pub fn AboutSheet(on_close: EventHandler<()>) -> Element {
                     subtitle: network,
                 }
             }
-            p { class: "foot",
-                "Text is set in Inter, under the "
-                if IS_WEB {
-                    a { href: FONT_LICENCE, target: "_blank", rel: "noopener", "SIL Open Font License" }
-                } else {
-                    "SIL Open Font License"
-                }
-                "."
+            details { class: "foot",
+                summary { "Text is set in Inter, under the SIL Open Font License" }
+                pre { class: "preview", "{FONT_LICENCE}" }
             }
         }
     }
