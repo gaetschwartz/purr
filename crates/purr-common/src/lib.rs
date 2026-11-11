@@ -1,5 +1,6 @@
 pub mod platform;
 pub mod settings;
+pub mod web_model;
 
 macro_rules! make_languages_enum {
     (
