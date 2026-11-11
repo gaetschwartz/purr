@@ -22,7 +22,7 @@ enum UploadError {
 
 async fn store_file(file: &FileData) -> Result<FileId, UploadError> {
     let content_type = file.content_type().unwrap_or_default();
-    if !may_contain_audio(&content_type) {
+    if !may_contain_audio(&content_type, &file.name()) {
         return Err(UploadError::NotAudio { content_type });
     }
     let bytes = file
