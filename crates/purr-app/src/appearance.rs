@@ -25,23 +25,20 @@ impl Default for Appearance {
 pub struct RootAttributes {
     /// `data-theme`: `light`, `dark` or `system`.
     pub data_theme: &'static str,
-    /// The `dark` class the Tailwind `dark:` utilities of the older views key on.
-    pub dark_class: bool,
     /// `data-transparency="reduced"`.
     pub reduced_transparency: bool,
 }
 
-/// Maps the chosen appearance and the system colour scheme onto the root attributes.
+/// Maps the chosen appearance onto the root attributes; the stylesheet follows the OS for `system`.
 #[must_use]
-pub const fn root_attributes(appearance: Appearance, system_dark: bool) -> RootAttributes {
-    let (data_theme, dark_class) = match appearance.theme {
-        Theme::Light => ("light", false),
-        Theme::Dark => ("dark", true),
-        Theme::System => ("system", system_dark),
+pub const fn root_attributes(appearance: Appearance) -> RootAttributes {
+    let data_theme = match appearance.theme {
+        Theme::Light => "light",
+        Theme::Dark => "dark",
+        Theme::System => "system",
     };
     RootAttributes {
         data_theme,
-        dark_class,
         reduced_transparency: appearance.reduce_transparency,
     }
 }
@@ -54,12 +51,9 @@ fn root_script(attributes: RootAttributes) -> String {
         "root.removeAttribute('data-transparency');"
     };
     format!(
-        "const root = document.documentElement; root.lang = 'en'; root.setAttribute('data-theme', '{theme}'); {transparency} root.classList.toggle('dark', {});",
-        attributes.dark_class
+        "const root = document.documentElement; root.lang = 'en'; root.setAttribute('data-theme', '{theme}'); {transparency}"
     )
 }
-
-const SYSTEM_SCHEME_WATCHER: &str = "const query = window.matchMedia('(prefers-color-scheme: dark)'); dioxus.send(query.matches); query.addEventListener('change', (event) => dioxus.send(event.matches)); await new Promise(() => {});";
 
 /// Keeps the document root in step with the theme and transparency held by the settings store.
 pub fn use_appearance_provider(store: SettingsStore) {
@@ -69,21 +63,12 @@ pub fn use_appearance_provider(store: SettingsStore) {
             reduce_transparency: settings.ui.reduce_transparency,
         })
     });
-    let mut system_dark = use_signal(|| false);
-
-    use_future(move || async move {
-        let mut watcher = document::eval(SYSTEM_SCHEME_WATCHER);
-        while let Ok(dark) = watcher.recv::<bool>().await {
-            system_dark.set(dark);
-        }
-    });
 
     use_effect(move || {
         if store.load_state() == LoadState::Loading {
             return;
         }
-        let attributes = root_attributes(appearance(), system_dark());
-        document::eval(&root_script(attributes));
+        document::eval(&root_script(root_attributes(appearance())));
     });
 }
 
@@ -92,43 +77,31 @@ mod tests {
     use super::*;
 
     #[test]
-    fn system_theme_follows_the_os_for_tailwind() {
-        let appearance = Appearance::default();
-        assert_eq!(
-            root_attributes(appearance, true),
-            RootAttributes {
-                data_theme: "system",
-                dark_class: true,
-                reduced_transparency: false,
-            }
-        );
-        assert!(!root_attributes(appearance, false).dark_class);
+    fn each_theme_names_itself_on_the_root() {
+        for (theme, expected) in [
+            (Theme::System, "system"),
+            (Theme::Light, "light"),
+            (Theme::Dark, "dark"),
+        ] {
+            let appearance = Appearance {
+                theme,
+                reduce_transparency: false,
+            };
+            assert_eq!(root_attributes(appearance).data_theme, expected);
+        }
     }
 
     #[test]
-    fn explicit_themes_win_over_the_os() {
-        let dark = Appearance {
+    fn reduced_transparency_reaches_the_root() {
+        let appearance = Appearance {
             theme: Theme::Dark,
             reduce_transparency: true,
         };
         assert_eq!(
-            root_attributes(dark, false),
+            root_attributes(appearance),
             RootAttributes {
                 data_theme: "dark",
-                dark_class: true,
                 reduced_transparency: true,
-            }
-        );
-        let light = Appearance {
-            theme: Theme::Light,
-            reduce_transparency: false,
-        };
-        assert_eq!(
-            root_attributes(light, true),
-            RootAttributes {
-                data_theme: "light",
-                dark_class: false,
-                reduced_transparency: false,
             }
         );
     }

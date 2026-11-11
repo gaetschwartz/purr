@@ -117,14 +117,27 @@
 @supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){.app{--glass-1:var(--solid-1);--glass-2:var(--solid-2);--glass-3:var(--solid-3)}}
 
 /* ---------- Base ---------- */
-*,*::before,*::after{box-sizing:border-box}
+*,*::before,*::after{box-sizing:border-box;border:0 solid}
+html{-webkit-text-size-adjust:100%;tab-size:4;-webkit-tap-highlight-color:transparent}
+h1,h2,h3,h4,h5,h6{font-size:inherit;font-weight:inherit}
+blockquote,dl,dd,h1,h2,h3,h4,h5,h6,hr,figure,p,pre{margin:0}
+ol,ul,menu{list-style:none;margin:0;padding:0}
+b,strong{font-weight:bolder}
+small{font-size:80%}
+img,svg,video,canvas,audio,iframe,embed,object{display:block;vertical-align:middle}
+img,video{max-width:100%;height:auto}
+textarea{resize:vertical}
+[type=search]{-webkit-appearance:textfield;outline-offset:-2px}
+::-webkit-search-decoration{-webkit-appearance:none}
+::placeholder{opacity:1;color:var(--fg-3)}
 [hidden]{display:none!important}
 html,body{height:100%;margin:0;padding:0}
 body{background:var(--base);color:var(--fg);font-family:var(--font);font-size:15px;line-height:1.45;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
 #main{height:100%}
-button,input,select,textarea{font:inherit;color:inherit}
+button,input,select,textarea{font:inherit;letter-spacing:inherit;color:inherit;margin:0;padding:0}
 button{cursor:pointer;background:none;border:0;padding:0}
-a{color:var(--link)}
+a{color:var(--link);text-decoration:none}
+p a{text-decoration:underline;text-underline-offset:2px}
 svg.i{width:20px;height:20px;flex:none;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 svg.i.sm{width:16px;height:16px}
 svg.i.lg{width:28px;height:28px;stroke-width:1.5}

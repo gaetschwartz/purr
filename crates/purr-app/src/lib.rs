@@ -41,7 +41,6 @@ use settings_store::{status::LoadState, use_settings_store_provider};
 use shortcuts::use_shortcut_provider;
 
 const FAVICON: Asset = asset!("/assets/icons/purr-mark.svg");
-const TAILWIND_CSS: Asset = asset!("/assets/tailwind.css");
 // unminified: the minifier strips the -webkit- prefixed glass fallbacks older Safari needs
 const DESIGN_CSS: Asset = asset!(
     "/assets/styling/design.css",
@@ -70,7 +69,6 @@ fn Head() -> Element {
             crossorigin: "anonymous",
         }
         document::Style { {inter_font_face()} }
-        document::Link { rel: "stylesheet", href: TAILWIND_CSS }
         document::Link { rel: "stylesheet", href: DESIGN_CSS }
         document::Link { rel: "stylesheet", href: SCREENS_CSS }
     }
