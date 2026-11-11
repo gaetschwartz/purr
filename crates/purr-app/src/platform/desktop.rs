@@ -46,10 +46,36 @@ pub(super) fn stored_upload(file_id: &FileId) -> PathBuf {
     upload_dir().join(file_id)
 }
 
+/// How long an upload a closed session left behind is kept.
+const UPLOAD_RETENTION: std::time::Duration = std::time::Duration::from_hours(24);
+
+/// Deletes the uploads in `dir` older than [`UPLOAD_RETENTION`]; a file that resists is logged.
+fn purge_old_uploads(dir: &Path) -> std::io::Result<()> {
+    for entry in std::fs::read_dir(dir)? {
+        let entry = entry?;
+        let age = entry.metadata()?.modified()?.elapsed();
+        if age.is_ok_and(|age| age > UPLOAD_RETENTION)
+            && let Err(error) = std::fs::remove_file(entry.path())
+        {
+            warn!(
+                "Could not remove the old upload {}: {error}",
+                entry.path().display()
+            );
+        }
+    }
+    Ok(())
+}
+
 impl DesktopPlatformImpl {
     pub fn new() -> Result<Self, PlatformError> {
         let temp_dir = upload_dir();
         std::fs::create_dir_all(&temp_dir).map_err(PlatformError::io)?;
+        if let Err(error) = purge_old_uploads(&temp_dir) {
+            warn!(
+                "Could not clear old uploads from {}: {error}",
+                temp_dir.display()
+            );
+        }
 
         let model_manager = ModelManager::new().map_err(PlatformError::model_management)?;
 
