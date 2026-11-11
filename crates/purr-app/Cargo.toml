@@ -51,7 +51,6 @@ web-sys = { version = "0.3", features = [
   "Blob",
   "BlobPropertyBag",
   "console",
-  "MediaQueryList",
 ], optional = true }
 js-sys = { version = "0.3", optional = true }
 wasm-bindgen = { version = "0.2", features = [
@@ -75,9 +74,6 @@ scc = { version = "3.1.2", features = ["serde"] }
 serde_with = "3.14.1"
 strum = { version = "0.28.0", features = ["derive"] }
 ambassador = "0.5.1"
-
-# Theme system dependencies
-indexmap = "2.0"
 
 [features]
 default = ["desktop"]
