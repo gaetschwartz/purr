@@ -17,7 +17,7 @@ const ACCEPT: &str = if IS_WEB {
 };
 
 /// The glass well of the Transcribe screen: drop a file on it, or click it (or press Space or
-/// Enter on it) to open the file chooser. It "purrs" gently while idle, unless motion is reduced.
+/// Enter on it) to open the file chooser. It "purrs" a few times when it appears, unless motion is reduced.
 #[component]
 pub fn DropPad(
     /// The name of the file being read, while one is.
