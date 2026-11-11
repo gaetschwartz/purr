@@ -7,7 +7,7 @@
       "continue": true
     },
     { "handle": "filesystem" },
-    { "src": "/assets/(.*)", "status": 404 },
+    { "src": "/assets/(.*)", "status": 404, "headers": { "cache-control": "no-store" } },
     { "src": "/(.*)", "dest": "/index.html" }
   ]
 }
