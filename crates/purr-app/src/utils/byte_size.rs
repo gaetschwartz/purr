@@ -1,12 +1,12 @@
 use std::fmt;
 
-/// A number of bytes that displays with a binary unit prefix, such as `116.6 MB`.
+/// A number of bytes that displays with a binary unit prefix, such as `116.6 MiB`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ByteSize(pub u64);
 
 impl fmt::Display for ByteSize {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        const UNITS: [&str; 5] = ["B", "KB", "MB", "GB", "TB"];
+        const UNITS: [&str; 5] = ["B", "KiB", "MiB", "GiB", "TiB"];
         let mut size = self.0 as f64;
         let mut unit = 0;
         while size >= 1024.0 && unit < UNITS.len() - 1 {
@@ -34,8 +34,8 @@ mod tests {
 
     #[test]
     fn larger_sizes_use_one_decimal() {
-        assert_eq!(ByteSize(1536).to_string(), "1.5 KB");
-        assert_eq!(ByteSize(122_309_681).to_string(), "116.6 MB");
-        assert_eq!(ByteSize(1_610_612_736).to_string(), "1.5 GB");
+        assert_eq!(ByteSize(1536).to_string(), "1.5 KiB");
+        assert_eq!(ByteSize(122_309_681).to_string(), "116.6 MiB");
+        assert_eq!(ByteSize(1_610_612_736).to_string(), "1.5 GiB");
     }
 }

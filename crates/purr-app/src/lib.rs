@@ -9,6 +9,8 @@ pub mod components;
 pub mod hooks;
 /// Routing and session state
 mod main_app;
+/// Model names, families, states and filtering
+pub mod model_catalog;
 /// Platform abstraction layer for client-only architecture
 pub mod platform;
 /// Keyboard shortcut registry
