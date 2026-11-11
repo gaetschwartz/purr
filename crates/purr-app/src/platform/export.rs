@@ -89,25 +89,50 @@ struct ClipboardOutcome {
     error: Option<String>,
 }
 
-/// Puts `text` on the system clipboard.
-pub async fn copy_to_clipboard(text: &str) -> miette::Result<()> {
+/// Puts `text` on the system clipboard; the returned future reports how it went.
+///
+/// The page script starts right away, so call this from an event handler rather than from inside
+/// a spawned task: the desktop webview ends scripts started from a task without a live scope.
+pub fn copy_to_clipboard(text: &str) -> impl Future<Output = miette::Result<()>> + use<> {
     use miette::{IntoDiagnostic as _, miette};
 
-    let mut eval = document::eval(
-        "const text = await dioxus.recv();
-         try {
-             await navigator.clipboard.writeText(text);
-             dioxus.send({ error: null });
-         } catch (error) {
-             dioxus.send({ error: String(error) });
-         }",
-    );
-    eval.send(text).into_diagnostic()?;
-    let outcome: ClipboardOutcome = eval
-        .recv()
-        .await
-        .map_err(|e| miette!("The clipboard is not available: {e}"))?;
-    outcome.error.map_or(Ok(()), |error| {
-        Err(miette!("The clipboard refused the text: {error}"))
-    })
+    let started = serde_json::to_string(text)
+        .into_diagnostic()
+        .map(|literal| {
+            document::eval(&format!(
+                "const text = {literal};
+             const legacyCopy = () => {{
+                 const area = document.createElement('textarea');
+                 area.value = text;
+                 area.setAttribute('readonly', '');
+                 area.style.position = 'fixed';
+                 area.style.opacity = '0';
+                 document.body.appendChild(area);
+                 area.select();
+                 const copied = document.execCommand('copy');
+                 area.remove();
+                 if (!copied) throw new Error('the page may not write to the clipboard');
+             }};
+             try {{
+                 if (navigator.clipboard && navigator.clipboard.writeText) {{
+                     await navigator.clipboard.writeText(text);
+                 }} else {{
+                     legacyCopy();
+                 }}
+                 dioxus.send({{ error: null }});
+             }} catch (error) {{
+                 dioxus.send({{ error: String(error) }});
+             }}"
+            ))
+        });
+    async move {
+        let mut eval = started?;
+        let outcome: ClipboardOutcome = eval
+            .recv()
+            .await
+            .map_err(|e| miette!("The clipboard is not available: {e}"))?;
+        outcome.error.map_or(Ok(()), |error| {
+            Err(miette!("The clipboard refused the text: {error}"))
+        })
+    }
 }

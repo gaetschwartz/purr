@@ -81,13 +81,11 @@ fn save(source: &ExportSource, format: ExportFormat, toasts: Toasts) {
 
 /// Puts `format` of `source` on the clipboard and says how it went.
 pub fn copy_export(source: &ExportSource, format: ExportFormat, toasts: Toasts) {
-    let rendered = source.render(format);
     let count = source.segments.len();
+    let copying = source.render(format).map(|text| copy_to_clipboard(&text));
     spawn_forever(async move {
-        let copied = match rendered {
-            Ok(text) => copy_to_clipboard(&text)
-                .await
-                .map_err(|error| error.to_string()),
+        let copied = match copying {
+            Ok(copy) => copy.await.map_err(|error| error.to_string()),
             Err(error) => Err(error),
         };
         match copied {
