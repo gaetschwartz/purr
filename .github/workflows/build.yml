@@ -245,8 +245,8 @@ jobs:
       matrix:
         backend: ["none", cuda, vulkan, "cuda,vulkan"]
         include:
-          - backend: cuda
-            is_release: true # Mark CUDA as the release variant for Windows (Vulkan fails to bundle)
+          - backend: "cuda,vulkan"
+            is_release: true # Mark CUDA + Vulkan as the release variant for Windows
     steps:
       - uses: actions/checkout@v7
       - name: Install dependencies
@@ -361,7 +361,7 @@ jobs:
         if: matrix.is_release == true
         uses: actions/upload-artifact@v7
         with:
-          name: purr-windows-x64-cuda
+          name: purr-windows-x64-cuda-vulkan
           path: artifacts/windows/
           retention-days: 30
       - name: Archive Windows Build Artifacts (Dev)
@@ -468,7 +468,7 @@ jobs:
                   "labels": ["chore", "ci", "build", "deps"]
                 }
               ],
-              "template": "# Nightly Build - ${{ steps.date.outputs.date }}\n\n#{{CHANGELOG}}\n\n## 📊 Uncategorized Changes\n#{{UNCATEGORIZED}}\n\n---\n*This is an automated nightly build. It may be unstable.*\n\n## 📦 Build Information\n- Linux: CUDA backend\n- macOS: Metal + CoreML backend\n- Windows: CUDA backend",
+              "template": "# Nightly Build - ${{ steps.date.outputs.date }}\n\n#{{CHANGELOG}}\n\n## 📊 Uncategorized Changes\n#{{UNCATEGORIZED}}\n\n---\n*This is an automated nightly build. It may be unstable.*\n\n## 📦 Build Information\n- Linux: CUDA backend\n- macOS: Metal + CoreML backend\n- Windows: CUDA + Vulkan backends (falls back to CPU without a GPU runtime)",
               "pr_template": "- #{{TITLE}} (#{{NUMBER}}) @#{{AUTHOR}}"
             }
           fromTag: ${{ steps.prev_tag.outputs.tag }}
@@ -491,7 +491,7 @@ jobs:
       - name: Download Windows Artifacts
         uses: actions/download-artifact@v8
         with:
-          name: purr-windows-x64-cuda
+          name: purr-windows-x64-cuda-vulkan
           path: ./release-artifacts/windows
 
       - name: Download Web Artifacts
@@ -526,7 +526,7 @@ jobs:
           # Package Windows (create ZIP for Windows users)
           cd release-artifacts/windows
           # Use zip for Windows artifacts
-          zip -r ../../release-assets/purr-windows-x64-cuda.zip *
+          zip -r ../../release-assets/purr-windows-x64-cuda-vulkan.zip *
           cd ../..
 
           # Package Web
@@ -550,7 +550,7 @@ jobs:
             ## 📥 Download Instructions
 
             ### Windows
-            Download `purr-windows-x64-cuda.zip` and extract all files to a folder. Requires NVIDIA GPU with CUDA support.
+            Download `purr-windows-x64-cuda-vulkan.zip` and extract all files to a folder. Uses an NVIDIA GPU (CUDA) when available, otherwise Vulkan, otherwise the CPU.
 
             ### Linux
             Download `purr-linux-x64-cuda.tar.gz` and extract:
@@ -656,7 +656,7 @@ jobs:
                   "labels": ["breaking", "breaking-change"]
                 }
               ],
-              "template": "# Release ${{ steps.version.outputs.version }}\n\n#{{CHANGELOG}}\n\n## 📦 Build Information\n- Linux: CUDA backend\n- macOS: Metal + CoreML backend\n- Windows: CUDA backend",
+              "template": "# Release ${{ steps.version.outputs.version }}\n\n#{{CHANGELOG}}\n\n## 📦 Build Information\n- Linux: CUDA backend\n- macOS: Metal + CoreML backend\n- Windows: CUDA + Vulkan backends (falls back to CPU without a GPU runtime)",
               "pr_template": "- #{{TITLE}} (#{{NUMBER}}) @#{{AUTHOR}}"
             }
           toTag: ${{ github.ref }}
@@ -678,7 +678,7 @@ jobs:
       - name: Download Windows Artifacts
         uses: actions/download-artifact@v8
         with:
-          name: purr-windows-x64-cuda
+          name: purr-windows-x64-cuda-vulkan
           path: ./release-artifacts/windows
 
       - name: Download Web Artifacts
@@ -710,7 +710,7 @@ jobs:
 
           # Package Windows
           cd release-artifacts/windows
-          zip -r ../../release-assets/purr-${VERSION}-windows-x64-cuda.zip *
+          zip -r ../../release-assets/purr-${VERSION}-windows-x64-cuda-vulkan.zip *
           cd ../..
 
           # Package Web
@@ -733,10 +733,10 @@ jobs:
             ## 📥 Installation
 
             ### Windows
-            Download `purr-${{ steps.version.outputs.version }}-windows-x64-cuda.zip`
+            Download `purr-${{ steps.version.outputs.version }}-windows-x64-cuda-vulkan.zip`
             Extract all files and run `purr.exe`
 
-            Requirements: Windows 10/11 with NVIDIA GPU and CUDA support
+            Requirements: Windows 10/11. Uses an NVIDIA GPU (CUDA) when available, otherwise Vulkan, otherwise the CPU.
 
             ### Linux
             ```bash
