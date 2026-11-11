@@ -31,7 +31,7 @@ pub enum HistoryDirError {
     },
     #[error("There is no saved transcription {0}")]
     NotFound(HistoryId),
-    #[error("The saved transcription {id} {reason}")]
+    #[error("The saved transcription {id} can't be read: {reason}")]
     Unreadable {
         id: HistoryId,
         reason: UnreadableReason,
