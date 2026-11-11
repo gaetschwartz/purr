@@ -221,15 +221,17 @@ pub fn ModelPicker(
             }
             {body}
             hr {}
-            PopoverOption {
-                title: "Manage models…",
-                leading: rsx! {
-                    Icon { name: IconName::Cube, size: IconSize::Small }
-                },
-                onselect: move |()| {
-                    on_close.call(());
-                    navigator.push(Route::Models {});
-                },
+            div { class: "plist", role: "menu", aria_label: "Models",
+                PopoverOption {
+                    title: "Manage models…",
+                    leading: rsx! {
+                        Icon { name: IconName::Cube, size: IconSize::Small }
+                    },
+                    onselect: move |()| {
+                        on_close.call(());
+                        navigator.push(Route::Models {});
+                    },
+                }
             }
         }
     }
