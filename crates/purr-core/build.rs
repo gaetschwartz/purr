@@ -3,8 +3,9 @@ use std::env;
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::PathBuf;
+use std::process::ExitCode;
 
-fn main() {
+fn main() -> ExitCode {
     let os = target_os();
     println!("cargo:rustc-env=TARGET_OS={os:?}");
 
@@ -34,4 +35,6 @@ fn main() {
         "cargo:warning=Environment captured to: {}",
         env_file.display()
     );
+
+    purr_delayload::emit::report(purr_delayload::emit::emit_runtime_env())
 }

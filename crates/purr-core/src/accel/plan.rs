@@ -56,6 +56,11 @@ pub fn locate(
         BuildStatus::NotBuilt => UnavailableReason::NotBuilt,
         BuildStatus::Unknown => UnavailableReason::NotBuiltOrNoDevice,
     };
+    if let Some(library) = inventory.missing_runtime.get(&backend) {
+        return Err(UnavailableReason::RuntimeLibraryMissing {
+            library: library.clone(),
+        });
+    }
     let target = match backend {
         AccelBackend::Cpu => Target::Cpu,
         AccelBackend::CoreMl => match inventory.build_status(backend) {
@@ -153,7 +158,19 @@ mod tests {
                     (*b, status)
                 })
                 .collect::<HashMap<_, _>>(),
+            missing_runtime: HashMap::new(),
         }
+    }
+
+    fn without_runtime(
+        mut inventory: Inventory,
+        backend: AccelBackend,
+        library: &str,
+    ) -> Inventory {
+        inventory
+            .missing_runtime
+            .insert(backend, library.to_owned());
+        inventory
     }
 
     fn cuda_and_vulkan_machine() -> Inventory {
@@ -251,6 +268,42 @@ mod tests {
     }
 
     #[test]
+    fn backend_with_a_missing_runtime_library_is_skipped_by_auto() {
+        let machine = without_runtime(cuda_and_vulkan_machine(), Cuda, "cublas64_13.dll");
+        let plan = resolve(&AccelConfig::default(), &machine).unwrap();
+        assert_eq!(backends(&plan), [Vulkan, Cpu]);
+        assert_eq!(
+            plan.skipped.first(),
+            Some(&AccelAttempt {
+                backend: Cuda,
+                outcome: AttemptOutcome::Unavailable(UnavailableReason::RuntimeLibraryMissing {
+                    library: "cublas64_13.dll".to_owned()
+                }),
+            })
+        );
+    }
+
+    #[test]
+    fn forced_backend_with_a_missing_runtime_library_is_an_error_despite_its_device() {
+        let machine = without_runtime(cuda_and_vulkan_machine(), Cuda, "cublas64_13.dll");
+        let result = resolve(&AccelConfig::forced(Cuda, false), &machine);
+        assert!(matches!(
+            result,
+            Err(AccelerationError::Unavailable {
+                backend: Cuda,
+                reason: UnavailableReason::RuntimeLibraryMissing { .. },
+            })
+        ));
+    }
+
+    #[test]
+    fn forced_backend_with_a_missing_runtime_library_falls_through_when_allowed() {
+        let machine = without_runtime(cuda_and_vulkan_machine(), Cuda, "cublas64_13.dll");
+        let plan = resolve(&AccelConfig::forced(Cuda, true), &machine).unwrap();
+        assert_eq!(backends(&plan), [Vulkan, Cpu]);
+    }
+
+    #[test]
     fn forced_unavailable_backend_with_fallback_falls_through() {
         let plan = resolve(
             &AccelConfig::forced(Metal, true),
@@ -301,6 +354,7 @@ mod tests {
         let inventory = Inventory {
             devices: vec![device(0, Cpu, DeviceType::Cpu)],
             build: HashMap::new(),
+            missing_runtime: HashMap::new(),
         };
         let result = resolve(&AccelConfig::forced(Hip, false), &inventory);
         assert!(matches!(

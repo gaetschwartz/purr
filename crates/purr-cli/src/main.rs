@@ -361,6 +361,11 @@ async fn handle_sys_command(_verbosity: Verbosity) -> miette::Result<()> {
     fn feature_status(feature: &FeatureStatus) -> String {
         match feature {
             FeatureStatus::Disabled => "Not built".yellow().to_string(),
+            FeatureStatus::RuntimeLibraryMissing { library } => {
+                format!("Built, but the runtime library {library} cannot be loaded")
+                    .red()
+                    .to_string()
+            }
             FeatureStatus::EnabledButNotAvailable => {
                 "Built, but no usable device".red().to_string()
             }

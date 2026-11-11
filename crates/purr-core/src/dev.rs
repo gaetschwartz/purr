@@ -45,6 +45,9 @@ impl SystemInfo {
                 .map(|backend| {
                     let status = match locate(*backend, &inventory) {
                         Ok(_) => FeatureStatus::Available(None),
+                        Err(UnavailableReason::RuntimeLibraryMissing { library }) => {
+                            FeatureStatus::RuntimeLibraryMissing { library }
+                        }
                         Err(UnavailableReason::NoDevice) => FeatureStatus::EnabledButNotAvailable,
                         Err(
                             UnavailableReason::NotBuilt | UnavailableReason::NotBuiltOrNoDevice,
@@ -62,6 +65,7 @@ impl SystemInfo {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 pub enum FeatureStatus {
     Disabled,
+    RuntimeLibraryMissing { library: String },
     EnabledButNotAvailable,
     Available(Option<u16>),
 }
