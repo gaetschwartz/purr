@@ -44,7 +44,7 @@ impl Transcript {
         }
     }
 
-    /// The non-empty segments: the final list once known, otherwise the live ones in order.
+    /// The spoken segments: the final list once known, otherwise the live ones in order.
     #[must_use]
     pub fn segments(&self) -> Vec<TranscriptSegment> {
         let source: Vec<&TranscriptSegment> = self.settled.as_ref().map_or_else(
@@ -53,7 +53,7 @@ impl Transcript {
         );
         source
             .into_iter()
-            .filter(|segment| !segment.text.trim().is_empty())
+            .filter(|segment| is_spoken(&segment.text))
             .cloned()
             .collect()
     }
@@ -67,6 +67,21 @@ impl Transcript {
             .collect::<Vec<_>>()
             .join(" ")
     }
+}
+
+/// Whether a segment holds words, rather than nothing or a Whisper marker such as `[BLANK_AUDIO]`.
+fn is_spoken(text: &str) -> bool {
+    let text = text.trim();
+    let marker = text
+        .strip_prefix('[')
+        .and_then(|inner| inner.strip_suffix(']'))
+        .is_some_and(|inner| {
+            !inner.trim().is_empty()
+                && inner
+                    .chars()
+                    .all(|c| c.is_ascii_uppercase() || c == '_' || c == ' ')
+        });
+    !text.is_empty() && !marker
 }
 
 #[cfg(test)]
@@ -122,6 +137,26 @@ mod tests {
         let mut transcript = Transcript::default();
         transcript.apply(&in_progress(0, "  ", 0.0, 1.0));
         assert_eq!(transcript.segments(), Vec::<TranscriptSegment>::new());
+    }
+
+    #[test]
+    fn whisper_silence_markers_are_not_speech() {
+        let mut transcript = Transcript::default();
+        transcript.apply(&TranscriptionStatus::Segments {
+            segments: vec![
+                segment(" [BLANK_AUDIO]", 0.0, 1.0),
+                segment(" [MUSIC PLAYING]", 1.0, 2.0),
+                segment(" [Applause] thank you", 2.0, 3.0),
+                segment(" [ ]", 3.0, 4.0),
+            ],
+        });
+        assert_eq!(
+            transcript.segments(),
+            vec![
+                segment(" [Applause] thank you", 2.0, 3.0),
+                segment(" [ ]", 3.0, 4.0),
+            ]
+        );
     }
 
     #[test]
