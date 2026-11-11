@@ -25,8 +25,14 @@ pub mod stepper;
 pub mod switch;
 pub mod toast;
 
+pub mod model_download;
+pub mod model_filters;
 pub mod model_loading;
+pub mod model_meters;
 pub mod model_picker;
+pub mod model_row;
+pub mod model_section;
+pub mod model_stats;
 pub mod transcript_panel;
 pub mod transcription_display;
 pub mod upload_zone;
