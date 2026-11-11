@@ -53,6 +53,7 @@
 .dl-offer{padding:10px 10px 4px}
 ol.stages,ol.live{list-style:none;margin:0;padding:0}
 .ellipsis{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.player .wave{gap:min(2px,.45%)} .player .wave i{min-width:0}
 .wave:focus-visible{outline:2.5px solid var(--accent-text);outline-offset:4px;border-radius:6px}
 
 /* ---------- Transcribing ---------- */
