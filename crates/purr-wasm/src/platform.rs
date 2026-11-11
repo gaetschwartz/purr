@@ -1,7 +1,7 @@
 //! Web platform implementation of the Platform trait
 
 use crate::audio;
-use crate::error::{WebError, WebResult};
+use crate::error::{IntegrityError, WebError, WebResult};
 use crate::history_store;
 use crate::local::run_local;
 use crate::model::WebModelManager;
@@ -10,6 +10,7 @@ use crate::model_info::model_info;
 use crate::protocol::{WorkerModel, WorkerRequest};
 use crate::status_mapper::{PreloadMapper, PreloadStep, TranscriptionMapper};
 use crate::storage::WebStorage;
+use crate::storage_space;
 use crate::worker_client::WorkerClient;
 use bytes::Bytes;
 use futures::StreamExt as _;
@@ -138,6 +139,37 @@ fn verification_failure_kind(error: &WebError) -> ModelFailureKind {
     } else {
         ModelFailureKind::Other
     }
+}
+
+/// Why a freshly downloaded model failed its check: a file missing because the site ran out of
+/// storage is reported as such, since the browser's cache drops writes over quota silently.
+async fn downloaded_check_failure(
+    spec: &WebModelSpec,
+    error: &WebError,
+) -> (String, ModelFailureKind) {
+    if matches!(error, WebError::Integrity(IntegrityError::Missing { .. })) {
+        match storage_space::estimate().await {
+            Ok(space) if space.free() < spec.total_size_bytes() => {
+                return (
+                    format!(
+                        "The browser has no room left for this model: it needs {:.1} MiB and this site has {:.1} MiB free. Remove other models or free up disk space, then try again.",
+                        mebibytes(spec.total_size_bytes()),
+                        mebibytes(space.free())
+                    ),
+                    ModelFailureKind::Other,
+                );
+            }
+            Ok(_) => {}
+            Err(estimate_error) => {
+                tracing::warn!("Could not read how much storage is left: {estimate_error}");
+            }
+        }
+    }
+    (error.to_string(), verification_failure_kind(error))
+}
+
+fn mebibytes(bytes: u64) -> f64 {
+    bytes as f64 / 1_048_576.0
 }
 
 fn download_failure_kind() -> ModelFailureKind {
@@ -339,6 +371,7 @@ async fn run_preload(
                     PreloadStep::Progress(progress) => Ok(progress),
                     PreloadStep::Ignored => continue,
                     PreloadStep::Failed(message) => {
+                        worker.release_idle();
                         Ok(fail("download", message, download_failure_kind()))
                     }
                     PreloadStep::Loaded => {
@@ -361,11 +394,8 @@ async fn run_preload(
                             }),
                             Err(error) => {
                                 worker.release_idle();
-                                Ok(fail(
-                                    "verification",
-                                    error.to_string(),
-                                    verification_failure_kind(&error),
-                                ))
+                                let (message, kind) = downloaded_check_failure(&spec, &error).await;
+                                Ok(fail("verification", message, kind))
                             }
                         }
                     }

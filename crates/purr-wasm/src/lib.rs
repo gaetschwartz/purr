@@ -19,6 +19,7 @@ pub mod platform;
 pub mod protocol;
 pub mod status_mapper;
 pub mod storage;
+pub mod storage_space;
 pub mod worker_client;
 
 static WORKER_SCRIPT: Asset = asset!(
