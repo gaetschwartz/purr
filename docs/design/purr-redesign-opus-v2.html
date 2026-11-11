@@ -1,0 +1,1849 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Purr: redesign proposal v2 (Opus 5.5)</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: a framed app window (container-queried) floating over a calm page; demo controls live outside the frame. */
+:root{
+  --font:-apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro Display",Inter,"Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;
+  --font-display:-apple-system,BlinkMacSystemFont,"SF Pro Display",Inter,"Segoe UI Variable Display","Segoe UI",system-ui,sans-serif;
+
+  --page:#E6E8F0;
+  --page-fg:#16171F;
+  --base:#EDEFF6;
+  --blob-1:#7C7DFF;
+  --blob-2:#C9A2FF;
+  --blob-3:#86D9EA;
+  --blob-4:#FFC9AE;
+  --blob-alpha:.62;
+
+  --fg:#16171F;
+  --fg-2:#4D4E60;
+  --fg-3:#5C5D6F;
+  --fg-4:#8C8D9D;
+  --accent:#4B4FE0;
+  --accent-hover:#3F43D0;
+  --accent-text:#3E42CC;
+  --accent-on:#FFFFFF;
+  --accent-soft:rgba(75,79,224,.12);
+  --accent-soft-2:rgba(75,79,224,.20);
+  --success:#1B7F47;
+  --success-soft:rgba(39,170,94,.14);
+  --warning:#965500;
+  --warning-soft:rgba(240,150,20,.16);
+  --danger:#C8263A;
+  --danger-soft:rgba(222,46,66,.12);
+  --mark:rgba(255,196,0,.42);
+
+  --glass-1:rgba(255,255,255,.56);
+  --glass-2:rgba(255,255,255,.68);
+  --glass-3:rgba(251,251,255,.84);
+  --solid-1:#F3F4F9;
+  --solid-2:#FFFFFF;
+  --solid-3:#FFFFFF;
+  --row:rgba(255,255,255,.0);
+  --fill:rgba(118,120,150,.12);
+  --fill-2:rgba(118,120,150,.18);
+  --fill-hover:rgba(118,120,150,.10);
+  --switch-off:rgba(118,120,150,.30);
+  --switch-on:#2FB45A;
+  --seg-on:#FFFFFF;
+  --edge:rgba(255,255,255,.78);
+  --edge-low:rgba(255,255,255,.30);
+  --hairline:rgba(22,24,46,.08);
+  --separator:rgba(22,24,46,.10);
+  --spec:inset 0 1px 0 rgba(255,255,255,.85);
+  --shadow-1:0 1px 2px rgba(24,26,60,.05),0 6px 20px -8px rgba(24,26,60,.14);
+  --shadow-2:0 2px 6px rgba(24,26,60,.06),0 18px 48px -18px rgba(24,26,60,.26);
+  --shadow-3:0 4px 12px rgba(24,26,60,.08),0 30px 80px -24px rgba(24,26,60,.38);
+  --scrim:rgba(20,22,40,.24);
+  --blur:28px;
+  --sat:180%;
+
+  --r-window:28px;
+  --r-panel:20px;
+  --r-card:22px;
+  --r-inner:14px;
+  --r-control:10px;
+  --ease-spring:cubic-bezier(.32,1.28,.54,1);
+  --ease-out:cubic-bezier(.2,.8,.2,1);
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --page:#06070C;--page-fg:#F2F3FA;--base:#0B0D18;
+  --blob-1:#4A46D8;--blob-2:#7C45C9;--blob-3:#0F6E83;--blob-4:#9A4A70;--blob-alpha:.55;
+  --fg:#F2F3FA;--fg-2:#B5B7CA;--fg-3:#9799AF;--fg-4:#6C6E84;
+  --accent:#5D60F0;--accent-hover:#6E71F5;--accent-text:#A9AAFF;--accent-on:#FFFFFF;
+  --accent-soft:rgba(125,127,255,.18);--accent-soft-2:rgba(125,127,255,.28);
+  --success:#5BD38C;--success-soft:rgba(70,200,120,.16);--warning:#F5B44A;--warning-soft:rgba(245,170,50,.16);
+  --danger:#FF7383;--danger-soft:rgba(255,90,110,.16);--mark:rgba(255,200,40,.34);
+  --glass-1:rgba(26,28,44,.56);--glass-2:rgba(32,34,52,.62);--glass-3:rgba(36,38,58,.82);
+  --solid-1:#141627;--solid-2:#1B1D31;--solid-3:#222439;
+  --fill:rgba(140,142,180,.16);--fill-2:rgba(140,142,180,.24);--fill-hover:rgba(140,142,180,.12);--switch-off:rgba(140,142,180,.34);--switch-on:#34C468;--seg-on:#5A5C74;
+  --edge:rgba(255,255,255,.14);--edge-low:rgba(255,255,255,.06);--hairline:rgba(255,255,255,.07);--separator:rgba(255,255,255,.09);
+  --spec:inset 0 1px 0 rgba(255,255,255,.08);
+  --shadow-1:0 1px 2px rgba(0,0,0,.3),0 8px 24px -10px rgba(0,0,0,.5);
+  --shadow-2:0 2px 6px rgba(0,0,0,.3),0 20px 50px -18px rgba(0,0,0,.6);
+  --shadow-3:0 4px 12px rgba(0,0,0,.35),0 30px 80px -20px rgba(0,0,0,.7);
+  --scrim:rgba(0,0,0,.45);
+  color-scheme:dark}}
+:root[data-theme="dark"]{
+  --page:#06070C;--page-fg:#F2F3FA;--base:#0B0D18;
+  --blob-1:#4A46D8;--blob-2:#7C45C9;--blob-3:#0F6E83;--blob-4:#9A4A70;--blob-alpha:.55;
+  --fg:#F2F3FA;--fg-2:#B5B7CA;--fg-3:#9799AF;--fg-4:#6C6E84;
+  --accent:#5D60F0;--accent-hover:#6E71F5;--accent-text:#A9AAFF;--accent-on:#FFFFFF;
+  --accent-soft:rgba(125,127,255,.18);--accent-soft-2:rgba(125,127,255,.28);
+  --success:#5BD38C;--success-soft:rgba(70,200,120,.16);--warning:#F5B44A;--warning-soft:rgba(245,170,50,.16);
+  --danger:#FF7383;--danger-soft:rgba(255,90,110,.16);--mark:rgba(255,200,40,.34);
+  --glass-1:rgba(26,28,44,.56);--glass-2:rgba(32,34,52,.62);--glass-3:rgba(36,38,58,.82);
+  --solid-1:#141627;--solid-2:#1B1D31;--solid-3:#222439;
+  --fill:rgba(140,142,180,.16);--fill-2:rgba(140,142,180,.24);--fill-hover:rgba(140,142,180,.12);--switch-off:rgba(140,142,180,.34);--switch-on:#34C468;--seg-on:#5A5C74;
+  --edge:rgba(255,255,255,.14);--edge-low:rgba(255,255,255,.06);--hairline:rgba(255,255,255,.07);--separator:rgba(255,255,255,.09);
+  --spec:inset 0 1px 0 rgba(255,255,255,.08);
+  --shadow-1:0 1px 2px rgba(0,0,0,.3),0 8px 24px -10px rgba(0,0,0,.5);
+  --shadow-2:0 2px 6px rgba(0,0,0,.3),0 20px 50px -18px rgba(0,0,0,.6);
+  --shadow-3:0 4px 12px rgba(0,0,0,.35),0 30px 80px -20px rgba(0,0,0,.7);
+  --scrim:rgba(0,0,0,.45);
+  color-scheme:dark}
+
+/* Reduced transparency: in-app switch, OS preference, or no backdrop-filter support */
+.rt .app{--glass-1:var(--solid-1);--glass-2:var(--solid-2);--glass-3:var(--solid-3);--blob-alpha:0}
+@media (prefers-reduced-transparency:reduce){.app{--glass-1:var(--solid-1);--glass-2:var(--solid-2);--glass-3:var(--solid-3);--blob-alpha:0}}
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){.app{--glass-1:var(--solid-1);--glass-2:var(--solid-2);--glass-3:var(--solid-3)}}
+
+*,*::before,*::after{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{background:var(--page);color:var(--page-fg);font-family:var(--font);font-size:15px;line-height:1.45;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:0}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer;background:none;border:0;padding:0}
+svg.i{width:20px;height:20px;flex:none;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+svg.i.sm{width:16px;height:16px}
+svg.i.lg{width:28px;height:28px;stroke-width:1.5}
+svg.i.xl{width:40px;height:40px;stroke-width:1.3}
+.tnum{font-variant-numeric:tabular-nums}
+.sr{position:absolute!important;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+h1[tabindex="-1"]:focus{outline:none}
+:focus-visible{outline:2.5px solid var(--accent);outline-offset:2px;border-radius:8px}
+.app :focus-visible{outline-color:var(--accent-text)}
+
+/* ---------- Outer page ---------- */
+.page-head{display:flex;align-items:center;gap:16px;flex-wrap:wrap;max-width:1440px;margin:0 auto;padding-block:14px 12px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:600;letter-spacing:-.01em}
+.brand small{display:block;font-weight:400;font-size:12px;color:var(--fg-3)}
+.page-head .spacer{flex:1}
+.stage{max-width:1440px;margin:0 auto;padding-block:0 32px;display:flex;justify-content:center}
+.frame{width:100%;max-width:100%;height:clamp(600px,calc(100vh - 92px),920px);transition:width .5s var(--ease-out),height .5s var(--ease-out)}
+.frame[data-vp="desktop"]{width:1280px;height:820px}
+.frame[data-vp="tablet"]{width:820px;height:1000px}
+.frame[data-vp="phone"]{width:390px;height:820px}
+.frame[data-vp="phone"] .app{border-radius:46px;box-shadow:0 0 0 10px #15161c,0 0 0 11px #2a2b33,var(--shadow-3)}
+@media (max-width:560px){.frame,.frame[data-vp]{height:calc(100vh - 118px);min-height:560px}}
+
+/* ---------- App window ---------- */
+.app{position:relative;height:100%;border-radius:var(--r-window);overflow:hidden;container-type:inline-size;container-name:app;background:var(--base);color:var(--fg);
+  box-shadow:var(--shadow-3),0 0 0 1px var(--hairline);isolation:isolate}
+.ambient{position:absolute;inset:-10%;z-index:0;pointer-events:none;opacity:var(--blob-alpha);transition:opacity .4s}
+.blob{position:absolute;border-radius:50%;filter:blur(70px);will-change:transform}
+.b1{width:46%;height:52%;left:6%;top:4%;background:var(--blob-1);animation:drift1 38s ease-in-out infinite alternate}
+.b2{width:40%;height:46%;right:4%;top:10%;background:var(--blob-2);animation:drift2 44s ease-in-out infinite alternate}
+.b3{width:44%;height:42%;left:30%;bottom:2%;background:var(--blob-3);animation:drift3 52s ease-in-out infinite alternate}
+.b4{width:30%;height:32%;right:10%;bottom:10%;background:var(--blob-4);animation:drift1 60s ease-in-out infinite alternate-reverse}
+@keyframes drift1{to{transform:translate(12%,10%) scale(1.08)}}
+@keyframes drift2{to{transform:translate(-14%,12%) scale(.94)}}
+@keyframes drift3{to{transform:translate(10%,-12%) scale(1.06)}}
+
+.glass{background:var(--glass-2);-webkit-backdrop-filter:blur(var(--blur)) saturate(var(--sat));backdrop-filter:blur(var(--blur)) saturate(var(--sat));
+  border:1px solid var(--edge-low);box-shadow:var(--spec),var(--shadow-1);position:relative}
+.glass::before{content:"";position:absolute;inset:-1px;border-radius:inherit;padding:1px;pointer-events:none;
+  background:linear-gradient(180deg,var(--edge),transparent 42%,transparent 70%,var(--edge-low));
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude}
+.g1{background:var(--glass-1)} .g3{background:var(--glass-3);box-shadow:var(--spec),var(--shadow-3)}
+.rt .glass{-webkit-backdrop-filter:none;backdrop-filter:none}
+.rt .glass::before{display:none}
+.rt .glass{border-color:var(--separator)}
+
+.shell{position:relative;z-index:1;display:grid;grid-template-columns:248px minmax(0,1fr);height:100%}
+.sidebar{margin:10px 0 10px 10px;border-radius:calc(var(--r-window) - 10px);display:flex;flex-direction:column;padding:14px 10px 10px;gap:2px;background:var(--glass-1);min-height:0}
+.side-brand{display:flex;align-items:center;gap:10px;padding:4px 8px 16px}
+.side-brand b{font-family:var(--font-display);font-size:17px;letter-spacing:-.02em;font-weight:650}
+.nav-label{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--fg-3);padding:14px 10px 6px}
+.nav-item{display:flex;align-items:center;gap:10px;height:36px;padding:0 10px;border-radius:10px;color:var(--fg);font-size:14px;font-weight:500;width:100%;text-align:left;transition:background .2s}
+.nav-item svg{color:var(--fg-2)}
+.nav-item:hover{background:var(--fill-hover)}
+.nav-item[aria-current="page"]{background:var(--accent-soft-2);color:var(--accent-text)}
+.nav-item[aria-current="page"] svg{color:var(--accent-text)}
+.nav-item .count{margin-left:auto;font-size:12px;color:var(--fg-3);font-weight:500}
+.side-foot{margin-top:auto;display:flex;flex-direction:column;gap:2px}
+.privacy-pill{display:flex;gap:10px;align-items:flex-start;padding:10px;border-radius:12px;background:var(--fill-hover);font-size:12px;color:var(--fg-2);line-height:1.4;margin-top:8px;text-align:left;width:100%}
+.privacy-pill svg{color:var(--success);margin-top:1px}
+.privacy-pill b{display:block;color:var(--fg);font-weight:600;font-size:12.5px}
+
+.main{position:relative;min-width:0;min-height:0;display:flex;flex-direction:column}
+.scroller{scrollbar-width:thin;flex:1;overflow-y:auto;overflow-x:hidden;min-height:0;scroll-behavior:smooth;overscroll-behavior:contain}
+.content{max-width:880px;margin:0 auto;padding:28px 32px 48px;display:flex;flex-direction:column;gap:20px}
+.content.wide{max-width:1040px}
+.topbar{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap}
+.topbar .titles{flex:1;min-width:0}
+h1.lt{font-family:var(--font-display);font-size:30px;line-height:36px;font-weight:700;letter-spacing:-.025em;margin:0;text-wrap:balance}
+.sub{color:var(--fg-2);font-size:14px;margin:4px 0 0}
+h2.t2{font-family:var(--font-display);font-size:20px;line-height:26px;font-weight:650;letter-spacing:-.015em;margin:0}
+.t3{font-size:16px;line-height:22px;font-weight:600;margin:0;letter-spacing:-.01em}
+.muted{color:var(--fg-2)} .faint{color:var(--fg-3)}
+.foot{font-size:12.5px;color:var(--fg-3);line-height:1.45}
+
+.tabbar{display:none}
+.saved{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--fg-2);opacity:0;transition:opacity .3s}
+.saved.on{opacity:1}
+.saved svg{color:var(--success)}
+
+/* ---------- Generic components ---------- */
+.card{border-radius:var(--r-card);padding:20px}
+.card.tight{padding:0;overflow:hidden}
+.row{display:flex;align-items:center;gap:12px}
+.wrap{flex-wrap:wrap}
+.grow{flex:1;min-width:0}
+.stack{display:flex;flex-direction:column;gap:12px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:36px;padding:0 16px;border-radius:999px;font-size:14px;font-weight:600;white-space:nowrap;
+  transition:transform .35s var(--ease-spring),background .2s,box-shadow .2s;background:var(--fill);color:var(--fg)}
+.btn:hover{background:var(--fill-2)}
+.btn:active{transform:scale(.96)}
+.btn.primary{background:var(--accent);color:var(--accent-on);box-shadow:0 1px 0 rgba(255,255,255,.25) inset,0 6px 16px -6px var(--accent)}
+.btn.primary:hover{background:var(--accent-hover)}
+.btn.lg{height:44px;padding:0 22px;font-size:15px}
+.btn.sm{height:30px;padding:0 12px;font-size:13px}
+.btn.plain{background:none;color:var(--accent-text);padding:0 8px}
+.btn.plain:hover{background:var(--accent-soft)}
+.btn.danger{color:var(--danger)}
+.btn.danger.solid{background:var(--danger);color:#fff}
+.btn[disabled],.btn[aria-disabled="true"]{opacity:.45;pointer-events:none}
+.icon-btn{width:34px;height:34px;border-radius:50%;display:inline-grid;place-items:center;color:var(--fg-2);transition:background .2s,transform .35s var(--ease-spring)}
+.icon-btn:hover{background:var(--fill)}
+.icon-btn:active{transform:scale(.92)}
+.chip{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 9px;border-radius:999px;font-size:12px;font-weight:500;background:var(--fill);color:var(--fg-2);white-space:nowrap}
+.chip.accent{background:var(--accent-soft);color:var(--accent-text)}
+.chip.ok{background:var(--success-soft);color:var(--success)}
+.chip.warn{background:var(--warning-soft);color:var(--warning)}
+.chip.bad{background:var(--danger-soft);color:var(--danger)}
+.chip svg{width:13px;height:13px}
+
+/* Picker pills */
+.pill{display:inline-flex;align-items:center;gap:10px;min-height:44px;padding:6px 12px 6px 8px;border-radius:999px;background:var(--fill);text-align:left;transition:background .2s,transform .35s var(--ease-spring);max-width:100%}
+.pill:hover{background:var(--fill-2)}
+.pill:active{transform:scale(.98)}
+.pill .ico{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;background:var(--accent-soft);color:var(--accent-text);flex:none}
+.pill .lbl{font-size:11px;color:var(--fg-3);font-weight:500;line-height:1.2;display:block}
+.pill .val{font-size:14px;font-weight:600;line-height:1.25;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pill .chev{color:var(--fg-3);margin-left:2px}
+
+/* Switch */
+.switch{width:51px;height:31px;border-radius:999px;background:var(--switch-off);position:relative;flex:none;transition:background .25s}
+.switch::after{content:"";position:absolute;top:2px;left:2px;width:27px;height:27px;border-radius:50%;background:#fff;box-shadow:0 2px 6px rgba(0,0,0,.18),0 0 0 .5px rgba(0,0,0,.04);transition:transform .4s var(--ease-spring),width .2s}
+.switch:active::after{width:31px}
+.switch[aria-checked="true"]{background:var(--switch-on)}
+.switch[aria-checked="true"]::after{transform:translateX(20px)}
+.switch[aria-checked="true"]:active::after{transform:translateX(16px)}
+.switch[disabled]{opacity:.4;pointer-events:none}
+
+/* Segmented control */
+.seg{display:inline-flex;padding:2px;border-radius:10px;background:var(--fill);position:relative;gap:0;max-width:100%;overflow-x:auto;scrollbar-width:none}
+.seg button{height:28px;padding:0 12px;border-radius:8px;font-size:13px;font-weight:500;color:var(--fg);white-space:nowrap;display:inline-flex;align-items:center;gap:6px;transition:background .25s,box-shadow .25s}
+.seg button[aria-checked="true"]{background:var(--seg-on);box-shadow:0 1px 3px rgba(0,0,0,.12),0 0 0 .5px rgba(0,0,0,.04);font-weight:600}
+.seg.full{display:flex}.seg.full button{flex:1;justify-content:center}
+
+/* Stepper */
+.stepper{display:inline-flex;align-items:center;border-radius:10px;background:var(--fill);height:32px}
+.stepper button{width:36px;height:32px;display:grid;place-items:center;color:var(--fg)}
+.stepper button:hover{background:var(--fill)}
+.stepper button:first-child{border-radius:10px 0 0 10px}.stepper button:last-child{border-radius:0 10px 10px 0}
+.stepper output{min-width:44px;text-align:center;font-weight:600;font-size:14px;border-inline:1px solid var(--separator);line-height:20px}
+
+/* Slider */
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:28px;background:transparent;--p:50%}
+input[type=range]::-webkit-slider-runnable-track{height:5px;border-radius:9px;background:linear-gradient(90deg,var(--accent) var(--p),var(--switch-off) var(--p))}
+input[type=range]::-moz-range-track{height:5px;border-radius:9px;background:linear-gradient(90deg,var(--accent) var(--p),var(--switch-off) var(--p))}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:24px;height:24px;border-radius:50%;background:#fff;margin-top:-9.5px;box-shadow:0 2px 6px rgba(0,0,0,.2),0 0 0 .5px rgba(0,0,0,.06)}
+input[type=range]::-moz-range-thumb{width:24px;height:24px;border:0;border-radius:50%;background:#fff;box-shadow:0 2px 6px rgba(0,0,0,.2)}
+
+/* Select (Apple pop-up button) */
+.select{position:relative;display:inline-flex;align-items:center}
+.select select{-webkit-appearance:none;appearance:none;background:var(--fill);border:0;border-radius:9px;height:32px;padding:0 30px 0 12px;font-size:14px;font-weight:500;color:var(--fg);max-width:100%}
+.select svg{position:absolute;right:8px;pointer-events:none;color:var(--fg-3)}
+.select select option{background:var(--solid-2);color:var(--fg)}
+
+/* Text field */
+.field{display:flex;align-items:center;gap:8px;height:36px;padding:0 12px;border-radius:10px;background:var(--fill);color:var(--fg-3);min-width:0}
+.field input{border:0;background:none;outline:none;flex:1;min-width:0;font-size:14px;color:var(--fg)}
+.field input:focus-visible{outline:none}
+.field input::placeholder{color:var(--fg-3)}
+.field:focus-within{box-shadow:0 0 0 2.5px var(--accent-soft-2),0 0 0 1px var(--accent) inset}
+.text-input{width:100%;height:40px;border-radius:10px;border:0;background:var(--fill);padding:0 12px;font-size:15px}
+
+/* Grouped inset lists */
+.group-h{font-size:12px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--fg-3);margin:0 0 8px 16px}
+.group{border-radius:var(--r-panel);overflow:hidden}
+.group>.item+.item{box-shadow:inset 0 1px 0 var(--separator)}
+.item{display:flex;align-items:center;gap:14px;min-height:52px;padding:10px 16px;width:100%;text-align:left}
+button.item:hover,a.item:hover{background:var(--fill-hover)}
+.item .ic{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;flex:none;color:#fff}
+.item .ic svg{width:17px;height:17px;stroke-width:1.9}
+.item .txt{flex:1;min-width:0}
+.item .txt b{font-weight:500;font-size:15px;display:block}
+.item .txt span{display:block;font-size:13px;color:var(--fg-2);margin-top:1px}
+.item .val{color:var(--fg-2);font-size:14px;display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
+.group-f{font-size:12.5px;color:var(--fg-3);margin:8px 16px 0;line-height:1.45}
+.ic.indigo{background:#5856D6}.ic.blue{background:#0A7AFF}.ic.teal{background:#0E9AA7}.ic.orange{background:#E97A10}.ic.green{background:#2AA556}.ic.gray{background:#7C7E8C}.ic.pink{background:#D9416C}.ic.purple{background:#9150D8}.ic.red{background:#E0383E}
+
+/* Progress */
+.bar{height:6px;border-radius:9px;background:var(--fill-2);overflow:hidden}
+.bar>i{display:block;height:100%;border-radius:inherit;background:var(--accent);transition:width .5s var(--ease-out)}
+.bar.thin{height:4px}
+.bar.indet>i{width:35%!important;animation:indet 1.4s ease-in-out infinite}
+@keyframes indet{0%{transform:translateX(-100%)}100%{transform:translateX(300%)}}
+.spinner{width:16px;height:16px;border-radius:50%;border:2px solid var(--accent-soft-2);border-top-color:var(--accent-text);animation:spin .8s linear infinite;flex:none}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* Banners */
+.banner{display:flex;gap:12px;align-items:flex-start;padding:14px 16px;border-radius:16px;font-size:14px}
+.banner svg{flex:none;margin-top:1px}
+.banner b{display:block;font-weight:600;color:var(--fg)}
+.banner p{margin:2px 0 0;color:var(--fg-2)}
+.banner .acts{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+.banner.info{background:var(--accent-soft)} .banner.info>svg{color:var(--accent-text)}
+.banner.warn{background:var(--warning-soft)} .banner.warn>svg{color:var(--warning)}
+.banner.bad{background:var(--danger-soft)} .banner.bad>svg{color:var(--danger)}
+.banner.ok{background:var(--success-soft)} .banner.ok>svg{color:var(--success)}
+
+/* ---------- Transcribe / home ---------- */
+.drop{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;text-align:center;width:100%;min-height:280px;border-radius:var(--r-card);padding:32px 24px;
+  transition:transform .4s var(--ease-spring),background .25s,box-shadow .25s}
+.drop .well{position:absolute;inset:10px;border-radius:calc(var(--r-card) - 10px);border:1.5px dashed var(--separator);pointer-events:none;transition:border-color .25s,background .25s}
+.drop:hover .well{border-color:var(--accent-soft-2)}
+.drop.over{transform:scale(1.012)}
+.drop.over .well{border-color:var(--accent);background:var(--accent-soft)}
+.drop .halo{width:64px;height:64px;border-radius:20px;display:grid;place-items:center;background:var(--accent-soft);color:var(--accent-text);transition:transform .5s var(--ease-spring)}
+.drop.over .halo,.drop:hover .halo{transform:translateY(-3px)}
+.drop h2{font-family:var(--font-display);font-size:22px;font-weight:650;letter-spacing:-.02em;margin:4px 0 0}
+.drop p{margin:0;color:var(--fg-2);font-size:14px}
+.drop .formats{font-size:12px;color:var(--fg-3)}
+.runbar{display:flex;align-items:center;gap:8px;padding:8px;border-radius:999px;flex-wrap:wrap}
+.runbar .rb-spacer{flex:1;min-width:8px}
+.privacy-line{display:flex;align-items:center;justify-content:center;gap:8px;font-size:13px;color:var(--fg-2)}
+.privacy-line svg{color:var(--success)}
+.filecard{display:flex;align-items:center;gap:16px;padding:16px;border-radius:var(--r-card)}
+.fileicon{width:52px;height:52px;border-radius:14px;display:grid;place-items:center;background:linear-gradient(160deg,#7173F5,#4B4FE0);color:#fff;flex:none;box-shadow:0 6px 14px -6px #4B4FE0}
+.fileicon.bad{background:linear-gradient(160deg,#F06A7A,#C8263A);box-shadow:0 6px 14px -6px #C8263A}
+.filecard .name{font-weight:600;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.filecard .meta{font-size:13px;color:var(--fg-2)}
+.recent{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.recent button{border-radius:18px;padding:14px;text-align:left;display:flex;flex-direction:column;gap:6px;transition:transform .35s var(--ease-spring)}
+.recent button:hover{transform:translateY(-2px)}
+.recent .nm{font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.recent .pv{font-size:13px;color:var(--fg-2);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.recent .mt{font-size:12px;color:var(--fg-3)}
+
+.welcome{display:grid;grid-template-columns:1.1fr 1fr;gap:28px;align-items:center;padding:32px}
+.welcome h2{font-family:var(--font-display);font-size:28px;line-height:1.15;letter-spacing:-.025em;font-weight:700;margin:16px 0 10px;text-wrap:balance}
+.welcome p{margin:0;color:var(--fg-2)}
+.welcome ul{list-style:none;padding:0;margin:18px 0 0;display:flex;flex-direction:column;gap:10px;font-size:14px;color:var(--fg-2)}
+.welcome li{display:flex;gap:10px;align-items:flex-start}
+.welcome li svg{color:var(--accent-text);margin-top:1px}
+.reco{border-radius:18px;padding:18px;background:var(--glass-3);box-shadow:var(--shadow-1);border:1px solid var(--edge-low);display:flex;flex-direction:column;gap:12px}
+.reco .top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+.reco .nm{font-weight:650;font-size:17px;letter-spacing:-.01em}
+.meters{display:flex;gap:18px;font-size:12px;color:var(--fg-2)}
+.meter{display:flex;align-items:center;gap:6px}
+.dots{display:inline-flex;gap:3px}
+.dots i{width:6px;height:6px;border-radius:50%;background:var(--fill-2)}
+.dots i.on{background:var(--accent-text)}
+
+/* ---------- Transcribing ---------- */
+.stages{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:4px 0 2px}
+.stg{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:14px;background:var(--fill-hover);font-size:13.5px;color:var(--fg-3);min-width:0}
+.stg b{display:block;font-weight:600;color:inherit;font-size:13.5px}
+.stg .ss{display:block;font-size:12px;color:var(--fg-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.stg .dot{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;flex:none;background:var(--fill-2);color:var(--fg-3)}
+.stg.done{color:var(--fg)} .stg.done .dot{background:var(--success);color:#fff}
+.stg.active{color:var(--fg);background:var(--accent-soft)} .stg.active .dot{background:transparent}
+.stats{display:flex;gap:28px;flex-wrap:wrap}
+.stat .k{font-size:12px;color:var(--fg-3);font-weight:500}
+.stat .v{font-size:20px;font-weight:650;letter-spacing:-.01em;font-variant-numeric:tabular-nums}
+.live{display:flex;flex-direction:column;gap:2px}
+.seg-row{display:grid;grid-template-columns:64px minmax(0,1fr);gap:12px;padding:8px 10px;border-radius:12px;text-align:left;width:100%;transition:background .2s}
+.seg-row .ts{font-size:13px;color:var(--fg-3);font-variant-numeric:tabular-nums;padding-top:2px;font-weight:500}
+.seg-row .tx{font-size:15.5px;line-height:1.55;color:var(--fg)}
+.seg-row.new{animation:rise .6s var(--ease-out)}
+@keyframes rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.caret{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--accent-text);margin-left:6px;animation:pulse 1.2s ease-in-out infinite;vertical-align:middle}
+@keyframes pulse{50%{opacity:.25;transform:scale(.7)}}
+button.seg-row:hover{background:var(--fill-hover)}
+.seg-row.playing{background:var(--accent-soft)}
+.seg-row.playing .ts{color:var(--accent-text)}
+.no-ts .seg-row{grid-template-columns:minmax(0,1fr)} .no-ts .seg-row .ts{display:none}
+mark{background:var(--mark);color:inherit;border-radius:3px;padding:0 1px}
+mark.cur{background:var(--accent);color:#fff}
+.para{font-size:16px;line-height:1.7;max-width:68ch;padding:4px 10px}
+.para p{margin:0 0 14px}
+
+/* ---------- Result ---------- */
+.res-head{display:flex;gap:16px;align-items:center}
+.metas{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13px;color:var(--fg-2)}
+.metas span{display:inline-flex;align-items:center;gap:6px}
+.metas svg{width:15px;height:15px;color:var(--fg-3)}
+.player{display:flex;align-items:center;gap:14px;padding:12px 16px 12px 12px;border-radius:999px}
+.play{width:44px;height:44px;border-radius:50%;background:var(--accent);color:#fff;display:grid;place-items:center;flex:none;transition:transform .35s var(--ease-spring)}
+.play:active{transform:scale(.92)}
+.play svg{fill:currentColor;stroke:none}
+.wave{flex:1;height:40px;display:flex;align-items:center;gap:2px;min-width:0;cursor:pointer;position:relative}
+.wave i{flex:1;min-width:1px;border-radius:2px;background:var(--fill-2);transition:background .2s}
+.wave i.p{background:var(--accent-text)}
+.ptime{font-size:13px;color:var(--fg-2);font-variant-numeric:tabular-nums;white-space:nowrap}
+.tools{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:12px 12px 10px;border-bottom:1px solid var(--separator)}
+.tools .field{flex:1;min-width:180px;max-width:320px}
+.tools .spacer{flex:1}
+.searchnav{display:flex;align-items:center;gap:2px;font-size:12.5px;color:var(--fg-3);white-space:nowrap}
+.inline-sw{display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--fg-2)}
+.inline-sw .switch{transform:scale(.8);transform-origin:center}
+
+/* ---------- Models ---------- */
+.mstats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.mstat{border-radius:18px;padding:14px 16px}
+.mstat .k{font-size:12px;color:var(--fg-3);font-weight:500}
+.mstat .v{font-size:22px;font-weight:650;letter-spacing:-.02em;font-variant-numeric:tabular-nums;margin-top:2px}
+.mstat .bar{margin-top:10px}
+.filters{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.filters .field{flex:1;min-width:180px;max-width:280px}
+.mrow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px 16px;align-items:center;padding:14px 16px}
+.mrow+.mrow{box-shadow:inset 0 1px 0 var(--separator)}
+.mrow .nm{font-weight:600;font-size:15px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.mrow .hint{font-size:13px;color:var(--fg-2);margin-top:3px}
+.mrow .tags{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;align-items:center}
+.mrow .side{display:flex;align-items:center;gap:10px;justify-content:flex-end;flex-wrap:wrap}
+.mrow .size{font-size:13px;color:var(--fg-2);font-variant-numeric:tabular-nums;min-width:58px;text-align:right}
+.dl{display:flex;flex-direction:column;gap:6px}.mrow .dl{grid-column:1/-1}
+.dlmeta{display:flex;justify-content:space-between;gap:8px;font-size:12.5px;color:var(--fg-2);font-variant-numeric:tabular-nums;flex-wrap:wrap}
+.mrow.disabled .nm,.mrow.disabled .hint{opacity:.55}
+.state-ok{display:inline-flex;align-items:center;gap:5px;color:var(--success);font-size:13px;font-weight:600}
+.fam-h{display:flex;align-items:baseline;gap:10px;margin:0 0 8px 16px}
+.fam-h h3{font-size:13px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--fg-3);margin:0}
+.fam-h span{font-size:12.5px;color:var(--fg-3)}
+
+/* ---------- History ---------- */
+.hrow{display:flex;align-items:center;gap:14px;padding:12px 12px 12px 16px;min-height:72px}
+.hrow+.hrow{box-shadow:inset 0 1px 0 var(--separator)}
+.hrow .open{display:flex;align-items:center;gap:14px;flex:1;min-width:0;text-align:left;border-radius:12px}
+.hrow .badge{width:44px;height:44px;border-radius:12px;display:grid;place-items:center;background:var(--accent-soft);color:var(--accent-text);flex:none;font-size:10.5px;font-weight:650;letter-spacing:.02em}
+.hrow .nm{font-weight:600;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hrow .pv{font-size:13.5px;color:var(--fg-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
+.hrow .mt{font-size:12px;color:var(--fg-3);margin-top:3px;font-variant-numeric:tabular-nums}
+.empty{display:flex;flex-direction:column;align-items:center;text-align:center;gap:10px;padding:56px 24px}
+.empty .art{width:84px;height:84px;border-radius:26px;display:grid;place-items:center;background:var(--accent-soft);color:var(--accent-text);margin-bottom:6px}
+.empty h2{font-family:var(--font-display);font-size:22px;font-weight:650;letter-spacing:-.02em;margin:0}
+.empty p{margin:0;color:var(--fg-2);max-width:42ch}
+
+/* ---------- Settings ---------- */
+.sect-nav{display:flex;gap:6px;flex-wrap:wrap}
+.sect-nav button{height:30px;padding:0 12px;border-radius:999px;background:var(--fill);font-size:13px;font-weight:500}
+.sect-nav button:hover{background:var(--fill-2)}
+.settings{display:flex;flex-direction:column;gap:28px}
+.ctl{display:flex;align-items:center;gap:10px;flex:none;max-width:60%}
+.item.col{flex-direction:column;align-items:stretch;gap:10px}
+.item.col .head{display:flex;align-items:center;gap:14px}
+.sys{display:flex;flex-direction:column}
+.sys .dev{display:grid;grid-template-columns:96px minmax(0,1fr) auto;gap:12px;align-items:center;padding:10px 16px;font-size:13.5px}
+.sys .dev+.dev{box-shadow:inset 0 1px 0 var(--separator)}
+.sys .be{font-weight:600}
+.sys .dn{color:var(--fg-2);min-width:0}
+.sys .dn small{display:block;color:var(--fg-3);font-size:12px}
+.disabled-block{opacity:.45;pointer-events:none}
+
+/* ---------- Logs ---------- */
+.logbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:12px;border-bottom:1px solid var(--separator)}
+.logbar .field{flex:1;min-width:160px;max-width:300px}
+.loglist{max-height:min(520px,60vh);overflow-y:auto;padding:6px 0}
+.log{display:grid;grid-template-columns:96px 74px 150px minmax(0,1fr);gap:12px;padding:6px 16px;font-size:13px;align-items:baseline}
+.log:nth-child(even){background:var(--fill-hover)}
+.log .t{color:var(--fg-3);font-variant-numeric:tabular-nums}
+.log .tg{color:var(--fg-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.log .m{color:var(--fg);overflow-wrap:anywhere}
+.lv{font-size:11px;font-weight:650;letter-spacing:.04em;text-transform:uppercase;border-radius:6px;padding:2px 6px;justify-self:start}
+.lv.error{background:var(--danger-soft);color:var(--danger)}
+.lv.warn{background:var(--warning-soft);color:var(--warning)}
+.lv.info{background:var(--accent-soft);color:var(--accent-text)}
+.lv.debug{background:var(--fill);color:var(--fg-2)}
+.lv.trace{background:var(--fill-hover);color:var(--fg-3)}
+
+/* ---------- Layers: popovers, sheets, toasts ---------- */
+.layer{position:absolute;inset:0;z-index:40;display:none}
+.layer.open{display:block}
+.scrim{position:absolute;inset:0;background:var(--scrim);opacity:0;transition:opacity .25s}
+.layer.open .scrim{opacity:1}
+.layer.pop .scrim{background:transparent}
+.popover{position:absolute;width:340px;max-width:calc(100% - 24px);max-height:min(460px,70%);display:flex;flex-direction:column;border-radius:20px;padding:6px;
+  transform-origin:top left;animation:popin .38s var(--ease-spring)}
+@keyframes popin{from{opacity:0;transform:scale(.94) translateY(-4px)}to{opacity:1;transform:none}}
+.popover .ph{padding:8px 10px 6px;font-size:12px;font-weight:600;color:var(--fg-3);letter-spacing:.04em;text-transform:uppercase}
+.popover>*{flex:none}
+.popover{overflow-y:auto;scrollbar-width:thin}
+.popover:has(#lang-list){overflow:hidden}
+.popover .plist{display:flex;flex-direction:column;padding:2px}
+.popover #lang-list{overflow-y:auto;flex:1 1 auto;min-height:0;scrollbar-width:thin}
+.opt:focus-visible{outline-offset:-2px;border-radius:12px}
+.popover .opt{flex:none}
+.opt{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:12px;text-align:left;width:100%;font-size:14px;min-height:40px}
+.opt:hover,.opt.kb{background:var(--fill)}
+.opt .ck{width:18px;color:var(--accent-text);flex:none}
+.opt .t{flex:1;min-width:0}
+.opt .t b{display:block;font-weight:500}
+.opt .t span{display:block;font-size:12px;color:var(--fg-3)}
+.opt[aria-disabled="true"]{opacity:.5;cursor:not-allowed}
+.opt .r{font-size:12.5px;color:var(--fg-3);white-space:nowrap}
+.popover hr{border:0;height:1px;background:var(--separator);margin:6px 8px}
+.popover .field{margin:4px 4px 6px}
+.menu{width:220px}
+.opt.danger{color:var(--danger)}
+.sheet-wrap{position:absolute;inset:0;display:grid;place-items:center;padding:24px}
+.sheet{width:min(460px,100%);max-height:calc(100% - 24px);overflow:auto;border-radius:28px;padding:24px;display:flex;flex-direction:column;gap:14px;animation:sheetin .45s var(--ease-spring)}
+.sheet.wide{width:min(620px,100%)}
+@keyframes sheetin{from{opacity:0;transform:translateY(16px) scale(.97)}to{opacity:1;transform:none}}
+.sheet h2{font-family:var(--font-display);font-size:20px;font-weight:650;letter-spacing:-.015em;margin:0}
+.sheet p{margin:0;color:var(--fg-2)}
+.sheet .acts{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;margin-top:6px}
+.preview{border-radius:14px;background:var(--fill-hover);padding:12px 14px;font-size:13px;line-height:1.55;white-space:pre-wrap;max-height:260px;overflow:auto;color:var(--fg);font-variant-numeric:tabular-nums}
+.kbd-list{display:grid;grid-template-columns:1fr auto;gap:8px 16px;font-size:14px}
+kbd{font-family:var(--font);font-size:12px;font-weight:600;padding:2px 7px;border-radius:6px;background:var(--fill);box-shadow:inset 0 -1px 0 var(--separator);color:var(--fg-2);white-space:nowrap}
+.toasts{position:absolute;z-index:60;left:50%;top:14px;transform:translateX(-50%);display:flex;flex-direction:column;gap:8px;align-items:center;width:min(440px,calc(100% - 24px));pointer-events:none}
+.toast{pointer-events:auto;display:flex;align-items:center;gap:10px;padding:10px 12px 10px 14px;border-radius:18px;font-size:14px;width:100%;animation:toastin .5s var(--ease-spring)}
+.toast .grow{min-width:0}
+.toast b{font-weight:600;display:block}
+.toast span{color:var(--fg-2);font-size:13px}
+.toast.out{animation:toastout .3s ease forwards}
+@keyframes toastin{from{opacity:0;transform:translateY(-14px) scale(.96)}to{opacity:1;transform:none}}
+@keyframes toastout{to{opacity:0;transform:translateY(-8px) scale(.98)}}
+.toast .tico{color:var(--accent-text)} .toast.ok .tico{color:var(--success)} .toast.warn .tico{color:var(--warning)} .toast.bad .tico{color:var(--danger)}
+
+/* ---------- Container-driven responsive layout ---------- */
+@container app (max-width:1000px){
+  .shell{grid-template-columns:216px minmax(0,1fr)}
+  .content{padding:24px 24px 40px}
+  .welcome{grid-template-columns:1fr;padding:26px}
+  .recent{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .recent button:nth-child(3){display:none}
+  .log{grid-template-columns:90px 70px minmax(0,1fr)} .log .tg{display:none}
+}
+@container app (max-width:720px){
+  .shell{grid-template-columns:minmax(0,1fr)}
+  .sidebar{display:none}
+  .content{padding:18px 16px 112px;gap:16px}
+  h1.lt{font-size:28px;line-height:34px}
+  .topbar .titles{flex-basis:100%}
+  h1.lt.file{font-size:22px;line-height:28px}
+  .tabbar{display:flex;position:absolute;z-index:30;left:12px;right:12px;bottom:12px;border-radius:999px;padding:6px;justify-content:space-around;background:var(--glass-1)}
+  .tabbar button{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:10.5px;font-weight:600;color:var(--fg-2);padding:6px 0;border-radius:999px}
+  .tabbar button[aria-current="page"]{color:var(--accent-text);background:var(--accent-soft)}
+  .drop{min-height:240px;padding:28px 18px}
+  .runbar{border-radius:22px;flex-direction:column;align-items:stretch}
+  .runbar .pill{width:100%}
+  .runbar .rb-spacer{display:none}
+  .filecard #replace-file{display:none}
+  .filecard .name{white-space:normal;overflow-wrap:anywhere}
+  .runbar .btn{width:100%;height:44px}
+  .stages{grid-template-columns:1fr}
+  .stats{gap:18px}
+  .recent{grid-template-columns:minmax(0,1fr)} .recent button:nth-child(n+3){display:none}
+  .mstats{grid-template-columns:repeat(2,minmax(0,1fr))} .mstats .mstat:nth-child(3){grid-column:1/-1}
+  .mrow{grid-template-columns:minmax(0,1fr)}
+  .mrow .side{justify-content:space-between}
+  .mrow .size{text-align:left}
+  .player{border-radius:22px}
+  .tools .field{max-width:none;flex-basis:100%}
+  .tools .spacer{display:none}
+  .seg-row{grid-template-columns:52px minmax(0,1fr);gap:8px;padding:8px 6px}
+  .item{gap:12px;padding:10px 14px}
+  .item.stackable{flex-wrap:wrap}
+  .item.stackable .ctl{max-width:100%;width:100%;padding-left:42px}
+  .item.stackable .ctl .seg{display:flex;width:100%}
+  .item.stackable .ctl .seg button{flex:1;justify-content:center;padding:0 6px}
+  .ctl{max-width:62%}
+  .sys .dev{grid-template-columns:minmax(0,1fr) auto}
+  .sys .be{grid-column:1/-1;margin-bottom:-6px}
+  .loglist{max-height:none}
+  .log{grid-template-columns:98px minmax(0,1fr);gap:4px 10px;padding:8px 14px} .log .lv{grid-row:1;grid-column:2} .log .m{grid-column:1/-1}
+  .hrow .act-btns .hide-sm{display:none}
+  .sheet-wrap{place-items:end center;padding:10px}
+  .sheet{border-radius:30px}
+  .popover{left:8px!important;right:8px!important;width:auto;max-width:none;top:auto!important;bottom:8px;max-height:70%;transform-origin:bottom center}
+  .layer.pop .scrim{background:var(--scrim)}
+  .toasts{top:auto;bottom:88px}
+  .filecard{padding:14px;gap:12px}
+  .res-head .fileicon{display:none}
+  .welcome{padding:20px}
+  .welcome h2{font-size:24px}
+}
+
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important;scroll-behavior:auto!important}
+  .blob{animation:none!important}
+  .spinner{animation:spin 1.6s linear infinite!important}
+}
+.rm .blob{animation:none}
+.rm *{transition-duration:.001ms!important}
+
+/* ---------- Demo controls (deliberately not part of the design) ---------- */
+.dlong{margin-left:-4px}
+.demo-btn{position:fixed;z-index:100;right:max(16px,calc(env(safe-area-inset-right,0px) + 12px));bottom:calc(env(safe-area-inset-bottom,0px) + 16px);height:40px;padding:0 16px;border-radius:10px;
+  background:#1F2028;color:#fff;font:600 13px/1 var(--font);display:flex;align-items:center;gap:8px;box-shadow:0 8px 24px rgba(0,0,0,.25)}
+@media (max-width:640px){.page-head{gap:10px}.page-head .spacer{display:none}.brand{flex-basis:100%}.brand small{display:none}#page-switch{order:1}.dlong{display:none}.demo-btn{order:2;position:static;padding:0 12px;height:34px;margin-left:auto;box-shadow:none}.demo{left:16px;right:16px;width:auto;bottom:calc(env(safe-area-inset-bottom,0px) + 16px);max-height:70vh}}
+.demo{position:fixed;z-index:101;right:max(16px,calc(env(safe-area-inset-right,0px) + 12px));bottom:calc(env(safe-area-inset-bottom,0px) + 64px);width:min(340px,calc(100vw - 32px));max-height:calc(100vh - 96px);overflow:auto;
+  background:#1F2028;color:#E9EAF0;border-radius:12px;padding:14px;font:13px/1.4 var(--font);box-shadow:0 18px 50px rgba(0,0,0,.35);border:1px solid #33343F}
+.demo h4{margin:12px 0 6px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#9A9CAD;font-weight:600}
+.demo .note{font-size:11.5px;color:#9A9CAD;margin:0 0 4px}
+.demo .opts{display:flex;flex-wrap:wrap;gap:4px}
+.demo button.d{height:28px;padding:0 9px;border-radius:6px;background:#2C2D38;color:#E9EAF0;font-size:12px;font-weight:500;border:1px solid #3A3B48}
+.demo button.d:hover{background:#363746}
+.demo button.d[aria-pressed="true"]{background:#E9EAF0;color:#16171F;border-color:#E9EAF0}
+.demo :focus-visible{outline:2px solid #fff;outline-offset:2px}
+.demo .top{display:flex;justify-content:space-between;align-items:center}
+.demo .top b{font-size:13px}
+.demo .x{color:#9A9CAD;width:28px;height:28px;border-radius:6px;display:grid;place-items:center}
+
+/* ---------- Design notes ---------- */
+.notes{max-width:1040px;margin:0 auto;padding-block:8px 80px;color:var(--page-fg)}
+.notes h2{font-family:var(--font-display);font-size:24px;letter-spacing:-.02em;margin:40px 0 10px;font-weight:700}
+.notes h2:first-of-type{margin-top:12px}
+.notes h3{font-size:16px;margin:22px 0 6px;font-weight:650}
+.notes p,.notes li{color:var(--fg-2);max-width:72ch;line-height:1.6}
+.notes ul{padding-left:20px}
+.notes code{font-size:.9em;background:var(--fill);padding:1px 5px;border-radius:5px}
+.notes strong{color:var(--page-fg);font-weight:600}
+.notes .lead{font-size:18px;line-height:1.55;color:var(--page-fg);max-width:64ch}
+.ngrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin-top:12px}
+.ncard{background:var(--solid-2);border-radius:18px;padding:16px;border:1px solid var(--separator)}
+.ncard h4{margin:0 0 6px;font-size:14px;font-weight:650}
+.ncard p{margin:0;font-size:13.5px}
+.tbl{overflow-x:auto;border-radius:16px;border:1px solid var(--separator);background:var(--solid-2);margin-top:10px}
+.tbl table{border-collapse:collapse;width:100%;font-size:13.5px;min-width:560px}
+.tbl th,.tbl td{text-align:left;padding:9px 14px;border-bottom:1px solid var(--separator);vertical-align:top}
+.tbl th{font-size:12px;color:var(--fg-3);font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+.tbl tr:last-child td{border-bottom:0}
+.tbl td{color:var(--fg-2);font-variant-numeric:tabular-nums}
+.tbl td:first-child{color:var(--page-fg);font-weight:500}
+.sw{display:inline-block;width:14px;height:14px;border-radius:4px;vertical-align:-2px;margin-right:6px;box-shadow:inset 0 0 0 1px rgba(0,0,0,.1)}
+.typespec>div{display:flex;align-items:baseline;gap:16px;padding:8px 0;border-bottom:1px solid var(--separator)}
+.typespec small{width:150px;flex:none;color:var(--fg-3);font-size:12px}
+.notes-wrap .demo-btn{display:none}
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <linearGradient id="lg-logo" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7A7CFF"/><stop offset="1" stop-color="#4146D6"/></linearGradient>
+  </defs>
+  <symbol id="i-wave" viewBox="0 0 24 24"><path d="M4 10.5v3M8 7.5v9M12 4.5v15M16 8v8M20 10.5v3"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></symbol>
+  <symbol id="i-cube" viewBox="0 0 24 24"><path d="M12 3.5l7.5 4.2v8.6L12 20.5l-7.5-4.2V7.7z"/><path d="M4.7 7.8L12 12l7.3-4.2M12 12v8.3"/></symbol>
+  <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 7h8.5M16.5 7H20M4 17h3.5M11.5 17H20"/><circle cx="14.5" cy="7" r="2"/><circle cx="9.5" cy="17" r="2"/></symbol>
+  <symbol id="i-logs" viewBox="0 0 24 24"><rect x="5" y="3.5" width="14" height="17" rx="3"/><path d="M9 8.5h6M9 12h6M9 15.5h3.5"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="10.5" width="14" height="10" rx="3"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3.5l7 2.6v5.4c0 4.3-2.9 7.6-7 9-4.1-1.4-7-4.7-7-9V6.1z"/><path d="M9 12l2.2 2.2L15.3 10"/></symbol>
+  <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 15V4.5M7.5 9L12 4.5 16.5 9M5 14.5V17a2.5 2.5 0 0 0 2.5 2.5h9A2.5 2.5 0 0 0 19 17v-2.5"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4.5V15M7.5 10.5L12 15l4.5-4.5M5 14.5V17a2.5 2.5 0 0 0 2.5 2.5h9A2.5 2.5 0 0 0 19 17v-2.5"/></symbol>
+  <symbol id="i-cdown" viewBox="0 0 24 24"><path d="M7 10l5 5 5-5"/></symbol>
+  <symbol id="i-cup" viewBox="0 0 24 24"><path d="M7 14l5-5 5 5"/></symbol>
+  <symbol id="i-cright" viewBox="0 0 24 24"><path d="M10 7l5 5-5 5"/></symbol>
+  <symbol id="i-updown" viewBox="0 0 24 24"><path d="M8.5 9.5L12 6l3.5 3.5M8.5 14.5L12 18l3.5-3.5"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M5.5 12.5l4 4 9-9"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M7 7l10 10M17 7L7 17"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4 4"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8.5" y="8.5" width="11" height="11" rx="2.5"/><path d="M15.5 8.5V6.5a2 2 0 0 0-2-2h-7a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h2"/></symbol>
+  <symbol id="i-share" viewBox="0 0 24 24"><path d="M12 3.5v11M8 7.5l4-4 4 4M8.5 10.5H7a2.5 2.5 0 0 0-2.5 2.5v5A2.5 2.5 0 0 0 7 20.5h10a2.5 2.5 0 0 0 2.5-2.5v-5a2.5 2.5 0 0 0-2.5-2.5h-1.5"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M8.5 5.8v12.4a.8.8 0 0 0 1.2.7l10-6.2a.8.8 0 0 0 0-1.4l-10-6.2a.8.8 0 0 0-1.2.7z"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 24 24"><rect x="6.5" y="5.5" width="4" height="13" rx="1.2"/><rect x="13.5" y="5.5" width="4" height="13" rx="1.2"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4.5 7h15M9.5 7V5.5A1.5 1.5 0 0 1 11 4h2a1.5 1.5 0 0 1 1.5 1.5V7M6.5 7l.8 11.2a2 2 0 0 0 2 1.8h5.4a2 2 0 0 0 2-1.8L17.5 7"/></symbol>
+  <symbol id="i-pencil" viewBox="0 0 24 24"><path d="M15.5 5.5l3 3L9 18H6v-3zM13.5 7.5l3 3"/></symbol>
+  <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.4 2.6 3.5 5.4 3.5 8.5s-1.1 5.9-3.5 8.5c-2.4-2.6-3.5-5.4-3.5-8.5S9.6 6.1 12 3.5z"/></symbol>
+  <symbol id="i-cpu" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="2"/><rect x="10" y="10" width="4" height="4" rx=".8"/><path d="M9.5 4v3M14.5 4v3M9.5 17v3M14.5 17v3M4 9.5h3M4 14.5h3M17 9.5h3M17 14.5h3"/></symbol>
+  <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 3.5L5.5 13.5H12l-1 7 7.5-10H12z"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.8"/><path d="M12 3.5v1.8M12 18.7v1.8M3.5 12h1.8M18.7 12h1.8M6 6l1.3 1.3M16.7 16.7L18 18M6 18l1.3-1.3M16.7 7.3L18 6"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M19 14.5A7.5 7.5 0 1 1 9.5 5a6 6 0 0 0 9.5 9.5z"/></symbol>
+  <symbol id="i-auto" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v5M12 8h.01"/></symbol>
+  <symbol id="i-warn" viewBox="0 0 24 24"><path d="M10.3 5.2a2 2 0 0 1 3.4 0l6.6 11.5a2 2 0 0 1-1.7 3H5.4a2 2 0 0 1-1.7-3z"/><path d="M12 10v3.8M12 16.8h.01"/></symbol>
+  <symbol id="i-xcircle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M9.5 9.5l5 5M14.5 9.5l-5 5"/></symbol>
+  <symbol id="i-checkcircle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M8.5 12.3l2.4 2.4 4.6-4.9"/></symbol>
+  <symbol id="i-wifioff" viewBox="0 0 24 24"><path d="M4 9.2a12 12 0 0 1 3.6-2.2M12.8 6.1A12 12 0 0 1 20 9.2M7 12.6a7.5 7.5 0 0 1 3.5-1.9M15.4 11.3a7.5 7.5 0 0 1 1.6 1.3M9.8 16a3.2 3.2 0 0 1 4.4 0M4 4l16 16M12 19.3h.01"/></symbol>
+  <symbol id="i-retry" viewBox="0 0 24 24"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3M19.5 4.5v4h-4"/></symbol>
+  <symbol id="i-more" viewBox="0 0 24 24"><circle cx="6.5" cy="12" r="1.2" fill="currentColor"/><circle cx="12" cy="12" r="1.2" fill="currentColor"/><circle cx="17.5" cy="12" r="1.2" fill="currentColor"/></symbol>
+  <symbol id="i-keyboard" viewBox="0 0 24 24"><rect x="3.5" y="6.5" width="17" height="11" rx="2.5"/><path d="M7 10h.01M10 10h.01M13 10h.01M16.5 10h.5M8 14h8"/></symbol>
+  <symbol id="i-doc" viewBox="0 0 24 24"><path d="M7 3.5h6.5L18 8v10a2.5 2.5 0 0 1-2.5 2.5h-8.5A2.5 2.5 0 0 1 4.5 18V6A2.5 2.5 0 0 1 7 3.5z"/><path d="M13.5 3.5V8H18M8.5 12.5h7M8.5 16h5"/></symbol>
+  <symbol id="i-text" viewBox="0 0 24 24"><path d="M5 7h14M5 11.5h14M5 16h9"/></symbol>
+  <symbol id="i-list" viewBox="0 0 24 24"><path d="M10 7h10M10 12h10M10 17h10M5 7h.01M5 12h.01M5 17h.01"/></symbol>
+  <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-music" viewBox="0 0 24 24"><path d="M9 17.5V6.2l10-2v11.3"/><circle cx="6.5" cy="17.5" r="2.5"/><circle cx="16.5" cy="15.5" r="2.5"/></symbol>
+  <symbol id="i-stop" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="2.2"/></symbol>
+  <symbol id="i-window" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="14" rx="2.5"/><path d="M3.5 9h17M6.5 7h.01M8.5 7h.01"/></symbol>
+  <symbol id="i-desktop" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="11.5" rx="2.2"/><path d="M9 20h6M12 16v4"/></symbol>
+  <symbol id="i-gauge" viewBox="0 0 24 24"><path d="M4.5 16a7.5 7.5 0 1 1 15 0"/><path d="M12 16l3.5-4.5"/></symbol>
+  <symbol id="i-speaker" viewBox="0 0 24 24"><path d="M5 9.5h3l4-3.5v12l-4-3.5H5z"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/></symbol>
+  <symbol id="i-translate" viewBox="0 0 24 24"><path d="M4 6h9M8.5 4v2M6 6c.6 3 2.6 5.4 5.5 6.6M11 6c-.8 3.6-3.2 6-6.5 7.3M12.5 20l3.5-8 3.5 8M13.6 17.5h4.8"/></symbol>
+  <symbol id="i-thermo" viewBox="0 0 24 24"><path d="M10 13.5V5.5a2 2 0 0 1 4 0v8a4 4 0 1 1-4 0z"/><path d="M12 9v6.5"/></symbol>
+  <symbol id="i-hash" viewBox="0 0 24 24"><path d="M9 4l-2 16M17 4l-2 16M4.5 9h15M4 15h15"/></symbol>
+  <symbol id="i-stack" viewBox="0 0 24 24"><path d="M12 4l8 4-8 4-8-4z"/><path d="M4 12l8 4 8-4M4 16l8 4 8-4"/></symbol>
+  <symbol id="i-file" viewBox="0 0 24 24"><path d="M7 3.5h6.5L18 8v10a2.5 2.5 0 0 1-2.5 2.5h-8.5A2.5 2.5 0 0 1 4.5 18V6A2.5 2.5 0 0 1 7 3.5z"/><path d="M13.5 3.5V8H18"/></symbol>
+  <symbol id="i-reset" viewBox="0 0 24 24"><path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3M4.5 4.5v4h4"/></symbol>
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="M14.5 6.5L9 12l5.5 5.5"/></symbol>
+  <symbol id="i-cat" viewBox="0 0 24 24"><path d="M5 18V9.2L7.6 5.5l2.6 3.3h3.6l2.6-3.3L19 9.2V18a2.5 2.5 0 0 1-2.5 2.5h-9A2.5 2.5 0 0 1 5 18z"/><path d="M9.2 13.2v2.6M12 11.8v5.4M14.8 13.2v2.6"/></symbol>
+</svg>
+
+<div id="page">
+  <header class="page-head">
+    <div class="brand">
+      <svg width="30" height="30" viewBox="0 0 30 30" aria-hidden="true"><rect width="30" height="30" rx="8.5" fill="url(#lg-logo)"/><g transform="translate(3 3)" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-cat" width="24" height="24"/></g></svg>
+      <div>Purr redesign proposal v2<small>Liquid glass direction · clickable prototype</small></div>
+    </div>
+    <div class="spacer"></div>
+    <button class="demo-btn" id="demo-btn" aria-expanded="false" aria-controls="demo"><svg class="i sm"><use href="#i-sliders"/></svg><span>Demo</span><span class="dlong">controls</span></button>
+    <div class="seg" role="radiogroup" aria-label="Page view" data-seg="page" id="page-switch">
+      <button role="radio" aria-checked="true" data-v="proto" id="pv-proto">Prototype</button>
+      <button role="radio" aria-checked="false" data-v="notes" id="pv-notes">Design notes</button>
+    </div>
+  </header>
+
+  <main id="proto-view" class="stage">
+    <div class="frame" id="frame" data-vp="fit">
+      <div class="app" id="app">
+        <div class="ambient" aria-hidden="true"><i class="blob b1"></i><i class="blob b2"></i><i class="blob b3"></i><i class="blob b4"></i></div>
+        <div class="shell">
+          <nav class="sidebar glass g1" aria-label="Purr">
+            <div class="side-brand">
+              <svg width="32" height="32" viewBox="0 0 30 30" aria-hidden="true"><rect width="30" height="30" rx="8.5" fill="url(#lg-logo)"/><g transform="translate(3 3)" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-cat" width="24" height="24"/></g></svg>
+              <b>Purr</b>
+            </div>
+            <button class="nav-item" data-go="transcribe" id="nav-transcribe"><svg class="i"><use href="#i-wave"/></svg>Transcribe</button>
+            <button class="nav-item" data-go="history" id="nav-history"><svg class="i"><use href="#i-clock"/></svg>History<span class="count tnum" id="hist-count"></span></button>
+            <button class="nav-item" data-go="models" id="nav-models"><svg class="i"><use href="#i-cube"/></svg>Models<span class="count tnum" id="model-count"></span></button>
+            <div class="side-foot">
+              <button class="nav-item" data-go="preferences" id="nav-preferences"><svg class="i"><use href="#i-sliders"/></svg>Settings</button>
+              <button class="nav-item" data-go="logs" id="nav-logs"><svg class="i"><use href="#i-logs"/></svg>Logs</button>
+              <button class="privacy-pill" data-act="about" id="privacy-pill"><svg class="i sm"><use href="#i-lock"/></svg><span><b>Stays on this device</b>Audio and transcripts are never uploaded.</span></button>
+            </div>
+          </nav>
+          <div class="main">
+            <div class="scroller" id="scroller"><div class="content" id="content"></div></div>
+            <nav class="tabbar glass g1" aria-label="Purr">
+              <button data-go="transcribe" id="tab-transcribe"><svg class="i"><use href="#i-wave"/></svg>Transcribe</button>
+              <button data-go="history" id="tab-history"><svg class="i"><use href="#i-clock"/></svg>History</button>
+              <button data-go="models" id="tab-models"><svg class="i"><use href="#i-cube"/></svg>Models</button>
+              <button data-go="preferences" id="tab-preferences"><svg class="i"><use href="#i-sliders"/></svg>Settings</button>
+            </nav>
+          </div>
+        </div>
+        <div class="layer" id="layer" aria-hidden="true"><div class="scrim" data-act="close-layer"></div><div id="layer-body"></div></div>
+        <div class="toasts" id="toasts" role="status" aria-live="polite"></div>
+        <div class="sr" id="announcer" aria-live="polite"></div>
+        <input type="file" id="file-input" class="sr" tabindex="-1" aria-hidden="true" accept=".mp3,.wav,.aac,.flac,.ogg,.opus,.m4a,.webm,audio/*">
+      </div>
+    </div>
+  </main>
+
+  <article id="notes-view" class="notes" hidden></article>
+</div>
+
+<section class="demo" id="demo" hidden aria-label="Demo controls (not part of the design)"></section>
+
+<template id="notes-tpl">
+  <h2>Concept: quiet glass</h2>
+  <p class="lead">Purr should feel like an app Apple might ship. You drop in a file, see exactly what will run on it, and get text back. The glass gives depth and calm, the content stays crisp, and one indigo accent marks what you can act on.</p>
+  <div class="ngrid">
+    <div class="ncard"><h4>Show what will run</h4><p>Model and spoken language sit next to the Transcribe button as two pills, so they're visible and changeable without opening Settings.</p></div>
+    <div class="ncard"><h4>Privacy you can see</h4><p>A green lock and "Stays on this device" appear where it matters: the sidebar, the run bar and the result. The About sheet lists what's stored and the one network use, which is model downloads.</p></div>
+    <div class="ncard"><h4>Content over chrome</h4><p>Glass is for navigation and containers. Text always sits on a surface opaque enough to pass AA, never on the raw background.</p></div>
+    <div class="ncard"><h4>One app, two platforms</h4><p>Browser mode hides desktop-only controls instead of greying them out. A single banner explains why they're missing.</p></div>
+  </div>
+
+  <h2>Layout and navigation</h2>
+  <ul>
+    <li><strong>Desktop (&gt;720px of app width):</strong> a floating glass sidebar inset 10px from the window, in the macOS 26 style. It holds Transcribe, History and Models at the top, Settings and Logs at the bottom, and the privacy pill. Content is centred: 880px max for reading views, 1040px for lists.</li>
+    <li><strong>Phone (≤720px):</strong> the sidebar becomes a floating glass tab bar with Transcribe, History, Models and Settings. Logs is reached from Settings. Popovers become bottom sheets, and the run bar stacks into full-width rows.</li>
+    <li><strong>Tablet:</strong> keeps the sidebar, narrowed to 216px. Grids drop to two columns.</li>
+    <li>Breakpoints are <strong>container queries on the app window</strong>, not media queries, so the same component reflows in a desktop window, a split view or the viewport presets in this demo.</li>
+    <li>Transcribing and the result reuse the Transcribe tab, so it never loses track of the file in progress.</li>
+  </ul>
+
+  <h2>Material system</h2>
+  <p>There are three glass levels plus a solid fallback. Each is a fill, a backdrop blur with saturation, a 1px luminous edge and a specular top highlight.</p>
+  <div class="tbl"><table>
+    <thead><tr><th>Level</th><th>Used for</th><th>Light fill</th><th>Dark fill</th><th>Backdrop</th><th>Shadow</th></tr></thead>
+    <tbody>
+      <tr><td>1 · Chrome</td><td>Sidebar, tab bar</td><td>white 56%</td><td>#1A1C2C 56%</td><td>blur 28px, saturate 180%</td><td>shadow-1</td></tr>
+      <tr><td>2 · Content</td><td>Cards, grouped lists, run bar, player</td><td>white 68%</td><td>#202234 62%</td><td>blur 28px, saturate 180%</td><td>shadow-1</td></tr>
+      <tr><td>3 · Overlay</td><td>Popovers, sheets, toasts</td><td>#FBFBFF 84%</td><td>#24263A 82%</td><td>blur 28px, saturate 180%</td><td>shadow-3</td></tr>
+      <tr><td>Solid</td><td>Reduce transparency, no backdrop-filter</td><td>#F3F4F9 / #FFF</td><td>#141627 / #1B1D31 / #222439</td><td>none</td><td>same</td></tr>
+    </tbody></table></div>
+  <ul>
+    <li><strong>Edge:</strong> a 1px gradient border drawn with a mask, bright at the top (white 78% light, 14% dark) and fading to 30% / 6% at the bottom. It reads as light catching a rim.</li>
+    <li><strong>Specular:</strong> <code>inset 0 1px 0</code>, white 85% in light and 8% in dark.</li>
+    <li><strong>Shadows:</strong> two layers each, a tight contact shadow plus a soft ambient one with negative spread. shadow-1 is <code>0 1px 2px / 0 6px 20px -8px</code>, shadow-3 is <code>0 4px 12px / 0 30px 80px -24px</code>, both tinted indigo-black.</li>
+    <li><strong>Ambient background:</strong> four blurred colour fields (indigo, lilac, aqua, peach) drift over 38–60 s using transforms only. In dark mode they're deeper and quieter. They switch off with Reduce transparency and stand still with Reduce motion.</li>
+    <li>Glass never nests. Controls inside a card use flat fills (<code>--fill</code>), not more blur.</li>
+  </ul>
+
+  <h2>Colour</h2>
+  <div class="tbl"><table>
+    <thead><tr><th>Token</th><th>Light</th><th>Dark</th><th>Role</th></tr></thead>
+    <tbody>
+      <tr><td>accent</td><td><span class="sw" style="background:#4B4FE0"></span>#4B4FE0</td><td><span class="sw" style="background:#5D60F0"></span>#5D60F0</td><td>Filled buttons, progress, selection. White text: 6.2:1 light, 4.7:1 dark.</td></tr>
+      <tr><td>accent-text</td><td><span class="sw" style="background:#3E42CC"></span>#3E42CC</td><td><span class="sw" style="background:#A9AAFF"></span>#A9AAFF</td><td>Links, active nav, icons in tinted wells.</td></tr>
+      <tr><td>fg / fg-2 / fg-3</td><td>#16171F / #4D4E60 / #5C5D6F</td><td>#F2F3FA / #B5B7CA / #9799AF</td><td>Primary, secondary and tertiary text. Neutrals lean slightly blue toward the accent.</td></tr>
+      <tr><td>success</td><td><span class="sw" style="background:#1B7F47"></span>#1B7F47</td><td><span class="sw" style="background:#5BD38C"></span>#5BD38C</td><td>On device, verified, switches. Switches use Apple's green.</td></tr>
+      <tr><td>warning</td><td><span class="sw" style="background:#965500"></span>#965500</td><td><span class="sw" style="background:#F5B44A"></span>#F5B44A</td><td>Offline, fallback, integrity.</td></tr>
+      <tr><td>danger</td><td><span class="sw" style="background:#C8263A"></span>#C8263A</td><td><span class="sw" style="background:#FF7383"></span>#FF7383</td><td>Failures, destructive actions.</td></tr>
+      <tr><td>base</td><td>#EDEFF6</td><td>#0B0D18</td><td>The window under the colour fields. Dark is deep ink, not flat black.</td></tr>
+    </tbody></table></div>
+  <p>Semantic colours always come with an icon and words, never colour alone. Settings rows use small iOS-style colour icon tiles as wayfinding. That is the only place more hues appear.</p>
+
+  <h2>Typography</h2>
+  <p>The stack is <code>-apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", Inter, "Segoe UI Variable", system-ui, sans-serif</code>. On Apple platforms you get SF Pro for free. SF Pro's licence doesn't allow bundling it on the web, so <strong>ship Inter (variable, self-hosted) as the web and Windows/Linux face</strong>; its metrics are close to SF. Times use <code>tabular-nums</code>. There is no serif and no monospace.</p>
+  <div class="typespec ncard" style="margin-top:10px">
+    <div><small>Large title · 30/36 · 700 · −2.5%</small><span style="font-size:30px;font-weight:700;letter-spacing:-.025em">Transcribe</span></div>
+    <div><small>Title 2 · 20/26 · 650</small><span style="font-size:20px;font-weight:650">Recent</span></div>
+    <div><small>Headline · 16/22 · 600</small><span style="font-size:16px;font-weight:600">Live transcript</span></div>
+    <div><small>Body · 15/22 · 400</small><span>Text that people read in lists and settings.</span></div>
+    <div><small>Transcript · 15.5/24 (16/27 in Text view)</small><span style="font-size:15.5px">The reading size, a notch larger than body.</span></div>
+    <div><small>Subhead · 13/18</small><span style="font-size:13px">Secondary lines and metadata</span></div>
+    <div><small>Section header · 12 · 600 · caps +5%</small><span style="font-size:12px;font-weight:600;letter-spacing:.05em;text-transform:uppercase">Transcription</span></div>
+  </div>
+
+  <h2>Spacing, radii and motion</h2>
+  <ul>
+    <li><strong>Spacing:</strong> a 4pt grid (4, 8, 12, 16, 20, 24, 32). Sections are 20px apart, settings groups 28px. Row height is at least 52px, and touch targets are at least 44px on phone.</li>
+    <li><strong>Concentric radii:</strong> inner radius = outer radius − inset. Window 28 → sidebar 18 (10px inset); card 22 → drop well 12 (10px inset); grouped list 20 → rows square; sheet 28; popover 20 → options 12 (6px inset); controls 10; pills and primary buttons fully round.</li>
+    <li><strong>Motion:</strong> a spring curve <code>cubic-bezier(.32,1.28,.54,1)</code> for press-scale (0.96), switches, popovers and sheets (380–450 ms). Ease-out for progress. New transcript lines rise 6px and fade in. Only transform and opacity animate. With <strong>Reduce motion</strong>, durations drop to near zero, the colour fields stop and lines appear without movement.</li>
+  </ul>
+
+  <h2>Components and states</h2>
+  <div class="tbl"><table>
+    <thead><tr><th>Component</th><th>States</th></tr></thead>
+    <tbody>
+      <tr><td>Drop zone</td><td>Rest, hover (well tints), drag over (scales 1.012, accent well), focus ring. Replaced by a file card once a file is chosen. Errors show an inline banner above it.</td></tr>
+      <tr><td>Picker pill (model, language)</td><td>Rest, hover, pressed, open (popover on desktop, bottom sheet on phone). Unavailable models are shown disabled with the reason.</td></tr>
+      <tr><td>Buttons</td><td>Primary (filled accent), secondary (fill), plain (accent text), destructive. Hover, pressed scale, disabled at 45%.</td></tr>
+      <tr><td>Switch / segmented / stepper / slider / pop-up</td><td>Apple geometry: switch 51×31, segmented 32 high, stepper 32 high, slider 5px track with 24px knob. Off, on, focus and disabled for each.</td></tr>
+      <tr><td>Model row</td><td>Not downloaded, downloading (bar, MB, speed, time left, cancel), offline-paused, failed (retry), on device, in use, verifying, files don't match (download again), needs GPU feature.</td></tr>
+      <tr><td>Stage tracker</td><td>Waiting, active (spinner, tinted), done (green check). Vertical on phone.</td></tr>
+      <tr><td>Transcript line</td><td>Streaming (new), rest, hover, playing (tinted), search match, current match.</td></tr>
+      <tr><td>Banner / toast</td><td>Info, success, warning, error. Toasts take an optional action (Retry, Undo, Start again) and close themselves after 4–7 s.</td></tr>
+      <tr><td>Sheet</td><td>Confirm (destructive), rename, export preview, privacy, shortcuts. Traps focus, closes on Esc and returns focus to the opener.</td></tr>
+    </tbody></table></div>
+
+  <h2>Key flows</h2>
+  <ul>
+    <li><strong>First run:</strong> a welcome card recommends one model (Large v3 Turbo Q5, 547 MB) with a single download button, a smaller alternative and a link to all models. When the download finishes, the drop zone appears with that model selected.</li>
+    <li><strong>Transcribe:</strong> drop a file or press ⌘/Ctrl+O, check the two pills, then press Transcribe. Progress shows three stages, then lines stream in live. The result opens with the player, search and export.</li>
+    <li><strong>Recover:</strong> every error says what happened and what to do, with the next action as a button: choose another file, retry, download again, use a smaller model or view logs.</li>
+  </ul>
+
+  <h2>Saving settings: autosave</h2>
+  <p>Settings save as soon as you change them, with a brief "Saved" tick, as in iOS and macOS System Settings. Every control is reversible, nothing is expensive to apply, and "Reset all settings" is the safety net. A save bar would add a step and an "unsaved changes" trap on a page people visit rarely.</p>
+
+  <h2>Accessibility</h2>
+  <ul>
+    <li><strong>Contrast on glass, calculated for the worst-case backdrop:</strong> the most saturated colour field (indigo, full strength, before blur) under level-1 glass blends to about #D8D9FE in light. On that, fg-2 is 5.9:1, fg-3 4.7:1 and accent-text 5.4:1. In dark the worst case is about #232352: fg-2 7.4:1, fg-3 5.2:1. Fill opacities were set from these numbers. They still need measuring on real screens.</li>
+    <li><strong>Reduce transparency</strong> comes from three sources: the in-app switch, <code>prefers-reduced-transparency</code>, and <code>@supports not (backdrop-filter)</code>. All three swap the glass tokens for solid ones, so no component needs special handling.</li>
+    <li><strong>Keyboard:</strong> every control is a real button or input with a 2.5px accent focus ring. Segmented controls are radio groups moved with the arrow keys. The waveform is a slider (arrows ±5 s, Home/End). Shortcuts are listed under <kbd>?</kbd>.</li>
+    <li><strong>Screen readers:</strong> switches use <code>role="switch"</code>. Progress is a <code>progressbar</code>. A polite live region announces stage changes, every fifth percent and completion, never every tick. Popovers and sheets are labelled modal dialogs.</li>
+    <li>Information is never carried by colour alone: badges and banners always carry icons and words.</li>
+  </ul>
+
+  <h2>Browser support</h2>
+  <ul>
+    <li><code>backdrop-filter</code> works in Chrome, Edge, Firefox 103+ and Safari (with <code>-webkit-</code>, which is included). Without it you get the solid fallback.</li>
+    <li>Container queries need Chrome 105+, Safari 16+ or Firefox 110+. WebGPU already requires newer versions than that.</li>
+    <li>Tailwind: map the tokens to <code>theme.extend.colors</code> through CSS variables. Glass becomes three utilities (<code>.glass-1/2/3</code>) via <code>@layer components</code>, and <code>@container</code> variants cover the breakpoints.</li>
+    <li>Performance: there are at most about 8 blurred layers on screen, and the colour fields animate transforms only. On low-end GPUs, consider turning the drift off automatically.</li>
+  </ul>
+
+  <h2>What I'd user-test first</h2>
+  <ul>
+    <li><strong>The run bar:</strong> do people notice and use the model and language pills before starting a long file? This is the complaint quoted in the sample transcript.</li>
+    <li><strong>First run:</strong> do people accept the recommended 547 MB download, or hesitate? Test the wording of the size and the smaller alternative.</li>
+    <li><strong>Glass legibility</strong> on real hardware, especially Windows with a bright wallpaper behind a translucent window, and on low-contrast laptop panels.</li>
+    <li>Whether "Speed 4.6×" is understood without its explanatory line.</li>
+  </ul>
+  <p class="faint" style="font-size:13px;margin-top:28px">Everything in the prototype is mock data: file names, transcripts, devices and log lines. Export and download buttons only show a confirmation here.</p>
+</template>
+
+<script>
+(() => {
+"use strict";
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const ic = (n, cls = "") => `<svg class="i ${cls}" aria-hidden="true"><use href="#i-${n}"/></svg>`;
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const isMac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+const MOD = isMac ? "⌘" : "Ctrl";
+const reduceMotion = () => document.documentElement.classList.contains("rm") || matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+/* ---------------- Data ---------------- */
+const FAM = {
+  tiny: { label: "Tiny", speed: 5, acc: 1, hint: "Fastest. Good for clear speech and quick drafts." },
+  base: { label: "Base", speed: 4, acc: 2, hint: "Very fast. Handles everyday recordings well." },
+  small: { label: "Small", speed: 3, acc: 3, hint: "Balanced. Copes better with accents and background noise." },
+  medium: { label: "Medium", speed: 2, acc: 4, hint: "Accurate but slower. Best with a GPU." },
+  large: { label: "Large", speed: 1, acc: 5, hint: "Most accurate. Slow without a GPU." },
+  turbo: { label: "Large v3 Turbo", speed: 4, acc: 5, hint: "Nearly Large v3 accuracy at several times the speed." }
+};
+const M = (id, fam, name, size, ml, q, extra = {}) => ({ id, fam, name, size, ml, q, ...extra });
+const MODELS = [
+  M("tiny", "tiny", "Tiny", 75, true, false), M("tiny.en", "tiny", "Tiny", 75, false, false), M("tiny-q5", "tiny", "Tiny", 42, true, true),
+  M("base", "base", "Base", 142, true, false), M("base.en", "base", "Base", 142, false, false), M("base-q5", "base", "Base", 57, true, true),
+  M("small", "small", "Small", 466, true, false), M("small.en", "small", "Small", 466, false, false), M("small-q5", "small", "Small", 181, true, true),
+  M("medium", "medium", "Medium", 1530, true, false, { f16: true }), M("medium.en", "medium", "Medium", 1530, false, false, { f16: true }), M("medium-q5", "medium", "Medium", 514, true, true),
+  M("large-v3", "large", "Large v3", 2950, true, false, { f16: true }), M("large-v3-q5", "large", "Large v3", 1080, true, true),
+  M("large-v2", "large", "Large v2", 2950, true, false, { f16: true, note: "Previous large model. Use it to match older transcripts." }),
+  M("large-v1", "large", "Large v1", 2950, true, false, { f16: true, note: "First large model, superseded by v3." }),
+  M("large-v3-turbo", "turbo", "Large v3 Turbo", 1620, true, false, { f16: true }), M("large-v3-turbo-q5", "turbo", "Large v3 Turbo", 547, true, true, { reco: true })
+];
+const byId = id => MODELS.find(m => m.id === id);
+const fmtSize = mb => mb >= 1000 ? (+(mb / 1000).toFixed(2)) + " GB" : mb + " MB";
+const variant = m => [m.ml ? "Multilingual" : "English only", m.q ? "Quantized" : null].filter(Boolean).join(" · ");
+const mLabel = m => `${m.name}${m.ml ? "" : " (English)"}${m.q ? " · Q5" : ""}`;
+const hint = m => m.note || (m.q ? "Quantized: about a third of the size, slightly less accurate." : !m.ml ? "English only. A little more accurate on English speech." : "Full precision, all 99 languages.");
+
+const LANGS = ["English","Chinese","German","Spanish","Russian","Korean","French","Japanese","Portuguese","Turkish","Polish","Catalan","Dutch","Arabic","Swedish","Italian","Indonesian","Hindi","Finnish","Vietnamese","Hebrew","Ukrainian","Greek","Malay","Czech","Romanian","Danish","Hungarian","Tamil","Norwegian","Thai","Urdu","Croatian","Bulgarian","Lithuanian","Latin","Maori","Malayalam","Welsh","Slovak","Telugu","Persian","Latvian","Bengali","Serbian","Azerbaijani","Slovenian","Kannada","Estonian","Macedonian","Breton","Basque","Icelandic","Armenian","Nepali","Mongolian","Bosnian","Kazakh","Albanian","Swahili","Galician","Marathi","Punjabi","Sinhala","Khmer","Shona","Yoruba","Somali","Afrikaans","Occitan","Georgian","Belarusian","Tajik","Sindhi","Gujarati","Amharic","Yiddish","Lao","Uzbek","Faroese","Haitian Creole","Pashto","Turkmen","Nynorsk","Maltese","Sanskrit","Luxembourgish","Burmese","Tibetan","Tagalog","Malagasy","Assamese","Tatar","Hawaiian","Lingala","Hausa","Bashkir","Javanese","Sundanese","Cantonese"];
+
+const SAMPLE = { id: "h1", name: "customer-interview-07.m4a", ext: "M4A", dur: 112, bytes: "2.6 MB", lang: "English", date: "Today, 14:32", took: 24, model: "large-v3-turbo-q5", segs: [
+  [0, "Thanks for making time today. To start, can you walk me through how you take notes during a typical week?"],
+  [7, "Sure. Most of my week is calls with clients, maybe twelve to fifteen of them, and I used to type while they talked."],
+  [15, "The problem was I'd stop listening properly. I'd be halfway through a sentence and miss the thing that actually mattered."],
+  [24, "So now I record everything, with permission of course, and transcribe it afterwards."],
+  [31, "What made you look for a tool that runs on your own machine?"],
+  [36, "Honestly, the contracts. A lot of my clients are in healthcare, and uploading their calls to a server somewhere isn't an option."],
+  [46, "When I found out the model could run locally, that was the whole decision. Nothing leaves the laptop."],
+  [54, "How long does a one-hour call usually take to process?"],
+  [58, "On my work laptop, around twelve minutes with the bigger model. With the turbo one it's closer to five."],
+  [67, "And how do you use the transcript afterwards?"],
+  [71, "I search it, mostly. I'll remember someone mentioned a deadline, and I just search for the word and jump straight to that moment."],
+  [81, "Then I export the subtitles for the recordings we share internally, so people can skim instead of watching the whole thing."],
+  [90, "Is there anything that still slows you down?"],
+  [94, "Names. It gets most of them right, but product names and acronyms sometimes come out creative."],
+  [102, "And I'd love to see at a glance which model I'm about to use before I start a long file. I've picked the wrong one more than once."]
+] };
+const HISTORY0 = [
+  SAMPLE,
+  { id: "h2", name: "weekly-sync-11-04.mp3", ext: "MP3", dur: 1930, lang: "English", date: "Yesterday, 09:15", took: 402, model: "large-v3-turbo-q5", segs: [[0, "Okay, let's start with the release checklist. Three items are still open from last week."], [6, "The installer signing is done, so that one can come off the list."], [12, "The other two are the translation pass and the crash on older graphics drivers."], [19, "For the drivers, we now fall back to the CPU automatically, so it's no longer a blocker."]] },
+  { id: "h3", name: "entretien-boulangerie.m4a", ext: "M4A", dur: 845, lang: "French", date: "Nov 7, 17:48", took: 188, model: "large-v3-turbo-q5", segs: [[0, "Alors, on commence à cinq heures du matin, avant que la rue se réveille."], [7, "La première fournée, c'est toujours la baguette tradition, parce que c'est ce que les gens prennent en allant au travail."], [16, "Le levain, je le nourris la veille au soir. Sans ça, la mie n'a pas le même goût."]] },
+  { id: "h4", name: "vorlesung-thermodynamik-03.wav", ext: "WAV", dur: 5324, lang: "German", date: "Nov 5, 10:02", took: 1210, model: "small", segs: [[0, "Wir haben letzte Woche den ersten Hauptsatz besprochen, also die Energieerhaltung."], [8, "Heute schauen wir uns an, warum manche Prozesse nur in eine Richtung ablaufen."], [15, "Dafür brauchen wir einen neuen Begriff, die Entropie."]] },
+  { id: "h5", name: "podcast-ep42-raw.flac", ext: "FLAC", dur: 3501, lang: "English", date: "Nov 2, 21:30", took: 760, model: "large-v3-turbo-q5", segs: [[0, "Welcome back to the show. Today we're talking about how small teams ship software without burning out."], [8, "My guest has run a three-person studio for almost a decade, which in this industry is a small miracle."]] },
+  { id: "h6", name: "voice-memo-0193.webm", ext: "WEBM", dur: 48, lang: "English", date: "Oct 29, 08:12", took: 6, model: "base.en", segs: [[0, "Reminder for Thursday: bring the signed forms and the spare keys for the storage room."], [6, "And call the garage before noon about the winter tyres."]] },
+  { id: "h7", name: "entrevista-mercado.ogg", ext: "OGG", dur: 1297, lang: "Spanish", date: "Oct 24, 16:05", took: 291, model: "large-v3-turbo-q5", segs: [[0, "Bueno, la idea del puesto empezó con mi abuela, que vendía flores en este mismo mercado."], [8, "Cuando ella se jubiló, yo tenía diecinueve años y no sabía nada de plantas."]] },
+  { id: "h8", name: "会議メモ-10月.m4a", ext: "M4A", dur: 552, lang: "Japanese", date: "Oct 20, 13:40", took: 120, model: "small", segs: [[0, "それでは、来月のスケジュールについて確認します。"], [5, "まず、十二日のワークショップは会場が変更になりました。"], [11, "詳細は後ほどメールで共有します。"]] }
+];
+const LOGS0 = [
+  ["14:31:58.204","info","app","Purr 1.4.0 started (desktop, Windows 11, x86_64)"],
+  ["14:31:58.231","debug","settings","Loaded settings from config.json"],
+  ["14:31:58.402","info","gpu","Detected backends: CUDA, Vulkan, CPU"],
+  ["14:31:58.405","debug","gpu","CUDA device 0: NVIDIA GeForce RTX 4070, 12.0 GB"],
+  ["14:31:58.410","warn","gpu","Vulkan device 1 (Intel UHD Graphics 770) skipped: no Vulkan 1.2 driver"],
+  ["14:31:58.511","info","models","3 models found on disk (1.2 GB)"],
+  ["14:31:58.512","trace","models","Checked large-v3-turbo-q5: 547 MB, sha256 ok"],
+  ["14:32:05.112","info","transcribe","Opened customer-interview-07.m4a (1:52, 44.1 kHz, stereo)"],
+  ["14:32:05.130","debug","audio","Resampling 44100 Hz to 16000 Hz, mono"],
+  ["14:32:05.318","info","whisper","Loading large-v3-turbo-q5 on CUDA"],
+  ["14:32:06.842","debug","whisper","Model loaded in 1.52 s"],
+  ["14:32:07.004","info","whisper","Detected language: English (p = 0.98)"],
+  ["14:32:07.011","trace","whisper","Segment 0 [00:00.000 → 00:07.120]"],
+  ["14:32:08.390","trace","whisper","Segment 1 [00:07.120 → 00:15.040]"],
+  ["14:32:09.702","trace","whisper","Segment 2 [00:15.040 → 00:24.300]"],
+  ["14:32:21.900","warn","whisper","Low-confidence segment at 01:34 (avg logprob −0.91)"],
+  ["14:32:29.660","info","transcribe","Finished in 24.6 s (4.6× real time)"],
+  ["14:32:29.702","debug","history","Saved transcript to history"],
+  ["14:35:10.018","error","models","Download of medium-q5 failed: connection reset by peer"],
+  ["14:35:15.044","info","models","Download of medium-q5 resumed at 212 MB"],
+  ["14:36:02.551","info","models","medium-q5 downloaded and verified (514 MB)"],
+  ["14:40:47.003","debug","ui","Theme changed to dark"],
+  ["14:41:12.870","error","transcribe","Could not decode vacation-clip.mov: unsupported container"],
+  ["14:41:12.871","info","ui","Showed file error to the user"]
+];
+
+/* ---------------- State ---------------- */
+const DEF_SETTINGS = { uiLang: "en", translate: false, wordTs: false, temp: 0, maxTokens: 224, rate: "16", quality: "high", fmt: "srt", gpu: true, backend: "auto", fallback: true, threads: 0, concurrent: false, jobs: 2, logLevel: "info", fileLog: true, rtApp: false };
+const S = {
+  view: "transcribe", page: "proto", phase: "idle", platform: "desktop", theme: "system", rt: false, rm: false, vp: "fit",
+  model: "large-v3-turbo-q5", lang: "auto", file: null, fileError: null,
+  dl: { "large-v3-turbo-q5": "ok", "base.en": "ok", "small-q5": "ok" }, prog: {},
+  noF16: false, offline: false, noWebGPU: false, gpuFallback: false,
+  history: HISTORY0.slice(), current: SAMPLE,
+  showTs: true, mode: "segments", q: "", qi: 0, playing: false, pos: 0,
+  settings: { ...DEF_SETTINGS },
+  logs: LOGS0.slice(), logLv: "all", logQ: "", autoscroll: true,
+  mFilter: "all", mQ: "", run: null, exportFmt: "srt"
+};
+let timers = { run: null, play: null, dl: null };
+
+/* ---------------- Helpers ---------------- */
+const fmtT = s => { s = Math.max(0, Math.round(s)); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60; return h ? `${h}:${String(m).padStart(2, "0")}:${String(x).padStart(2, "0")}` : `${m}:${String(x).padStart(2, "0")}`; };
+const fmtTook = s => s < 60 ? `${s} s` : `${Math.floor(s / 60)} min ${s % 60 ? (s % 60) + " s" : ""}`.trim();
+const langLabel = () => S.lang === "auto" ? "Automatic" : S.lang;
+const downloaded = () => MODELS.filter(m => S.dl[m.id] === "ok" || S.dl[m.id] === "corrupt");
+const needsFeature = m => m.f16 && (S.platform === "browser" || S.noF16);
+const announce = t => { const a = $("#announcer"); a.textContent = ""; setTimeout(() => a.textContent = t, 30); };
+const dots = (n, label) => `<span class="dots" role="img" aria-label="${label} ${n} of 5">${[1,2,3,4,5].map(i => `<i class="${i <= n ? "on" : ""}"></i>`).join("")}</span>`;
+const meters = m => `<span class="meters"><span class="meter">Speed ${dots(FAM[m.fam].speed, "Speed")}</span><span class="meter">Accuracy ${dots(Math.max(1, FAM[m.fam].acc - (m.q ? 0 : 0)), "Accuracy")}</span></span>`;
+
+function toast(title, sub = "", kind = "", icon = "info", action) {
+  const t = document.createElement("div");
+  t.className = `toast glass g3 ${kind}`;
+  t.innerHTML = `<span class="tico">${ic(icon)}</span><div class="grow"><b>${esc(title)}</b>${sub ? `<span>${esc(sub)}</span>` : ""}</div>${action ? `<button class="btn sm plain" data-toast-act>${esc(action.label)}</button>` : ""}<button class="icon-btn" aria-label="Dismiss">${ic("x", "sm")}</button>`;
+  const kill = () => { t.classList.add("out"); setTimeout(() => t.remove(), 300); };
+  t.querySelector('[aria-label="Dismiss"]').onclick = kill;
+  if (action) t.querySelector("[data-toast-act]").onclick = () => { kill(); action.run(); };
+  $("#toasts").appendChild(t);
+  setTimeout(kill, action ? 7000 : 4200);
+}
+let savedT;
+function saved() { const s = $("#saved"); if (!s) return; s.classList.add("on"); clearTimeout(savedT); savedT = setTimeout(() => s.classList.remove("on"), 1600); }
+
+function sw(key, on, label, extra = "") { return `<button class="switch" role="switch" id="sw-${key}" data-sw="${key}" aria-checked="${!!on}" aria-label="${esc(label)}" ${extra}></button>`; }
+function seg(key, opts, val, label, cls = "") {
+  return `<div class="seg ${cls}" role="radiogroup" aria-label="${esc(label)}" data-seg="${key}">${opts.map(([v, l, icn]) => `<button role="radio" id="seg-${key}-${v}" data-v="${v}" aria-checked="${v === val}" tabindex="${v === val ? 0 : -1}">${icn ? ic(icn, "sm") : ""}${l}</button>`).join("")}</div>`;
+}
+function stepper(key, val, label, disp) { return `<div class="stepper" role="group" aria-label="${esc(label)}"><button data-step="${key}" data-d="-1" id="st-${key}-m" aria-label="Decrease ${esc(label)}">${ic("minus", "sm")}</button><output class="tnum" aria-live="polite">${disp ?? val}</output><button data-step="${key}" data-d="1" id="st-${key}-p" aria-label="Increase ${esc(label)}">${ic("plus", "sm")}</button></div>`; }
+function select(key, opts, val, label) { return `<span class="select"><select id="sel-${key}" data-sel="${key}" aria-label="${esc(label)}">${opts.map(([v, l]) => `<option value="${v}" ${v === val ? "selected" : ""}>${l}</option>`).join("")}</select>${ic("updown", "sm")}</span>`; }
+function item({ icon, color, title, sub, ctl = "", cls = "", tag = "div", attrs = "" }) {
+  return `<${tag} class="item ${cls}" ${attrs}>${icon ? `<span class="ic ${color}">${ic(icon)}</span>` : ""}<span class="txt"><b>${title}</b>${sub ? `<span>${sub}</span>` : ""}</span>${ctl ? `<span class="ctl">${ctl}</span>` : ""}</${tag}>`;
+}
+
+/* ---------------- Theme / platform ---------------- */
+function applyGlobal() {
+  const r = document.documentElement;
+  r.classList.toggle("rt", S.rt);
+  r.classList.toggle("rm", S.rm);
+  $("#frame").dataset.vp = S.vp;
+  $("#app").dataset.platform = S.platform;
+  $("#hist-count").textContent = S.history.length || "";
+  $("#model-count").textContent = downloaded().length || "";
+}
+
+function setTheme(t) { S.theme = t; const r = document.documentElement; if (t === "system") r.removeAttribute("data-theme"); else r.setAttribute("data-theme", t); }
+/* ---------------- Navigation ---------------- */
+const TITLES = { transcribe: "Transcribe", history: "History", models: "Models", preferences: "Settings", logs: "Logs" };
+function go(view, opts = {}) {
+  if (!TITLES[view]) view = "transcribe";
+  S.view = view;
+  if (!opts.noHash) { try { history.replaceState(null, "", "#" + view); } catch (e) {} }
+  render();
+  $("#scroller").scrollTop = 0;
+  if (opts.focus !== false) { const h = $("#content h1"); if (h) { h.setAttribute("tabindex", "-1"); h.focus({ preventScroll: true }); } }
+}
+function render() {
+  applyGlobal();
+  const keep = document.activeElement && document.activeElement.id;
+  $$("[data-go]").forEach(b => b.dataset.go === S.view ? b.setAttribute("aria-current", "page") : b.removeAttribute("aria-current"));
+  const c = $("#content");
+  c.className = "content" + (["models", "logs", "history"].includes(S.view) ? " wide" : "");
+  c.innerHTML = VIEWS[S.view]();
+  after();
+  if (keep) { const el = document.getElementById(keep); if (el && el !== document.body && !el.closest("#demo")) { el.focus({ preventScroll: true }); if (el.tagName === "INPUT" && el.type !== "range") { const n = el.value.length; try { el.setSelectionRange(n, n); } catch (e) {} } } }
+}
+function after() {
+  if (S.view === "transcribe" && S.phase === "result") paintWave();
+  if (S.view === "logs" && S.autoscroll) { const l = $("#loglist"); if (l) l.scrollTop = l.scrollHeight; }
+  $$('input[type=range]').forEach(r => r.style.setProperty("--p", (r.value - r.min) / (r.max - r.min) * 100 + "%"));
+}
+
+/* ---------------- Views ---------------- */
+const VIEWS = {};
+
+function header(title, sub, right = "") { return `<div class="topbar"><div class="titles"><h1 class="lt">${title}</h1>${sub ? `<p class="sub">${sub}</p>` : ""}</div>${right}</div>`; }
+
+function pickers() {
+  const m = byId(S.model);
+  return `<button class="pill" id="pick-model" data-act="pick-model" aria-haspopup="dialog" aria-label="Model: ${esc(mLabel(m))}, ${fmtSize(m.size)}. Change model">
+      <span class="ico">${ic("cube", "sm")}</span><span class="grow"><span class="lbl">Model</span><span class="val">${esc(mLabel(m))} <span class="faint" style="font-weight:500">· ${fmtSize(m.size)}</span></span></span>${ic("cdown", "sm chev")}</button>
+    <button class="pill" id="pick-lang" data-act="pick-lang" aria-haspopup="dialog" aria-label="Spoken language: ${langLabel()}. Change language">
+      <span class="ico">${ic("globe", "sm")}</span><span class="grow"><span class="lbl">Spoken language</span><span class="val">${langLabel()}${S.lang === "auto" ? ' <span class="faint" style="font-weight:500">· detect</span>' : ""}</span></span>${ic("cdown", "sm chev")}</button>`;
+}
+
+VIEWS.transcribe = () => {
+  if (S.platform === "browser" && S.noWebGPU) return noWebGPU();
+  if (S.phase === "firstrun") return firstRun();
+  if (S.phase === "running") return running();
+  if (S.phase === "result") return result();
+  if (S.phase === "failed") return failed();
+  return home();
+};
+
+function firstRun() {
+  const reco = byId("large-v3-turbo-q5"), p = S.prog[reco.id], st = S.dl[reco.id];
+  const busy = st === "downloading" || st === "offline";
+  return `${header("Welcome to Purr", "Private speech to text. Everything runs on this " + (S.platform === "browser" ? "computer, in your browser." : "computer."))}
+  <section class="card glass welcome" aria-labelledby="w-h">
+    <div>
+      <span class="chip ok">${ic("lock")}On-device</span>
+      <h2 id="w-h">First, download a speech model.</h2>
+      <p>Purr turns audio into text with Whisper models that run on your own machine. You download a model once; after that, transcription works offline and your audio is never uploaded.</p>
+      <ul>
+        <li>${ic("check", "sm")}<span>Models are stored on this device. You can add or remove them any time.</span></li>
+        <li>${ic("check", "sm")}<span>${S.platform === "browser" ? "Uses your graphics card through WebGPU." : "Uses your graphics card when one is available, otherwise the CPU."}</span></li>
+        <li>${ic("check", "sm")}<span>99 languages, detected automatically.</span></li>
+      </ul>
+    </div>
+    <div class="reco" aria-live="polite">
+      <div class="top"><div><span class="chip accent">Recommended</span><div class="nm" style="margin-top:8px">${reco.name}</div><div class="faint" style="font-size:13px">${variant(reco)} · ${fmtSize(reco.size)}</div></div></div>
+      <p class="muted" style="margin:0;font-size:14px">The best balance for most people: close to the most accurate model, several times faster.</p>
+      ${meters(reco)}
+      ${busy ? dlBlock(reco) : st === "failed" ? `<div class="banner bad">${ic("xcircle")}<div><b>Download failed</b><p>The connection was interrupted at ${p ? Math.round(p.pct) : 38}%. Purr keeps what was downloaded and resumes from there.</p><div class="acts"><button class="btn primary sm" data-act="dl" data-id="${reco.id}" id="fr-retry">${ic("retry", "sm")}Try again</button></div></div></div>`
+        : `<button class="btn primary lg" data-act="dl" data-id="${reco.id}" id="fr-dl">${ic("download")}Download ${reco.name} · ${fmtSize(reco.size)}</button>`}
+      <div class="row wrap" style="gap:4px;justify-content:space-between"><button class="btn plain sm" data-act="dl" data-id="base-q5" id="fr-small">Smaller: Base · 57 MB</button><button class="btn plain sm" data-go="models" id="fr-all">See all models ${ic("cright", "sm")}</button></div>
+    </div>
+  </section>
+  <p class="privacy-line">${ic("lock", "sm")}The only network request is the model download itself.</p>`;
+}
+
+function dlBlock(m) {
+  const p = S.prog[m.id] || { pct: 0, speed: 0 };
+  const done = Math.round(m.size * p.pct / 100), left = p.speed ? Math.ceil((m.size - done) / p.speed) : 0;
+  const off = S.dl[m.id] === "offline";
+  return `<div class="dl" id="dl-${m.id.replace(/\./g, "_")}">
+    <div class="bar ${off ? "" : ""}"><i style="width:${p.pct}%;${off ? "background:var(--warning)" : ""}"></i></div>
+    <div class="dlmeta"><span>${done} MB of ${fmtSize(m.size)}</span><span>${off ? `<span style="color:var(--warning)">Waiting for a connection</span>` : `${p.speed.toFixed(1)} MB/s · ${left < 60 ? left + " s" : Math.ceil(left / 60) + " min"} left`}</span></div>
+    <div class="row" style="justify-content:flex-end"><button class="btn sm" data-act="dl-cancel" data-id="${m.id}" id="cancel-${m.id.replace(/\./g, "_")}">Cancel download</button></div>
+  </div>`;
+}
+
+function home() {
+  const fe = S.fileError;
+  let top;
+  if (S.file && S.phase === "ready") {
+    top = `<section class="filecard glass" aria-label="Selected file">
+      <span class="fileicon">${ic("music", "lg")}</span>
+      <div class="grow"><div class="name">${esc(S.file.name)}</div><div class="meta tnum">${fmtT(S.file.dur)} · ${S.file.bytes} · ${S.file.ext}</div></div>
+      <button class="btn sm" data-act="choose" id="replace-file">Replace</button>
+      <button class="icon-btn" data-act="clear-file" id="remove-file" aria-label="Remove file">${ic("x")}</button>
+    </section>`;
+  } else {
+    top = `<button class="drop glass" id="drop" data-act="choose" aria-describedby="drop-formats">
+      <span class="well"></span>
+      <span class="halo">${ic("upload", "lg")}</span>
+      <h2>Drop an audio file</h2>
+      <p>or <span style="color:var(--accent-text);font-weight:600">choose a file</span> · ${MOD}+O</p>
+      <span class="formats" id="drop-formats">MP3, WAV, AAC, FLAC, OGG, Opus, M4A or WebM · up to 2 GB</span>
+    </button>`;
+  }
+  const FE = {
+    type: ["Purr can't open this kind of file", "vacation-clip.mov is a video container Purr doesn't read. Export the audio as MP3, WAV, M4A or another supported format, then try again.", "xcircle"],
+    empty: ["This file is empty", "silence-test.wav is 0 bytes long, so there's nothing to transcribe. Check that the recording finished saving.", "info"],
+    corrupt: ["This audio can't be decoded", "board-call.mp3 looks damaged: the audio stops making sense after 0:42. Try exporting it again from the app that recorded it.", "warn"],
+    big: ["This file is too large", "all-hands-full-day.wav is 3.4 GB. Purr accepts files up to 2 GB. Convert it to M4A or MP3, which is usually 10 times smaller, or split it into parts.", "warn"]
+  };
+  const banner = fe ? `<div class="banner ${fe === "type" ? "bad" : "warn"}" role="alert">${ic(FE[fe][2])}<div><b>${FE[fe][0]}</b><p>${FE[fe][1]}</p><div class="acts"><button class="btn sm primary" data-act="choose" id="fe-choose">Choose another file</button><button class="btn sm" data-act="clear-err" id="fe-dismiss">Dismiss</button></div></div></div>` : "";
+  const recent = S.history.slice(0, 3);
+  return `${header("Transcribe", "Turn a recording into text. Nothing leaves this " + (S.platform === "browser" ? "browser." : "computer."))}
+    ${banner}
+    ${top}
+    <div class="runbar glass" role="group" aria-label="Transcription options">
+      ${pickers()}
+      <span class="rb-spacer"></span>
+      <button class="btn primary lg" data-act="start" id="start-btn" ${S.phase === "ready" ? "" : 'aria-disabled="true" disabled'}>${ic("wave")}Transcribe</button>
+    </div>
+    <p class="privacy-line">${ic("lock", "sm")}Processed on this device with ${S.platform === "browser" ? "WebGPU" : S.settings.gpu ? "your GPU" : "the CPU"}. Audio is never uploaded.</p>
+    ${recent.length ? `<div class="row" style="justify-content:space-between;margin-top:8px"><h2 class="t2">Recent</h2><button class="btn plain sm" data-go="history" id="see-all">See all</button></div>
+    <div class="recent">${recent.map(h => `<button class="glass" data-act="open-h" data-id="${h.id}" id="rc-${h.id}"><span class="nm">${esc(h.name)}</span><span class="pv">${esc(h.segs[0][1])}</span><span class="mt tnum">${h.date} · ${fmtT(h.dur)} · ${h.lang}</span></button>`).join("")}</div>` : ""}`;
+}
+
+function noWebGPU() {
+  return `${header("Transcribe")}
+  <section class="card glass stack" style="padding:28px;gap:16px" role="alert">
+    <span class="halo" style="width:56px;height:56px;border-radius:18px;display:grid;place-items:center;background:var(--warning-soft);color:var(--warning)">${ic("cpu", "lg")}</span>
+    <h2 class="t2">This browser can't run speech models yet</h2>
+    <p class="muted" style="margin:0;max-width:60ch">Purr runs Whisper on your graphics card through WebGPU, so your audio never has to leave your computer. WebGPU isn't available here, so there's nothing to run the model on.</p>
+    <div class="group glass" style="box-shadow:none">
+      ${item({ icon: "globe", color: "blue", title: "Use a browser with WebGPU", sub: "Current Chrome, Edge or Safari, or Firefox where WebGPU is turned on." })}
+      ${item({ icon: "bolt", color: "orange", title: "Turn on hardware acceleration", sub: "In your browser's system settings. WebGPU needs it, and some company policies switch it off." })}
+      ${item({ icon: "desktop", color: "indigo", title: "Or use the desktop app", sub: "Works on Windows, macOS and Linux, with or without a GPU." })}
+    </div>
+    <div class="row wrap"><button class="btn primary" data-act="recheck" id="recheck">${ic("retry", "sm")}Check again</button><button class="btn" data-act="toast-desktop" id="get-desktop">Get the desktop app</button></div>
+  </section>`;
+}
+
+function running() {
+  const r = S.run, f = S.file || SAMPLE, m = byId(S.model);
+  const st = (i, title, sub) => `<div class="stg ${r.stage > i ? "done" : r.stage === i ? "active" : ""}" id="stage-${i}"><span class="dot">${r.stage > i ? ic("check", "sm") : r.stage === i ? '<span class="spinner"></span>' : `<span style="font-size:11px;font-weight:700">${i + 1}</span>`}</span><span style="min-width:0"><b>${title}</b><span class="ss" id="stage-${i}-sub">${sub}</span></span></div>`;
+  const langSub = S.lang === "auto" ? (r.stage > 1 ? "English · 98% sure" : "Automatic") : S.lang;
+  return `${header("Transcribing", "", `<button class="btn" data-act="cancel-run" id="cancel-run">${ic("stop", "sm")}Cancel</button>`)}
+  ${S.gpuFallback ? `<div class="banner warn" role="status">${ic("bolt")}<div><b>CUDA isn't available, so Purr is using Vulkan</b><p>The NVIDIA driver didn't respond. Vulkan on the same GPU is usually only slightly slower. You can change the backend in Settings.</p><div class="acts"><button class="btn sm" data-go="preferences" id="fb-settings">Open Performance settings</button></div></div></div>` : ""}
+  <section class="card glass stack" style="gap:16px" aria-label="Progress">
+    <div class="row"><span class="fileicon" style="width:44px;height:44px;border-radius:12px">${ic("music")}</span><div class="grow"><div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(f.name)}</div><div class="faint tnum" style="font-size:13px">${fmtT(f.dur)} · ${esc(mLabel(m))} · ${S.platform === "browser" ? "WebGPU" : S.gpuFallback ? "Vulkan" : "CUDA"}</div></div></div>
+    <div class="stages">${st(0, "Loading model", fmtSize(m.size))}${st(1, "Detecting language", langSub)}${st(2, "Transcribing", r.stage === 2 ? `<span id="seg-count">${r.n}</span> of ~${SAMPLE.segs.length} segments` : "Waiting")}</div>
+    <div class="bar ${r.stage < 2 ? "indet" : ""}" role="progressbar" aria-label="Transcription progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(r.pct)}" id="run-bar"><i style="width:${r.pct}%"></i></div>
+    <div class="stats">
+      <div class="stat"><div class="k">Progress</div><div class="v" id="r-pct">${Math.round(r.pct)}%</div></div>
+      <div class="stat"><div class="k">Elapsed</div><div class="v" id="r-el">${fmtT(r.el)}</div></div>
+      <div class="stat"><div class="k">Speed</div><div class="v" id="r-sp">${r.speed ? r.speed.toFixed(1) + "×" : "–"}</div></div>
+      <div class="stat"><div class="k">Detected language</div><div class="v" id="r-lang" style="font-size:17px;line-height:30px">${S.lang === "auto" ? (r.stage > 1 ? "English" : "Listening…") : S.lang}</div></div>
+    </div>
+    <p class="foot" style="margin:-6px 0 0">Speed is relative to real time: ${r.speed ? r.speed.toFixed(1) : "4"}× means a minute of audio takes about ${r.speed ? Math.round(60 / r.speed) : 15} seconds.</p>
+  </section>
+  <section class="card glass" aria-label="Live transcript" style="padding:12px 10px">
+    <div class="row" style="padding:4px 10px 8px"><h2 class="t3 grow">Live transcript</h2><span class="chip accent">${ic("wave")}Streaming</span></div>
+    <div class="live" id="live">${SAMPLE.segs.slice(0, r.n).map(s => segRow(s)).join("")}${r.stage === 2 ? '<div class="seg-row" id="caret-row"><span class="ts"></span><span class="tx"><span class="caret" aria-hidden="true"></span></span></div>' : `<p class="faint" style="padding:6px 10px;margin:0;font-size:14px" id="live-wait">Text appears here as soon as the first sentence is recognised.</p>`}</div>
+  </section>`;
+}
+const segRow = (s, cls = "") => `<div class="seg-row ${cls}"><span class="ts">${fmtT(s[0])}</span><span class="tx">${esc(s[1])}</span></div>`;
+
+function failed() {
+  return `${header("Transcription failed")}
+  <section class="card glass stack" style="gap:16px" role="alert">
+    <div class="row" style="align-items:flex-start"><span class="fileicon bad">${ic("warn", "lg")}</span><div class="grow"><h2 class="t2">Purr stopped at 1:02 of ${fmtT((S.file || SAMPLE).dur)}</h2><p class="muted" style="margin:4px 0 0">The GPU ran out of memory while running ${esc(mLabel(byId(S.model)))}. Another app may be using the graphics card. The text recognised so far is kept below.</p></div></div>
+    <div class="row wrap"><button class="btn primary" data-act="start" id="retry-run">${ic("retry", "sm")}Try again</button><button class="btn" data-act="pick-model" id="fail-model">Use a smaller model</button><button class="btn plain" data-go="logs" id="fail-logs">View logs</button></div>
+  </section>
+  <section class="card glass" style="padding:12px 10px"><h2 class="t3" style="padding:4px 10px 8px">Recognised before the error</h2><div class="live">${SAMPLE.segs.slice(0, 8).map(s => segRow(s)).join("")}</div></section>`;
+}
+
+function result() {
+  const h = S.current, m = byId(h.model) || byId(S.model);
+  const q = S.q.trim().toLowerCase();
+  let count = 0;
+  const hl = t => {
+    if (!q) return esc(t);
+    const parts = t.split(new RegExp(`(${q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`, "ig"));
+    return parts.map((p, i) => i % 2 ? `<mark data-mi="${count}" class="${count++ === S.qi ? "cur" : ""}">${esc(p)}</mark>` : esc(p)).join("");
+  };
+  const curSeg = h.segs.reduce((a, s, i) => s[0] <= S.pos ? i : a, 0);
+  const body = S.mode === "segments"
+    ? `<div class="live ${S.showTs ? "" : "no-ts"}" id="segs">${h.segs.map((s, i) => `<button class="seg-row ${S.playing || S.pos > 0 ? (i === curSeg ? "playing" : "") : ""}" data-act="seek" data-t="${s[0]}" id="sg-${i}" aria-label="Play from ${fmtT(s[0])}"><span class="ts">${fmtT(s[0])}</span><span class="tx">${hl(s[1])}</span></button>`).join("")}</div>`
+    : `<div class="para" id="segs">${paras(h.segs).map(p => `<p>${S.showTs ? `<span class="faint tnum" style="font-size:13px;margin-right:8px">${fmtT(p[0])}</span>` : ""}${hl(p[1])}</p>`).join("")}</div>`;
+  const total = count;
+  return `<div class="topbar"><div class="titles"><p class="sub" style="margin:0 0 2px"><button class="btn plain sm" style="margin-left:-8px" data-act="new" id="back-new">${ic("back", "sm")}New transcription</button></p><h1 class="lt file" style="overflow-wrap:anywhere">${esc(h.name)}</h1></div>
+    <div class="row"><button class="btn" data-act="copy" id="copy-btn">${ic("copy", "sm")}Copy</button><button class="btn primary" data-act="export-menu" id="export-btn" aria-haspopup="menu">${ic("share", "sm")}Export</button></div></div>
+  <div class="metas tnum" aria-label="Details">
+    <span>${ic("clock")}${fmtT(h.dur)}</span><span>${ic("cube")}${esc(mLabel(m))}</span><span>${ic("globe")}${h.lang}${S.lang === "auto" ? " (detected)" : ""}</span><span>${ic("bolt")}Took ${fmtTook(h.took)} · ${(h.dur / h.took).toFixed(1)}× real time</span><span>${ic("lock")}Saved on this device</span>
+  </div>
+  <div class="player glass" role="group" aria-label="Source audio">
+    <button class="play" data-act="play" id="play-btn" aria-label="${S.playing ? "Pause" : "Play"}">${ic(S.playing ? "pause" : "play")}</button>
+    <div class="wave" id="wave" role="slider" tabindex="0" aria-label="Playback position" aria-valuemin="0" aria-valuemax="${h.dur}" aria-valuenow="${Math.round(S.pos)}" aria-valuetext="${fmtT(S.pos)} of ${fmtT(h.dur)}"></div>
+    <span class="ptime" id="ptime">${fmtT(S.pos)} / ${fmtT(h.dur)}</span>
+  </div>
+  <section class="card glass tight" aria-label="Transcript">
+    <div class="tools">
+      <label class="field" for="t-search">${ic("search", "sm")}<input id="t-search" type="search" placeholder="Search transcript" value="${esc(S.q)}" autocomplete="off" aria-describedby="t-count"></label>
+      ${q ? `<span class="searchnav" id="t-count" aria-live="polite">${total ? `${Math.min(S.qi + 1, total)} of ${total}` : "No matches"}<button class="icon-btn" data-act="q-prev" id="q-prev" aria-label="Previous match">${ic("cup", "sm")}</button><button class="icon-btn" data-act="q-next" id="q-next" aria-label="Next match">${ic("cdown", "sm")}</button></span>` : `<span id="t-count" class="sr"></span>`}
+      <span class="spacer"></span>
+      ${seg("mode", [["segments", "Segments", "list"], ["text", "Text", "text"]], S.mode, "Transcript layout")}
+      <span class="inline-sw"><span id="ts-lbl">Timestamps</span>${sw("showTs", S.showTs, "Timestamps")}</span>
+    </div>
+    <div style="padding:10px">${body}</div>
+  </section>
+  <p class="foot" style="text-align:center">Click any line to play from there. ${MOD}+F searches, ${MOD}+Shift+C copies everything.</p>`;
+}
+function paras(segs) { const out = []; segs.forEach((s, i) => { if (i % 4 === 0) out.push([s[0], s[1]]); else out[out.length - 1][1] += " " + s[1]; }); return out; }
+
+function paintWave() {
+  const w = $("#wave"); if (!w) return;
+  const n = Math.max(40, Math.min(110, Math.floor(w.clientWidth / 5)));
+  let seed = 7; const rnd = () => (seed = (seed * 9301 + 49297) % 233280) / 233280;
+  const dur = S.current.dur, cut = S.pos / dur * n;
+  let html = "";
+  for (let i = 0; i < n; i++) { const env = .35 + .65 * Math.abs(Math.sin(i / n * Math.PI * 5.3 + 1)); const v = Math.max(.12, Math.min(1, env * (.45 + rnd() * .65))); html += `<i class="${i < cut ? "p" : ""}" style="height:${Math.round(v * 100)}%"></i>`; }
+  w.innerHTML = html;
+}
+function setPos(t) {
+  const h = S.current; S.pos = Math.max(0, Math.min(h.dur, t));
+  const w = $("#wave"); if (!w) return;
+  const bars = w.children, cut = S.pos / h.dur * bars.length;
+  for (let i = 0; i < bars.length; i++) bars[i].classList.toggle("p", i < cut);
+  w.setAttribute("aria-valuenow", Math.round(S.pos)); w.setAttribute("aria-valuetext", `${fmtT(S.pos)} of ${fmtT(h.dur)}`);
+  $("#ptime").textContent = `${fmtT(S.pos)} / ${fmtT(h.dur)}`;
+  const cur = h.segs.reduce((a, s, i) => s[0] <= S.pos ? i : a, 0);
+  $$("#segs .seg-row").forEach((r, i) => r.classList.toggle("playing", i === cur));
+}
+function togglePlay(force) {
+  S.playing = force ?? !S.playing;
+  clearInterval(timers.play);
+  const b = $("#play-btn");
+  if (b) { b.innerHTML = ic(S.playing ? "pause" : "play"); b.setAttribute("aria-label", S.playing ? "Pause" : "Play"); }
+  if (S.playing) timers.play = setInterval(() => { if (S.view !== "transcribe" || S.phase !== "result") return togglePlay(false); if (S.pos >= S.current.dur) return togglePlay(false); setPos(S.pos + .25); }, 250);
+}
+
+VIEWS.history = () => {
+  const list = S.history;
+  if (!list.length) return `${header("History")}
+    <section class="card glass empty">
+      <span class="art">${ic("cat", "xl")}</span>
+      <h2>No transcriptions yet</h2>
+      <p>Transcripts you make are saved here, on this device only. Nothing is synced or uploaded.</p>
+      <button class="btn primary" data-go="transcribe" id="empty-go" style="margin-top:8px">${ic("plus", "sm")}Transcribe a file</button>
+    </section>`;
+  return `${header("History", `${list.length} transcriptions · stored on this device`, `<label class="field" for="h-search" style="width:240px;max-width:100%">${ic("search", "sm")}<input id="h-search" type="search" placeholder="Search history" autocomplete="off"></label>`)}
+  <section class="group glass" aria-label="Transcriptions" id="hlist">
+    ${list.map(h => `<div class="hrow" data-hid="${h.id}">
+      <button class="open" data-act="open-h" data-id="${h.id}" id="ho-${h.id}"><span class="badge">${h.ext}</span><span class="grow" style="min-width:0"><span class="nm" style="display:block">${esc(h.name)}</span><span class="pv" style="display:block">${esc(h.segs[0][1])}</span><span class="mt" style="display:block">${h.date} · ${fmtT(h.dur)} · ${h.lang}</span></span></button>
+      <button class="icon-btn" data-act="h-menu" data-id="${h.id}" id="hm-${h.id}" aria-label="More actions for ${esc(h.name)}" aria-haspopup="menu">${ic("more")}</button>
+    </div>`).join("")}
+  </section>
+  <p class="foot" style="padding-left:16px">History is kept until you delete it. Deleting a transcript doesn't touch the original audio file.</p>`;
+};
+
+VIEWS.models = () => {
+  const dl = downloaded(), used = dl.reduce((a, m) => a + m.size, 0);
+  const anyDl = Object.entries(S.dl).find(([, v]) => v === "downloading" || v === "offline");
+  const f = S.mFilter, q = S.mQ.trim().toLowerCase();
+  const show = MODELS.filter(m => (f === "all" || (f === "dl" && S.dl[m.id]) || (f === "ml" && m.ml) || (f === "en" && !m.ml)) && (!q || (m.name + " " + m.id + " " + variant(m)).toLowerCase().includes(q)));
+  const grouped = f === "all" && !q, isAct = m => ["downloading", "offline", "failed"].includes(S.dl[m.id]);
+  const fams = ["turbo", "large", "medium", "small", "base", "tiny"].map(k => [k, show.filter(m => m.fam === k && !(grouped && isAct(m)))]).filter(([, a]) => a.length);
+  return `${header("Models", "Speech models stored on this device. Larger models are more accurate and slower.")}
+  ${S.offline ? `<div class="banner warn" role="alert">${ic("wifioff")}<div><b>You're offline</b><p>The download is paused and will resume on its own when the connection is back. Models you've already downloaded keep working.</p></div></div>` : ""}
+  ${S.platform === "browser" ? `<div class="banner info">${ic("info")}<div><b>Some models need a GPU feature this browser doesn't offer</b><p>Full-precision medium and large models use 16-bit floating point on the GPU (WebGPU "shader-f16"). Your GPU doesn't expose it here, so pick a quantized (Q5) version instead.</p></div></div>` : S.noF16 ? `<div class="banner info">${ic("info")}<div><b>Your GPU lacks 16-bit floating point support</b><p>Full-precision medium and large models need it. Quantized (Q5) versions work on this machine.</p></div></div>` : ""}
+  <div class="mstats">
+    <div class="mstat glass"><div class="k">Downloaded</div><div class="v">${dl.length} <span class="faint" style="font-size:14px;font-weight:500">of ${MODELS.length}</span></div></div>
+    <div class="mstat glass"><div class="k">Space used</div><div class="v">${fmtSize(used)}</div><div class="bar thin"><i style="width:${Math.min(100, used / 120)}%"></i></div></div>
+    <div class="mstat glass"><div class="k">${anyDl ? "Downloading" : "Used for transcription"}</div><div class="v" style="font-size:17px;line-height:30px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${anyDl ? esc(mLabel(byId(anyDl[0]))) + ` · ${Math.round((S.prog[anyDl[0]] || { pct: 0 }).pct)}%` : esc(mLabel(byId(S.model)))}</div></div>
+  </div>
+  <div class="filters">
+    ${seg("mFilter", [["all", "All"], ["dl", "On this device"], ["ml", "Multilingual"], ["en", "English only"]], f, "Filter models")}
+    <label class="field" for="m-search">${ic("search", "sm")}<input id="m-search" type="search" placeholder="Search models" value="${esc(S.mQ)}" autocomplete="off"></label>
+  </div>
+  ${(() => { const act = MODELS.filter(m => ["downloading", "offline", "failed"].includes(S.dl[m.id])); return act.length && f === "all" && !q ? `<section aria-labelledby="fam-active"><div class="fam-h"><h3 id="fam-active">In progress</h3></div><div class="group glass">${act.map(modelRow).join("")}</div></section>` : ""; })()}
+  ${fams.length ? fams.map(([k, arr]) => `<section aria-labelledby="fam-${k}"><div class="fam-h"><h3 id="fam-${k}">${FAM[k].label}</h3><span>${FAM[k].hint}</span></div><div class="group glass">${arr.map(modelRow).join("")}</div></section>`).join("")
+    : `<section class="card glass empty"><h2>No models match</h2><p>Try a different filter or search.</p></section>`}
+  <p class="foot" style="padding-left:16px">Models download over HTTPS and are checked against a published checksum. Q5 means quantized to 5-bit: about a third of the size, with a small loss in accuracy.</p>`;
+};
+function modelRow(m) {
+  const st = S.dl[m.id], dis = needsFeature(m), sid = m.id.replace(/\./g, "_");
+  let side = "", extra = "";
+  if (dis) side = `<span class="chip">${ic("cpu")}Needs shader-f16</span>`;
+  else if (st === "ok") side = `${S.model === m.id ? `<span class="chip accent">In use</span>` : ""}<span class="state-ok">${ic("checkcircle", "sm")}On device</span><button class="icon-btn" data-act="m-menu" data-id="${m.id}" id="mm-${sid}" aria-label="More actions for ${esc(mLabel(m))}" aria-haspopup="menu">${ic("more")}</button>`;
+  else if (st === "verifying") side = `<span class="row" style="gap:8px;font-size:13px;color:var(--fg-2)"><span class="spinner"></span>Checking files…</span>`;
+  else if (st === "downloading" || st === "offline") extra = dlBlock(m);
+  else if (st === "failed") side = `<span class="chip bad">${ic("xcircle")}Failed</span><button class="btn sm primary" data-act="dl" data-id="${m.id}" id="dl-${sid}">${ic("retry", "sm")}Retry</button>`;
+  else if (st === "corrupt") side = `<button class="btn sm primary" data-act="dl" data-id="${m.id}" id="dl-${sid}">Download again</button><button class="icon-btn" data-act="m-menu" data-id="${m.id}" id="mm-${sid}" aria-label="More actions for ${esc(mLabel(m))}">${ic("more")}</button>`;
+  else side = `<button class="btn sm" data-act="dl" data-id="${m.id}" id="dl-${sid}" aria-label="Download ${esc(mLabel(m))}, ${fmtSize(m.size)}">${ic("download", "sm")}Get</button>`;
+  return `<div class="mrow ${dis ? "disabled" : ""}" id="mr-${sid}">
+    <div style="min-width:0"><div class="nm">${esc(mLabel(m))}${m.reco ? '<span class="chip accent">Recommended</span>' : ""}</div>
+      <div class="hint">${dis ? "Needs a GPU feature this device doesn't have (16-bit floats). Use the Q5 version instead." : hint(m)}</div>
+      <div class="tags"><span class="chip">${m.ml ? ic("globe") + "Multilingual" : "English only"}</span>${m.q ? '<span class="chip">Quantized Q5</span>' : ""}${meters(m)}</div>
+      ${st === "corrupt" ? `<div class="banner warn" style="margin-top:10px;padding:10px 12px">${ic("warn")}<div><b>Integrity check failed</b><p>1 of 3 files doesn't match its checksum, probably from an interrupted write. Download it again to repair it.</p></div></div>` : ""}
+    </div>
+    <div class="side"><span class="size">${fmtSize(m.size)}</span>${side}</div>
+    ${extra}
+  </div>`;
+}
+
+VIEWS.preferences = () => {
+  const s = S.settings, desk = S.platform === "desktop";
+  const m = byId(S.model);
+  const sections = [["appearance", "Appearance"], ["transcription", "Transcription"], ...(desk ? [["audio", "Audio"], ["performance", "Performance"]] : []), ["logging", "Logging"], ["about", "About"]];
+  const BADGE = { ok: '<span class="chip ok">Available</span>', na: '<span class="chip warn">Built, unavailable</span>', nb: '<span class="chip">Not built</span>' };
+  const sys = [
+    ["CUDA", "NVIDIA GeForce RTX 4070", "12 GB VRAM · driver 566.03", S.gpuFallback ? "na" : "ok"],
+    ["Vulkan", "NVIDIA GeForce RTX 4070", "12 GB VRAM", "ok"],
+    ["Vulkan", "Intel UHD Graphics 770", "Shared memory · no Vulkan 1.2 driver", "na"],
+    ["Metal", "macOS only", "", "nb"], ["CoreML", "macOS only", "", "nb"],
+    ["CPU", "Intel Core i7-13700", "16 cores, 24 threads · AVX2", "ok"]
+  ];
+  return `${header("Settings", "Changes save automatically.", `<span class="saved" id="saved" role="status">${ic("checkcircle", "sm")}Saved</span>`)}
+  <nav class="sect-nav" aria-label="Settings sections">${sections.map(([k, l]) => `<button data-act="jump" data-to="${k}" id="j-${k}">${l}</button>`).join("")}</nav>
+  ${desk ? "" : `<div class="banner info">${ic("window")}<div><b>You're using Purr in the browser</b><p>The browser manages audio decoding and the GPU, so audio, performance and log file settings live only in the desktop app.</p></div></div>`}
+  <div class="settings">
+  <section id="s-appearance" aria-labelledby="h-appearance"><h2 class="group-h" id="h-appearance">Appearance</h2><div class="group glass">
+    ${item({ icon: "sun", color: "blue", title: "Theme", ctl: seg("theme", [["system", "Auto", "auto"], ["light", "Light", "sun"], ["dark", "Dark", "moon"]], S.theme, "Theme"), cls: "stackable" })}
+    ${item({ icon: "globe", color: "teal", title: "Interface language", ctl: select("uiLang", [["en", "English"], ["fr", "Français"], ["de", "Deutsch"], ["es", "Español"], ["ja", "日本語"]], s.uiLang, "Interface language") })}
+    ${item({ icon: "stack", color: "gray", title: "Reduce transparency", sub: "Solid backgrounds instead of glass. Also follows the system setting. (Suggested addition.)", ctl: sw("rt", S.rt, "Reduce transparency") })}
+  </div></section>
+
+  <section id="s-transcription" aria-labelledby="h-transcription"><h2 class="group-h" id="h-transcription">Transcription</h2><div class="group glass">
+    ${item({ icon: "globe", color: "indigo", title: "Spoken language", sub: "Automatic works for most recordings.", ctl: `<span class="val">${langLabel()}</span>${ic("cright", "sm")}`, tag: "button", attrs: 'data-act="pick-lang" id="set-lang"' })}
+    ${item({ icon: "cube", color: "purple", title: "Model", sub: `${variant(m)} · ${fmtSize(m.size)}`, ctl: `<span class="val">${esc(m.name)}</span>${ic("cright", "sm")}`, tag: "button", attrs: 'data-act="pick-model" id="set-model"' })}
+    ${item({ icon: "translate", color: "orange", title: "Translate to English", sub: "Writes English text whatever language is spoken.", ctl: sw("translate", s.translate, "Translate to English") })}
+    ${item({ icon: "clock", color: "green", title: "Word-level timestamps", sub: "A time for every word, for precise subtitles. Slightly slower.", ctl: sw("wordTs", s.wordTs, "Word-level timestamps") })}
+    <div class="item col"><div class="head"><span class="ic pink">${ic("thermo")}</span><span class="txt"><b id="temp-lbl">Temperature</b><span>Lower is more predictable. Raise it if the text repeats itself.</span></span><span class="val tnum" id="temp-val">${s.temp.toFixed(1)}</span></div>
+      <div class="row" style="padding-left:44px;gap:10px"><span class="faint" style="font-size:12px">0</span><input type="range" id="rg-temp" data-range="temp" min="0" max="1" step="0.1" value="${s.temp}" aria-labelledby="temp-lbl" aria-valuetext="${s.temp.toFixed(1)}"><span class="faint" style="font-size:12px">1</span></div></div>
+    ${item({ icon: "hash", color: "gray", title: "Maximum tokens per segment", sub: "Caps how long one segment can get. 224 suits most speech.", ctl: stepper("maxTokens", s.maxTokens, "Maximum tokens") })}
+  </div></section>
+
+  ${desk ? `<section id="s-audio" aria-labelledby="h-audio"><h2 class="group-h" id="h-audio">Audio</h2><div class="group glass">
+    ${item({ icon: "speaker", color: "red", title: "Sample rate", sub: "Whisper listens at 16 kHz. Higher rates only help other tools that read the converted audio.", ctl: select("rate", [["8", "8 kHz"], ["16", "16 kHz"], ["22.05", "22.05 kHz"], ["44.1", "44.1 kHz"], ["48", "48 kHz"]], s.rate, "Sample rate") })}
+    ${item({ icon: "wave", color: "blue", title: "Processing quality", sub: "Resampling and noise handling. Higher is slower.", ctl: seg("quality", [["low", "Low"], ["medium", "Medium"], ["high", "High"], ["ultra", "Ultra"]], s.quality, "Processing quality"), cls: "stackable" })}
+    ${item({ icon: "doc", color: "teal", title: "Preferred export format", sub: "Selected first when you export.", ctl: seg("fmt", [["txt", "TXT"], ["srt", "SRT"], ["vtt", "VTT"], ["json", "JSON"]], s.fmt, "Preferred export format"), cls: "stackable" })}
+  </div></section>
+
+  <section id="s-performance" aria-labelledby="h-performance"><h2 class="group-h" id="h-performance">Performance</h2><div class="group glass">
+    ${item({ icon: "bolt", color: "orange", title: "GPU acceleration", sub: "Much faster on a supported graphics card.", ctl: sw("gpu", s.gpu, "GPU acceleration") })}
+    <div class="${s.gpu ? "" : "disabled-block"}" style="box-shadow:inset 0 1px 0 var(--separator)" ${s.gpu ? "" : 'aria-disabled="true"'}>
+    ${item({ icon: "cpu", color: "indigo", title: "Backend", sub: "Automatic picks the fastest one that works.", ctl: select("backend", [["auto", "Automatic"], ["cuda", "CUDA"], ["vulkan", "Vulkan"], ["metal", "Metal"], ["coreml", "CoreML"], ["cpu", "CPU"]], s.backend, "Acceleration backend") })}
+    <div style="box-shadow:inset 0 1px 0 var(--separator)">${item({ icon: "retry", color: "green", title: "Fall back if unavailable", sub: "Use the next best backend instead of stopping.", ctl: sw("fallback", s.fallback, "Fall back to the next best backend if unavailable", s.gpu ? "" : "disabled") })}</div>
+    </div>
+  </div>
+  <h3 class="group-h" style="margin-top:18px">This computer</h3>
+  <div class="group glass sys" aria-label="Detected backends and devices">${sys.map(([b, n, d, st]) => `<div class="dev"><span class="be">${b}</span><span class="dn">${n}${d ? `<small>${d}</small>` : ""}</span>${BADGE[st]}</div>`).join("")}</div>
+  <p class="group-f">Read-only. "Built, unavailable" means this copy of Purr supports the backend but the device or driver doesn't respond.</p>
+  <div class="group glass" style="margin-top:14px">
+    ${item({ icon: "cpu", color: "gray", title: "CPU threads", sub: "Auto uses one fewer than your CPU has, to keep the computer responsive.", ctl: stepper("threads", s.threads, "CPU threads", s.threads === 0 ? "Auto" : s.threads) })}
+    ${item({ icon: "stack", color: "purple", title: "Process files concurrently", sub: "Run more than one transcription at a time. Uses more memory.", ctl: sw("concurrent", s.concurrent, "Process files concurrently") })}
+    ${s.concurrent ? item({ icon: "hash", color: "purple", title: "Maximum concurrent jobs", ctl: stepper("jobs", s.jobs, "Maximum concurrent jobs") }) : ""}
+  </div></section>` : ""}
+
+  <section id="s-logging" aria-labelledby="h-logging"><h2 class="group-h" id="h-logging">Logging</h2><div class="group glass">
+    ${item({ icon: "logs", color: "gray", title: "Log level", sub: "Debug and Trace help when reporting a problem.", ctl: select("logLevel", [["error", "Error"], ["warn", "Warning"], ["info", "Info"], ["debug", "Debug"], ["trace", "Trace"]], s.logLevel, "Log level") })}
+    ${desk ? item({ icon: "file", color: "blue", title: "Write logs to a file", sub: "Kept for 7 days in Purr's app data folder.", ctl: sw("fileLog", s.fileLog, "Write logs to a file") }) : ""}
+    ${item({ icon: "logs", color: "indigo", title: "Open logs", ctl: ic("cright", "sm"), tag: "button", attrs: 'data-go="logs" id="open-logs"' })}
+  </div></section>
+
+  <section id="s-about" aria-labelledby="h-about"><h2 class="group-h" id="h-about">About</h2><div class="group glass">
+    ${item({ icon: "shield", color: "green", title: "Privacy", sub: "What stays on this device, and the one thing that uses the network.", ctl: ic("cright", "sm"), tag: "button", attrs: 'data-act="about" id="about-row"' })}
+    ${item({ icon: "keyboard", color: "gray", title: "Keyboard shortcuts", ctl: `<kbd>?</kbd>${ic("cright", "sm")}`, tag: "button", attrs: 'data-act="keys" id="keys-row"' })}
+    ${item({ icon: "cat", color: "indigo", title: "Purr 1.4.0", sub: desk ? "Desktop · Windows" : "Web · WebGPU" })}
+  </div>
+  <div class="group glass" style="margin-top:14px">${item({ title: '<span style="color:var(--danger)">Reset all settings</span>', sub: "Models and history are not affected.", tag: "button", attrs: 'data-act="reset" id="reset-row"' })}</div>
+  </section>
+  </div>`;
+};
+
+VIEWS.logs = () => {
+  const order = ["error", "warn", "info", "debug", "trace"];
+  const q = S.logQ.trim().toLowerCase();
+  const rows = S.logs.filter(l => (S.logLv === "all" || order.indexOf(l[1]) <= order.indexOf(S.logLv)) && (!q || (l[2] + " " + l[3]).toLowerCase().includes(q)));
+  return `${header("Logs", `Recorded at ${({ error: "Error", warn: "Warning", info: "Info", debug: "Debug", trace: "Trace" })[S.settings.logLevel]} level. Logs stay on this device.`, `<button class="btn" data-act="log-export" id="log-export" aria-haspopup="menu">${ic("share", "sm")}Export</button><button class="btn danger" data-act="log-clear" id="log-clear">${ic("trash", "sm")}Clear</button>`)}
+  <section class="card glass tight" aria-label="Log entries">
+    <div class="logbar">
+      ${seg("logLv", [["all", "All"], ["error", "Errors"], ["warn", "Warnings"], ["info", "Info"], ["debug", "Debug"], ["trace", "Trace"]], S.logLv, "Minimum level")}
+      <label class="field" for="l-search">${ic("search", "sm")}<input id="l-search" type="search" placeholder="Search logs" value="${esc(S.logQ)}" autocomplete="off"></label>
+      <span class="inline-sw">Auto-scroll ${sw("autoscroll", S.autoscroll, "Auto-scroll")}</span>
+    </div>
+    <div class="loglist" id="loglist" role="log" aria-label="Log">${rows.length ? rows.map(l => `<div class="log"><span class="t">${l[0]}</span><span class="lv ${l[1]}">${l[1] === "warn" ? "Warning" : l[1]}</span><span class="tg">${l[2]}</span><span class="m">${esc(l[3])}</span></div>`).join("") : `<div class="empty" style="padding:40px"><h2 style="font-size:17px">${S.logs.length ? "No entries match" : "No log entries"}</h2><p>${S.logs.length ? "Try a lower level or a different search." : "New entries appear here as Purr works."}</p></div>`}</div>
+  </section>
+  <p class="foot" style="padding-left:16px">Showing ${rows.length} of ${S.logs.length} entries. File names appear in logs; transcript text never does.</p>`;
+};
+
+/* ---------------- Layers ---------------- */
+let layerOpener = null, layerKeys = null;
+function openLayer(html, { type = "sheet", anchor, label = "Dialog", onKey } = {}) {
+  const L = $("#layer"), body = $("#layer-body");
+  if (!document.activeElement || !document.activeElement.closest("#layer-body")) layerOpener = document.activeElement;
+  L.className = "layer open " + (type === "pop" ? "pop" : "");
+  L.removeAttribute("aria-hidden");
+  body.innerHTML = type === "pop" ? `<div class="popover glass g3" role="dialog" aria-modal="true" aria-label="${esc(label)}" id="pop">${html}</div>`
+    : `<div class="sheet-wrap" data-act="close-layer-bg"><div class="sheet glass g3" role="dialog" aria-modal="true" aria-label="${esc(label)}" id="sheet">${html}</div></div>`;
+  if (type === "pop" && anchor) {
+    const app = $("#app").getBoundingClientRect(), r = anchor.getBoundingClientRect(), p = $("#pop");
+    const pw = p.offsetWidth, ph = p.offsetHeight;
+    let left = Math.min(Math.max(12, r.left - app.left), app.width - pw - 12);
+    let top = r.bottom - app.top + 8;
+    if (top + ph > app.height - 12) top = Math.max(12, r.top - app.top - ph - 8);
+    p.style.left = left + "px"; p.style.top = top + "px";
+  }
+  layerKeys = onKey || null;
+  const first = body.querySelector("input, [data-autofocus], button:not([disabled]), select");
+  if (first) first.focus();
+}
+function closeLayer() {
+  const L = $("#layer"); L.className = "layer"; L.setAttribute("aria-hidden", "true"); $("#layer-body").innerHTML = ""; layerKeys = null;
+  if (layerOpener && document.contains(layerOpener)) layerOpener.focus(); else { const o = layerOpener && layerOpener.id && document.getElementById(layerOpener.id); if (o) o.focus(); }
+}
+
+function modelPicker(anchor) {
+  const dl = MODELS.filter(m => S.dl[m.id] === "ok");
+  const other = MODELS.filter(m => !S.dl[m.id] && ["large-v3-turbo", "small", "medium-q5", "large-v3"].includes(m.id));
+  const opt = (m, avail) => { const dis = needsFeature(m); return `<button class="opt" role="option" data-act="${avail ? "set-model" : "dl-from-pick"}" data-id="${m.id}" aria-selected="${S.model === m.id}" ${dis ? 'aria-disabled="true"' : ""}><span class="ck">${S.model === m.id ? ic("check", "sm") : ""}</span><span class="t"><b>${esc(mLabel(m))}</b><span>${dis ? "Needs a GPU feature this device lacks" : FAM[m.fam].hint}</span></span><span class="r">${avail ? fmtSize(m.size) : ic("download", "sm") + " " + fmtSize(m.size)}</span></button>`; };
+  openLayer(`<div class="ph">On this device</div><div class="plist" role="listbox" aria-label="Downloaded models">${dl.map(m => opt(m, true)).join("")}</div><hr><div class="ph">Download another</div><div class="plist" role="listbox" aria-label="Other models">${other.map(m => opt(m, false)).join("")}</div><hr><button class="opt" data-act="go-models"><span class="ck">${ic("cube", "sm")}</span><span class="t"><b>Manage models…</b></span></button>`, { type: "pop", anchor, label: "Choose a model" });
+}
+function langPicker(anchor) {
+  const draw = q => {
+    const list = [["auto", "Automatic", "Detects the language from the first 30 seconds"], ...LANGS.filter(l => l.toLowerCase().includes(q.toLowerCase())).map(l => [l, l, ""])].filter((x, i) => i > 0 || !q || "automatic".includes(q.toLowerCase()));
+    $("#lang-list").innerHTML = list.length ? list.map(([v, l, s], i) => `<button class="opt ${i === 0 ? "kb" : ""}" role="option" data-act="set-lang" data-v="${esc(v)}" aria-selected="${S.lang === v}"><span class="ck">${S.lang === v ? ic("check", "sm") : ""}</span><span class="t"><b>${esc(l)}</b>${s ? `<span>${s}</span>` : ""}</span></button>`).join("") : `<p class="faint" style="padding:10px;margin:0;font-size:14px">No language called “${esc(q)}”.</p>`;
+  };
+  openLayer(`<label class="field" for="lang-q">${ic("search", "sm")}<input id="lang-q" type="search" placeholder="Search 100 languages" autocomplete="off" aria-controls="lang-list"></label><div class="plist" role="listbox" id="lang-list" aria-label="Languages"></div>`, { type: "pop", anchor, label: "Spoken language" });
+  draw("");
+  const inp = $("#lang-q");
+  inp.addEventListener("input", () => draw(inp.value));
+  inp.addEventListener("keydown", e => {
+    const opts = $$("#lang-list .opt"); let i = opts.findIndex(o => o.classList.contains("kb"));
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); opts[i]?.classList.remove("kb"); i = (i + (e.key === "ArrowDown" ? 1 : -1) + opts.length) % opts.length; opts[i].classList.add("kb"); opts[i].scrollIntoView({ block: "nearest" }); }
+    if (e.key === "Enter" && opts[i]) { e.preventDefault(); opts[i].click(); }
+  });
+}
+function menu(anchor, items, label) {
+  openLayer(`<div class="plist" role="menu" aria-label="${esc(label)}">${items.map(it => it === "-" ? "<hr>" : `<button class="opt ${it.danger ? "danger" : ""}" role="menuitem" data-mact="${it.k}"><span class="ck">${ic(it.icon, "sm")}</span><span class="t"><b>${it.label}</b></span>${it.r ? `<span class="r">${it.r}</span>` : ""}</button>`).join("")}</div>`, { type: "pop", anchor, label });
+  $("#pop").classList.add("menu");
+  const p = $("#pop"), app = $("#app").getBoundingClientRect(), r = anchor.getBoundingClientRect();
+  if (app.width > 720) p.style.left = Math.max(12, Math.min(r.right - app.left - p.offsetWidth, app.width - p.offsetWidth - 12)) + "px";
+  return new Promise(res => { p.addEventListener("click", e => { const b = e.target.closest("[data-mact]"); if (b) { closeLayer(); res(b.dataset.mact); } }); });
+}
+function confirmSheet({ title, body, ok, danger = true }) {
+  openLayer(`<h2 id="cf-h">${title}</h2><p>${body}</p><div class="acts"><button class="btn" data-cf="no" id="cf-no" data-autofocus>Cancel</button><button class="btn ${danger ? "danger solid" : "primary"}" data-cf="yes" id="cf-yes">${ok}</button></div>`, { label: title });
+  $("#cf-no").focus();
+  return new Promise(res => { $("#sheet").addEventListener("click", e => { const b = e.target.closest("[data-cf]"); if (b) { closeLayer(); res(b.dataset.cf === "yes"); } }); });
+}
+
+/* ---------------- Exports ---------------- */
+const pad = (n, l = 2) => String(n).padStart(l, "0");
+const ts = (s, sep) => `${pad(Math.floor(s / 3600))}:${pad(Math.floor(s % 3600 / 60))}:${pad(Math.floor(s % 60))}${sep}${pad(Math.round((s % 1) * 1000), 3)}`;
+function exportText(fmt) {
+  const h = S.current, segs = h.segs.map((s, i) => ({ start: s[0], end: h.segs[i + 1] ? h.segs[i + 1][0] : Math.min(h.dur, s[0] + 8), text: s[1] }));
+  if (fmt === "txt") return segs.map(s => s.text).join("\n");
+  if (fmt === "srt") return segs.map((s, i) => `${i + 1}\n${ts(s.start, ",")} --> ${ts(s.end, ",")}\n${s.text}`).join("\n\n");
+  if (fmt === "vtt") return "WEBVTT\n\n" + segs.map(s => `${ts(s.start, ".")} --> ${ts(s.end, ".")}\n${s.text}`).join("\n\n");
+  return JSON.stringify({ file: h.name, language: h.lang, model: h.model, duration: h.dur, segments: segs }, null, 2);
+}
+function exportSheet(fmt) {
+  S.exportFmt = fmt;
+  const base = S.current.name.replace(/\.[^.]+$/, "");
+  openLayer(`<h2>Export transcript</h2>${seg("exportFmt", [["txt", "TXT"], ["srt", "SRT"], ["vtt", "VTT"], ["json", "JSON"]], fmt, "Format", "full")}
+    <p class="foot" id="ex-desc">${({ txt: "Plain text, one line per segment.", srt: "Subtitles for video players and editors.", vtt: "Subtitles for web video.", json: "Segments with start and end times, for scripts and other apps." })[fmt]}</p>
+    <div class="preview" id="ex-prev" tabindex="0" aria-label="Preview">${esc(exportText(fmt).slice(0, 1400))}${exportText(fmt).length > 1400 ? "\n…" : ""}</div>
+    <div class="acts"><button class="btn" data-act="ex-copy" id="ex-copy">${ic("copy", "sm")}Copy</button><button class="btn primary" data-act="ex-save" id="ex-save">${ic("download", "sm")}Save ${esc(base)}.${fmt}</button></div>`, { label: "Export transcript" });
+}
+
+/* ---------------- Simulations ---------------- */
+function startDownload(id) {
+  const m = byId(id); if (!m || needsFeature(m)) return;
+  S.dl[id] = "downloading"; S.prog[id] = { pct: S.prog[id]?.pct && S.dl[id] !== "ok" ? S.prog[id].pct : 0, speed: 0 };
+  if (S.prog[id].pct >= 100) S.prog[id].pct = 0;
+  announce(`Downloading ${mLabel(m)}`);
+  tickDownloads(); render();
+}
+function tickDownloads() {
+  clearInterval(timers.dl);
+  timers.dl = setInterval(() => {
+    let any = false;
+    for (const [id, st] of Object.entries(S.dl)) {
+      if (st === "offline") { any = true; continue; }
+      if (st !== "downloading") continue;
+      any = true;
+      const m = byId(id), p = S.prog[id];
+      if (S.offline) { S.dl[id] = "offline"; p.speed = 0; continue; }
+      p.speed = 20 + Math.random() * 9;
+      p.pct = Math.min(100, p.pct + p.speed * .4 / m.size * 100 * (m.size > 600 ? 6 : 1.6));
+      if (S.failNext && p.pct > 38) { S.failNext = false; S.dl[id] = "failed"; toast(`${mLabel(m)} didn't finish downloading`, "The connection was reset. Purr will resume where it stopped.", "bad", "xcircle", { label: "Retry", run: () => startDownload(id) }); continue; }
+      if (p.pct >= 100) {
+        S.dl[id] = "ok"; delete S.prog[id];
+        toast(`${mLabel(m)} is ready`, "Downloaded and verified.", "ok", "checkcircle");
+        if (S.phase === "firstrun") { S.phase = "idle"; S.model = id; }
+      }
+    }
+    if (!any) clearInterval(timers.dl);
+    patchDownloads();
+  }, 400);
+}
+function patchDownloads() {
+  if (S.view === "models" || (S.view === "transcribe" && (S.phase === "firstrun" || S.phase === "idle"))) {
+    const keep = document.activeElement?.id;
+    const scroll = $("#scroller").scrollTop;
+    $("#content").innerHTML = VIEWS[S.view](); after();
+    $("#scroller").scrollTop = scroll;
+    if (keep) document.getElementById(keep)?.focus({ preventScroll: true });
+  }
+  applyGlobal();
+}
+
+function startRun() {
+  if (!S.file) S.file = { name: SAMPLE.name, dur: SAMPLE.dur, bytes: SAMPLE.bytes, ext: SAMPLE.ext };
+  stopRun();
+  S.phase = "running"; S.fileError = null;
+  S.run = { stage: 0, n: 0, el: 0, pct: 0, speed: 0, t: 0 };
+  go("transcribe", { focus: false });
+  announce("Loading the model");
+  const fast = reduceMotion();
+  timers.run = setInterval(() => {
+    const r = S.run; if (!r) return;
+    r.el += .25; r.t += .25;
+    if (r.stage === 0 && r.t >= 1.6) { r.stage = 1; r.t = 0; rerunRender(); announce(S.lang === "auto" ? "Detecting the language" : "Transcribing"); }
+    else if (r.stage === 1 && r.t >= 1.2) { r.stage = 2; r.t = 0; rerunRender(); if (S.lang === "auto") announce("Detected English. Transcribing."); }
+    else if (r.stage === 2 && r.t >= 1.3) {
+      r.t = 0;
+      if (S.failNext && r.n >= 8) { S.failNext = false; stopRun(); S.phase = "failed"; render(); announce("Transcription failed"); return; }
+      if (r.n < SAMPLE.segs.length) {
+        const s = SAMPLE.segs[r.n++]; r.pct = r.n / SAMPLE.segs.length * 100; r.speed = (SAMPLE.segs[r.n] ? SAMPLE.segs[r.n][0] : SAMPLE.dur) / r.el;
+        const live = $("#live"), caret = $("#caret-row");
+        if (live && caret) { caret.insertAdjacentHTML("beforebegin", segRow(s, fast ? "" : "new")); }
+        $("#seg-count") && ($("#seg-count").textContent = r.n);
+        const bar = $("#run-bar"); if (bar) { bar.firstElementChild.style.width = r.pct + "%"; bar.setAttribute("aria-valuenow", Math.round(r.pct)); }
+        $("#r-pct") && ($("#r-pct").textContent = Math.round(r.pct) + "%");
+        $("#r-sp") && ($("#r-sp").textContent = r.speed.toFixed(1) + "×");
+        if (r.n % 5 === 0) announce(`${Math.round(r.pct)} percent`);
+      } else {
+        stopRun();
+        const took = Math.round(r.el);
+        const item = { ...SAMPLE, id: "h" + Date.now(), name: S.file.name, dur: S.file.dur || SAMPLE.dur, took, date: "Just now", model: S.model, lang: S.lang === "auto" ? "English" : S.lang };
+        S.history = [item, ...S.history.filter(h => h.name !== item.name)];
+        S.current = item; S.phase = "result"; S.pos = 0; S.q = ""; S.playing = false;
+        render(); toast("Transcription finished", `${fmtT(item.dur)} of audio in ${took} s`, "ok", "checkcircle");
+        announce("Transcription finished");
+        return;
+      }
+    }
+    $("#r-el") && ($("#r-el").textContent = fmtT(r.el));
+  }, 250);
+}
+function rerunRender() { if (S.view === "transcribe") { const c = $("#content"); c.innerHTML = VIEWS.transcribe(); } }
+function stopRun() { clearInterval(timers.run); timers.run = null; }
+
+function pickFile(file) {
+  const ext = (file.name.split(".").pop() || "").toLowerCase();
+  const ok = ["mp3", "wav", "aac", "flac", "ogg", "opus", "m4a", "webm"].includes(ext);
+  if (!ok) { S.fileError = "type"; S.file = null; S.phase = "idle"; render(); announce("This kind of file isn't supported"); return; }
+  if (file.size === 0) { S.fileError = "empty"; S.file = null; S.phase = "idle"; render(); return; }
+  S.fileError = null; S.file = { name: file.name, dur: 112, bytes: file.size > 1e6 ? (file.size / 1e6).toFixed(1) + " MB" : Math.max(1, Math.round(file.size / 1e3)) + " KB", ext: ext.toUpperCase() };
+  S.phase = "ready"; go("transcribe", { focus: false });
+  $("#start-btn")?.focus();
+}
+
+/* ---------------- Events ---------------- */
+document.addEventListener("click", async e => {
+  const t = e.target;
+  if (t.closest("#demo")) return;
+  const goEl = t.closest("[data-go]");
+  if (goEl && !goEl.closest("#layer-body .opt")) { if ($("#layer").classList.contains("open")) closeLayer(); go(goEl.dataset.go); return; }
+  const segBtn = t.closest("[data-seg] [role=radio]");
+  if (segBtn) { setSeg(segBtn.closest("[data-seg]").dataset.seg, segBtn.dataset.v, segBtn); return; }
+  const swb = t.closest("[data-sw]");
+  if (swb) { toggleSw(swb.dataset.sw, swb); return; }
+  const st = t.closest("[data-step]");
+  if (st) { step(st.dataset.step, +st.dataset.d); return; }
+  if (t.closest('[data-act="close-layer"]') || (t.matches('[data-act="close-layer-bg"]'))) { closeLayer(); return; }
+  const a = t.closest("[data-act]"); if (!a) return;
+  const act = a.dataset.act, id = a.dataset.id;
+  switch (act) {
+    case "choose": $("#file-input").click(); break;
+    case "clear-file": S.file = null; S.phase = "idle"; render(); $("#drop")?.focus(); break;
+    case "clear-err": S.fileError = null; render(); break;
+    case "start": if (!a.disabled) startRun(); break;
+    case "cancel-run": stopRun(); S.phase = "ready"; S.run = null; render(); toast("Transcription cancelled", "Nothing was saved. The file is still selected.", "", "info", { label: "Start again", run: startRun }); $("#start-btn")?.focus(); break;
+    case "new": togglePlay(false); S.file = null; S.phase = "idle"; S.q = ""; render(); break;
+    case "pick-model": modelPicker(a); break;
+    case "pick-lang": langPicker(a); break;
+    case "set-model": { const m = byId(id); if (needsFeature(m)) return; S.model = id; closeLayer(); render(); saved(); announce(`Model set to ${mLabel(m)}`); break; }
+    case "dl-from-pick": { const m = byId(id); if (needsFeature(m)) return; closeLayer(); startDownload(id); toast(`Downloading ${mLabel(m)}`, `${fmtSize(m.size)}. You can keep using Purr meanwhile.`, "", "download"); break; }
+    case "go-models": closeLayer(); go("models"); break;
+    case "set-lang": S.lang = a.dataset.v; closeLayer(); render(); saved(); announce(`Spoken language set to ${langLabel()}`); break;
+    case "dl": startDownload(id); break;
+    case "dl-cancel": S.dl[id] = undefined; delete S.dl[id]; delete S.prog[id]; render(); toast("Download cancelled", "Partial files were removed.", "", "info"); break;
+    case "m-menu": {
+      const m = byId(id);
+      const k = await menu(a, [{ k: "use", label: "Use for transcription", icon: "check" }, { k: "verify", label: "Check files", icon: "shield" }, "-", { k: "del", label: "Delete…", icon: "trash", danger: true, r: fmtSize(m.size) }], `Actions for ${mLabel(m)}`);
+      if (k === "use") { S.model = id; render(); toast(`Using ${mLabel(m)}`, "For new transcriptions.", "ok", "checkcircle"); }
+      if (k === "verify") { S.dl[id] = "verifying"; render(); setTimeout(() => { S.dl[id] = "ok"; patchDownloads(); toast("Files check out", `${mLabel(m)} matches its published checksums.`, "ok", "shield"); }, 1800); }
+      if (k === "del" && await confirmSheet({ title: `Delete ${mLabel(m)}?`, body: `This frees ${fmtSize(m.size)}. You can download it again later.${S.model === id ? " Purr will switch to another downloaded model." : ""}`, ok: "Delete model" })) {
+        delete S.dl[id]; if (S.model === id) S.model = downloaded()[0]?.id || "large-v3-turbo-q5"; render(); toast(`${mLabel(m)} deleted`, `${fmtSize(m.size)} freed.`, "", "trash");
+        if (!downloaded().length) { S.phase = "firstrun"; }
+      }
+      break;
+    }
+    case "open-h": { const h = S.history.find(x => x.id === id); if (!h) return; S.current = h; S.phase = "result"; S.pos = 0; S.q = ""; S.qi = 0; togglePlay(false); go("transcribe"); break; }
+    case "h-menu": {
+      const h = S.history.find(x => x.id === id);
+      const k = await menu(a, [{ k: "open", label: "Open", icon: "doc" }, { k: "rename", label: "Rename…", icon: "pencil" }, { k: "export", label: "Export…", icon: "share" }, "-", { k: "del", label: "Delete…", icon: "trash", danger: true }], `Actions for ${h.name}`);
+      if (k === "open") { S.current = h; S.phase = "result"; S.pos = 0; go("transcribe"); }
+      if (k === "rename") renameSheet(h);
+      if (k === "export") { S.current = h; exportSheet(S.settings.fmt); }
+      if (k === "del" && await confirmSheet({ title: "Delete this transcript?", body: `“${esc(h.name)}” will be removed from history on this device. The audio file isn't affected.`, ok: "Delete" })) {
+        const idx = S.history.indexOf(h); S.history.splice(idx, 1); render();
+        toast("Transcript deleted", h.name, "", "trash", { label: "Undo", run: () => { S.history.splice(idx, 0, h); render(); } });
+      }
+      break;
+    }
+    case "copy": copyText(exportText("txt"), "Transcript copied", `${S.current.segs.length} segments, no timestamps.`); break;
+    case "export-menu": { const k = await menu(a, [["txt", "Plain text", "TXT"], ["srt", "Subtitles", "SRT"], ["vtt", "Web subtitles", "VTT"], ["json", "Data", "JSON"]].map(([k, l, r]) => ({ k, label: l, r, icon: "doc" })), "Export format"); if (k) exportSheet(k); break; }
+    case "ex-copy": copyText(exportText(S.exportFmt), "Copied", S.exportFmt.toUpperCase() + " text is on the clipboard."); break;
+    case "ex-save": closeLayer(); toast(`Saved ${S.current.name.replace(/\.[^.]+$/, "")}.${S.exportFmt}`, "To Downloads. (Prototype: no file is written.)", "ok", "checkcircle"); break;
+    case "play": togglePlay(); break;
+    case "seek": setPos(+a.dataset.t); togglePlay(true); break;
+    case "q-next": case "q-prev": { const n = $$("#segs mark").length; if (!n) return; S.qi = (S.qi + (act === "q-next" ? 1 : -1) + n) % n; render(); $(`#segs mark.cur`)?.scrollIntoView({ block: "center" }); break; }
+    case "about": aboutSheet(); break;
+    case "keys": keysSheet(); break;
+    case "jump": $("#s-" + a.dataset.to)?.scrollIntoView({ block: "start" }); $("#h-" + a.dataset.to)?.setAttribute("tabindex", "-1"); $("#h-" + a.dataset.to)?.focus({ preventScroll: true }); break;
+    case "reset": if (await confirmSheet({ title: "Reset all settings?", body: "Theme, language, model choice, performance and logging go back to their defaults. Downloaded models and your history stay.", ok: "Reset settings" })) { S.settings = { ...DEF_SETTINGS }; setTheme("system"); S.lang = "auto"; S.rt = false; render(); toast("Settings reset", "Defaults restored.", "ok", "reset"); } break;
+    case "log-export": { const k = await menu(a, [{ k: "txt", label: "Text", r: ".log", icon: "doc" }, { k: "json", label: "JSON", r: ".json", icon: "doc" }, { k: "csv", label: "CSV", r: ".csv", icon: "doc" }], "Export logs"); if (k) toast(`Saved purr-logs.${k === "txt" ? "log" : k}`, `${S.logs.length} entries. (Prototype: no file is written.)`, "ok", "checkcircle"); break; }
+    case "log-clear": if (await confirmSheet({ title: "Clear the log?", body: `Removes ${S.logs.length} entries from this view${S.platform === "desktop" && S.settings.fileLog ? " and the current log file" : ""}. This can't be undone.`, ok: "Clear log" })) { S.logs = []; render(); } break;
+    case "recheck": toast("WebGPU still isn't available", "Turn on hardware acceleration, restart the browser, then check again.", "warn", "warn"); break;
+    case "toast-desktop": toast("Desktop app", "Prototype: this would open the download page.", "", "desktop"); break;
+  }
+});
+function renameSheet(h) {
+  openLayer(`<h2>Rename transcript</h2><label class="sr" for="rn">Name</label><input class="text-input" id="rn" value="${esc(h.name)}"><p class="foot">Only the name in Purr changes. The audio file keeps its name.</p><div class="acts"><button class="btn" id="rn-no">Cancel</button><button class="btn primary" id="rn-ok">Rename</button></div>`, { label: "Rename transcript" });
+  const i = $("#rn"); i.select();
+  const ok = () => { const v = i.value.trim(); if (v) { h.name = v; closeLayer(); render(); toast("Renamed", v, "ok", "pencil"); } };
+  $("#rn-ok").onclick = ok; $("#rn-no").onclick = closeLayer; i.onkeydown = e => { if (e.key === "Enter") ok(); };
+}
+function aboutSheet() {
+  openLayer(`<div class="row"><span class="fileicon" style="background:linear-gradient(160deg,#7A7CFF,#4146D6)">${ic("cat", "lg")}</span><div><h2>Your audio stays here</h2><p class="foot" style="margin-top:2px">Purr 1.4.0 · ${S.platform === "desktop" ? "Desktop" : "Web"}</p></div></div>
+    <div class="group" style="background:var(--fill-hover)">
+      ${item({ icon: "music", color: "green", title: "Audio files", sub: "Read from your disk and processed in memory. Never uploaded." })}
+      ${item({ icon: "doc", color: "green", title: "Transcripts and history", sub: S.platform === "desktop" ? "Saved in Purr's app data folder on this computer." : "Saved in this browser's storage for this site." })}
+      ${item({ icon: "cube", color: "green", title: "Models, settings and logs", sub: "Stored locally. Logs never contain transcript text." })}
+      ${item({ icon: "download", color: "blue", title: "The only network use", sub: "Downloading models, over HTTPS, when you ask for one." + (S.platform === "browser" ? " The web page itself is loaded from its host." : "") })}
+    </div>
+    <div class="acts"><button class="btn primary" id="about-ok" data-act="close-layer">Done</button></div>`, { label: "Privacy" });
+}
+function keysSheet() {
+  const k = [["Open a file", `${MOD}+O`], ["Search the transcript", `${MOD}+F`], ["Copy the transcript", `${MOD}+Shift+C`], ["Export", `${MOD}+E`], ["Play or pause", "Space"], ["Go to Transcribe, History, Models", `${MOD}+1, 2, 3`], ["Settings", `${MOD}+,`], ["Show shortcuts", "?"], ["Close a sheet or menu", "Esc"]];
+  openLayer(`<h2>Keyboard shortcuts</h2><div class="kbd-list">${k.map(([a, b]) => `<span>${a}</span><span>${b.split(", ").map(x => `<kbd>${x}</kbd>`).join(" ")}</span>`).join("")}</div><div class="acts"><button class="btn primary" data-act="close-layer" id="keys-ok">Done</button></div>`, { label: "Keyboard shortcuts" });
+}
+function copyText(text, title, sub) {
+  const done = () => toast(title, sub, "ok", "copy");
+  const fail = () => { const el = $("#ex-prev") || $("#segs"); if (el) { const r = document.createRange(); r.selectNodeContents(el); const s = getSelection(); s.removeAllRanges(); s.addRange(r); } toast("Couldn't copy automatically", "The text is selected. Press " + MOD + "+C to copy it.", "warn", "copy"); };
+  try { navigator.clipboard.writeText(text).then(done, fail); } catch (e) { fail(); }
+}
+function setSeg(key, v, btn) {
+  const grp = btn && btn.closest("[data-seg]");
+  if (grp) $$("[role=radio]", grp).forEach(b => { b.setAttribute("aria-checked", b === btn); b.tabIndex = b === btn ? 0 : -1; });
+  if (key === "page") return setPage(v);
+  if (key === "theme") { setTheme(v); saved(); return; }
+  if (key === "mode") { S.mode = v; S.qi = 0; render(); return; }
+  if (key === "mFilter") { S.mFilter = v; render(); return; }
+  if (key === "logLv") { S.logLv = v; render(); return; }
+  if (key === "exportFmt") { exportSheet(v); $(`#seg-exportFmt-${v}`)?.focus(); return; }
+  if (key in S.settings) { S.settings[key] = v; saved(); }
+}
+function toggleSw(key, b) {
+  const on = b.getAttribute("aria-checked") !== "true";
+  b.setAttribute("aria-checked", on);
+  if (key === "rt") { S.rt = on; applyGlobal(); saved(); syncDemo(); return; }
+  if (key === "showTs") { S.showTs = on; render(); return; }
+  if (key === "autoscroll") { S.autoscroll = on; after(); return; }
+  S.settings[key] = on; saved();
+  if (key === "gpu" || key === "concurrent") render();
+}
+function step(key, d) {
+  const s = S.settings, lim = { maxTokens: [32, 448, 32], threads: [0, 24, 1], jobs: [1, 8, 1] }[key];
+  s[key] = Math.max(lim[0], Math.min(lim[1], s[key] + d * lim[2])); render(); saved();
+}
+document.addEventListener("input", e => {
+  const t = e.target;
+  if (t.dataset.range === "temp") { S.settings.temp = +t.value; t.style.setProperty("--p", t.value * 100 + "%"); $("#temp-val").textContent = (+t.value).toFixed(1); t.setAttribute("aria-valuetext", (+t.value).toFixed(1)); saved(); }
+  if (t.id === "t-search") { S.q = t.value; S.qi = 0; render(); }
+  if (t.id === "m-search") { S.mQ = t.value; render(); }
+  if (t.id === "l-search") { S.logQ = t.value; render(); }
+  if (t.id === "h-search") { const q = t.value.toLowerCase(); $$("#hlist .hrow").forEach(r => { const h = S.history.find(x => x.id === r.dataset.hid); r.hidden = q && !(h.name + h.segs.map(s => s[1]).join(" ")).toLowerCase().includes(q); }); }
+});
+document.addEventListener("change", e => { const t = e.target; if (t.dataset.sel) { S.settings[t.dataset.sel] = t.value; saved(); if (t.dataset.sel === "logLevel" && S.view === "logs") render(); } });
+$("#file-input").addEventListener("change", e => { const f = e.target.files[0]; if (f) pickFile(f); e.target.value = ""; });
+
+/* Drag and drop (whole app accepts a drop; the drop zone shows the affordance) */
+const app = $("#app");
+["dragenter", "dragover"].forEach(ev => app.addEventListener(ev, e => { if (S.view !== "transcribe" || !["idle", "ready"].includes(S.phase)) return; e.preventDefault(); $("#drop")?.classList.add("over"); }));
+app.addEventListener("dragleave", e => { if (!app.contains(e.relatedTarget)) $("#drop")?.classList.remove("over"); });
+app.addEventListener("drop", e => { e.preventDefault(); $("#drop")?.classList.remove("over"); const f = e.dataTransfer.files[0]; if (f && S.view === "transcribe") pickFile(f); });
+window.addEventListener("dragover", e => e.preventDefault()); window.addEventListener("drop", e => e.preventDefault());
+
+/* Keyboard */
+document.addEventListener("keydown", e => {
+  const L = $("#layer");
+  if (L.classList.contains("open")) {
+    if (e.key === "Escape") { e.preventDefault(); closeLayer(); return; }
+    if (e.key === "Tab") { const f = $$("#layer-body button:not([disabled]), #layer-body input, #layer-body select, #layer-body [tabindex='0']").filter(x => x.offsetParent); if (!f.length) return; const i = f.indexOf(document.activeElement); if (e.shiftKey && i <= 0) { e.preventDefault(); f[f.length - 1].focus(); } else if (!e.shiftKey && i === f.length - 1) { e.preventDefault(); f[0].focus(); } }
+    if (["ArrowDown", "ArrowUp"].includes(e.key) && document.activeElement.closest(".plist") && document.activeElement.id !== "lang-q") { const o = $$("#layer-body .opt"); const i = o.indexOf(document.activeElement); if (i > -1) { e.preventDefault(); o[(i + (e.key === "ArrowDown" ? 1 : -1) + o.length) % o.length].focus(); } }
+    return;
+  }
+  const r = e.target.closest && e.target.closest("[data-seg] [role=radio]");
+  if (r && ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(e.key)) {
+    e.preventDefault(); const all = $$("[role=radio]", r.parentElement); const i = all.indexOf(r) + (["ArrowRight", "ArrowDown"].includes(e.key) ? 1 : -1); const n = all[(i + all.length) % all.length]; n.focus(); n.click(); return;
+  }
+  if (e.target.id === "wave" && ["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) { e.preventDefault(); setPos(e.key === "Home" ? 0 : e.key === "End" ? S.current.dur : S.pos + (e.key === "ArrowRight" ? 5 : -5)); return; }
+  const mod = e.metaKey || e.ctrlKey, typing = /INPUT|TEXTAREA|SELECT/.test(e.target.tagName);
+  if (S.page !== "proto" || e.target.closest("#demo")) return;
+  if (mod && e.key.toLowerCase() === "o") { e.preventDefault(); go("transcribe", { focus: false }); if (["idle", "ready", "firstrun"].includes(S.phase) && S.phase !== "firstrun") $("#file-input").click(); return; }
+  if (mod && e.key.toLowerCase() === "f" && S.view === "transcribe" && S.phase === "result") { e.preventDefault(); $("#t-search").focus(); return; }
+  if (mod && e.shiftKey && e.key.toLowerCase() === "c" && S.phase === "result") { e.preventDefault(); copyText(exportText("txt"), "Transcript copied", ""); return; }
+  if (mod && e.key.toLowerCase() === "e" && S.phase === "result" && S.view === "transcribe") { e.preventDefault(); exportSheet(S.settings.fmt); return; }
+  if (mod && e.key === ",") { e.preventDefault(); go("preferences"); return; }
+  if (mod && ["1", "2", "3"].includes(e.key)) { e.preventDefault(); go(["transcribe", "history", "models"][+e.key - 1]); return; }
+  if (!typing && e.key === "?") { e.preventDefault(); keysSheet(); return; }
+  if (!typing && e.key === " " && S.view === "transcribe" && S.phase === "result" && !e.target.closest("button")) { e.preventDefault(); togglePlay(); }
+  if (e.key === "Enter" && e.target.id === "t-search") { e.preventDefault(); $("#q-next")?.click(); setTimeout(() => $("#t-search")?.focus(), 0); }
+});
+window.addEventListener("hashchange", () => { const h = location.hash.slice(1); if (h === "notes") setPage("notes"); else if (TITLES[h] && h !== S.view) { setPage("proto"); go(h, { noHash: true }); } });
+window.addEventListener("resize", () => { if (S.view === "transcribe" && S.phase === "result") paintWave(); });
+
+/* ---------------- Page switch (prototype / notes) ---------------- */
+function setPage(p) {
+  S.page = p;
+  $("#proto-view").hidden = p !== "proto"; $("#notes-view").hidden = p !== "notes";
+  $("#demo-btn").hidden = p !== "proto"; if (p !== "proto") { $("#demo").hidden = true; $("#demo-btn").setAttribute("aria-expanded", "false"); }
+  $$("#page-switch [role=radio]").forEach(b => { b.setAttribute("aria-checked", b.dataset.v === p); b.tabIndex = b.dataset.v === p ? 0 : -1; });
+  try { history.replaceState(null, "", "#" + (p === "notes" ? "notes" : S.view)); } catch (e) {}
+  if (p === "notes" && !$("#notes-view").innerHTML.trim()) $("#notes-view").innerHTML = $("#notes-tpl").innerHTML;
+  if (p === "proto") render();
+  window.scrollTo(0, 0);
+}
+
+/* ---------------- Demo controls ---------------- */
+function clean(keepView) {
+  stopRun(); togglePlay(false); closeLayer();
+  S.fileError = null; S.noWebGPU = false; S.gpuFallback = false; S.offline = false; S.failNext = false; S.noF16 = false;
+  for (const [k, v] of Object.entries(S.dl)) if (v !== "ok") delete S.dl[k];
+  S.prog = {}; clearInterval(timers.dl);
+  S.dl = { "large-v3-turbo-q5": "ok", "base.en": "ok", "small-q5": "ok" }; S.model = "large-v3-turbo-q5";
+  if (!S.history.length) S.history = HISTORY0.slice();
+  if (!S.logs.length) S.logs = LOGS0.slice();
+  S.q = ""; S.pos = 0;
+}
+const SAMPLE_FILE = { name: SAMPLE.name, dur: SAMPLE.dur, bytes: SAMPLE.bytes, ext: SAMPLE.ext };
+const DEMO = {
+  "First run": () => { clean(); S.dl = {}; S.history = []; S.phase = "firstrun"; go("transcribe"); },
+  "Idle": () => { clean(); S.file = null; S.phase = "idle"; go("transcribe"); },
+  "File chosen": () => { clean(); S.file = { ...SAMPLE_FILE }; S.phase = "ready"; go("transcribe"); },
+  "Downloading": () => { clean(); S.phase = "idle"; S.prog["medium-q5"] = { pct: 34, speed: 24 }; S.dl["medium-q5"] = "downloading"; go("models"); tickDownloads(); },
+  "Loading model": () => { clean(); S.file = { ...SAMPLE_FILE }; startRun(); },
+  "Transcribing": () => { clean(); S.file = { ...SAMPLE_FILE }; startRun(); S.run.stage = 2; S.run.n = 4; S.run.el = 6.5; S.run.pct = 4 / 15 * 100; S.run.speed = 4.6; rerunRender(); },
+  "Result": () => { clean(); S.current = S.history[0]; S.phase = "result"; go("transcribe"); },
+  "Empty history": () => { clean(); S.history = []; go("history"); },
+  "Empty logs": () => { clean(); S.logs = []; go("logs"); }
+};
+const ERRS = {
+  "Unsupported file": () => { clean(); S.phase = "idle"; S.fileError = "type"; go("transcribe"); },
+  "Empty file": () => { clean(); S.phase = "idle"; S.fileError = "empty"; go("transcribe"); },
+  "Corrupted audio": () => { clean(); S.phase = "idle"; S.fileError = "corrupt"; go("transcribe"); },
+  "File too large": () => { clean(); S.phase = "idle"; S.fileError = "big"; go("transcribe"); },
+  "No WebGPU": () => { clean(); S.platform = "browser"; S.noWebGPU = true; S.phase = "idle"; go("transcribe"); syncDemo(); },
+  "Offline download": () => { clean(); S.prog["medium-q5"] = { pct: 61, speed: 0 }; S.dl["medium-q5"] = "downloading"; S.offline = true; go("models"); tickDownloads(); toast("You're offline", "The download will resume when you reconnect.", "warn", "wifioff"); },
+  "Download failed": () => { clean(); S.dl["small"] = "failed"; S.prog["small"] = { pct: 38, speed: 0 }; go("models"); toast("Small didn't finish downloading", "The connection was reset at 38%.", "bad", "xcircle", { label: "Retry", run: () => startDownload("small") }); },
+  "Integrity failed": () => { clean(); S.dl["small-q5"] = "corrupt"; go("models"); { const el = $("#mr-small-q5"); if (el) { const sc = $("#scroller"); sc.scrollTop += el.getBoundingClientRect().top - sc.getBoundingClientRect().top - 120; } } },
+  "Transcription failed": () => { clean(); S.file = { ...SAMPLE_FILE }; S.phase = "failed"; go("transcribe"); },
+  "Cancelled": () => { clean(); S.file = { ...SAMPLE_FILE }; S.phase = "ready"; go("transcribe"); toast("Transcription cancelled", "Nothing was saved. The file is still selected.", "", "info", { label: "Start again", run: startRun }); },
+  "GPU fallback": () => { clean(); S.platform = "desktop"; S.gpuFallback = true; S.file = { ...SAMPLE_FILE }; startRun(); S.run.stage = 2; S.run.n = 3; S.run.el = 5; S.run.pct = 20; S.run.speed = 3.9; rerunRender(); toast("CUDA isn't available, using Vulkan", "Purr switched automatically.", "warn", "bolt"); syncDemo(); },
+  "Needs GPU feature": () => { clean(); S.noF16 = true; go("models"); { const el = $("#mr-large-v3"); if (el) { const sc = $("#scroller"); sc.scrollTop += el.getBoundingClientRect().top - sc.getBoundingClientRect().top - 120; } } }
+};
+function demoHTML() {
+  const b = (grp, k, pressed) => `<button class="d" data-dg="${grp}" data-dk="${esc(k)}" aria-pressed="${!!pressed}">${k}</button>`;
+  return `<div class="top"><b>Demo controls</b><button class="x" id="demo-x" aria-label="Close demo controls">${ic("x", "sm")}</button></div>
+  <p class="note">Not part of the design. Flips the prototype between states.</p>
+  <h4>Flow</h4><div class="opts">${Object.keys(DEMO).map(k => b("flow", k)).join("")}</div>
+  <h4>Errors and edge cases</h4><div class="opts">${Object.keys(ERRS).map(k => b("err", k)).join("")}</div>
+  <h4>Platform</h4><div class="opts">${b("plat", "Desktop", S.platform === "desktop")}${b("plat", "Browser", S.platform === "browser")}</div>
+  <h4>Theme</h4><div class="opts">${["System", "Light", "Dark"].map(t => b("theme", t, S.theme === t.toLowerCase())).join("")}</div>
+  <h4>Accessibility</h4><div class="opts">${b("rt", "Reduce transparency", S.rt)}${b("rm", "Reduce motion", S.rm)}</div>
+  <h4>Viewport</h4><div class="opts">${[["fit", "Fit window"], ["desktop", "Desktop 1280"], ["tablet", "Tablet 820"], ["phone", "Phone 390"]].map(([v, l]) => `<button class="d" data-dg="vp" data-dk="${v}" aria-pressed="${S.vp === v}">${l}</button>`).join("")}</div>`;
+}
+function syncDemo() { const d = $("#demo"); if (!d.hidden) { const f = document.activeElement; const k = f && f.dataset && f.dataset.dk; d.innerHTML = demoHTML(); if (k) d.querySelector(`[data-dk="${CSS.escape(k)}"]`)?.focus(); } }
+$("#demo-btn").addEventListener("click", () => { const d = $("#demo"); d.hidden = !d.hidden; $("#demo-btn").setAttribute("aria-expanded", !d.hidden); if (!d.hidden) { d.innerHTML = demoHTML(); d.querySelector("button.d")?.focus(); } });
+$("#demo").addEventListener("click", e => {
+  if (e.target.closest("#demo-x")) { $("#demo").hidden = true; $("#demo-btn").setAttribute("aria-expanded", "false"); $("#demo-btn").focus(); return; }
+  const b = e.target.closest("[data-dg]"); if (!b) return;
+  const g = b.dataset.dg, k = b.dataset.dk;
+  if (g === "flow") DEMO[k]();
+  if (g === "err") ERRS[k]();
+  if (g === "plat") { S.platform = k.toLowerCase(); if (S.platform === "desktop") S.noWebGPU = false; render(); }
+  if (g === "theme") { setTheme(k.toLowerCase()); if (S.view === "preferences") render(); }
+  if (g === "rt") { S.rt = !S.rt; render(); }
+  if (g === "rm") { S.rm = !S.rm; applyGlobal(); }
+  if (g === "vp") { S.vp = k; applyGlobal(); setTimeout(() => { if (S.phase === "result") paintWave(); }, 550); }
+  syncDemo();
+});
+document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("#demo").hidden && e.target.closest("#demo")) { $("#demo").hidden = true; $("#demo-btn").setAttribute("aria-expanded", "false"); $("#demo-btn").focus(); } });
+
+/* expose for testing */
+window.__purr = { S, go, DEMO, ERRS, render, setPage };
+
+/* ---------------- Boot ---------------- */
+{ const t0 = document.documentElement.getAttribute("data-theme"); S.theme = t0 === "dark" || t0 === "light" ? t0 : "system"; }
+const h0 = location.hash.slice(1);
+if (h0 === "notes") setPage("notes"); else { if (TITLES[h0]) S.view = h0; render(); }
+})();
+</script>
+
+</body></html>
