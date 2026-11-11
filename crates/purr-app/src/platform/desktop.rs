@@ -13,10 +13,11 @@ use purr_core::WhisperError;
 use purr_core::dev;
 use purr_core::error::ConfigurationError;
 use purr_core::model::ModelManager;
-use purr_core::model::attributes::ModelLanguage;
+use purr_core::model::attributes::{ModelFeature, ModelLanguage};
 use purr_core::model::registry::ModelSpec;
 use purr_core::model::status::ModelIntegrity as CoreIntegrity;
 use std::{
+    future::Future,
     path::{Path, PathBuf},
     pin::Pin,
     sync::Arc,
@@ -215,18 +216,11 @@ impl Platform for DesktopPlatformImpl {
         Ok(model_infos)
     }
 
-    async fn fetch_model(&self, model_id: &str) -> Result<ModelProgressStream, PlatformError> {
-        let model = lookup_shared(&self.model_manager, model_id)?;
-        let manager = Arc::clone(&self.model_manager);
-        let (tx, rx) = mpsc::channel(10);
-        let (cancel, cancelled) = oneshot::channel::<()>();
-
-        tokio::spawn(run_download(manager, model, tx, cancelled));
-
-        Ok(Box::pin(CancelOnDrop {
-            progress: rx,
-            _cancel: cancel,
-        }))
+    fn fetch_model(
+        &self,
+        model_id: &str,
+    ) -> impl Future<Output = Result<ModelProgressStream, PlatformError>> + Send {
+        std::future::ready(self.start_download(model_id))
     }
 
     async fn get_model_info(&self, model_id: &str) -> Result<ModelInfo, PlatformError> {
@@ -640,10 +634,28 @@ fn model_metadata(model: &ModelSpec) -> ModelMetadata {
         model_flag::ENGLISH_ONLY.to_owned(),
         matches!(model.language, ModelLanguage::EnglishOnly).to_string(),
     );
+    metadata.platform_specific.insert(
+        model_flag::SPEAKER_TURNS.to_owned(),
+        model.has_feature(ModelFeature::Tdrz).to_string(),
+    );
     metadata
 }
 
 impl DesktopPlatformImpl {
+    fn start_download(&self, model_id: &str) -> Result<ModelProgressStream, PlatformError> {
+        let model = lookup_shared(&self.model_manager, model_id)?;
+        let manager = Arc::clone(&self.model_manager);
+        let (tx, rx) = mpsc::channel(10);
+        let (cancel, cancelled) = oneshot::channel::<()>();
+
+        tokio::spawn(run_download(manager, model, tx, cancelled));
+
+        Ok(Box::pin(CancelOnDrop {
+            progress: rx,
+            _cancel: cancel,
+        }))
+    }
+
     /// Get the settings directory path using XDG-compliant directories
     fn get_settings_dir() -> Result<PathBuf, PlatformError> {
         directories::ProjectDirs::from("com", "purr", "purr")

@@ -538,6 +538,8 @@ pub mod model_flag {
     pub const REQUIRES_SHADER_F16: &str = "requires_shader_f16";
     /// The model only transcribes English.
     pub const ENGLISH_ONLY: &str = "english_only";
+    /// The model marks where the speaker changes.
+    pub const SPEAKER_TURNS: &str = "speaker_turns";
 }
 
 /// Platform-specific metadata for models
