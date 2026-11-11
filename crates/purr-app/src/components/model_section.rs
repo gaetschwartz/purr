@@ -12,7 +12,7 @@ pub fn ModelSection(
     rsx! {
         section { aria_labelledby: "{heading_id}",
             div { class: "fam-h",
-                h3 { id: "{heading_id}", "{title}" }
+                h2 { id: "{heading_id}", "{title}" }
                 if let Some(hint) = hint {
                     span { "{hint}" }
                 }

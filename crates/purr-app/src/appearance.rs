@@ -54,7 +54,7 @@ fn root_script(attributes: RootAttributes) -> String {
         "root.removeAttribute('data-transparency');"
     };
     format!(
-        "const root = document.documentElement; root.setAttribute('data-theme', '{theme}'); {transparency} root.classList.toggle('dark', {});",
+        "const root = document.documentElement; root.lang = 'en'; root.setAttribute('data-theme', '{theme}'); {transparency} root.classList.toggle('dark', {});",
         attributes.dark_class
     )
 }

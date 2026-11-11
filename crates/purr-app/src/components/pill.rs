@@ -13,15 +13,6 @@ pub fn Pill(
     #[props(default)] disabled: bool,
     onclick: EventHandler<MouseEvent>,
 ) -> Element {
-    let accessible = detail.as_ref().map_or_else(
-        || format!("{label}: {value}. Change {}", label.to_lowercase()),
-        |detail| {
-            format!(
-                "{label}: {value}, {detail}. Change {}",
-                label.to_lowercase()
-            )
-        },
-    );
     rsx! {
         button {
             id,
@@ -29,7 +20,6 @@ pub fn Pill(
             r#type: "button",
             aria_haspopup: "dialog",
             aria_expanded: expanded,
-            aria_label: accessible,
             disabled,
             onclick: move |event| onclick.call(event),
             span { class: "ico",

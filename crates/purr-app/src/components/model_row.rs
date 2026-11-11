@@ -104,7 +104,7 @@ pub fn ModelListRow(
                 icon: IconName::Download,
                 disabled: downloading_elsewhere,
                 title: if downloading_elsewhere { "Wait for the current download to finish" },
-                aria_label: "Download {label}, {size}",
+                aria_label: "Get {label}, {size}",
                 onclick: {
                     let id = id.clone();
                     move |_| models.download(&id)
@@ -177,7 +177,7 @@ pub fn ModelListRow(
                 size: ButtonSize::Small,
                 variant: ButtonVariant::Primary,
                 disabled: downloading_elsewhere,
-                aria_label: "Download {label} again to repair it",
+                aria_label: "Download again to repair {label}",
                 onclick: {
                     let id = id.clone();
                     move |_| models.download_again(&id)
