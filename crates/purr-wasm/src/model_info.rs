@@ -28,7 +28,7 @@ pub fn model_info(spec: &WebModelSpec, is_installed: bool) -> ModelInfo {
 
     let mut info = ModelInfo::new(
         spec.id.clone(),
-        spec.display_name().to_owned(),
+        spec.id.clone(),
         spec.description.clone(),
         spec.total_size_bytes(),
         false,
