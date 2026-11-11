@@ -48,9 +48,8 @@ jobs:
           key: vcpkg-ffmpeg-${{ runner.os }}-${{ env.VCPKG_COMMIT }}
       - name: Install FFmpeg (static)
         run: |
-          VCPKG_DIR="${VCPKG_INSTALLATION_ROOT:-$RUNNER_TEMP/vcpkg}"
-          [ -d "$VCPKG_DIR/.git" ] || git clone https://github.com/microsoft/vcpkg "$VCPKG_DIR"
-          git -C "$VCPKG_DIR" fetch --quiet origin "$VCPKG_COMMIT"
+          VCPKG_DIR="$RUNNER_TEMP/vcpkg"
+          git clone --quiet --filter=blob:none --no-checkout https://github.com/microsoft/vcpkg "$VCPKG_DIR"
           git -C "$VCPKG_DIR" checkout --quiet "$VCPKG_COMMIT"
           "$VCPKG_DIR/bootstrap-vcpkg.sh" -disableMetrics
           "$VCPKG_DIR/vcpkg" install "$VCPKG_FFMPEG:x64-linux"
@@ -171,9 +170,8 @@ jobs:
           key: vcpkg-ffmpeg-${{ runner.os }}-${{ env.VCPKG_COMMIT }}
       - name: Install FFmpeg (static)
         run: |
-          VCPKG_DIR="${VCPKG_INSTALLATION_ROOT:-$RUNNER_TEMP/vcpkg}"
-          [ -d "$VCPKG_DIR/.git" ] || git clone https://github.com/microsoft/vcpkg "$VCPKG_DIR"
-          git -C "$VCPKG_DIR" fetch --quiet origin "$VCPKG_COMMIT"
+          VCPKG_DIR="$RUNNER_TEMP/vcpkg"
+          git clone --quiet --filter=blob:none --no-checkout https://github.com/microsoft/vcpkg "$VCPKG_DIR"
           git -C "$VCPKG_DIR" checkout --quiet "$VCPKG_COMMIT"
           "$VCPKG_DIR/bootstrap-vcpkg.sh" -disableMetrics
           "$VCPKG_DIR/vcpkg" install "$VCPKG_FFMPEG:arm64-osx"
@@ -267,8 +265,8 @@ jobs:
           key: vcpkg-ffmpeg-${{ runner.os }}-${{ env.VCPKG_COMMIT }}
       - name: Install FFmpeg (static)
         run: |
-          $vcpkg = $env:VCPKG_INSTALLATION_ROOT
-          git -C $vcpkg fetch --quiet origin $env:VCPKG_COMMIT
+          $vcpkg = Join-Path $env:RUNNER_TEMP vcpkg
+          git clone --quiet --filter=blob:none --no-checkout https://github.com/microsoft/vcpkg $vcpkg
           git -C $vcpkg checkout --quiet $env:VCPKG_COMMIT
           & "$vcpkg\bootstrap-vcpkg.bat" -disableMetrics
           & "$vcpkg\vcpkg.exe" install "$($env:VCPKG_FFMPEG):x64-windows-static-md"
