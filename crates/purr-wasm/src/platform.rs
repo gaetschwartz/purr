@@ -130,6 +130,7 @@ fn send_status(
 async fn run_transcription(
     worker: Arc<WorkerClient>,
     spec: WebModelSpec,
+    model_cached: bool,
     bytes: Bytes,
     language: Option<String>,
     translate: bool,
@@ -182,7 +183,7 @@ async fn run_transcription(
         }
     };
 
-    let mut mapper = TranscriptionMapper::new(&spec);
+    let mut mapper = TranscriptionMapper::new(&spec, model_cached);
     loop {
         tokio::select! {
             () = tx.closed() => {
@@ -274,6 +275,10 @@ async fn run_preload(
     }
 }
 
+#[allow(
+    clippy::unused_async_trait_impl,
+    reason = "the trait methods are async"
+)]
 impl Platform for WasmPlatformImpl {
     fn install_logging_hooks(&self) {}
 
@@ -333,6 +338,7 @@ impl Platform for WasmPlatformImpl {
             .model_manager
             .model(&settings.model.model_name)?
             .clone();
+        let model_cached = self.model_manager.is_model_installed(&spec.id).await?;
         let language = request
             .language
             .or_else(|| settings.ui.transcription_language().map(str::to_owned));
@@ -349,6 +355,7 @@ impl Platform for WasmPlatformImpl {
         spawn_local(run_transcription(
             Arc::clone(&self.worker),
             spec,
+            model_cached,
             bytes,
             language,
             request.translate,

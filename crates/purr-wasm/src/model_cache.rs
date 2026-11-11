@@ -103,7 +103,12 @@ async fn hash_cached_file(cache: &Cache, url: &str, file: &WebModelFile) -> WebR
         let done = js_sys::Reflect::get(&step, &JsValue::from_str("done"))
             .map_err(|e| WebError::web_api("ReadableStreamDefaultReader.read", e))?
             .as_bool()
-            .unwrap_or(true);
+            .ok_or_else(|| {
+                WebError::web_api(
+                    "ReadableStreamDefaultReader.read",
+                    JsValue::from_str("the read result has no `done` flag"),
+                )
+            })?;
         if done {
             break;
         }

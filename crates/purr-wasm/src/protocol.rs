@@ -299,7 +299,7 @@ mod tests {
             "request_id": 2,
             "file": "onnx/encoder_model.onnx",
             "loaded": 1024,
-            "total": 32904992,
+            "total": 32_904_992,
         }))?;
         assert_eq!(
             event,

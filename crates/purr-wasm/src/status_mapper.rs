@@ -37,20 +37,28 @@ fn failure_status(kind: FailureKind, message: String) -> TranscriptionStatus {
 /// Maps the events of one transcription request to statuses.
 pub struct TranscriptionMapper {
     progress: ModelProgress,
+    cached: bool,
 }
 
 impl TranscriptionMapper {
     #[must_use]
-    pub fn new(spec: &WebModelSpec) -> Self {
+    pub fn new(spec: &WebModelSpec, cached: bool) -> Self {
         Self {
             progress: ModelProgress::for_model(spec),
+            cached,
         }
     }
 
+    /// Reading a cached model is reported as fully downloaded so the UI does not claim a download.
     fn loading(&self) -> TranscriptionStatus {
+        let total_bytes = self.progress.total_bytes();
         TranscriptionStatus::LoadingModel {
-            loaded_bytes: self.progress.loaded_bytes(),
-            total_bytes: self.progress.total_bytes(),
+            loaded_bytes: if self.cached {
+                total_bytes
+            } else {
+                self.progress.loaded_bytes()
+            },
+            total_bytes,
         }
     }
 
@@ -101,7 +109,7 @@ impl TranscriptionMapper {
 }
 
 /// What a model preload reports after an event.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum PreloadStep {
     Progress(ModelOperationProgress),
     Loaded,
@@ -175,7 +183,7 @@ mod tests {
     #[test]
     fn model_bytes_become_loading_status() -> Result<(), Box<dyn std::error::Error>> {
         let spec = tiny()?;
-        let mut mapper = TranscriptionMapper::new(&spec);
+        let mut mapper = TranscriptionMapper::new(&spec, false);
         let status = mapper.map(WorkerEvent::ModelFile {
             request_id: ID,
             file: "onnx/encoder_model.onnx".to_owned(),
@@ -193,8 +201,28 @@ mod tests {
     }
 
     #[test]
+    fn cached_model_is_never_reported_as_downloading() -> Result<(), Box<dyn std::error::Error>> {
+        let spec = tiny()?;
+        let mut mapper = TranscriptionMapper::new(&spec, true);
+        let status = mapper.map(WorkerEvent::ModelFile {
+            request_id: ID,
+            file: "onnx/encoder_model.onnx".to_owned(),
+            loaded: 10,
+            total: 32_904_992,
+        });
+        assert_eq!(
+            status,
+            Some(TranscriptionStatus::LoadingModel {
+                loaded_bytes: spec.total_size_bytes(),
+                total_bytes: spec.total_size_bytes(),
+            })
+        );
+        Ok(())
+    }
+
+    #[test]
     fn segments_and_completion_map_one_to_one() -> Result<(), Box<dyn std::error::Error>> {
-        let mut mapper = TranscriptionMapper::new(&tiny()?);
+        let mut mapper = TranscriptionMapper::new(&tiny()?, false);
         let segment = TranscriptSegment {
             text: " Bonjour".to_owned(),
             start_time: 0.0,
@@ -227,7 +255,7 @@ mod tests {
 
     #[test]
     fn ready_model_reports_nothing_until_transcribing() -> Result<(), Box<dyn std::error::Error>> {
-        let mut mapper = TranscriptionMapper::new(&tiny()?);
+        let mut mapper = TranscriptionMapper::new(&tiny()?, false);
         assert_eq!(mapper.map(WorkerEvent::ModelReady { request_id: ID }), None);
         assert_eq!(
             mapper.map(WorkerEvent::Transcribing { request_id: ID }),
@@ -238,7 +266,7 @@ mod tests {
 
     #[test]
     fn detected_language_is_reported() -> Result<(), Box<dyn std::error::Error>> {
-        let mut mapper = TranscriptionMapper::new(&tiny()?);
+        let mut mapper = TranscriptionMapper::new(&tiny()?, false);
         assert_eq!(
             mapper.map(WorkerEvent::LanguageDetected {
                 request_id: ID,
@@ -253,7 +281,7 @@ mod tests {
 
     #[test]
     fn missing_webgpu_is_an_initialisation_failure() -> Result<(), Box<dyn std::error::Error>> {
-        let mut mapper = TranscriptionMapper::new(&tiny()?);
+        let mut mapper = TranscriptionMapper::new(&tiny()?, false);
         let status = mapper.map(WorkerEvent::Failed {
             request_id: Some(ID),
             kind: FailureKind::WebGpuUnavailable,
@@ -275,7 +303,7 @@ mod tests {
 
     #[test]
     fn inference_failure_is_a_transcription_error() -> Result<(), Box<dyn std::error::Error>> {
-        let mut mapper = TranscriptionMapper::new(&tiny()?);
+        let mut mapper = TranscriptionMapper::new(&tiny()?, false);
         let status = mapper.map(WorkerEvent::Failed {
             request_id: Some(ID),
             kind: FailureKind::Inference,

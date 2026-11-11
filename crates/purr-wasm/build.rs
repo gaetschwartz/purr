@@ -36,7 +36,12 @@ fn dependencies_are_current() -> bool {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
-    for input in ["js", "package.json", "package-lock.json", "rollup.config.js"] {
+    for input in [
+        "js",
+        "package.json",
+        "package-lock.json",
+        "rollup.config.js",
+    ] {
         println!("cargo::rerun-if-changed={input}");
     }
 

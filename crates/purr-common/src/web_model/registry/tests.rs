@@ -369,7 +369,10 @@ fn only_the_dot_en_models_are_english_only() -> Result<(), WebManifestError> {
     for model in registry.models() {
         assert_eq!(
             model.english_only(),
-            model.id.ends_with(".en"),
+            model
+                .id
+                .rsplit_once('.')
+                .is_some_and(|(_, suffix)| suffix == "en"),
             "{}",
             model.id
         );

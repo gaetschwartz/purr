@@ -18,18 +18,31 @@ function modelKey(model) {
     return `${model.repo}@${model.revision}:${model.encoder_dtype}/${model.decoder_dtype}`;
 }
 
+const PROGRESS_INTERVAL_MS = 100;
+
+function wholeNumber(value) {
+    return Number.isFinite(value) ? Math.round(value) : 0;
+}
+
 function progressReporter(requestId) {
+    const lastSent = new Map();
     return (data) => {
         switch (data.status) {
-            case "progress":
+            case "progress": {
+                const now = performance.now();
+                if (now - (lastSent.get(data.file) ?? 0) < PROGRESS_INTERVAL_MS) {
+                    break;
+                }
+                lastSent.set(data.file, now);
                 emit({
                     type: "ModelFile",
                     request_id: requestId,
                     file: data.file,
-                    loaded: Math.round(data.loaded),
-                    total: Math.round(data.total),
+                    loaded: wholeNumber(data.loaded),
+                    total: wholeNumber(data.total),
                 });
                 break;
+            }
             case "done":
                 emit({ type: "ModelFileDone", request_id: requestId, file: data.file });
                 break;

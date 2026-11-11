@@ -81,7 +81,7 @@ impl WorkerClient {
                 audio,
                 events,
             }))
-            .map_err(|_| WebError::Worker(WorkerError::Closed))?;
+            .map_err(|_closed| WebError::Worker(WorkerError::Closed))?;
         Ok(RequestEvents {
             id,
             kind,
@@ -161,14 +161,16 @@ impl LiveWorker {
             .map_err(crate::error::format_js_error)?;
 
         let sender = input.clone();
-        let on_message =Closure::<dyn FnMut(MessageEvent)>::new(move |event: MessageEvent| {
-            let signal = match event.data().as_string() {
-                Some(text) => match serde_json::from_str::<WorkerEvent>(&text) {
-                    Ok(parsed) => WorkerSignal::Event(parsed),
-                    Err(e) => WorkerSignal::Malformed(format!("{e}: {text}")),
+        let on_message = Closure::<dyn FnMut(MessageEvent)>::new(move |event: MessageEvent| {
+            let signal = event.data().as_string().map_or_else(
+                || WorkerSignal::Malformed("the message was not text".to_owned()),
+                |text| {
+                    serde_json::from_str::<WorkerEvent>(&text).map_or_else(
+                        |e| WorkerSignal::Malformed(format!("{e}: {text}")),
+                        WorkerSignal::Event,
+                    )
                 },
-                None => WorkerSignal::Malformed("the message was not text".to_owned()),
-            };
+            );
             if sender.send(Input::FromWorker(signal)).is_err() {
                 tracing::warn!("A worker message arrived after the router stopped");
             }
