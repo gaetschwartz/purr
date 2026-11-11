@@ -41,4 +41,16 @@ To run for a different platform, use the `--platform platform` flag. E.g.
 dx serve --platform desktop
 ```
 
+### Web build
+
+The browser build needs Node.js and npm: building `purr-wasm` runs `npm ci` and rollup to bundle the
+transcription worker (`crates/purr-wasm/js`) and ships it, together with the ONNX runtime files, as dx assets.
+
+```bash
+dx serve -p purr-app --web                 # development
+dx bundle -p purr-app --release --web --out-dir dist-web   # production, deploy dist-web/public
+```
+
+`res/vercel-config.json` serves `index.html` for every route that is not a file, so deep links such as `/settings` reload.
+
 

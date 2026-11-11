@@ -189,7 +189,7 @@ pub fn ModelPicker(
                                 Button {
                                     variant: ButtonVariant::Secondary,
                                     size: ButtonSize::Small,
-                                    onclick: download_model.clone(),
+                                    onclick: download_model,
                                     "Verify files"
                                 }
                                 Button {

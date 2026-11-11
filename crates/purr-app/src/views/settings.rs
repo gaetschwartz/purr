@@ -45,7 +45,8 @@ pub fn Settings() -> Element {
 
     use_future(move || async move {
         match platform::get_platform().load_settings().await {
-            Ok(loaded) => {
+            Ok(mut loaded) => {
+                loaded.ui.theme = *theme.theme.peek();
                 settings.set(loaded);
                 save_status.set(None);
             }

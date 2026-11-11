@@ -3,6 +3,7 @@
 use crate::error::{IntegrityError, WebError, WebResult};
 use crate::integrity::FileChecker;
 use crate::local::run_local;
+use gloo_timers::future::TimeoutFuture;
 use js_sys::Uint8Array;
 use purr_common::web_model::registry::{WebModelFile, WebModelSpec};
 use wasm_bindgen::{JsCast as _, JsValue};
@@ -10,6 +11,7 @@ use wasm_bindgen_futures::JsFuture;
 use web_sys::{Cache, CacheStorage, ReadableStreamDefaultReader, Response};
 
 const CACHE_NAME: &str = "transformers-cache";
+const YIELD_EVERY_BYTES: usize = 4 * 1024 * 1024;
 
 fn cache_storage() -> WebResult<CacheStorage> {
     let window = web_sys::window().ok_or_else(|| {
@@ -96,6 +98,7 @@ async fn hash_cached_file(cache: &Cache, url: &str, file: &WebModelFile) -> WebR
         .dyn_into::<ReadableStreamDefaultReader>()
         .map_err(|e| WebError::web_api("ReadableStream.getReader", e.into()))?;
     let mut checker = FileChecker::new(file);
+    let mut unyielded = 0_usize;
     loop {
         let step = JsFuture::from(reader.read())
             .await
@@ -116,7 +119,13 @@ async fn hash_cached_file(cache: &Cache, url: &str, file: &WebModelFile) -> WebR
             .map_err(|e| WebError::web_api("ReadableStreamDefaultReader.read", e))?
             .dyn_into::<Uint8Array>()
             .map_err(|e| WebError::web_api("ReadableStream chunk", e))?;
-        checker.update(&chunk.to_vec());
+        let bytes = chunk.to_vec();
+        checker.update(&bytes);
+        unyielded += bytes.len();
+        if unyielded >= YIELD_EVERY_BYTES {
+            TimeoutFuture::new(0).await;
+            unyielded = 0;
+        }
     }
     checker.finish()?;
     Ok(())

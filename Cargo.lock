@@ -5747,6 +5747,7 @@ dependencies = [
  "console_error_panic_hook",
  "futures",
  "getrandom 0.4.3",
+ "gloo-timers",
  "hex",
  "js-sys",
  "manganis",

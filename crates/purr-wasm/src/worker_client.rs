@@ -129,23 +129,25 @@ impl Drop for RequestEvents {
 /// Describes a worker `error` event. Script load failures arrive as plain events without a message.
 fn describe_error_event(event: &JsValue, script: &str) -> String {
     let read = |key: &str| Reflect::get(event, &JsValue::from_str(key)).ok();
-    match read("message")
+    read("message")
         .and_then(|value| value.as_string())
         .filter(|message| !message.is_empty())
-    {
-        Some(message) => {
-            let file = read("filename")
-                .and_then(|value| value.as_string())
-                .unwrap_or_default();
-            let line = read("lineno")
-                .and_then(|value| value.as_f64())
-                .unwrap_or_default();
-            format!("{message} ({file}:{line})")
-        }
-        None => format!(
-            "the worker script {script} could not be loaded or crashed; check your connection and reload the page"
-        ),
-    }
+        .map_or_else(
+            || {
+                format!(
+                    "the worker script {script} could not be loaded or crashed; check your connection and reload the page"
+                )
+            },
+            |message| {
+                let file = read("filename")
+                    .and_then(|value| value.as_string())
+                    .unwrap_or_default();
+                let line = read("lineno")
+                    .and_then(|value| value.as_f64())
+                    .unwrap_or_default();
+                format!("{message} ({file}:{line})")
+            },
+        )
 }
 
 struct LiveWorker {
