@@ -126,12 +126,14 @@ impl StreamingState {
 
         // Add previous context for continuity
         processing_buffer.extend_from_slice(&self.context_buffer);
+        self.window_start_time = self.total_duration - (self.context_buffer.len() as f32 / 16000.0);
 
         // Add new audio chunk
         let chunk_samples: Vec<f32> = self
             .audio_buffer
             .drain(..self.chunk_size.min(self.audio_buffer.len()))
             .collect();
+        self.total_duration += chunk_samples.len() as f32 / 16000.0;
 
         processing_buffer.extend_from_slice(&chunk_samples);
 
@@ -142,10 +144,7 @@ impl StreamingState {
         processing_buffer
     }
 
-    fn update_timing(&mut self, processed_samples: usize) {
-        let processed_duration = processed_samples as f32 / 16000.0;
-        self.total_duration += processed_duration;
-        self.window_start_time = self.total_duration - (self.context_buffer.len() as f32 / 16000.0);
+    fn next_chunk(&mut self) {
         self.chunk_index += 1;
     }
 }
@@ -193,7 +192,6 @@ impl StreamWhisperTranscriber {
                             break;
                         }
 
-                        let buffer_len = processing_buffer.len();
                         let is_final_chunk =
                             is_stream_complete && streaming_state.audio_buffer.is_empty();
 
@@ -233,7 +231,7 @@ impl StreamWhisperTranscriber {
                             }
                         }
 
-                        streaming_state.update_timing(buffer_len);
+                        streaming_state.next_chunk();
                     }
 
                     // If this was the final chunk and we've processed everything, break
