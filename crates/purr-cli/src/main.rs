@@ -183,47 +183,48 @@ async fn handle_streaming_output(
         let chunk = chunk_result?;
         all_chunks.push(chunk.clone());
 
-        // Format the chunk for real-time output
-        let chunk_text: Cow<'_, str> = match cli.output {
-            OutputFormat::Text => {
-                if cli.timestamps {
-                    format!("[{:.2}s -> {:.2}s] {}", chunk.start, chunk.end, chunk.text).into()
-                } else {
-                    Cow::Borrowed(&chunk.text)
+        if !chunk.text.is_empty() || matches!(cli.output, OutputFormat::Json) {
+            // Format the chunk for real-time output
+            let chunk_text: Cow<'_, str> = match cli.output {
+                OutputFormat::Text => {
+                    if cli.timestamps {
+                        format!("[{:.2}s -> {:.2}s] {}", chunk.start, chunk.end, chunk.text).into()
+                    } else {
+                        Cow::Borrowed(&chunk.text)
+                    }
                 }
-            }
-            OutputFormat::Json => serde_json::to_string(&chunk).into_diagnostic()?.into(),
-            OutputFormat::Srt => format!(
-                "{}\n{} --> {}\n{}\n",
-                chunk.chunk_index + 1,
-                format_srt_time(chunk.start),
-                format_srt_time(chunk.end),
-                chunk.text
-            )
-            .into(),
-            OutputFormat::Txt => Cow::Borrowed(&chunk.text),
-        };
+                OutputFormat::Json => serde_json::to_string(&chunk).into_diagnostic()?.into(),
+                OutputFormat::Srt => format!(
+                    "{}\n{} --> {}\n{}\n",
+                    chunk.chunk_index + 1,
+                    format_srt_time(chunk.start),
+                    format_srt_time(chunk.end),
+                    chunk.text
+                )
+                .into(),
+                OutputFormat::Txt => Cow::Borrowed(&chunk.text),
+            };
 
-        // Print to stdout or accumulate for file output
-        if cli.output_file.is_some() {
-            output_buffer.push_str(&chunk_text);
-            if !matches!(cli.output, OutputFormat::Txt) {
-                output_buffer.push('\n');
-            }
-        } else if matches!(cli.output, OutputFormat::Json) {
-            writeln!(stdout, "{chunk_text}").into_diagnostic()?;
-        } else {
-            write!(stdout, "{chunk_text}").into_diagnostic()?;
-            if !chunk.text.is_empty() && !chunk.text.ends_with('\n') {
-                if matches!(cli.output, OutputFormat::Srt) {
-                    writeln!(stdout).into_diagnostic()?;
-                } else {
-                    write!(stdout, " ").into_diagnostic()?;
+            // Print to stdout or accumulate for file output
+            if cli.output_file.is_some() {
+                output_buffer.push_str(&chunk_text);
+                if !matches!(cli.output, OutputFormat::Txt) {
+                    output_buffer.push('\n');
                 }
+            } else if matches!(cli.output, OutputFormat::Json) {
+                writeln!(stdout, "{chunk_text}").into_diagnostic()?;
+            } else {
+                write!(stdout, "{chunk_text}").into_diagnostic()?;
+                if !chunk.text.is_empty() && !chunk.text.ends_with('\n') {
+                    if matches!(cli.output, OutputFormat::Srt) {
+                        writeln!(stdout).into_diagnostic()?;
+                    } else {
+                        write!(stdout, " ").into_diagnostic()?;
+                    }
+                }
+                stdout.flush().into_diagnostic()?;
             }
-            stdout.flush().into_diagnostic()?;
         }
-
         // Check for final statistics
         if let Some(ref stats) = chunk.final_stats {
             // Display statistics after processing is complete

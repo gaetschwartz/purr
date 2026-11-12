@@ -110,10 +110,6 @@ pub struct Cli {
     #[arg(long, default_value = "4.0")]
     pub chunk_size: f32,
 
-    /// Chunk overlap for streaming (in seconds)
-    #[arg(long, default_value = "0.5")]
-    pub chunk_overlap: f32,
-
     /// HTTP timeout for URL requests (in seconds)
     #[arg(long, default_value = "30")]
     pub http_timeout: u64,
@@ -316,7 +312,6 @@ impl TranscriptionConfigWithCliExt for purr_core::TranscriptionConfig {
             .with_threads(cli.threads.unwrap_or_else(num_cpus::get))
             .with_temperature(cli.temperature)
             .with_sample_rate(cli.sample_rate)
-            .with_chunk_overlap(cli.chunk_overlap)
             .with_chunk_size(cli.chunk_size)
             .with_accel(cli.accel_config())
             .with_http_timeout(cli.http_timeout)

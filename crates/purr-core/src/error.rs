@@ -180,6 +180,14 @@ pub enum TranscriptionError {
         #[source]
         source: whisper_rs::WhisperError,
     },
+
+    #[error("Whisper does not know the language `{code}`")]
+    #[diagnostic(code(whisper::transcription::unknown_language))]
+    UnknownLanguage { code: String },
+
+    #[error("Whisper detected a language id it has no code for: {id}")]
+    #[diagnostic(code(whisper::transcription::unknown_language_id))]
+    UnknownLanguageId { id: i32 },
 }
 
 /// Acceleration backend selection errors
