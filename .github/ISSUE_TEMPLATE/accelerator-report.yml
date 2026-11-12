@@ -1,0 +1,78 @@
+name: Accelerator report
+description: Report how Purr runs on your GPU, NPU or CPU, with the numbers
+title: "[accelerator] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Read [docs/accelerators.md](https://github.com/gaetschwartz/purr/blob/develop/docs/accelerators.md) first. Use a build with the backend you want to test (Vulkan for Intel iGPUs and Arc).
+  - type: input
+    id: os
+    attributes:
+      label: Operating system and distribution
+      description: For example Windows 11 24H2, Fedora 43, Ubuntu 24.04.
+    validations:
+      required: true
+  - type: input
+    id: cpu
+    attributes:
+      label: CPU
+      description: Exact model, for example Intel Core Ultra 7 155H, Core 7 240H, Ryzen 7 7840U.
+    validations:
+      required: true
+  - type: input
+    id: gpu
+    attributes:
+      label: GPU and NPU
+      description: Intel iGPU (UHD, Iris Xe, Arc graphics), Arc dGPU, NVIDIA, AMD, and the NPU if there is one. Write the generation.
+    validations:
+      required: true
+  - type: textarea
+    id: drivers
+    attributes:
+      label: Driver versions
+      description: Windows graphics driver version, or Mesa version (`vulkaninfo --summary`), plus oneAPI or OpenVINO if installed.
+    validations:
+      required: true
+  - type: input
+    id: build
+    attributes:
+      label: Purr build
+      description: Release or nightly name, and which variant (cpu, vulkan, cuda, all).
+    validations:
+      required: true
+  - type: textarea
+    id: sys
+    attributes:
+      label: Output of `purr sys`
+      description: Paste it whole.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: benchmark
+    attributes:
+      label: Benchmark
+      description: |
+        Download the model and the clip once, then run each command twice and report the second run:
+
+        purr models download base
+        curl -LO https://raw.githubusercontent.com/gaetschwartz/purr/develop/samples/a13.mp3
+
+        purr -m base --accel vulkan -t 4 a13.mp3
+        purr -m base --accel cpu -t 4 a13.mp3
+
+        Time them with `time` (Linux, macOS) or `Measure-Command { ... }` (PowerShell). Paste the `Acceleration:` line each run prints and the wall time. a13.mp3 is 179 seconds long.
+      placeholder: |
+        vulkan: Acceleration: Vulkan (...) ... 12.3 s
+        cpu: Acceleration: CPU ... 41.0 s
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: result
+    attributes:
+      label: Result
+      description: Did it work, was the transcript correct, did it crash or fall back? Anything unusual.
+    validations:
+      required: true
