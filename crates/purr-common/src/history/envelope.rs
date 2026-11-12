@@ -3,8 +3,11 @@
 use super::entry::HistoryEntry;
 use serde::{Deserialize, Serialize};
 
-/// The version this build writes and reads.
-pub const FORMAT_VERSION: u32 = 1;
+/// The version this build writes. Version 2 added the words of each segment.
+pub const FORMAT_VERSION: u32 = 2;
+
+/// The oldest version this build still reads; its entries read as having no words.
+const OLDEST_READABLE: u32 = 1;
 
 /// Why a stored entry could not be read.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -46,7 +49,7 @@ pub fn decode(text: &str) -> Result<HistoryEntry, UnreadableReason> {
     };
     let head: Head = serde_json::from_str(text).map_err(corrupt)?;
     match head.version {
-        FORMAT_VERSION => {
+        OLDEST_READABLE..=FORMAT_VERSION => {
             let reading: Reading = serde_json::from_str(text).map_err(corrupt)?;
             Ok(reading.entry)
         }
@@ -63,6 +66,7 @@ mod tests {
     use crate::{
         history::entry::{HistoryId, HistorySource, LanguageOrigin},
         platform::TranscriptSegment,
+        word::Word,
     };
     use std::path::PathBuf;
 
@@ -83,7 +87,12 @@ mod tests {
                 text: "Bonjour".to_owned(),
                 start_time: 0.0,
                 end_time: 1.5,
-                words: Vec::new(),
+                words: vec![Word {
+                    range: 0..7,
+                    start_cs: Some(10),
+                    end_cs: Some(140),
+                    score: Some(230),
+                }],
             }],
             peaks: vec![0, 128, 255],
             source: HistorySource::Path {
@@ -103,8 +112,40 @@ mod tests {
         let stored = encode(&entry()).unwrap_or_default();
         assert_eq!(
             stored.split_once(',').map(|(head, _)| head),
-            Some("{\"version\":1")
+            Some("{\"version\":2")
         );
+    }
+
+    #[test]
+    fn words_are_stored_compactly() {
+        let stored = encode(&entry()).unwrap_or_default();
+        assert_eq!(
+            stored
+                .split_once("\"words\":")
+                .and_then(|(_, rest)| rest.split_once('}'))
+                .map(|(words, _)| words),
+            Some("[[0,7,10,140,230]]")
+        );
+    }
+
+    #[test]
+    fn a_version_1_entry_reads_without_words() {
+        let stored = "{\"version\":1,\"entry\":{\"id\":\"abc-1\",\"title\":\"memo.ogg\",\"file_name\":\"memo.ogg\",\"created_at_ms\":1762848000000,\"audio_seconds\":12.5,\"language\":\"fr\",\"language_origin\":\"detected\",\"model_id\":\"tiny\",\"model_label\":\"Tiny\",\"processing_seconds\":2.0,\"preview\":\"Bonjour\",\"segments\":[{\"text\":\"Bonjour\",\"start_time\":0.0,\"end_time\":1.5}],\"peaks\":[0,128,255],\"source\":{\"kind\":\"path\",\"path\":\"memo.ogg\"}}}";
+        let mut expected = entry();
+        expected.segments[0].words.clear();
+        assert_eq!(decode(stored), Ok(expected));
+    }
+
+    #[test]
+    fn a_version_1_entry_is_saved_again_as_version_2() {
+        let mut read = entry();
+        read.segments[0].words.clear();
+        let stored = encode(&read).unwrap_or_default();
+        assert_eq!(
+            stored.split_once(',').map(|(head, _)| head),
+            Some("{\"version\":2")
+        );
+        assert_eq!(decode(&stored), Ok(read));
     }
 
     #[test]
@@ -112,6 +153,10 @@ mod tests {
         assert_eq!(
             decode("{\"version\":9,\"entry\":{\"future\":true}}"),
             Err(UnreadableReason::NewerVersion { found: 9 })
+        );
+        assert_eq!(
+            decode("{\"version\":3,\"entry\":{}}"),
+            Err(UnreadableReason::NewerVersion { found: 3 })
         );
     }
 

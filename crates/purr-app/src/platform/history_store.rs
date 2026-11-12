@@ -239,7 +239,7 @@ impl HistoryDir {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use purr_common::{history::entry::LanguageOrigin, platform::TranscriptSegment};
+    use purr_common::{history::entry::LanguageOrigin, platform::TranscriptSegment, word::Word};
 
     const SMALL: Limits = Limits {
         max_entries: 3,
@@ -263,7 +263,12 @@ mod tests {
                 text: format!("Bonjour {name}"),
                 start_time: 0.0,
                 end_time: 2.0,
-                words: Vec::new(),
+                words: vec![Word {
+                    range: 0..7,
+                    start_cs: Some(0),
+                    end_cs: Some(80),
+                    score: Some(240),
+                }],
             }],
             peaks: vec![10, 200],
             source: HistorySource::NotKept,
@@ -407,7 +412,7 @@ mod tests {
     }
 
     #[test]
-    fn rename_validates_and_keeps_the_rest() {
+    fn rename_validates_and_keeps_the_rest_words_included() {
         let (_temp, history) = dir(SMALL);
         history.save(&entry("a", 1)).unwrap();
         let id = entry("a", 1).id;
