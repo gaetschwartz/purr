@@ -24,16 +24,15 @@ fn failure_status(kind: FailureKind, message: String) -> TranscriptionStatus {
     match kind {
         FailureKind::WebGpuUnavailable => init_failed(
             "WebGPU",
-            "Purr runs the model on your GPU through WebGPU. Use a current Chrome or Edge, or enable WebGPU in your browser.",
+            "This model needs WebGPU. Choose a smaller one; it can run on the CPU.",
         ),
         FailureKind::ShaderF16Unavailable => init_failed(
             "WebGPU",
             "Choose a smaller model; it does not need this GPU feature.",
         ),
-        FailureKind::WebGpuFailed => init_failed(
-            "WebGPU",
-            "Choose the CPU in Settings › Transcription, then try again.",
-        ),
+        FailureKind::WebGpuFailed => {
+            init_failed("WebGPU", "Choose a smaller model; it can run on the CPU.")
+        }
         FailureKind::ModelLoad => init_failed(
             "Model",
             "Check your internet connection and try again. Files that were already downloaded are kept.",
@@ -311,9 +310,29 @@ mod tests {
                 component: "WebGPU".to_owned(),
                 reason: "no gpu.".to_owned(),
                 error_details: Some(
-                    "Purr runs the model on your GPU through WebGPU. Use a current Chrome or Edge, or enable WebGPU in your browser."
+                    "This model needs WebGPU. Choose a smaller one; it can run on the CPU."
                         .to_owned()
                 ),
+            })
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn a_webgpu_failure_that_reaches_the_user_points_at_a_smaller_model()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut mapper = TranscriptionMapper::new(&tiny()?, false);
+        let status = mapper.map(WorkerEvent::Failed {
+            request_id: Some(ID),
+            kind: FailureKind::WebGpuFailed,
+            message: "WebGPU failed: device lost".to_owned(),
+        });
+        assert_eq!(
+            status,
+            Some(TranscriptionStatus::InitFailed {
+                component: "WebGPU".to_owned(),
+                reason: "WebGPU failed: device lost.".to_owned(),
+                error_details: Some("Choose a smaller model; it can run on the CPU.".to_owned()),
             })
         );
         Ok(())

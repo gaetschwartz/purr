@@ -124,8 +124,7 @@ pub enum Plan {
 /// Where the model `model_id` should run, given the settings, the adapter the worker found, and
 /// the stored verdict for that model.
 ///
-/// Models that need `shader-f16` carry half-precision weights the CPU runtime cannot run, so they
-/// always go to WebGPU, unchecked.
+/// Models that need `shader-f16` are never run on the CPU, so they always go to WebGPU, unchecked.
 #[must_use]
 pub fn plan(
     policy: AccelPolicy,
