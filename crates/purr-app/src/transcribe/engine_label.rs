@@ -4,6 +4,7 @@ use super::engine::RunMemory;
 use crate::hooks::{use_models::GpuSupport, use_system_probe::SystemProbe};
 use purr_common::{
     accel::{AccelBackend, AccelPolicy, BackendReport, BackendStatus, LastRun, SystemReport},
+    cpu_name::short_cpu_name,
     platform::{DeviceInfo, DeviceType},
 };
 use std::fmt;
@@ -92,7 +93,7 @@ fn hardware(
     ran_device: Option<&str>,
 ) -> Option<String> {
     match backend {
-        AccelBackend::Cpu => report.cpu.name.clone(),
+        AccelBackend::Cpu => report.cpu.name.as_deref().map(short_cpu_name),
         AccelBackend::CoreMl => None,
         AccelBackend::Cuda
         | AccelBackend::Hip
@@ -196,6 +197,7 @@ mod tests {
     use purr_common::accel::{CpuReport, PassedOver, PassedReason};
 
     const CPU_NAME: &str = "AMD Ryzen 9 7950X 16-Core Processor";
+    const CPU_SHORT: &str = "AMD Ryzen 9 7950X";
     const GPU_NAME: &str = "NVIDIA GeForce RTX 4090";
 
     fn forced(backend: AccelBackend) -> AccelPolicy {
@@ -297,7 +299,7 @@ mod tests {
     fn the_processor_only_names_the_processor() {
         assert_eq!(
             EngineLabel::planned(AccelPolicy::CPU_ONLY, None, &machine(true)),
-            label(AccelBackend::Cpu, Some(CPU_NAME))
+            label(AccelBackend::Cpu, Some(CPU_SHORT))
         );
     }
 
@@ -373,7 +375,7 @@ mod tests {
     fn a_run_on_the_processor_is_named_after_it() {
         assert_eq!(
             EngineLabel::ran(&ran(AccelBackend::Cpu, None), &machine(true)),
-            label(AccelBackend::Cpu, Some(CPU_NAME))
+            label(AccelBackend::Cpu, Some(CPU_SHORT))
         );
     }
 
