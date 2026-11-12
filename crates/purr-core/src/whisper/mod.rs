@@ -1,7 +1,6 @@
 mod commit;
 pub mod loader;
 pub mod logging;
-mod overlap;
 pub mod streaming;
 pub mod sync;
 
