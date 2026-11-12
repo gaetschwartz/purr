@@ -19,7 +19,15 @@ use crate::{
 
 pub(crate) struct LoadedModel {
     pub state: WhisperState,
+    pub tokens: SpecialTokens,
     pub accel: AccelReport,
+}
+
+/// Token ids that mark where the model's text vocabulary ends.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct SpecialTokens {
+    /// End of text; every id from here on is a special or timestamp token
+    pub eot: i32,
 }
 
 /// Load the Whisper model and create its state on the best acceleration backend that works.
@@ -55,7 +63,7 @@ fn load_with_acceleration(model_path: &Path, config: &AccelConfig) -> Result<Loa
     let mut attempts = plan.skipped;
     for candidate in &plan.candidates {
         match try_candidate(candidate, model_path) {
-            Ok(state) => {
+            Ok((state, tokens)) => {
                 attempts.retain(|a| rank(a.backend) < rank(candidate.backend));
                 attempts.sort_by_key(|a| rank(a.backend));
                 let report = AccelReport {
@@ -69,6 +77,7 @@ fn load_with_acceleration(model_path: &Path, config: &AccelConfig) -> Result<Loa
                 log_selection(&report, config);
                 return Ok(LoadedModel {
                     state,
+                    tokens,
                     accel: report,
                 });
             }
@@ -92,7 +101,7 @@ fn load_with_acceleration(model_path: &Path, config: &AccelConfig) -> Result<Loa
 fn try_candidate(
     candidate: &Candidate,
     model_path: &Path,
-) -> std::result::Result<WhisperState, AttemptFailure> {
+) -> std::result::Result<(WhisperState, SpecialTokens), AttemptFailure> {
     let mut params = WhisperContextParameters::default();
     match &candidate.target {
         Target::Cpu => {
@@ -115,10 +124,14 @@ fn try_candidate(
         debug!("whisper context creation failed: {error}");
         AttemptFailure::ContextInit
     })?;
-    context.create_state().map_err(|error| {
+    let tokens = SpecialTokens {
+        eot: context.token_eot(),
+    };
+    let state = context.create_state().map_err(|error| {
         debug!("whisper state creation failed: {error}");
         AttemptFailure::StateInit
-    })
+    })?;
+    Ok((state, tokens))
 }
 
 fn log_selection(report: &AccelReport, config: &AccelConfig) {

@@ -2,10 +2,13 @@ mod commit;
 mod language;
 pub mod loader;
 pub mod logging;
+mod segments;
 mod speech;
 pub mod streaming;
 pub mod sync;
+pub mod words;
 
+use purr_common::word::Word;
 use serde::{Deserialize, Serialize};
 use std::future::Future;
 
@@ -76,27 +79,8 @@ impl TranscriptionResult for SyncTranscriptionResult {}
 /// A transcription segment with timestamps
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TranscriptionSegment {
-    /// Segment text
+    /// Segment text, trimmed
     pub text: String,
-
-    /// Start time in seconds
-    pub start: f64,
-
-    /// End time in seconds  
-    pub end: f64,
-
-    /// Confidence score (if available)
-    pub confidence: Option<f32>,
-
-    /// Word-level timestamps (if requested)
-    pub words: Option<Vec<WordTimestamp>>,
-}
-
-/// Word-level timestamp information
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WordTimestamp {
-    /// The word
-    pub word: String,
 
     /// Start time in seconds
     pub start: f64,
@@ -104,8 +88,8 @@ pub struct WordTimestamp {
     /// End time in seconds
     pub end: f64,
 
-    /// Confidence score
-    pub confidence: Option<f32>,
+    /// The words of `text`, with their scores, and their times when word timestamps were asked for
+    pub words: Vec<Word>,
 }
 
 /// Streaming transcription chunk
@@ -131,6 +115,9 @@ pub struct StreamingChunk {
 
     /// The language Whisper recognised in this chunk (a Whisper code), when it was asked to detect it
     pub language: Option<String>,
+
+    /// The words of `text`, timed on the source timeline when word timestamps were asked for
+    pub words: Vec<Word>,
 }
 
 pub trait WhisperTranscriber {

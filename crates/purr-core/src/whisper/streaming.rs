@@ -6,11 +6,13 @@ use crate::{
         StreamingChunk, TranscriptionResult, TranscriptionStats, WhisperTranscriber,
         commit::{Span, WindowKind, commit},
         language::{LanguageCode, StreamLanguage},
-        loader::load_model,
+        loader::{SpecialTokens, load_model},
+        segments,
         speech::{SpeechDetector, last_pause},
     },
 };
 use futures::{FutureExt, Stream, StreamExt};
+use purr_common::word::Word;
 use std::{
     ops::ControlFlow,
     pin::Pin,
@@ -32,6 +34,7 @@ const MIN_PAUSED_WINDOW_SECONDS: f32 = 1.0;
 
 pub struct StreamWhisperTranscriber {
     state: WhisperState,
+    tokens: SpecialTokens,
     accel: AccelReport,
     config: Arc<TranscriptionConfig>,
 }
@@ -61,6 +64,8 @@ impl Windows {
 struct Decoded {
     span: Span,
     text: String,
+    /// Timed from the window start
+    words: Vec<Word>,
 }
 
 /// One streaming transcription: the audio not yet committed, and what the stream has settled.
@@ -68,6 +73,7 @@ struct Session {
     config: Arc<TranscriptionConfig>,
     windows: Windows,
     state: WhisperState,
+    tokens: SpecialTokens,
     speech: Option<SpeechDetector>,
     threads: usize,
     /// Audio from `origin` on that no committed segment covers yet
@@ -98,6 +104,7 @@ impl WhisperTranscriber for StreamWhisperTranscriber {
 
         Ok(Self {
             state: loaded.state,
+            tokens: loaded.tokens,
             accel: loaded.accel,
             config,
         })
@@ -107,12 +114,14 @@ impl WhisperTranscriber for StreamWhisperTranscriber {
         let (tx, rx) = mpsc::unbounded_channel();
         let Self {
             state,
+            tokens,
             accel,
             config,
         } = self;
 
         tokio::spawn(async move {
-            if let Err(e) = Self::process_audio_stream(state, config, input, tx.clone()).await
+            if let Err(e) =
+                Self::process_audio_stream(state, tokens, config, input, tx.clone()).await
                 && tx.send(Err(e)).is_err()
             {
                 debug!("Receiver dropped, error not delivered");
@@ -127,7 +136,11 @@ impl WhisperTranscriber for StreamWhisperTranscriber {
 }
 
 impl Session {
-    fn new(state: WhisperState, config: Arc<TranscriptionConfig>) -> crate::Result<Self> {
+    fn new(
+        state: WhisperState,
+        tokens: SpecialTokens,
+        config: Arc<TranscriptionConfig>,
+    ) -> crate::Result<Self> {
         let threads = match config.num_threads {
             Some(threads) => threads,
             None => std::thread::available_parallelism()?.get().min(4),
@@ -151,6 +164,7 @@ impl Session {
             windows: Windows::new(&config),
             config,
             state,
+            tokens,
             speech,
             threads,
             pending: Vec::new(),
@@ -228,27 +242,23 @@ impl Session {
         params.set_print_special(false);
         params.set_print_realtime(false);
         params.set_no_context(true);
+        params.set_token_timestamps(self.config.output_format.word_timestamps);
 
         self.state
             .full(params, window)
             .map_err(|source| TranscriptionError::Failed { source })?;
 
-        let mut decoded = Vec::new();
-        for segment in self.state.as_iter() {
-            let text = segment
-                .to_str_lossy()
-                .map_err(|source| TranscriptionError::Failed { source })?
-                .trim()
-                .to_owned();
-            decoded.push(Decoded {
+        Ok(segments::read(&self.state, self.tokens.eot)?
+            .into_iter()
+            .map(|segment| Decoded {
                 span: Span {
-                    start: segment.start_timestamp().max(0) as usize * SAMPLES_PER_CENTISECOND,
-                    end: segment.end_timestamp().max(0) as usize * SAMPLES_PER_CENTISECOND,
+                    start: segment.start_cs.max(0) as usize * SAMPLES_PER_CENTISECOND,
+                    end: segment.end_cs.max(0) as usize * SAMPLES_PER_CENTISECOND,
                 },
-                text,
-            });
-        }
-        Ok(decoded)
+                text: segment.text,
+                words: segment.words,
+            })
+            .collect())
     }
 
     /// Drops `n` samples from the front of the pending audio.
@@ -322,6 +332,7 @@ impl Session {
             StreamLanguage::Chosen(_) | StreamLanguage::Detecting => None,
         };
         let sr = self.sample_rate();
+        let origin_cs = u32::try_from(self.origin / SAMPLES_PER_CENTISECOND).unwrap_or(u32::MAX);
         let mut chunks = Vec::new();
         for d in decoded.iter().filter(|d| !d.text.is_empty()) {
             let end = d.span.end.min(len);
@@ -333,6 +344,12 @@ impl Session {
                 chunk_index: self.chunk_index,
                 final_stats: None,
                 language: reported.map(str::to_owned),
+                words: d
+                    .words
+                    .iter()
+                    .cloned()
+                    .map(|word| word.delayed(origin_cs))
+                    .collect(),
             });
             self.chunk_index += 1;
             self.segment_count += 1;
@@ -353,6 +370,7 @@ impl Session {
                     chunk_index: self.chunk_index,
                     final_stats: None,
                     language: reported.map(str::to_owned),
+                    words: Vec::new(),
                 });
                 self.chunk_index += 1;
             }
@@ -373,11 +391,12 @@ impl Session {
 impl StreamWhisperTranscriber {
     async fn process_audio_stream(
         state: WhisperState,
+        tokens: SpecialTokens,
         config: Arc<TranscriptionConfig>,
         mut input: AudioStream,
         tx: mpsc::UnboundedSender<crate::Result<StreamingChunk>>,
     ) -> crate::Result<()> {
-        let mut session = Session::new(state, config)?;
+        let mut session = Session::new(state, tokens, config)?;
         let mut complete = false;
 
         let receive = |item: Option<crate::Result<crate::AudioChunk>>,

@@ -8,15 +8,16 @@ use crate::{
     error::{Result, TranscriptionError, WhisperError},
     whisper::{
         SyncTranscriptionResult, TranscriptionSegment, TranscriptionStats, WhisperTranscriber,
-        loader::load_model,
+        loader::{SpecialTokens, load_model},
+        segments,
     },
 };
-use tracing::warn;
 use whisper_rs::{FullParams, SamplingStrategy, WhisperState};
 
 /// Whisper transcriber
 pub struct SyncWhisperTranscriber {
     state: WhisperState,
+    tokens: SpecialTokens,
     accel: AccelReport,
     config: TranscriptionConfig,
 }
@@ -35,6 +36,7 @@ impl WhisperTranscriber for SyncWhisperTranscriber {
 
         Ok(Self {
             state: loaded.state,
+            tokens: loaded.tokens,
             accel: loaded.accel,
             config,
         })
@@ -84,6 +86,7 @@ impl SyncWhisperTranscriber {
         params.set_print_progress(false); // Disable progress output
         params.set_print_special(false); // Disable special token printing
         params.set_print_realtime(false); // Disable real-time printing
+        params.set_token_timestamps(config.output_format.word_timestamps);
 
         let state = &mut self.state;
 
@@ -94,42 +97,21 @@ impl SyncWhisperTranscriber {
 
         let processing_time = start_time.elapsed().as_secs_f64();
 
-        // Extract results from state
-        let num_segments = state.full_n_segments();
-
-        let mut segments = Vec::new();
-        let mut full_text = String::new();
-
-        for i in 0..num_segments {
-            if let Some(segment) = state.get_segment(i) {
-                match segment.to_str() {
-                    Ok(text) => {
-                        let start = segment.start_timestamp() as f64 / 100.0;
-                        let end = segment.end_timestamp() as f64 / 100.0;
-
-                        full_text.push_str(text);
-
-                        segments.push(TranscriptionSegment {
-                            text: text.to_owned(),
-                            start,
-                            end,
-                            confidence: None, // whisper-rs doesn't expose confidence scores yet
-                            words: None,      // Word-level timestamps not implemented yet
-                        });
-                    }
-                    Err(e) => {
-                        warn!("Failed to get segment text: {}", e);
-                        continue;
-                    }
-                }
-            } else {
-                warn!(
-                    "Failed to get segment {} (out of {}). Skipping segment.",
-                    i, num_segments
-                );
-                continue; // Skip this segment instead of failing completely
-            }
-        }
+        let segments: Vec<TranscriptionSegment> = segments::read(state, self.tokens.eot)?
+            .into_iter()
+            .map(|segment| TranscriptionSegment {
+                start: segment.start_cs as f64 / 100.0,
+                end: segment.end_cs as f64 / 100.0,
+                words: segment.words,
+                text: segment.text,
+            })
+            .filter(|segment| !segment.text.is_empty())
+            .collect();
+        let full_text = segments
+            .iter()
+            .map(|segment| segment.text.as_str())
+            .collect::<Vec<_>>()
+            .join(" ");
 
         // Calculate statistics
         let word_count = full_text.split_whitespace().count();

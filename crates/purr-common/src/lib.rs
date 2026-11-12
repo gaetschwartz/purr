@@ -8,6 +8,7 @@ pub mod hugging_face_token;
 pub mod platform;
 pub mod settings;
 pub mod web_model;
+pub mod word;
 
 macro_rules! make_languages_enum {
     (
