@@ -335,6 +335,7 @@ button.item:focus-visible,a.item:focus-visible{outline-offset:-2.5px;border-radi
 .item.col{flex-direction:column;align-items:stretch;gap:10px}
 .item.col .head{display:flex;align-items:center;gap:14px}
 .ctl{display:flex;align-items:center;gap:10px;flex:none;max-width:60%}
+.ctl .field{width:260px;max-width:100%}
 .group-f{font-size:12.5px;color:var(--fg-2);margin:8px 16px 0;line-height:1.45}
 
 /* ---------- Progress and spinner ---------- */
@@ -446,7 +447,7 @@ details>.preview{margin:8px 0 0;font-family:var(--font)}
   .item{gap:12px;padding:10px 14px}
   .item.stackable{flex-wrap:wrap}
   .item.stackable .ctl{max-width:100%;width:100%}
-  .item.stackable .ctl .seg{display:flex;width:100%}
+  .item.stackable .ctl .seg,.item.stackable .ctl .field{display:flex;width:100%}
   .item.stackable .ctl .seg button{flex:1;justify-content:center;padding:0 6px}
   .ctl{max-width:62%}
   .sheet-wrap{place-items:end center;padding:10px}

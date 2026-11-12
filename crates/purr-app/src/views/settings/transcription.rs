@@ -1,4 +1,7 @@
-use super::{browser_panel::BrowserPanel, changes::report, sections::SettingsSection};
+use super::{
+    browser_panel::BrowserPanel, changes::report, hugging_face_token::HuggingFaceTokenItem,
+    sections::SettingsSection,
+};
 use crate::{
     components::{
         group::{Group, Item},
@@ -46,6 +49,7 @@ pub fn TranscriptionSection() -> Element {
                         ModelPill { id: "settings-model" }
                     },
                 }
+                HuggingFaceTokenItem {}
                 Item {
                     title: "Translate to English",
                     control: rsx! {
