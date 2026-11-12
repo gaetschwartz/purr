@@ -88,7 +88,7 @@ impl TranscriptionMapper {
             }
             WorkerEvent::ModelReady { .. }
             | WorkerEvent::GpuProbed { .. }
-            | WorkerEvent::GpuChecked { .. } => None,
+            | WorkerEvent::CanaryTranscribed { .. } => None,
             WorkerEvent::Transcribing { .. } => Some(TranscriptionStatus::Transcribing),
             WorkerEvent::LanguageDetected { language, .. } => {
                 Some(TranscriptionStatus::LanguageDetected { language })
@@ -176,7 +176,7 @@ impl PreloadMapper {
             WorkerEvent::ModelReady { .. } => PreloadStep::Loaded,
             WorkerEvent::Failed { message, .. } => PreloadStep::Failed(message),
             WorkerEvent::GpuProbed { .. }
-            | WorkerEvent::GpuChecked { .. }
+            | WorkerEvent::CanaryTranscribed { .. }
             | WorkerEvent::Transcribing { .. }
             | WorkerEvent::LanguageDetected { .. }
             | WorkerEvent::Segment { .. }

@@ -1,7 +1,10 @@
 //! Picks the execution provider for a model in this browser, running the GPU check when no
-//! recent verdict covers the adapter, browser, runtime and model.
+//! recent verdict covers the adapter, browser, runtime and model. The check also times the
+//! recording on the CPU, and the faster engine is kept.
 
-use crate::gpu_check::{self, CanaryVerdict, CheckRecord, GpuProbe, ModelNeeds, Signature};
+use crate::gpu_check::{
+    self, CanaryTimes, CanaryVerdict, CheckRecord, CpuCanary, GpuProbe, ModelNeeds, Signature,
+};
 use crate::protocol::{FailureKind, Provider, WorkerEvent, WorkerModel, WorkerRequest};
 use crate::worker_client::WorkerClient;
 use futures::StreamExt as _;
@@ -49,7 +52,12 @@ impl Choice {
     /// Keeps runs of this model on the CPU until the GPU is checked again.
     pub fn remember_gpu_failure(&self) {
         if let Some(signature) = &self.signature {
-            remember(signature, CanaryVerdict::Failed);
+            remember(CheckRecord {
+                signature: signature.clone(),
+                verdict: CanaryVerdict::Failed,
+                checked_at_ms: js_sys::Date::now(),
+                times: None,
+            });
         }
     }
 }
@@ -104,21 +112,13 @@ fn records() -> HashMap<String, CheckRecord> {
     }
 }
 
-fn remember(signature: &Signature, verdict: CanaryVerdict) {
+fn remember(record: CheckRecord) {
     let Some(storage) = local_storage() else {
         return;
     };
-    let now_ms = js_sys::Date::now();
     let mut all = records();
-    all.retain(|_, record| record.verdict_for(&record.signature, now_ms).is_some());
-    all.insert(
-        signature.as_str().to_owned(),
-        CheckRecord {
-            signature: signature.clone(),
-            verdict,
-            checked_at_ms: now_ms,
-        },
-    );
+    all.retain(|_, kept| kept.holds_for(&kept.signature, record.checked_at_ms));
+    all.insert(record.signature.as_str().to_owned(), record);
     match serde_json::to_string(&all) {
         Ok(json) => {
             if let Err(error) = storage.set_item(STORE_KEY, &json) {
@@ -152,7 +152,7 @@ async fn probe(worker: &WorkerClient) -> Result<Option<GpuProbe>, String> {
             other @ (WorkerEvent::ModelFile { .. }
             | WorkerEvent::ModelFileDone { .. }
             | WorkerEvent::ModelReady { .. }
-            | WorkerEvent::GpuChecked { .. }
+            | WorkerEvent::CanaryTranscribed { .. }
             | WorkerEvent::Transcribing { .. }
             | WorkerEvent::LanguageDetected { .. }
             | WorkerEvent::Segment { .. }
@@ -165,17 +165,25 @@ async fn probe(worker: &WorkerClient) -> Result<Option<GpuProbe>, String> {
     Err("the worker stopped before reporting the GPU".to_owned())
 }
 
-/// The verdict of the check, or why it could not be given for reasons that have nothing to do
-/// with the GPU, such as the run being cancelled.
-async fn check(
+/// How a transcription of the check recording ended.
+enum CanaryRun {
+    Transcribed { text: String, elapsed_ms: f64 },
+    Failed { kind: FailureKind, message: String },
+}
+
+async fn transcribe_canary(
     worker: &WorkerClient,
     spec: &WebModelSpec,
+    provider: Provider,
     hugging_face_token: Option<&HuggingFaceToken>,
     on_event: &mut impl FnMut(WorkerEvent),
-) -> Result<CanaryVerdict, String> {
-    let request = WorkerRequest::CheckGpu {
+) -> Result<CanaryRun, String> {
+    let request = WorkerRequest::TranscribeCanary {
         request_id: worker.next_request_id(),
         model: WorkerModel::from(spec),
+        provider,
+        // the first WebGPU run compiles every shader the model uses
+        warm_up: provider == Provider::WebGpu,
         english_only: spec.english_only(),
         hugging_face_token: hugging_face_token.cloned(),
     };
@@ -184,17 +192,11 @@ async fn check(
         .map_err(|error| error.to_string())?;
     while let Some(event) = events.next().await {
         match event {
-            WorkerEvent::GpuChecked { text, .. } => {
-                let verdict = gpu_check::judge(&text);
-                tracing::info!("GPU check of {} wrote {text:?}: {verdict:?}", spec.id);
-                return Ok(verdict);
-            }
+            WorkerEvent::CanaryTranscribed {
+                text, elapsed_ms, ..
+            } => return Ok(CanaryRun::Transcribed { text, elapsed_ms }),
             WorkerEvent::Failed { kind, message, .. } => {
-                tracing::warn!("GPU check of {} failed ({kind:?}): {message}", spec.id);
-                return match gpu_failure_reason(kind) {
-                    Some(_) => Ok(CanaryVerdict::Failed),
-                    None => Err(message),
-                };
+                return Ok(CanaryRun::Failed { kind, message });
             }
             other @ (WorkerEvent::ModelFile { .. }
             | WorkerEvent::ModelFileDone { .. }
@@ -207,7 +209,75 @@ async fn check(
             | WorkerEvent::Completed { .. }) => on_event(other),
         }
     }
-    Err("the worker stopped before finishing the GPU check".to_owned())
+    Err("the worker stopped before transcribing the check recording".to_owned())
+}
+
+/// How the CPU handled the check recording, `None` when the run ended for reasons that say
+/// nothing about the CPU, such as the worker being restarted.
+async fn time_cpu(
+    worker: &WorkerClient,
+    spec: &WebModelSpec,
+    hugging_face_token: Option<&HuggingFaceToken>,
+    on_event: &mut impl FnMut(WorkerEvent),
+) -> Option<CpuCanary> {
+    match transcribe_canary(worker, spec, Provider::Cpu, hugging_face_token, on_event).await {
+        Ok(CanaryRun::Transcribed { text, elapsed_ms }) => {
+            tracing::info!(
+                "The CPU wrote {text:?} for the check recording of {} in {elapsed_ms:.0} ms",
+                spec.id
+            );
+            Some(CpuCanary::Took { ms: elapsed_ms })
+        }
+        Ok(CanaryRun::Failed { kind, message }) => {
+            tracing::warn!(
+                "The CPU could not transcribe the check recording of {} ({kind:?}): {message}",
+                spec.id
+            );
+            match kind {
+                FailureKind::ModelLoad
+                | FailureKind::Inference
+                | FailureKind::WebGpuUnavailable
+                | FailureKind::ShaderF16Unavailable
+                | FailureKind::WebGpuFailed => Some(CpuCanary::Failed),
+                FailureKind::Protocol
+                | FailureKind::WorkerCrashed
+                | FailureKind::MalformedEvent
+                | FailureKind::WorkerRestarted => None,
+            }
+        }
+        Err(reason) => {
+            tracing::warn!("The CPU timing of {} did not finish: {reason}", spec.id);
+            None
+        }
+    }
+}
+
+/// The verdict of the GPU check and, for a correct transcript, how long it took; or why the
+/// check could not be given for reasons that have nothing to do with the GPU, such as the run
+/// being cancelled.
+async fn check(
+    worker: &WorkerClient,
+    spec: &WebModelSpec,
+    hugging_face_token: Option<&HuggingFaceToken>,
+    on_event: &mut impl FnMut(WorkerEvent),
+) -> Result<(CanaryVerdict, Option<f64>), String> {
+    match transcribe_canary(worker, spec, Provider::WebGpu, hugging_face_token, on_event).await? {
+        CanaryRun::Transcribed { text, elapsed_ms } => {
+            let verdict = gpu_check::judge(&text);
+            tracing::info!(
+                "GPU check of {} wrote {text:?} in {elapsed_ms:.0} ms: {verdict:?}",
+                spec.id
+            );
+            Ok((verdict, Some(elapsed_ms)))
+        }
+        CanaryRun::Failed { kind, message } => {
+            tracing::warn!("GPU check of {} failed ({kind:?}): {message}", spec.id);
+            match gpu_failure_reason(kind) {
+                Some(_) => Ok((CanaryVerdict::Failed, None)),
+                None => Err(message),
+            }
+        }
+    }
 }
 
 const fn cpu(reason: CpuReason) -> Choice {
@@ -226,12 +296,13 @@ fn needs(spec: &WebModelSpec) -> ModelNeeds<'_> {
     }
 }
 
-/// The plan for `spec` under `policy`, and the signature its GPU verdict is kept under.
+/// The plan for `spec` under `policy`, the adapter it was made for, and the signature its GPU
+/// verdict is kept under.
 async fn plan(
     worker: &WorkerClient,
     spec: &WebModelSpec,
     policy: AccelPolicy,
-) -> (EnginePlan, Option<Signature>) {
+) -> (EnginePlan, Option<GpuProbe>, Option<Signature>) {
     let probe = match policy {
         AccelPolicy::Forced {
             backend: AccelBackend::Cpu,
@@ -247,7 +318,7 @@ async fn plan(
                 } else {
                     EnginePlan::CannotRun(reason)
                 };
-                return (planned, None);
+                return (planned, None, None);
             }
         },
     };
@@ -260,7 +331,7 @@ async fn plan(
         record.as_ref(),
         js_sys::Date::now(),
     );
-    (planned, signature)
+    (planned, probe, signature)
 }
 
 /// Where the next run of `spec` under `policy` goes, without running the GPU check.
@@ -283,7 +354,7 @@ pub async fn choose(
     hugging_face_token: Option<&HuggingFaceToken>,
     on_event: &mut impl FnMut(WorkerEvent),
 ) -> Result<Choice, CpuReason> {
-    let (planned, signature) = plan(worker, spec, policy).await;
+    let (planned, probe, signature) = plan(worker, spec, policy).await;
     let gpu = Choice {
         engine: BrowserEngine::WebGpu,
         signature: signature.clone(),
@@ -297,20 +368,50 @@ pub async fn choose(
             Err(reason)
         }
     };
-    match (planned, mode, signature) {
+    match (planned, mode, probe.zip(signature)) {
         (EnginePlan::Cpu(reason), _, _) => Ok(cpu(reason)),
         (EnginePlan::CannotRun(reason), _, _) => Err(reason),
         (EnginePlan::WebGpu, _, _)
         | (EnginePlan::WebGpuAfterCheck, CheckMode::Skip, _)
         | (EnginePlan::WebGpuAfterCheck, CheckMode::Run, None) => Ok(gpu),
-        (EnginePlan::WebGpuAfterCheck, CheckMode::Run, Some(signature)) => {
+        (EnginePlan::WebGpuAfterCheck, CheckMode::Run, Some((probe, signature))) => {
+            // the CPU goes first so the engine that usually wins, the GPU, stays loaded
+            let cpu_canary = if gpu_check::times_the_cpu(policy, needs(spec)) {
+                time_cpu(worker, spec, hugging_face_token, on_event).await
+            } else {
+                Some(CpuCanary::Skipped)
+            };
             match check(worker, spec, hugging_face_token, on_event).await {
-                Ok(verdict) => {
-                    remember(&signature, verdict);
-                    match verdict {
-                        CanaryVerdict::Correct => Ok(gpu),
-                        CanaryVerdict::Wrong => after_check(CpuReason::WrongOutput),
-                        CanaryVerdict::Failed => after_check(CpuReason::WebGpuFailed),
+                Ok((verdict, gpu_ms)) => {
+                    let times = match (verdict, gpu_ms, cpu_canary) {
+                        (CanaryVerdict::Correct, Some(gpu_ms), Some(cpu)) => {
+                            Some(CanaryTimes { gpu_ms, cpu })
+                        }
+                        (
+                            CanaryVerdict::Correct | CanaryVerdict::Wrong | CanaryVerdict::Failed,
+                            _,
+                            _,
+                        ) => None,
+                    };
+                    let record = CheckRecord {
+                        signature,
+                        verdict,
+                        checked_at_ms: js_sys::Date::now(),
+                        times,
+                    };
+                    let decided = gpu_check::plan(
+                        policy,
+                        Some(&probe),
+                        needs(spec),
+                        Some(&record),
+                        record.checked_at_ms,
+                    );
+                    remember(record);
+                    match decided {
+                        EnginePlan::WebGpu | EnginePlan::WebGpuAfterCheck => Ok(gpu),
+                        EnginePlan::Cpu(reason) | EnginePlan::CannotRun(reason) => {
+                            after_check(reason)
+                        }
                     }
                 }
                 Err(reason) => {

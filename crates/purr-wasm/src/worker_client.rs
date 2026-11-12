@@ -372,7 +372,7 @@ impl Router {
         };
         match pending.kind {
             RequestKind::ProbeGpu => {}
-            RequestKind::LoadModel | RequestKind::CheckGpu | RequestKind::Transcribe => {
+            RequestKind::LoadModel | RequestKind::TranscribeCanary | RequestKind::Transcribe => {
                 tracing::info!("Cancelling request {id:?} by restarting the worker");
                 self.restart(
                     FailureKind::WorkerRestarted,

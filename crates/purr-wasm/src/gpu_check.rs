@@ -4,6 +4,8 @@
 //! browser and runtime; when the text comes out wrong the CPU takes over. The verdict is kept
 //! per model with a signature of what produced it and checked again when the signature changes
 //! or the verdict grows old, so a browser or driver that fixes its WebGPU is picked up again.
+//! When Purr picks the engine, the recording is also timed on both engines and a model both can
+//! run goes to the faster one.
 
 use purr_common::accel::{AccelBackend, AccelPolicy};
 use purr_common::browser_engine::{CpuReason, EnginePlan};
@@ -60,21 +62,51 @@ impl Signature {
     }
 }
 
+/// How the CPU handled the check recording.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub enum CpuCanary {
+    Took {
+        ms: f64,
+    },
+    /// The CPU could not load or run the model.
+    Failed,
+    /// The CPU was not timed: the model does not run on it, or the settings did not let Purr choose.
+    Skipped,
+}
+
+/// How long each engine took to transcribe the check recording, with the models loaded.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct CanaryTimes {
+    pub gpu_ms: f64,
+    pub cpu: CpuCanary,
+}
+
+impl CanaryTimes {
+    #[must_use]
+    pub fn cpu_is_faster(&self) -> bool {
+        match self.cpu {
+            CpuCanary::Took { ms } => ms < self.gpu_ms,
+            CpuCanary::Failed | CpuCanary::Skipped => false,
+        }
+    }
+}
+
 /// A stored verdict.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CheckRecord {
     pub signature: Signature,
     pub verdict: CanaryVerdict,
     pub checked_at_ms: f64,
+    #[serde(default)]
+    pub times: Option<CanaryTimes>,
 }
 
 impl CheckRecord {
-    /// The verdict, while it was given for `signature` and is recent.
+    /// Whether the record was made for `signature` and is recent.
     #[must_use]
-    pub fn verdict_for(&self, signature: &Signature, now_ms: f64) -> Option<CanaryVerdict> {
+    pub fn holds_for(&self, signature: &Signature, now_ms: f64) -> bool {
         let age = now_ms - self.checked_at_ms;
-        (self.signature == *signature && (0.0..RECHECK_AFTER_MS).contains(&age))
-            .then_some(self.verdict)
+        self.signature == *signature && (0.0..RECHECK_AFTER_MS).contains(&age)
     }
 }
 
@@ -137,9 +169,11 @@ pub fn plan(
             ..
         }
     );
-    let verdict = probe.and_then(|probe| {
-        record.and_then(|record| record.verdict_for(&Signature::new(probe, model.id), now_ms))
+    let fresh = probe.and_then(|probe| {
+        record.filter(|record| record.holds_for(&Signature::new(probe, model.id), now_ms))
     });
+    let verdict = fresh.map(|record| record.verdict);
+    let times = fresh.and_then(|record| record.times);
     let cpu_reason = match (cpu_chosen, probe, verdict) {
         (true, _, _) => Some(CpuReason::Chosen),
         (false, None, _) => Some(CpuReason::NoWebGpu),
@@ -148,16 +182,39 @@ pub fn plan(
         }
         (false, Some(_), Some(CanaryVerdict::Wrong)) => Some(CpuReason::WrongOutput),
         (false, Some(_), Some(CanaryVerdict::Failed)) => Some(CpuReason::WebGpuFailed),
+        (false, Some(_), Some(CanaryVerdict::Correct))
+            if times_the_cpu(policy, model) && times.is_some_and(|times| times.cpu_is_faster()) =>
+        {
+            Some(CpuReason::Faster)
+        }
         (false, Some(_), Some(CanaryVerdict::Correct) | None) => None,
     };
     match (cpu_reason, verdict) {
         (Some(reason), _) if model.runs_on_cpu => EnginePlan::Cpu(reason),
         (Some(reason), _) => EnginePlan::CannotRun(reason),
-        (None, Some(CanaryVerdict::Correct)) => EnginePlan::WebGpu,
-        (None, Some(CanaryVerdict::Wrong | CanaryVerdict::Failed) | None) => {
-            EnginePlan::WebGpuAfterCheck
+        (None, Some(CanaryVerdict::Correct)) if speed_is_known(policy, model, times) => {
+            EnginePlan::WebGpu
         }
+        (
+            None,
+            Some(CanaryVerdict::Correct | CanaryVerdict::Wrong | CanaryVerdict::Failed) | None,
+        ) => EnginePlan::WebGpuAfterCheck,
     }
+}
+
+/// Whether the stored times settle which engine is faster, as far as `policy` lets Purr choose.
+fn speed_is_known(policy: AccelPolicy, model: ModelNeeds<'_>, times: Option<CanaryTimes>) -> bool {
+    match times.map(|times| times.cpu) {
+        None => false,
+        Some(CpuCanary::Skipped) => !times_the_cpu(policy, model),
+        Some(CpuCanary::Took { .. } | CpuCanary::Failed) => true,
+    }
+}
+
+/// Whether the check should also time the CPU, so the faster engine can be chosen.
+#[must_use]
+pub fn times_the_cpu(policy: AccelPolicy, model: ModelNeeds<'_>) -> bool {
+    policy == AccelPolicy::Auto && model.runs_on_cpu
 }
 
 #[cfg(test)]
@@ -196,12 +253,116 @@ mod tests {
         }
     }
 
+    const GPU_FASTER: CanaryTimes = CanaryTimes {
+        gpu_ms: 400.0,
+        cpu: CpuCanary::Took { ms: 900.0 },
+    };
+
     fn record(probe: &GpuProbe, model_id: &str, verdict: CanaryVerdict, at: f64) -> CheckRecord {
         CheckRecord {
             signature: Signature::new(probe, model_id),
             verdict,
             checked_at_ms: at,
+            times: (verdict == CanaryVerdict::Correct).then_some(GPU_FASTER),
         }
+    }
+
+    fn timed(probe: &GpuProbe, model_id: &str, times: Option<CanaryTimes>) -> CheckRecord {
+        CheckRecord {
+            times,
+            ..record(probe, model_id, CanaryVerdict::Correct, 0.0)
+        }
+    }
+
+    #[test]
+    fn the_faster_engine_runs_a_model_both_can_run() {
+        let gpu = probe("adapter");
+        for (cpu, expected) in [
+            (
+                CpuCanary::Took { ms: 300.0 },
+                EnginePlan::Cpu(CpuReason::Faster),
+            ),
+            (CpuCanary::Took { ms: 900.0 }, EnginePlan::WebGpu),
+            (CpuCanary::Took { ms: 400.0 }, EnginePlan::WebGpu),
+            (CpuCanary::Failed, EnginePlan::WebGpu),
+        ] {
+            let stored = timed(&gpu, "base", Some(CanaryTimes { gpu_ms: 400.0, cpu }));
+            assert_eq!(
+                plan(AccelPolicy::Auto, Some(&gpu), BASE, Some(&stored), 1.0),
+                expected,
+                "{cpu:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_correct_verdict_without_the_cpu_time_is_measured_again() {
+        let gpu = probe("adapter");
+        let skipped = Some(CanaryTimes {
+            gpu_ms: 400.0,
+            cpu: CpuCanary::Skipped,
+        });
+        for times in [None, skipped] {
+            let stored = timed(&gpu, "base", times);
+            assert_eq!(
+                plan(AccelPolicy::Auto, Some(&gpu), BASE, Some(&stored), 1.0),
+                EnginePlan::WebGpuAfterCheck,
+                "{times:?}"
+            );
+        }
+        let gpu_only = timed(&gpu, "turbo", skipped);
+        assert_eq!(
+            plan(
+                AccelPolicy::Auto,
+                Some(&gpu),
+                TURBO_FP16,
+                Some(&gpu_only),
+                1.0
+            ),
+            EnginePlan::WebGpu
+        );
+    }
+
+    #[test]
+    fn speed_only_decides_when_purr_picks_the_engine() {
+        let gpu = probe("adapter");
+        let cpu_faster = timed(
+            &gpu,
+            "base",
+            Some(CanaryTimes {
+                gpu_ms: 400.0,
+                cpu: CpuCanary::Took { ms: 100.0 },
+            }),
+        );
+        let gpu_forced = AccelPolicy::Forced {
+            backend: AccelBackend::Vulkan,
+            allow_fallback: true,
+        };
+        assert_eq!(
+            plan(gpu_forced, Some(&gpu), BASE, Some(&cpu_faster), 1.0),
+            EnginePlan::WebGpu
+        );
+        assert!(!times_the_cpu(gpu_forced, BASE));
+        assert!(!times_the_cpu(AccelPolicy::Auto, TURBO_FP16));
+        assert!(times_the_cpu(AccelPolicy::Auto, BASE));
+    }
+
+    #[test]
+    fn records_kept_before_timing_existed_still_load() -> Result<(), serde_json::Error> {
+        let gpu = probe("adapter");
+        let json = format!(
+            r#"{{"signature":"{}","verdict":"Correct","checked_at_ms":5.0}}"#,
+            Signature::new(&gpu, "base").as_str()
+        );
+        let decoded: CheckRecord = serde_json::from_str(&json)?;
+        assert_eq!(
+            decoded,
+            CheckRecord {
+                checked_at_ms: 5.0,
+                ..timed(&gpu, "base", None)
+            }
+        );
+        Ok(())
     }
 
     #[test]

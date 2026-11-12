@@ -24,18 +24,27 @@ async function handle(message) {
         case "ProbeGpu":
             emit({ type: "GpuProbed", request_id: message.request_id, probe: await probeGpu() });
             return;
-        case "CheckGpu": {
+        case "TranscribeCanary": {
             useHuggingFaceToken(message.hugging_face_token);
             const transcriber = await loadTranscriber(
                 message.model,
-                Provider.WebGpu,
+                message.provider,
                 message.request_id,
             );
             try {
+                if (message.warm_up) {
+                    await transcribeCanary(transcriber, message.english_only);
+                }
+                const startedAt = performance.now();
                 const text = await transcribeCanary(transcriber, message.english_only);
-                emit({ type: "GpuChecked", request_id: message.request_id, text });
+                emit({
+                    type: "CanaryTranscribed",
+                    request_id: message.request_id,
+                    text,
+                    elapsed_ms: performance.now() - startedAt,
+                });
             } catch (error) {
-                throw asProviderFailure(Provider.WebGpu, error);
+                throw asProviderFailure(message.provider, error);
             }
             return;
         }

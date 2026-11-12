@@ -22,6 +22,8 @@ pub enum CpuReason {
     WrongOutput,
     /// WebGPU failed while loading or running the model.
     WebGpuFailed,
+    /// The CPU transcribed a known recording faster than the GPU.
+    Faster,
 }
 
 impl CpuReason {
@@ -42,6 +44,7 @@ impl CpuReason {
             Self::WebGpuFailed => {
                 Some("WebGPU failed in this browser, so Purr uses the CPU. It's slower.")
             }
+            Self::Faster => Some("The CPU is faster than this browser's GPU, so Purr uses it."),
         }
     }
 
@@ -58,6 +61,7 @@ impl CpuReason {
             Self::WebGpuFailed => {
                 "WebGPU failed in this browser, and this model can't run on the CPU."
             }
+            Self::Faster => "This model can't run on the CPU.",
         }
     }
 }
