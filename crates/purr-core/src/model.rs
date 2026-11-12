@@ -12,6 +12,7 @@ use crate::model::digest::Sha256Hasher;
 use crate::model::registry::{ModelSpec, Registry};
 use crate::model::status::{ModelFileStatus, ModelIntegrity};
 use directories::ProjectDirs;
+use purr_common::hugging_face_token::HuggingFaceToken;
 use std::io::{self, BufReader};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -137,14 +138,20 @@ impl ModelManager {
     }
 
     /// Download a model
-    pub async fn download_model(&self, model: &ModelSpec) -> Result<PathBuf> {
-        self.download_model_with_progress(model, |_, _| {}).await
+    pub async fn download_model(
+        &self,
+        model: &ModelSpec,
+        token: Option<&HuggingFaceToken>,
+    ) -> Result<PathBuf> {
+        self.download_model_with_progress(model, token, |_, _| {})
+            .await
     }
 
     /// Download a model with progress callback
     pub async fn download_model_with_progress<F>(
         &self,
         model: &ModelSpec,
+        token: Option<&HuggingFaceToken>,
         progress_callback: F,
     ) -> Result<PathBuf>
     where
@@ -155,7 +162,8 @@ impl ModelManager {
         let model_path = self.get_model_path(model);
         debug!("Downloading model {} to {:?}", model.id, model_path);
 
-        download::download_verified(model, &model.url(), &model_path, progress_callback).await?;
+        download::download_verified(model, &model.url(), token, &model_path, progress_callback)
+            .await?;
 
         debug!(
             "Successfully downloaded model {} to {:?}",

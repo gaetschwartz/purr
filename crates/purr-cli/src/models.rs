@@ -73,7 +73,7 @@ async fn download(manager: &ModelManager, spec: &ModelSpec, force: bool) -> miet
     progress_bar.set_style(bar_style);
 
     manager
-        .download_model_with_progress(spec, |downloaded, total| {
+        .download_model_with_progress(spec, None, |downloaded, total| {
             if let Some(total) = total {
                 if progress_bar.length().unwrap_or(0) != total {
                     progress_bar.set_length(total);

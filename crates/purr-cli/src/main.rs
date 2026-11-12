@@ -319,7 +319,7 @@ async fn prompt_for_model_download(
             model.id
         );
 
-        match model_manager.download_model(model).await {
+        match model_manager.download_model(model, None).await {
             Ok(model_path) => {
                 println!(
                     "{} Model downloaded successfully to: {}",
