@@ -344,7 +344,7 @@ impl Session {
         if kind == WindowKind::Last {
             self.finished = true;
             let end = self.received as f64 / sr;
-            if chunks.is_empty() {
+            if chunks.is_empty() && self.received > 0 {
                 chunks.push(StreamingChunk {
                     text: String::new(),
                     start: end,
