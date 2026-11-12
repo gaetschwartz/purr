@@ -19,6 +19,8 @@ env:
   VCPKG_COMMIT: efecf268f3a3ec78f4bf1f0c36759bdb23c6f653
   VCPKG_FFMPEG: ffmpeg[core,avcodec,avformat,swresample]
   VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/.vcpkg-cache,readwrite
+  # true: the release archives leave the Windows CUDA libraries out, and they ship as the runtime pack only
+  PURR_SPLIT_CUDA_RUNTIME: "false"
 
 jobs:
   build-linux:
@@ -281,6 +283,9 @@ jobs:
   build-macos:
     name: Build macOS ${{ matrix.backend != 'none' && format(' - {0}', matrix.backend) || '' }}
     runs-on: macos-latest
+    env:
+      GGML_NATIVE: "OFF"
+      GGML_CPU_ARM_ARCH: armv8.2-a+dotprod+fp16
     strategy:
       fail-fast: false
       matrix:
@@ -313,6 +318,9 @@ jobs:
           toolchain: stable
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
+        with:
+          # whisper-rs-sys does not rebuild ggml when GGML_* changes, so each ggml configuration needs its own cache
+          key: ${{ matrix.backend }}-ggml-native-${{ env.GGML_NATIVE }}-arm-${{ env.GGML_CPU_ARM_ARCH }}
       - name: Cache Dioxus CLI
         id: cache-dx-macos
         uses: actions/cache@v6
@@ -364,6 +372,7 @@ jobs:
     runs-on: windows-latest
     env:
       CARGO_TARGET_DIR: D:\t
+      GGML_NATIVE: "OFF"
     strategy:
       fail-fast: false
       matrix:
@@ -430,6 +439,9 @@ jobs:
           targets: wasm32-unknown-unknown
           components: rustfmt
       - uses: Swatinem/rust-cache@v2
+        with:
+          # whisper-rs-sys does not rebuild ggml when GGML_* changes, so each ggml configuration needs its own cache
+          key: ${{ matrix.label || matrix.backend }}-ggml-native-${{ env.GGML_NATIVE }}
       - name: Cache Dioxus CLI
         id: cache-dx-windows
         uses: actions/cache@v6
@@ -466,6 +478,16 @@ jobs:
             }
           }
           git describe --tags --always --dirty | Out-File -FilePath artifacts\cli\VERSION.txt -Encoding utf8
+      - name: Check the CLI does not import the deferred libraries
+        run: |
+          ./scripts/check-windows-imports.ps1 -Exe artifacts\cli\purr.exe -Forbidden '^nvcuda\.dll$','^cudart64_','^cublas','^vulkan-1\.dll$'
+      - name: Check the CLI starts without GPU runtimes
+        run: |
+          $expect = @{
+            ExpectCuda = "${{ matrix.backend }}" -match 'cuda'
+            ExpectVulkan = "${{ matrix.backend }}" -match 'vulkan'
+          }
+          ./scripts/check-windows-sys.ps1 -Exe artifacts\cli\purr.exe @expect
       - name: Archive CLI
         uses: actions/upload-artifact@v7
         with:
@@ -484,6 +506,7 @@ jobs:
             Write-Error "dx app directory not found under $env:CARGO_TARGET_DIR\dx\purr-app"
             exit 1
           }
+          ./scripts/check-windows-imports.ps1 -Exe $appExe.FullName -Forbidden '^nvcuda\.dll$','^cudart64_','^cublas','^vulkan-1\.dll$'
           $portable = "artifacts\portable\purr-desktop"
           New-Item -ItemType Directory -Force -Path $portable
           Copy-Item "$($appExe.DirectoryName)\*" $portable -Recurse
@@ -645,7 +668,8 @@ jobs:
             - Linux: `purr-desktop-linux-x64-all.deb` (Debian, Ubuntu and derivatives; an `.AppImage` is attached when it could be built). Includes the CUDA runtime: uses an NVIDIA GPU when the NVIDIA driver is installed, otherwise Vulkan, otherwise the CPU.
 
             ### Command-line tool
-            - Windows: `purr-cli-windows-x64-cuda-vulkan.zip`. Extract all files to one folder. Uses an NVIDIA GPU (CUDA) when available, otherwise Vulkan, otherwise the CPU.
+            - Windows: `purr-cli-windows-x64-cuda-vulkan.zip`. Extract all files to one folder. Uses an NVIDIA GPU (CUDA) when the CUDA runtime is present, otherwise Vulkan, otherwise the CPU. Needs an x86-64 CPU with AVX2 and the Microsoft Visual C++ Redistributable (x64).
+              - `purr-runtime-cuda-windows-x64.zip`: the NVIDIA cuBLAS libraries (CUDA runtime) for `purr` and the desktop app. ${{ env.PURR_SPLIT_CUDA_RUNTIME == 'true' && 'Not part of the other Windows downloads: extract it into `%LOCALAPPDATA%\purr\runtime` or next to `purr.exe` to enable CUDA.' || 'Already part of the other Windows downloads; only needed to share one copy: extract it into `%LOCALAPPDATA%\purr\runtime`.' }} `purr runtime status` shows where the libraries are looked for.
             - macOS (Apple Silicon): `purr-cli-macos-arm64-metal.tar.gz`
             - Linux: `purr-cli-linux-x64-all.tar.gz` (recommended). Keep the `lib` folder next to `purr`. Uses an NVIDIA GPU (CUDA) when the NVIDIA driver is installed, otherwise Vulkan, otherwise the CPU.
               - `purr-cli-linux-x64-vulkan.tar.gz`: smaller, for AMD and Intel GPUs. Uses Vulkan when a Vulkan driver is installed, otherwise the CPU.
@@ -792,7 +816,8 @@ jobs:
             - Linux: `purr-VERSION-desktop-linux-x64-all.deb` (an `.AppImage` is attached when it could be built). Includes the CUDA runtime: uses an NVIDIA GPU when the NVIDIA driver is installed, otherwise Vulkan, otherwise the CPU.
 
             ### Command-line tool
-            - Windows: `purr-VERSION-cli-windows-x64-cuda-vulkan.zip`. Extract all files to one folder.
+            - Windows: `purr-VERSION-cli-windows-x64-cuda-vulkan.zip`. Extract all files to one folder. Needs an x86-64 CPU with AVX2 and the Microsoft Visual C++ Redistributable (x64).
+              - `purr-VERSION-runtime-cuda-windows-x64.zip`: the NVIDIA cuBLAS libraries (CUDA runtime). ${{ env.PURR_SPLIT_CUDA_RUNTIME == 'true' && 'Not part of the other Windows downloads: extract it into `%LOCALAPPDATA%\purr\runtime` or next to `purr.exe` to enable CUDA.' || 'Already part of the other Windows downloads; only needed to share one copy: extract it into `%LOCALAPPDATA%\purr\runtime`.' }}
             - macOS (Apple Silicon): `purr-VERSION-cli-macos-arm64-metal.tar.gz`
             - Linux: `purr-VERSION-cli-linux-x64-all.tar.gz` (recommended). Keep the `lib` folder next to `purr`. Uses CUDA, otherwise Vulkan, otherwise the CPU.
               - `purr-VERSION-cli-linux-x64-vulkan.tar.gz`: smaller, Vulkan otherwise the CPU.
