@@ -355,7 +355,7 @@ jobs:
           $portable = "artifacts\portable\purr-desktop"
           New-Item -ItemType Directory -Force -Path $portable
           Copy-Item "$($appExe.DirectoryName)\*" $portable -Recurse
-          Get-ChildItem "$env:CARGO_TARGET_DIR*.dll" -ErrorAction SilentlyContinue | Copy-Item -Destination $portable
+          Get-ChildItem "$env:CARGO_TARGET_DIR\r\*.dll" -ErrorAction SilentlyContinue | Copy-Item -Destination $portable
           if ("${{ matrix.backend }}" -match "cuda") {
             $cudaBinPath = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.5\bin\x64"
             foreach ($pattern in "cudart64_*.dll", "cublas64_*.dll", "cublasLt64_*.dll") {
