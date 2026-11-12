@@ -16,14 +16,14 @@
 .drop p{margin:0;color:var(--fg-2);font-size:14px;overflow-wrap:anywhere}
 .drop .formats{font-size:12px;color:var(--fg-3)}
 .drop .link{color:var(--accent-text);font-weight:600}
-.runbar{display:flex;align-items:center;gap:8px;padding:8px;border-radius:999px;flex-wrap:wrap}
+.runbar{display:flex;align-items:center;gap:8px;padding:8px;border-radius:30px;flex-wrap:wrap}
 .runbar .rb-spacer{flex:1;min-width:8px}
 .engine-chip{display:inline-flex;align-items:center;gap:8px;min-height:44px;min-width:0;max-width:100%;padding:6px 12px;border-radius:999px;font-size:13px;color:var(--fg-2);transition:background .2s}
 .engine-chip:hover{background:var(--fill)}
 .engine-chip svg{flex:none;color:var(--fg-3)}
 .engine-chip .et{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .engine-chip .eb{font-weight:600;color:var(--fg)}
-.runbar .engine-chip{flex:1 1 180px;min-width:120px;justify-content:flex-start}
+.runbar .engine-chip{flex:1 1 0;min-width:96px;justify-content:flex-start}
 .runbar .engine-chip + .rb-spacer{display:none}
 .runbar .engine-chip ~ .btn{margin-left:auto}
 .filecard{display:flex;align-items:center;gap:16px;padding:16px;border-radius:var(--r-card)}
