@@ -155,7 +155,11 @@ pub fn beams(lanes: &[Vec<RawToken>], eot: i32) -> Vec<RawBeam> {
             .filter(|token| token.id < eot)
             .copied()
             .collect();
-        let shown = text[text.len().saturating_sub(SHOWN_TOKENS)..].to_vec();
+        let shown: Vec<RawToken> = text
+            .iter()
+            .skip(text.len().saturating_sub(SHOWN_TOKENS))
+            .copied()
+            .collect();
         found.push((
             lane,
             RawBeam {
@@ -242,8 +246,12 @@ fn token_text(ctx: *mut whisper_context, id: i32) -> String {
         .into_owned()
 }
 
-/// The logits-filter callback; `user_data` must point to a [`BeamCollector`] that outlives the
-/// `full()` call it is installed on.
+/// The logits-filter callback.
+///
+/// # Safety
+///
+/// `user_data` must point to a [`BeamCollector`] that outlives the `full()` call the callback
+/// is installed on, and `tokens` must hold `n_tokens` entries, as whisper.cpp guarantees.
 ///
 /// whisper.cpp calls it from its worker threads, several at once, so it only takes `&` of the
 /// collector. It never reads or changes `logits`, and a panic is caught here because unwinding

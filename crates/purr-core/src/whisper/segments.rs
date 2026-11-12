@@ -42,15 +42,14 @@ pub fn read(state: &WhisperState, eot: i32) -> Result<Vec<DecodedSegment>> {
                 t1: data.t1,
             });
         }
-        let (text, words) = match group(&raw, &tokens, eot, (start_cs, end_cs)) {
-            Some(grouped) => (grouped.text, grouped.words),
-            None => {
-                debug!(
-                    "The tokens of segment {} do not spell its text; it has no words",
-                    segment.segment_index()
-                );
-                (raw.trim().to_owned(), Vec::new())
-            }
+        let (text, words) = if let Some(grouped) = group(&raw, &tokens, eot, (start_cs, end_cs)) {
+            (grouped.text, grouped.words)
+        } else {
+            debug!(
+                "The tokens of segment {} do not spell its text; it has no words",
+                segment.segment_index()
+            );
+            (raw.trim().to_owned(), Vec::new())
         };
         decoded.push(DecodedSegment {
             start_cs,

@@ -737,7 +737,7 @@ mod tests {
                     continue;
                 };
                 if !chunk.text.is_empty() {
-                    first_text.get_or_insert(started.elapsed());
+                    first_text.get_or_insert_with(|| started.elapsed());
                 }
                 match chunk.kind {
                     ChunkKind::Tentative => {
