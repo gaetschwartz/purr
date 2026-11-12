@@ -414,7 +414,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        backend: ["none", cuda, vulkan, "cuda,vulkan"]
+        backend: ${{ fromJSON(github.event_name == 'push' && github.ref_type != 'tag' && '["none","cuda,vulkan"]' || '["none","cuda","vulkan","cuda,vulkan"]') }}
         include:
           - backend: "cuda,vulkan"
             label: cuda-vulkan
