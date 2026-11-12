@@ -108,7 +108,7 @@ jobs:
         env:
           RUSTFLAGS: -C link-arg=-Wl,-rpath,$ORIGIN/lib --cfg=web_sys_unstable_apis
         run: |
-          dx bundle -p purr-app --release --linux --package-types appimage --package-types deb \
+          dx bundle -p purr-app --release --linux --package-types deb \
             --out-dir dist-linux \
             --features static-ffmpeg${{ matrix.backend != 'none' && format(',{0}', matrix.backend) || '' }}
       - name: Build Dioxus web
@@ -136,7 +136,6 @@ jobs:
         with:
           name: purr-desktop-linux-x64-${{ matrix.backend }}
           path: |
-            dist-linux/*.AppImage
             dist-linux/*.deb
           if-no-files-found: error
           retention-days: 30
@@ -317,7 +316,7 @@ jobs:
       - name: Build desktop app${{ matrix.backend != 'none' && format(' - {0}', matrix.backend) || '' }}
         if: matrix.is_release == true
         run: |
-          Get-PSDrive -PSProvider FileSystem | Format-Table Name, @{n='FreeGB';e={[int]($_.Free/1GB)}}
+          cargo build -p purr-app --release --features static-ffmpeg${{ matrix.backend != 'none' && format(',{0}', matrix.backend) || '' }}
           dx bundle --verbose --trace -p purr-app --release --windows --package-types nsis --out-dir dist-windows --features static-ffmpeg${{ matrix.backend != 'none' && format(',{0}', matrix.backend) || '' }}
       - name: Prepare CLI artifact
         run: |
@@ -510,7 +509,7 @@ jobs:
             ### Desktop app
             - Windows: `purr-desktop-windows-x64-cuda-vulkan-setup.exe` (installer, Vulkan and CPU) or `purr-desktop-windows-x64-cuda-vulkan-portable.zip` (includes the CUDA runtime DLLs).
             - macOS (Apple Silicon): `purr-desktop-macos-arm64-metal.dmg`
-            - Linux: `purr-desktop-linux-x64-cuda.AppImage` or `.deb`. Requires the CUDA 13 runtime and an NVIDIA driver.
+            - Linux: `purr-desktop-linux-x64-cuda.deb`. Requires the CUDA 13 runtime and an NVIDIA driver.
 
             ### Command-line tool
             - Windows: `purr-cli-windows-x64-cuda-vulkan.zip`. Extract all files to one folder. Uses an NVIDIA GPU (CUDA) when available, otherwise Vulkan, otherwise the CPU.
@@ -650,7 +649,7 @@ jobs:
             ### Desktop app
             - Windows: `purr-VERSION-desktop-windows-x64-cuda-vulkan-setup.exe` (installer, Vulkan and CPU) or `purr-VERSION-desktop-windows-x64-cuda-vulkan-portable.zip` (includes the CUDA runtime DLLs)
             - macOS (Apple Silicon): `purr-VERSION-desktop-macos-arm64-metal.dmg`
-            - Linux: `purr-VERSION-desktop-linux-x64-cuda.AppImage` or `.deb`. Requires the CUDA 13 runtime and an NVIDIA driver.
+            - Linux: `purr-VERSION-desktop-linux-x64-cuda.deb`. Requires the CUDA 13 runtime and an NVIDIA driver.
 
             ### Command-line tool
             - Windows: `purr-VERSION-cli-windows-x64-cuda-vulkan.zip`. Extract all files to one folder.
