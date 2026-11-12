@@ -161,6 +161,9 @@ cargo test -p purr-cli
   --verbose
 ```
 
+The CLI prints only final text: it never asks the core for tentative text (the uncommitted end of
+the transcript that the desktop app can show early), and would skip any it received.
+
 ### CLI Options
 
 ```

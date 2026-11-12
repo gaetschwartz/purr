@@ -2,7 +2,7 @@
 
 use crate::model_progress::ModelProgress;
 use crate::protocol::{FailureKind, WorkerEvent};
-use purr_common::platform::{ModelOperationProgress, TranscriptionStatus};
+use purr_common::platform::{ChunkKind, ModelOperationProgress, TranscriptionStatus};
 use purr_common::web_model::registry::WebModelSpec;
 
 /// `message` as a sentence, so a hint can follow it.
@@ -105,6 +105,7 @@ impl TranscriptionMapper {
                 start_time,
                 end_time,
                 words: Vec::new(),
+                kind: ChunkKind::Committed,
             }),
             WorkerEvent::Segments { segments, .. } => {
                 Some(TranscriptionStatus::Segments { segments })

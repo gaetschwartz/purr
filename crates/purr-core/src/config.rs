@@ -56,6 +56,9 @@ pub struct TranscriptionConfig {
     /// without speech are not decoded
     pub vad_model_path: Option<PathBuf>,
 
+    /// Whether and when the stream shows text it has not committed yet
+    pub tentative: TentativeText,
+
     /// Sends the decoder's beams as stream events while on, read at the start of each window
     #[serde(skip)]
     pub beam_telemetry: BeamSwitch,
@@ -65,6 +68,24 @@ pub struct TranscriptionConfig {
 
     /// HTTP connection timeout for URL requests (in seconds)
     pub http_connect_timeout: u64,
+}
+
+/// When a stream shows text it has not committed yet, as tentative chunks.
+///
+/// A tentative chunk carries the stream's whole uncommitted tail, with the index the next
+/// committed chunk will take. A later tentative chunk replaces it, and so does any committed
+/// chunk with the same or a higher index; the stream's last chunk is committed, so no
+/// tentative text outlives a stream that ends normally.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub enum TentativeText {
+    /// Only committed text
+    Off,
+    /// Also the end of a full window that was decoded but not committed, which costs nothing
+    Decoded,
+    /// As `Decoded`, and also decode the pending audio while the stream waits for a slow (live)
+    /// source, once at least `every_seconds` of new audio arrived and only when the next window
+    /// cannot be ready before that decode ends; each such decode costs a whole encoder pass
+    WhileWaiting { every_seconds: f32 },
 }
 
 /// Output format options
@@ -96,6 +117,7 @@ impl Default for TranscriptionConfig {
             verbose: false,
             chunk_size: 4.0, // 4 seconds
             vad_model_path: None,
+            tentative: TentativeText::Off,
             beam_telemetry: BeamSwitch::default(),
             http_timeout: 30,         // 30 seconds
             http_connect_timeout: 10, // 10 seconds
@@ -212,6 +234,13 @@ impl TranscriptionConfig {
     #[must_use]
     pub fn with_vad_model(mut self, path: Option<PathBuf>) -> Self {
         self.vad_model_path = path;
+        self
+    }
+
+    /// Set when the stream shows text it has not committed yet
+    #[must_use]
+    pub fn with_tentative(mut self, tentative: TentativeText) -> Self {
+        self.tentative = tentative;
         self
     }
 

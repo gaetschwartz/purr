@@ -69,7 +69,7 @@ pub struct AudioStream {
 }
 
 impl AudioStream {
-    fn new(receiver: mpsc::UnboundedReceiver<Result<AudioChunk>>) -> Self {
+    pub(crate) fn new(receiver: mpsc::UnboundedReceiver<Result<AudioChunk>>) -> Self {
         Self { receiver }
     }
 }

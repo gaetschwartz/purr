@@ -1,6 +1,6 @@
 //! The transcript assembled from a stream of transcription updates.
 
-use purr_common::platform::{TranscriptSegment, TranscriptionStatus};
+use purr_common::platform::{ChunkKind, TranscriptSegment, TranscriptionStatus};
 use std::collections::BTreeMap;
 
 /// Segments reported so far for one transcription.
@@ -8,6 +8,8 @@ use std::collections::BTreeMap;
 pub struct Transcript {
     live: BTreeMap<usize, TranscriptSegment>,
     settled: Option<Vec<TranscriptSegment>>,
+    /// The uncommitted end of the transcript and the index it waits at, kept out of `segments`
+    tentative: Option<(usize, TranscriptSegment)>,
 }
 
 impl Transcript {
@@ -20,21 +22,36 @@ impl Transcript {
                 start_time,
                 end_time,
                 words,
+                kind,
             } => {
-                self.live.insert(
-                    *chunk_index,
-                    TranscriptSegment {
-                        text: text.clone(),
-                        start_time: *start_time,
-                        end_time: *end_time,
-                        words: words.clone(),
-                    },
-                );
+                let segment = TranscriptSegment {
+                    text: text.clone(),
+                    start_time: *start_time,
+                    end_time: *end_time,
+                    words: words.clone(),
+                };
+                match kind {
+                    ChunkKind::Committed => {
+                        if self
+                            .tentative
+                            .as_ref()
+                            .is_some_and(|(index, _)| index <= chunk_index)
+                        {
+                            self.tentative = None;
+                        }
+                        self.live.insert(*chunk_index, segment);
+                    }
+                    ChunkKind::Tentative => self.tentative = Some((*chunk_index, segment)),
+                }
             }
             TranscriptionStatus::Segments { segments } => {
                 self.settled = Some(segments.clone());
             }
-            TranscriptionStatus::BrowserEngine { .. } => self.live.clear(),
+            TranscriptionStatus::BrowserEngine { .. } => {
+                self.live.clear();
+                self.tentative = None;
+            }
+            TranscriptionStatus::Completed { .. } => self.tentative = None,
             TranscriptionStatus::Starting
             | TranscriptionStatus::ProcessingAudio
             | TranscriptionStatus::LoadingModel { .. }
@@ -43,7 +60,6 @@ impl Transcript {
             | TranscriptionStatus::LanguageDetected { .. }
             | TranscriptionStatus::Progress(_)
             | TranscriptionStatus::Telemetry(_)
-            | TranscriptionStatus::Completed { .. }
             | TranscriptionStatus::Error { .. }
             | TranscriptionStatus::InitFailed { .. } => {}
         }
@@ -61,6 +77,15 @@ impl Transcript {
             .filter(|segment| is_spoken(&segment.text))
             .cloned()
             .collect()
+    }
+
+    /// The uncommitted end of the transcript, shown early, when it holds words.
+    #[must_use]
+    pub fn tentative(&self) -> Option<&TranscriptSegment> {
+        self.tentative
+            .as_ref()
+            .map(|(_, segment)| segment)
+            .filter(|segment| is_spoken(&segment.text))
     }
 
     /// The whole transcript as one paragraph.
@@ -101,7 +126,62 @@ mod tests {
             start_time: start,
             end_time: end,
             words: Vec::new(),
+            kind: ChunkKind::Committed,
         }
+    }
+
+    fn tentative(chunk_index: usize, text: &str, start: f64, end: f64) -> TranscriptionStatus {
+        TranscriptionStatus::InProgress {
+            chunk_index,
+            text: text.to_owned(),
+            start_time: start,
+            end_time: end,
+            words: Vec::new(),
+            kind: ChunkKind::Tentative,
+        }
+    }
+
+    #[test]
+    fn tentative_text_stays_out_of_the_segments_and_the_next_one_replaces_it() {
+        let mut transcript = Transcript::default();
+        transcript.apply(&in_progress(0, " one", 0.0, 1.0));
+        transcript.apply(&tentative(1, " two thr", 1.0, 2.0));
+        transcript.apply(&tentative(1, " two three", 1.0, 3.0));
+        assert_eq!(transcript.text(), "one");
+        assert_eq!(
+            transcript.tentative(),
+            Some(&segment(" two three", 1.0, 3.0))
+        );
+    }
+
+    #[test]
+    fn a_committed_chunk_at_or_past_the_tentative_index_replaces_it() {
+        let mut transcript = Transcript::default();
+        transcript.apply(&tentative(1, " two three", 1.0, 3.0));
+        transcript.apply(&in_progress(0, " one", 0.0, 1.0));
+        assert_eq!(
+            transcript.tentative(),
+            Some(&segment(" two three", 1.0, 3.0))
+        );
+        transcript.apply(&in_progress(1, " two", 1.0, 2.0));
+        assert_eq!(transcript.tentative(), None);
+        assert_eq!(transcript.text(), "one two");
+
+        transcript.apply(&tentative(2, " four", 3.0, 4.0));
+        transcript.apply(&in_progress(3, " five", 4.0, 5.0));
+        assert_eq!(transcript.tentative(), None);
+    }
+
+    #[test]
+    fn completion_drops_tentative_text() {
+        let mut transcript = Transcript::default();
+        transcript.apply(&tentative(0, " draft", 0.0, 1.0));
+        transcript.apply(&TranscriptionStatus::Completed {
+            processing_time: 1.0,
+            audio_duration: 1.0,
+            word_count: 0,
+        });
+        assert_eq!(transcript.tentative(), None);
     }
 
     fn segment(text: &str, start: f64, end: f64) -> TranscriptSegment {
@@ -136,6 +216,7 @@ mod tests {
             start_time: 0.0,
             end_time: 0.2,
             words: vec![word(0, 2, 90)],
+            kind: ChunkKind::Committed,
         });
         transcript.apply(&TranscriptionStatus::InProgress {
             chunk_index: 0,
@@ -143,6 +224,7 @@ mod tests {
             start_time: 0.0,
             end_time: 0.5,
             words: vec![word(0, 2, 200), word(3, 5, 180)],
+            kind: ChunkKind::Committed,
         });
         assert_eq!(
             transcript.segments(),

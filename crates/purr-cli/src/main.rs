@@ -12,6 +12,7 @@ use cli::{ASCII_ART, Cli, Commands, OutputFormat, TranscriptionConfigWithCliExt}
 use indicatif::{HumanBytes, HumanDuration};
 use miette::IntoDiagnostic as _;
 use owo_colors::OwoColorize as _;
+use purr_common::platform::ChunkKind;
 use purr_core::model::registry::ModelSpec;
 use purr_core::model::vad_or_none;
 use purr_core::{
@@ -203,6 +204,10 @@ async fn handle_streaming_output(
             }
             StreamEvent::Chunk(chunk) => chunk,
         };
+        match chunk.kind {
+            ChunkKind::Committed => {}
+            ChunkKind::Tentative => continue,
+        }
         all_chunks.push(chunk.clone());
 
         if !chunk.text.is_empty() || matches!(cli.output, OutputFormat::Json) {

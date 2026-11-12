@@ -18,11 +18,13 @@ use purr_common::history::{
 };
 use purr_common::hugging_face_token::HuggingFaceToken;
 use purr_common::platform::{
-    DeviceInfo, FileId, FileSource, IntegrityProblem, ModelFailureKind, ModelInfo, ModelIntegrity,
-    ModelMetadata, ModelOperationProgress, ModelProgressStream, TranscriptionStream, model_flag,
+    ChunkKind, DeviceInfo, FileId, FileSource, IntegrityProblem, ModelFailureKind, ModelInfo,
+    ModelIntegrity, ModelMetadata, ModelOperationProgress, ModelProgressStream,
+    TranscriptionStream, model_flag,
 };
 use purr_common::settings::Settings;
 use purr_core::WhisperError;
+use purr_core::config::TentativeText;
 use purr_core::dev;
 use purr_core::error::ConfigurationError;
 use purr_core::model::attributes::{ModelFeature, ModelLanguage};
@@ -158,7 +160,8 @@ impl Platform for DesktopPlatformImpl {
                 .with_vad_model(vad)
                 .with_opt_language(request.language)
                 .apply_output_format(|format| format.with_word_timestamps(true))
-                .with_beam_telemetry(request.beam_telemetry.clone()),
+                .with_beam_telemetry(request.beam_telemetry.clone())
+                .with_tentative(TentativeText::Decoded),
             &request.engine,
         );
         info!(
@@ -598,8 +601,13 @@ impl DesktopRun {
                         self.pending
                             .push_back(Ok(TranscriptionStatus::LanguageDetected { language }));
                     }
-                    self.word_count += chunk.text.split_whitespace().count();
-                    self.last_end = self.last_end.max(chunk.end);
+                    match chunk.kind {
+                        ChunkKind::Committed => {
+                            self.word_count += chunk.text.split_whitespace().count();
+                            self.last_end = self.last_end.max(chunk.end);
+                        }
+                        ChunkKind::Tentative => {}
+                    }
                     if let Some(stats) = &chunk.final_stats {
                         self.audio_duration = stats.audio_duration;
                     }
@@ -609,6 +617,7 @@ impl DesktopRun {
                         start_time: chunk.start,
                         end_time: chunk.end,
                         words: chunk.words,
+                        kind: chunk.kind,
                     }));
                     self.phase = Phase::Decode(stream);
                 }

@@ -1,6 +1,7 @@
 use crate::{
     AudioStream, ModelManager, TranscriptionConfig,
     accel::report::AccelReport,
+    config::TentativeText,
     error::TranscriptionError,
     whisper::{
         StreamEvent, StreamProgress, StreamingChunk, TranscriptionResult, TranscriptionStats,
@@ -11,10 +12,12 @@ use crate::{
         loader::{SpecialTokens, load_model},
         segments,
         speech::{SpeechDetector, last_pause},
+        tentative::{self, Waiting},
     },
 };
 use futures::{FutureExt, Stream, StreamExt};
 use purr_common::{
+    platform::ChunkKind,
     progress::{ProgressFrame, ProgressPhase},
     word::Word,
 };
@@ -23,7 +26,7 @@ use std::{
     pin::Pin,
     sync::Arc,
     task::{Context, Poll},
-    time::Instant,
+    time::{Duration, Instant},
 };
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::UnboundedReceiverStream;
@@ -90,7 +93,11 @@ struct Session {
     origin: usize,
     /// How much of `pending` a window has already looked at
     seen: usize,
+    /// How much of `pending` the last tentative decode covered
+    tentative_mark: usize,
     received: usize,
+    first_audio: Option<Instant>,
+    last_decode: Option<Duration>,
     /// Whether the source has delivered all its audio
     ended: bool,
     language: StreamLanguage,
@@ -184,7 +191,10 @@ impl Session {
             pending: Vec::new(),
             origin: 0,
             seen: 0,
+            tentative_mark: 0,
             received: 0,
+            first_audio: None,
+            last_decode: None,
             ended: false,
             language,
             chunk_index: 0,
@@ -196,6 +206,9 @@ impl Session {
     }
 
     fn push(&mut self, samples: &[f32]) {
+        if !samples.is_empty() {
+            self.first_audio.get_or_insert_with(Instant::now);
+        }
         self.received += samples.len();
         self.pending.extend_from_slice(samples);
     }
@@ -302,9 +315,11 @@ impl Session {
             }
         }
 
+        let started = Instant::now();
         self.state
             .full(params, window)
             .map_err(|source| TranscriptionError::Failed { source })?;
+        self.last_decode = Some(started.elapsed());
         drop(collector);
 
         Ok(segments::read(&self.state, self.tokens.eot)?
@@ -325,6 +340,97 @@ impl Session {
         self.pending.drain(..n);
         self.origin += n;
         self.seen = self.seen.saturating_sub(n);
+        self.tentative_mark = self.tentative_mark.saturating_sub(n);
+    }
+
+    /// Whether the stream, waiting for its source, should decode its pending audio tentatively.
+    fn tentative_due(&self) -> bool {
+        let sr = self.sample_rate();
+        let len = self.pending.len();
+        let ready_at = if self.speech.is_some() {
+            self.windows.max.min(self.seen + self.windows.step)
+        } else {
+            self.windows.max
+        };
+        let arrival_rate = self.first_audio.and_then(|first| {
+            let wall = first.elapsed().as_secs_f64();
+            (wall > 0.0).then(|| self.received as f64 / sr / wall)
+        });
+        tentative::due(
+            self.config.tentative,
+            Waiting {
+                new_audio: len.saturating_sub(self.tentative_mark) as f64 / sr,
+                pending: len as f64 / sr,
+                until_window: ready_at.saturating_sub(len) as f64 / sr,
+                arrival_rate,
+                last_decode: self.last_decode.map(|decode| decode.as_secs_f64()),
+            },
+        )
+    }
+
+    /// One tentative chunk holding the text of `parts`, decoded from the first `len` pending
+    /// samples; it takes the index of the next committed chunk, which replaces it.
+    fn tentative_chunk(
+        &self,
+        parts: &[&Decoded],
+        len: usize,
+        language: Option<LanguageCode>,
+    ) -> StreamingChunk {
+        let sr = self.sample_rate();
+        let origin_cs = u32::try_from(self.origin / SAMPLES_PER_CENTISECOND).unwrap_or(u32::MAX);
+        let mut text = String::new();
+        let mut words = Vec::new();
+        for part in parts {
+            if !text.is_empty() {
+                text.push(' ');
+            }
+            let offset = u32::try_from(text.len()).unwrap_or(u32::MAX);
+            text.push_str(&part.text);
+            words.extend(
+                part.words
+                    .iter()
+                    .cloned()
+                    .map(|word| word.shifted(offset).delayed(origin_cs)),
+            );
+        }
+        let start = parts.first().map_or(len, |part| part.span.start.min(len));
+        let end = parts
+            .last()
+            .map_or(len, |part| part.span.end.min(len))
+            .max(start);
+        StreamingChunk {
+            text,
+            start: (self.origin + start) as f64 / sr,
+            end: (self.origin + end) as f64 / sr,
+            is_final: false,
+            chunk_index: self.chunk_index,
+            final_stats: None,
+            language: language.map(str::to_owned),
+            kind: ChunkKind::Tentative,
+            words,
+        }
+    }
+
+    /// Decodes all the pending audio only to show it; the stream's position, counters and
+    /// language lock stay as they were.
+    fn tentative(&mut self) -> crate::Result<StreamEvent> {
+        let window = self.pending.clone();
+        let language = match self.language {
+            StreamLanguage::Chosen(code) | StreamLanguage::Locked(code) => code,
+            StreamLanguage::Detecting => self.detect_language(&window)?.0,
+        };
+        let decoded = self.decode(&window, language)?;
+        self.tentative_mark = window.len();
+        let parts: Vec<&Decoded> = decoded.iter().filter(|d| !d.text.is_empty()).collect();
+        let reported = match self.language {
+            StreamLanguage::Locked(code) => Some(code),
+            StreamLanguage::Chosen(_) | StreamLanguage::Detecting => None,
+        };
+        Ok(StreamEvent::Chunk(self.tentative_chunk(
+            &parts,
+            window.len(),
+            reported,
+        )))
     }
 
     fn process(&mut self, kind: WindowKind) -> crate::Result<Vec<StreamEvent>> {
@@ -384,7 +490,7 @@ impl Session {
             (self.origin + decision.advance) as f64 / self.sample_rate()
         );
 
-        decoded.truncate(decision.segments);
+        let tail = decoded.split_off(decision.segments);
 
         let reported = match self.language {
             StreamLanguage::Locked(code) => Some(code),
@@ -404,6 +510,7 @@ impl Session {
                 chunk_index: self.chunk_index,
                 final_stats: None,
                 language: reported.map(str::to_owned),
+                kind: ChunkKind::Committed,
                 words: d
                     .words
                     .iter()
@@ -414,6 +521,11 @@ impl Session {
             self.chunk_index += 1;
             self.segment_count += 1;
             self.word_count += d.text.split_whitespace().count();
+        }
+
+        if kind == WindowKind::Full && self.config.tentative != TentativeText::Off {
+            let parts: Vec<&Decoded> = tail.iter().filter(|d| !d.text.is_empty()).collect();
+            chunks.push(self.tentative_chunk(&parts, len, reported));
         }
 
         self.consume(decision.advance);
@@ -430,6 +542,7 @@ impl Session {
                     chunk_index: self.chunk_index,
                     final_stats: None,
                     language: reported.map(str::to_owned),
+                    kind: ChunkKind::Committed,
                     words: Vec::new(),
                 });
                 self.chunk_index += 1;
@@ -487,7 +600,27 @@ impl StreamWhisperTranscriber {
         while !session.finished {
             if !complete {
                 if session.next_window(false).is_none() {
-                    let item = input.next().await;
+                    let item = match input.next().now_or_never() {
+                        Some(item) => item,
+                        None if session.tentative_due() => {
+                            let event = match session.tentative() {
+                                Ok(event) => event,
+                                Err(e) => {
+                                    warn!("Failed to decode audio tentatively: {}", e);
+                                    if tx.send(Err(e)).is_err() {
+                                        debug!("Receiver dropped, error not delivered");
+                                    }
+                                    return Ok(());
+                                }
+                            };
+                            if tx.send(Ok(event)).is_err() {
+                                debug!("Receiver dropped, stopping stream processing");
+                                return Ok(());
+                            }
+                            continue;
+                        }
+                        None => input.next().await,
+                    };
                     if receive(item, &mut session, &mut complete).is_break() {
                         return Ok(());
                     }
@@ -548,3 +681,92 @@ impl Stream for StreamingTranscription {
 }
 
 impl TranscriptionResult for StreamingTranscription {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{AudioChunk, AudioProcessor};
+
+    const HALF_SECOND: usize = 8_000;
+
+    /// Feeds `samples` in half seconds at the pace of speech, from a thread of its own as a
+    /// recording device would.
+    fn paced(samples: Vec<f32>) -> AudioStream {
+        let (tx, rx) = mpsc::unbounded_channel();
+        std::thread::spawn(move || {
+            let parts = samples.chunks(HALF_SECOND).count();
+            for (i, part) in samples.chunks(HALF_SECOND).enumerate() {
+                std::thread::sleep(Duration::from_millis(500));
+                let chunk = AudioChunk::new(part.to_vec(), i, i as f32 * 0.5, i + 1 == parts);
+                if tx.send(Ok(chunk)).is_err() {
+                    return;
+                }
+            }
+        });
+        AudioStream::new(rx)
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    #[ignore = "needs ggml-base.bin and feeds 11 s of audio at the pace of speech"]
+    async fn tentative_text_shows_early_and_leaves_the_final_text_alone()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let model = ModelManager::new()?.models_dir().join("ggml-base.bin");
+        let audio = AudioProcessor::load_audio(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../samples/jfk.wav"),
+        )
+        .await?;
+        let mut final_texts = Vec::new();
+        for tentative in [
+            TentativeText::Off,
+            TentativeText::WhileWaiting { every_seconds: 2.0 },
+        ] {
+            let config = TranscriptionConfig::new()
+                .with_gpu(false)
+                .with_threads(4)
+                .with_language("en")
+                .with_model_path(&model)
+                .with_tentative(tentative);
+            let transcriber = StreamWhisperTranscriber::from_config(config).await?;
+            let started = Instant::now();
+            let mut stream = transcriber.transcribe(paced(audio.samples.clone())).await?;
+            let mut first_text = None;
+            let mut tentative_chunks = 0;
+            let mut finals = Vec::new();
+            while let Some(event) = stream.next().await {
+                let StreamEvent::Chunk(chunk) = event? else {
+                    continue;
+                };
+                if !chunk.text.is_empty() {
+                    first_text.get_or_insert(started.elapsed());
+                }
+                match chunk.kind {
+                    ChunkKind::Tentative => {
+                        tentative_chunks += 1;
+                        println!(
+                            "{:>5.2}s tentative #{} [{:.1}-{:.1}] {}",
+                            started.elapsed().as_secs_f64(),
+                            chunk.chunk_index,
+                            chunk.start,
+                            chunk.end,
+                            chunk.text
+                        );
+                    }
+                    ChunkKind::Committed => finals.push(chunk.text),
+                }
+            }
+            println!(
+                "{tentative:?}: first text after {first_text:?}, {tentative_chunks} tentative \
+                 chunks, last text after {:?}",
+                started.elapsed()
+            );
+            assert_eq!(
+                tentative_chunks > 0,
+                tentative != TentativeText::Off,
+                "{tentative:?}"
+            );
+            final_texts.push(finals);
+        }
+        assert_eq!(final_texts[0], final_texts[1]);
+        Ok(())
+    }
+}

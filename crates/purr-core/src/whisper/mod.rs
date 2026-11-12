@@ -7,9 +7,10 @@ mod segments;
 mod speech;
 pub mod streaming;
 pub mod sync;
+mod tentative;
 pub mod words;
 
-use purr_common::{beams::BeamSnapshot, progress::ProgressFrame, word::Word};
+use purr_common::{beams::BeamSnapshot, platform::ChunkKind, progress::ProgressFrame, word::Word};
 use serde::{Deserialize, Serialize};
 use std::future::Future;
 
@@ -105,10 +106,10 @@ pub struct StreamingChunk {
     /// End time in seconds  
     pub end: f64,
 
-    /// Whether this is a final result (true) or partial (false)
+    /// Whether this is the stream's last chunk
     pub is_final: bool,
 
-    /// Chunk index
+    /// Chunk index; a committed chunk replaces a tentative chunk of the same or a lower index
     pub chunk_index: usize,
 
     /// Final statistics (only present on the very last chunk)
@@ -117,6 +118,9 @@ pub struct StreamingChunk {
     /// The language Whisper recognised in this chunk (a Whisper code), when it was asked to detect it
     pub language: Option<String>,
 
+    /// Whether the text is final, or only the uncommitted tail shown early
+    pub kind: ChunkKind,
+
     /// The words of `text`, timed on the source timeline when word timestamps were asked for
     pub words: Vec<Word>,
 }
@@ -124,7 +128,7 @@ pub struct StreamingChunk {
 /// What a streaming transcription reports, in order.
 #[derive(Debug, Clone)]
 pub enum StreamEvent {
-    /// Text the stream will not change any more
+    /// Text the stream will not change any more, or tentative text it will replace
     Chunk(StreamingChunk),
     /// How far the stream has come, sent before and after each decoded window
     Progress(StreamProgress),

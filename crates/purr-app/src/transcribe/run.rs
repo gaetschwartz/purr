@@ -219,6 +219,7 @@ mod tests {
             start_time: end - 4.0,
             end_time: end,
             words: Vec::new(),
+            kind: purr_common::platform::ChunkKind::Committed,
         }
     }
 

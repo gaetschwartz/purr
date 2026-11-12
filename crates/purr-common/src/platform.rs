@@ -421,6 +421,17 @@ impl From<Bytes> for FileSource {
     }
 }
 
+/// Whether a piece of live text is final.
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ChunkKind {
+    /// The engine will not change it
+    #[default]
+    Committed,
+    /// The uncommitted end of the transcript shown early; the next tentative piece replaces it,
+    /// and so does a committed one of the same or a higher index
+    Tentative,
+}
+
 /// A timed piece of a transcript
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct TranscriptSegment {
@@ -450,13 +461,15 @@ pub enum TranscriptionStatus {
     /// The platform recognised the spoken language (a Whisper language code)
     LanguageDetected { language: String },
     /// Transcription in progress; `text` is the whole current text of segment `chunk_index`, and
-    /// `words` its words when the engine reports them
+    /// `words` its words when the engine reports them. A tentative `kind` is the uncommitted
+    /// end of the transcript, see [`ChunkKind`]
     InProgress {
         chunk_index: usize,
         text: String,
         start_time: f64,
         end_time: f64,
         words: Vec<Word>,
+        kind: ChunkKind,
     },
     /// Authoritative segment list that replaces everything reported through `InProgress`
     Segments { segments: Vec<TranscriptSegment> },
