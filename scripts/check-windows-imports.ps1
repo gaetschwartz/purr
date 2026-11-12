@@ -5,6 +5,8 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+$Forbidden += '^vcruntime140', '^msvcp140', '^concrt140\.dll$', '^vcomp140\.dll$'
+
 $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
 $dumpbin = & $vswhere -latest -find 'VC\Tools\MSVC\**\bin\Hostx64\x64\dumpbin.exe' | Select-Object -First 1
 if (-not $dumpbin) { throw 'dumpbin.exe not found' }
