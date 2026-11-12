@@ -1,10 +1,16 @@
-//! The text of `purr sys` for the processor and the devices, as plain lines.
+//! What `purr sys` reports: the processor and devices as plain lines, and the whole report as JSON.
 
 use purr_common::accel::{CpuFeature, CpuReport};
 use purr_core::{
+    SystemInfo,
     accel::backend::AccelBackend,
     dev::{Device, DeviceType},
 };
+
+/// The whole report as one JSON document.
+pub fn json(sys: &SystemInfo) -> serde_json::Result<String> {
+    serde_json::to_string_pretty(sys)
+}
 
 /// Format file size in human readable format
 pub fn format_file_size(size: u64) -> String {
@@ -152,6 +158,8 @@ pub fn device_lines(device: &Device, picked_for: &[AccelBackend]) -> Vec<String>
 #[cfg(test)]
 mod tests {
     use super::*;
+    use purr_core::dev::FeatureStatus;
+    use serde_json::json;
 
     fn cpu(built_with: &[CpuFeature], detected: Option<&[CpuFeature]>) -> CpuReport {
         CpuReport {
@@ -332,5 +340,91 @@ mod tests {
         assert_eq!(format_file_size(512), "512 B");
         assert_eq!(format_file_size(1536), "1.5 KB");
         assert_eq!(format_file_size(3 << 30), "3.0 GB");
+    }
+
+    fn report(backends: &[(AccelBackend, FeatureStatus)]) -> SystemInfo {
+        SystemInfo {
+            backends: backends.iter().cloned().collect(),
+            cpu: cpu(
+                &[CpuFeature::Avx2],
+                Some(&[CpuFeature::Avx2, CpuFeature::Bmi2]),
+            ),
+            picked_gpus: std::iter::once((AccelBackend::Vulkan, 2)).collect(),
+            devices: vec![device(DeviceType::Igpu, Some("0000:00:02.0"))],
+        }
+    }
+
+    #[test]
+    fn the_json_report_round_trips_into_system_info() {
+        let sys = report(&[
+            (AccelBackend::Cpu, FeatureStatus::Available(None)),
+            (AccelBackend::Vulkan, FeatureStatus::Available(Some(7))),
+            (AccelBackend::Metal, FeatureStatus::Disabled),
+            (AccelBackend::Sycl, FeatureStatus::EnabledButNotAvailable),
+            (
+                AccelBackend::Cuda,
+                FeatureStatus::RuntimeLibraryMissing {
+                    library: "libcudart.so.12".to_owned(),
+                    searched: vec!["/usr/lib".into(), "/opt/purr".into()],
+                },
+            ),
+        ]);
+        let printed = json(&sys).expect("serializes");
+        let parsed: SystemInfo = serde_json::from_str(&printed).expect("parses back");
+        assert_eq!(parsed.backends, sys.backends);
+        assert_eq!(parsed.cpu, sys.cpu);
+        assert_eq!(parsed.picked_gpus, sys.picked_gpus);
+        assert_eq!(
+            serde_json::to_value(&parsed.devices).expect("serializes"),
+            serde_json::to_value(&sys.devices).expect("serializes")
+        );
+    }
+
+    #[test]
+    fn a_backend_missing_its_runtime_library_is_reported_with_the_library_and_where_it_looked() {
+        let sys = report(&[
+            (AccelBackend::Cpu, FeatureStatus::Available(None)),
+            (
+                AccelBackend::Cuda,
+                FeatureStatus::RuntimeLibraryMissing {
+                    library: "libcudart.so.12".to_owned(),
+                    searched: vec!["/usr/lib".into()],
+                },
+            ),
+        ]);
+        let printed: serde_json::Value =
+            serde_json::from_str(&json(&sys).expect("serializes")).expect("is JSON");
+        assert_eq!(
+            printed,
+            json!({
+                "backends": {
+                    "cpu": { "Available": null },
+                    "cuda": {
+                        "RuntimeLibraryMissing": {
+                            "library": "libcudart.so.12",
+                            "searched": ["/usr/lib"]
+                        }
+                    }
+                },
+                "cpu": {
+                    "name": "Some Processor",
+                    "logical_threads": 16,
+                    "built_with": ["Avx2"],
+                    "detected": ["Avx2", "Bmi2"]
+                },
+                "picked_gpus": { "vulkan": 2 },
+                "devices": [{
+                    "id": 2,
+                    "name": "Vulkan0",
+                    "description": "Intel(R) Iris(R) Xe Graphics",
+                    "device_id": "0000:00:02.0",
+                    "vram_free": 3_221_225_472_u64,
+                    "vram_total": 8_589_934_592_u64,
+                    "tpe": "Igpu",
+                    "backend": "vulkan",
+                    "caps": null
+                }]
+            })
+        );
     }
 }

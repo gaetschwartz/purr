@@ -145,7 +145,12 @@ pub enum Commands {
     },
     /// System commands
     #[clap(alias = "s")]
-    Sys {},
+    Sys {
+        /// Print one JSON document instead of text; each backend is "Disabled",
+        /// "EnabledButNotAvailable", {"Available":null} or {"RuntimeLibraryMissing":{library,searched}}
+        #[arg(long)]
+        json: bool,
+    },
     /// GPU runtime libraries: where they are looked for and where to put them
     Runtime {
         #[command(subcommand)]

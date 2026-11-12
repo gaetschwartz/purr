@@ -389,14 +389,19 @@ async fn prompt_for_model_download(
 async fn handle_command(command: Commands, verbosity: Verbosity) -> miette::Result<()> {
     match command {
         Commands::Models { command } => models::handle_model_command(command, verbosity).await,
-        Commands::Sys {} => handle_sys_command(verbosity).await,
+        Commands::Sys { json } => handle_sys_command(verbosity, json).await,
         Commands::Runtime { command } => runtime::handle_runtime_command(command),
     }
 }
 
 /// Handle system subcommands
-async fn handle_sys_command(_verbosity: Verbosity) -> miette::Result<()> {
+async fn handle_sys_command(_verbosity: Verbosity, json: bool) -> miette::Result<()> {
     let sys = SystemInfo::get();
+
+    if json {
+        println!("{}", sys_report::json(&sys).into_diagnostic()?);
+        return Ok(());
+    }
 
     fn feature_status(backend: AccelBackend, feature: &FeatureStatus) -> String {
         match feature {
