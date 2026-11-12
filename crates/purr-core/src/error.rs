@@ -411,6 +411,7 @@ mod tests {
     fn a_remedy_is_appended_as_a_clause() {
         let reason = UnavailableReason::RuntimeLibraryMissing {
             library: "libvulkan.so.1".to_owned(),
+            searched: Vec::new(),
         };
         assert_eq!(
             remedy_clause(AccelBackend::Vulkan, &reason),

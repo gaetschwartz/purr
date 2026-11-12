@@ -83,6 +83,7 @@ mod tests {
     fn missing_library() -> UnavailableReason {
         UnavailableReason::RuntimeLibraryMissing {
             library: "vulkan-1.dll".to_owned(),
+            searched: Vec::new(),
         }
     }
 
