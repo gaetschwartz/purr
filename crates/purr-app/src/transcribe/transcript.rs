@@ -19,6 +19,7 @@ impl Transcript {
                 text,
                 start_time,
                 end_time,
+                words,
             } => {
                 self.live.insert(
                     *chunk_index,
@@ -26,6 +27,7 @@ impl Transcript {
                         text: text.clone(),
                         start_time: *start_time,
                         end_time: *end_time,
+                        words: words.clone(),
                     },
                 );
             }
@@ -88,6 +90,7 @@ fn is_spoken(text: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use purr_common::word::Word;
 
     fn in_progress(chunk_index: usize, text: &str, start: f64, end: f64) -> TranscriptionStatus {
         TranscriptionStatus::InProgress {
@@ -95,6 +98,7 @@ mod tests {
             text: text.to_owned(),
             start_time: start,
             end_time: end,
+            words: Vec::new(),
         }
     }
 
@@ -103,6 +107,7 @@ mod tests {
             text: text.to_owned(),
             start_time: start,
             end_time: end,
+            words: Vec::new(),
         }
     }
 
@@ -112,6 +117,40 @@ mod tests {
         transcript.apply(&in_progress(0, " Et un", 0.0, 0.0));
         transcript.apply(&in_progress(0, " Et un grand bravo", 0.0, 2.0));
         assert_eq!(transcript.text(), "Et un grand bravo");
+    }
+
+    #[test]
+    fn a_replaced_segment_takes_the_words_of_its_latest_text() {
+        let word = |start: u32, end: u32, score: u8| Word {
+            range: start..end,
+            start_cs: Some(start * 10),
+            end_cs: Some(end * 10),
+            score: Some(score),
+        };
+        let mut transcript = Transcript::default();
+        transcript.apply(&TranscriptionStatus::InProgress {
+            chunk_index: 0,
+            text: "Et".to_owned(),
+            start_time: 0.0,
+            end_time: 0.2,
+            words: vec![word(0, 2, 90)],
+        });
+        transcript.apply(&TranscriptionStatus::InProgress {
+            chunk_index: 0,
+            text: "Et un".to_owned(),
+            start_time: 0.0,
+            end_time: 0.5,
+            words: vec![word(0, 2, 200), word(3, 5, 180)],
+        });
+        assert_eq!(
+            transcript.segments(),
+            vec![TranscriptSegment {
+                text: "Et un".to_owned(),
+                start_time: 0.0,
+                end_time: 0.5,
+                words: vec![word(0, 2, 200), word(3, 5, 180)],
+            }]
+        );
     }
 
     #[test]

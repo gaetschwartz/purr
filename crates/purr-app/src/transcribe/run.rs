@@ -207,6 +207,7 @@ mod tests {
             text: format!("part {index}"),
             start_time: end - 4.0,
             end_time: end,
+            words: Vec::new(),
         }
     }
 

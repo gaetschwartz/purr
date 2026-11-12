@@ -156,7 +156,8 @@ impl Platform for DesktopPlatformImpl {
                 .with_translate(request.translate)
                 .with_model_path(manager.get_model_path(model))
                 .with_vad_model(vad)
-                .with_opt_language(request.language),
+                .with_opt_language(request.language)
+                .apply_output_format(|format| format.with_word_timestamps(true)),
             &request.engine,
         );
         info!(
@@ -596,6 +597,7 @@ impl DesktopRun {
                         text: chunk.text,
                         start_time: chunk.start,
                         end_time: chunk.end,
+                        words: chunk.words,
                     }));
                     self.phase = Phase::Decode(stream);
                 }

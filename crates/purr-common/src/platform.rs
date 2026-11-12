@@ -24,6 +24,7 @@ use crate::{
     },
     hugging_face_token::HuggingFaceToken,
     settings::Settings,
+    word::Word,
 };
 
 pub type TranscriptionStream =
@@ -422,6 +423,9 @@ pub struct TranscriptSegment {
     pub text: String,
     pub start_time: f64,
     pub end_time: f64,
+    /// The words of `text`, when the engine reports them
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub words: Vec<Word>,
 }
 
 /// Transcription status updates
@@ -441,12 +445,14 @@ pub enum TranscriptionStatus {
     BrowserEngine { engine: BrowserEngine },
     /// The platform recognised the spoken language (a Whisper language code)
     LanguageDetected { language: String },
-    /// Transcription in progress; `text` is the whole current text of segment `chunk_index`
+    /// Transcription in progress; `text` is the whole current text of segment `chunk_index`, and
+    /// `words` its words when the engine reports them
     InProgress {
         chunk_index: usize,
         text: String,
         start_time: f64,
         end_time: f64,
+        words: Vec<Word>,
     },
     /// Authoritative segment list that replaces everything reported through `InProgress`
     Segments { segments: Vec<TranscriptSegment> },

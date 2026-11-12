@@ -83,6 +83,7 @@ mod tests {
                 text: "Bonjour".to_owned(),
                 start_time: 0.0,
                 end_time: 1.5,
+                words: Vec::new(),
             }],
             peaks: vec![0, 128, 255],
             source: HistorySource::Path {

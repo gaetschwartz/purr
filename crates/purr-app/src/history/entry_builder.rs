@@ -82,11 +82,13 @@ mod tests {
                     text: " Bonjour à tous.".to_owned(),
                     start_time: 0.0,
                     end_time: 2.0,
+                    words: Vec::new(),
                 },
                 TranscriptSegment {
                     text: " Merci d'être là.".to_owned(),
                     start_time: 2.0,
                     end_time: 4.0,
+                    words: Vec::new(),
                 },
             ],
             peaks: vec![0.0, 0.5, 1.0],

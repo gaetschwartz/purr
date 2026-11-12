@@ -263,6 +263,7 @@ mod tests {
                 text: format!("Bonjour {name}"),
                 start_time: 0.0,
                 end_time: 2.0,
+                words: Vec::new(),
             }],
             peaks: vec![10, 200],
             source: HistorySource::NotKept,

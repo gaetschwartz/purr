@@ -104,6 +104,7 @@ impl TranscriptionMapper {
                 text,
                 start_time,
                 end_time,
+                words: Vec::new(),
             }),
             WorkerEvent::Segments { segments, .. } => {
                 Some(TranscriptionStatus::Segments { segments })
@@ -244,6 +245,7 @@ mod tests {
             text: " Bonjour".to_owned(),
             start_time: 0.0,
             end_time: 1.0,
+            words: Vec::new(),
         };
         assert_eq!(
             mapper.map(WorkerEvent::Segments {

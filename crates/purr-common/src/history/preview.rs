@@ -48,6 +48,7 @@ mod tests {
             text: text.to_owned(),
             start_time: 0.0,
             end_time: 1.0,
+            words: Vec::new(),
         }
     }
 

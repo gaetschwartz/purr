@@ -33,6 +33,7 @@ mod tests {
                 text: String::new(),
                 start_time: start,
                 end_time: start + 5.0,
+                words: Vec::new(),
             })
             .collect()
     }
@@ -52,6 +53,7 @@ mod tests {
             text: String::new(),
             start_time: 2.0,
             end_time: 3.0,
+            words: Vec::new(),
         }];
         assert_eq!(segment_at(&late, 1.0), None);
         assert_eq!(segment_at(&[], 1.0), None);

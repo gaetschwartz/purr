@@ -145,6 +145,7 @@ mod tests {
             text: text.to_owned(),
             start_time: start,
             end_time: end,
+            words: Vec::new(),
         }
     }
 
