@@ -22,15 +22,33 @@ env:
 
 jobs:
   build-linux:
-    name: Build Linux${{ matrix.backend != 'none' && format(' - {0}', matrix.backend) || '' }}
+    name: Build Linux - ${{ matrix.variant }}
     runs-on: ubuntu-latest
+    env:
+      GGML_NATIVE: "OFF"
+      GGML_CUDA_NO_VMM: ${{ matrix.cuda_no_vmm && 'ON' || 'OFF' }}
     strategy:
       fail-fast: false
       matrix:
-        backend: ["none", cuda, vulkan]
         include:
-          - backend: cuda
-            is_release: true # Mark CUDA as the release variant for Linux
+          - variant: cpu
+            features: static-ffmpeg
+            portable: true
+            web: true
+          - variant: vulkan
+            features: static-ffmpeg,vulkan
+            portable: true
+            deferred_libs: libvulkan.so.1
+            expect_missing: Vulkan=libvulkan.so.1
+          - variant: cuda
+            features: static-ffmpeg,cuda
+          - variant: all
+            features: static-ffmpeg,cuda,vulkan
+            cuda_no_vmm: true
+            portable: true
+            desktop: true
+            deferred_libs: libcuda.so.1 libvulkan.so.1
+            expect_missing: CUDA=libcuda.so.1 Vulkan=libvulkan.so.1
     steps:
       - uses: actions/checkout@v7
       - name: Install dependencies
@@ -38,7 +56,7 @@ jobs:
           sudo apt update
           sudo apt install -y --no-install-recommends clang curl pkg-config gcc ca-certificates openssl libssl-dev cmake libc6-dev make wget fuse libfuse2 \
             nasm autoconf automake libtool \
-            llvm \
+            llvm patchelf \
             libgtk-3-dev libglib2.0-dev libcairo2-dev libpango1.0-dev libgdk-pixbuf2.0-dev libatk1.0-dev \
             libjavascriptcoregtk-4.1-dev libsoup-3.0-dev libwebkit2gtk-4.1-dev libxdo-dev
       - name: Cache vcpkg binaries
@@ -55,7 +73,7 @@ jobs:
           "$VCPKG_DIR/vcpkg" install "$VCPKG_FFMPEG:x64-linux"
           echo "PKG_CONFIG_PATH=$VCPKG_DIR/installed/x64-linux/lib/pkgconfig" >> "$GITHUB_ENV"
       - name: Install cuda
-        if: matrix.backend == 'cuda'
+        if: contains(matrix.features, 'cuda')
         run: |
           CUDA_REPO="ubuntu$(lsb_release -rs | tr -d '.')"
           CUDA_VERSION="13-5"
@@ -70,7 +88,7 @@ jobs:
           echo "$CUDA_PATH/bin" >> $GITHUB_PATH
           echo "LD_LIBRARY_PATH=$CUDA_PATH/lib64${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" >> $GITHUB_ENV
       - name: Install Vulkan SDK
-        if: matrix.backend == 'vulkan'
+        if: contains(matrix.features, 'vulkan')
         run: |
           # Install Vulkan SDK using system packages for Ubuntu 24.04
           sudo apt update
@@ -88,6 +106,9 @@ jobs:
           toolchain: stable
           targets: x86_64-unknown-linux-gnu, wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
+        with:
+          # whisper-rs-sys does not rebuild ggml when GGML_* changes, so each ggml configuration needs its own cache
+          key: ${{ matrix.variant }}-ggml-native-${{ env.GGML_NATIVE }}-no-vmm-${{ env.GGML_CUDA_NO_VMM }}
       - name: Cache Dioxus CLI
         id: cache-dx-linux
         uses: actions/cache@v6
@@ -98,49 +119,138 @@ jobs:
         if: steps.cache-dx-linux.outputs.cache-hit != 'true'
         run: |
           cargo install dioxus-cli --version ${{ env.DIOXUS_VERSION }} --locked
-      - name: Build CLI${{ matrix.backend != 'none' && format(' - {0}', matrix.backend) || '' }}
+      - name: Build CLI - ${{ matrix.variant }}
         env:
-          RUSTFLAGS: -C link-arg=-Wl,-rpath,$ORIGIN/lib --cfg=web_sys_unstable_apis
+          RUSTFLAGS: -C link-arg=-Wl,-rpath,$ORIGIN/lib:$ORIGIN/../lib/purr-desktop --cfg=web_sys_unstable_apis
         run: |
-          cargo build -p purr-cli --release --features static-ffmpeg${{ matrix.backend != 'none' && format(',{0}', matrix.backend) || '' }}
-      - name: Build desktop app${{ matrix.backend != 'none' && format(' - {0}', matrix.backend) || '' }}
-        if: matrix.is_release == true
-        env:
-          RUSTFLAGS: -C link-arg=-Wl,-rpath,$ORIGIN/lib --cfg=web_sys_unstable_apis
-        run: |
-          dx bundle -p purr-app --release --linux --package-types deb \
-            --out-dir dist-linux \
-            --features static-ffmpeg${{ matrix.backend != 'none' && format(',{0}', matrix.backend) || '' }}
-      - name: Build Dioxus web
-        if: matrix.backend == 'none'
-        run: |
-          dx bundle --verbose -p purr-app --release --web --out-dir dist-web
+          cargo build -p purr-cli --release --features ${{ matrix.features }}
       - name: Prepare CLI artifact
         run: |
           mkdir -p artifacts/cli
           cp target/release/purr artifacts/cli/purr
-          if [ "${{ matrix.backend }}" = "cuda" ]; then
+          if [ "${{ contains(matrix.features, 'cuda') }}" = "true" ]; then
             mkdir -p artifacts/cli/lib
             ldd target/release/purr | awk '/lib(cudart|cublas|cublasLt)\.so/ { print $3 }' | xargs -r -I{} cp -L {} artifacts/cli/lib/
           fi
           echo "$(git describe --tags --always --dirty)" > artifacts/cli/VERSION
+          ls -lR artifacts/cli
+      - name: Check the CLI does not need the deferred libraries
+        if: matrix.deferred_libs
+        run: |
+          status=0
+          for file in artifacts/cli/purr artifacts/cli/lib/*; do
+            [ -f "$file" ] || continue
+            echo "$file needs: $(patchelf --print-needed "$file" | tr '\n' ' ')"
+            for library in ${{ matrix.deferred_libs }}; do
+              if patchelf --print-needed "$file" | grep -qxF "$library"; then
+                echo "::error file=$file::$file has a hard dependency on $library"
+                status=1
+              fi
+            done
+          done
+          exit $status
+      - name: Run the CLI on the runner
+        if: matrix.portable
+        run: |
+          artifacts/cli/purr sys || echo "::warning::purr sys failed on the runner"
+      - name: Check the CLI starts on a bare Ubuntu without GPU runtimes
+        if: matrix.portable
+        run: |
+          docker run --rm -v "$PWD/artifacts/cli:/opt/purr:ro" ubuntu:24.04 sh -c '
+            set -e
+            ldd /opt/purr/purr
+            if ldd /opt/purr/purr | grep -F "not found"; then exit 1; fi
+            /opt/purr/purr sys
+          ' | sed -E 's/\x1b\[[0-9;]*m//g; s/^ +//; s/ +/ /g' | tee purr-sys.txt
+          grep -qxF '* CPU - Available' purr-sys.txt || { echo "::error::the CPU backend is not available"; exit 1; }
+          for expectation in ${{ matrix.expect_missing }}; do
+            backend="${expectation%%=*}"
+            library="${expectation#*=}"
+            grep -qxF "* $backend - Built, but the runtime library $library cannot be loaded" purr-sys.txt \
+              || { echo "::error::$backend is not reported as missing $library"; exit 1; }
+          done
+      - name: Build desktop app - ${{ matrix.variant }}
+        if: matrix.desktop
+        env:
+          RUSTFLAGS: -C link-arg=-Wl,-rpath,$ORIGIN/lib:$ORIGIN/../lib/purr-desktop --cfg=web_sys_unstable_apis
+        run: |
+          dx bundle -p purr-app --release --linux --package-types deb \
+            --out-dir dist-linux \
+            --features ${{ matrix.features }}
+      - name: Build desktop AppImage - ${{ matrix.variant }}
+        if: matrix.desktop
+        continue-on-error: true
+        env:
+          RUSTFLAGS: -C link-arg=-Wl,-rpath,$ORIGIN/lib:$ORIGIN/../lib/purr-desktop --cfg=web_sys_unstable_apis
+        run: |
+          dx bundle -p purr-app --release --linux --package-types appimage \
+            --out-dir dist-appimage \
+            --features ${{ matrix.features }}
+          ls -l dist-appimage
+          cp dist-appimage/*.AppImage dist-linux/
+      - name: Add the CUDA runtime to the desktop package
+        if: matrix.desktop && contains(matrix.features, 'cuda')
+        run: |
+          debs=(dist-linux/*.deb)
+          [ "${#debs[@]}" -eq 1 ] || { echo "::error::expected one .deb, found ${debs[*]}"; exit 1; }
+          deb="${debs[0]}"
+          root="$RUNNER_TEMP/deb-root"
+          rm -rf "$root"
+          dpkg-deb -R "$deb" "$root"
+          [ -f "$root/usr/bin/purr-app" ] || { echo "::error::usr/bin/purr-app missing from $deb"; exit 1; }
+          mkdir -p "$root/usr/lib/purr-desktop"
+          ldd "$root/usr/bin/purr-app" | awk '/lib(cudart|cublas|cublasLt)\.so/ { print $3 }' | xargs -r -I{} cp -L {} "$root/usr/lib/purr-desktop/"
+          ls -l "$root/usr/lib/purr-desktop"
+          (cd "$root" && find usr -type f -exec md5sum {} + > DEBIAN/md5sums)
+          installed_size="$(du -sk --exclude=DEBIAN "$root" | cut -f1)"
+          sed -i "s/^Installed-Size: .*/Installed-Size: $installed_size/" "$root/DEBIAN/control"
+          dpkg-deb --root-owner-group --build "$root" "$deb"
+          dpkg-deb --info "$deb"
+      - name: Check the desktop package
+        if: matrix.desktop
+        run: |
+          root="$RUNNER_TEMP/deb-check"
+          rm -rf "$root"
+          dpkg-deb -x dist-linux/*.deb "$root"
+          app="$root/usr/bin/purr-app"
+          env -u LD_LIBRARY_PATH ldd "$app"
+          if env -u LD_LIBRARY_PATH ldd "$app" | grep -F "not found"; then
+            echo "::error::the packaged desktop app has unresolved libraries"
+            exit 1
+          fi
+          status=0
+          for file in "$app" "$root"/usr/lib/purr-desktop/*; do
+            [ -f "$file" ] || continue
+            for library in ${{ matrix.deferred_libs }}; do
+              if patchelf --print-needed "$file" | grep -qxF "$library"; then
+                echo "::error file=$file::$file has a hard dependency on $library"
+                status=1
+              fi
+            done
+          done
+          exit $status
+      - name: Build Dioxus web
+        if: matrix.web
+        run: |
+          dx bundle --verbose -p purr-app --release --web --out-dir dist-web
       - name: Archive CLI
         uses: actions/upload-artifact@v7
         with:
-          name: purr-${{ matrix.is_release == true && 'cli' || 'dev-cli' }}-linux-x64-${{ matrix.backend == 'none' && 'cpu' || matrix.backend }}
+          name: purr-cli-linux-x64-${{ matrix.variant }}
           path: artifacts/cli/
-          retention-days: ${{ matrix.is_release == true && 30 || 7 }}
+          retention-days: 30
       - name: Archive desktop app
-        if: matrix.is_release == true
+        if: matrix.desktop
         uses: actions/upload-artifact@v7
         with:
-          name: purr-desktop-linux-x64-${{ matrix.backend }}
+          name: purr-desktop-linux-x64-${{ matrix.variant }}
           path: |
             dist-linux/*.deb
+            dist-linux/*.AppImage
           if-no-files-found: error
           retention-days: 30
       - name: Archive web artifacts
-        if: matrix.backend == 'none'
+        if: matrix.web
         uses: actions/upload-artifact@v7
         with:
           name: purr-web
@@ -466,7 +576,7 @@ jobs:
                   "labels": ["chore", "ci", "build", "deps"]
                 }
               ],
-              "template": "# Nightly Build - ${{ steps.date.outputs.date }}\n\n#{{CHANGELOG}}\n\n## 📊 Uncategorized Changes\n#{{UNCATEGORIZED}}\n\n---\n*This is an automated nightly build. It may be unstable.*\n\n## 📦 Build Information\n- Linux x64: CUDA backend\n- macOS Apple Silicon: Metal backend\n- Windows x64: CUDA + Vulkan backends (falls back to CPU without a GPU runtime)\n- Each platform ships the command-line tool and the desktop app separately",
+              "template": "# Nightly Build - ${{ steps.date.outputs.date }}\n\n#{{CHANGELOG}}\n\n## 📊 Uncategorized Changes\n#{{UNCATEGORIZED}}\n\n---\n*This is an automated nightly build. It may be unstable.*\n\n## 📦 Build Information\n- Linux x64: CUDA + Vulkan backends in one build (falls back to CPU without a GPU runtime), plus CPU-only, Vulkan-only and CUDA-only builds\n- macOS Apple Silicon: Metal backend\n- Windows x64: CUDA + Vulkan backends (falls back to CPU without a GPU runtime)\n- Each platform ships the command-line tool and the desktop app separately",
               "pr_template": "- #{{TITLE}} (#{{NUMBER}}) @#{{AUTHOR}}"
             }
           fromTag: ${{ steps.prev_tag.outputs.tag }}
@@ -508,12 +618,16 @@ jobs:
             ### Desktop app
             - Windows: `purr-desktop-windows-x64-cuda-vulkan-setup.exe` (installer, Vulkan and CPU) or `purr-desktop-windows-x64-cuda-vulkan-portable.zip` (includes the CUDA runtime DLLs).
             - macOS (Apple Silicon): `purr-desktop-macos-arm64-metal.dmg`
-            - Linux: `purr-desktop-linux-x64-cuda.deb`. Requires the CUDA 13 runtime and an NVIDIA driver.
+            - Linux: `purr-desktop-linux-x64-all.deb` (Debian, Ubuntu and derivatives; an `.AppImage` is attached when it could be built). Includes the CUDA runtime: uses an NVIDIA GPU when the NVIDIA driver is installed, otherwise Vulkan, otherwise the CPU.
 
             ### Command-line tool
             - Windows: `purr-cli-windows-x64-cuda-vulkan.zip`. Extract all files to one folder. Uses an NVIDIA GPU (CUDA) when available, otherwise Vulkan, otherwise the CPU.
             - macOS (Apple Silicon): `purr-cli-macos-arm64-metal.tar.gz`
-            - Linux: `purr-cli-linux-x64-cuda.tar.gz`. Keep the `lib` folder next to `purr`. Requires an NVIDIA GPU with CUDA support and the NVIDIA driver.
+            - Linux: `purr-cli-linux-x64-all.tar.gz` (recommended). Keep the `lib` folder next to `purr`. Uses an NVIDIA GPU (CUDA) when the NVIDIA driver is installed, otherwise Vulkan, otherwise the CPU.
+              - `purr-cli-linux-x64-vulkan.tar.gz`: smaller, for AMD and Intel GPUs. Uses Vulkan when a Vulkan driver is installed, otherwise the CPU.
+              - `purr-cli-linux-x64-cpu.tar.gz`: smallest, CPU only.
+              - `purr-cli-linux-x64-cuda.tar.gz`: NVIDIA only. Keep the `lib` folder next to `purr`. Does not start without the NVIDIA driver.
+              - All Linux builds need an x86-64 CPU with AVX2 (2013 or later).
 
             ### Web
             `purr-web.tar.gz` for web deployment.
@@ -606,7 +720,7 @@ jobs:
                   "labels": ["breaking", "breaking-change"]
                 }
               ],
-              "template": "# Release ${{ steps.version.outputs.version }}\n\n#{{CHANGELOG}}\n\n## 📦 Build Information\n- Linux x64: CUDA backend\n- macOS Apple Silicon: Metal backend\n- Windows x64: CUDA + Vulkan backends (falls back to CPU without a GPU runtime)\n- Each platform ships the command-line tool and the desktop app separately",
+              "template": "# Release ${{ steps.version.outputs.version }}\n\n#{{CHANGELOG}}\n\n## 📦 Build Information\n- Linux x64: CUDA + Vulkan backends in one build (falls back to CPU without a GPU runtime), plus CPU-only, Vulkan-only and CUDA-only builds\n- macOS Apple Silicon: Metal backend\n- Windows x64: CUDA + Vulkan backends (falls back to CPU without a GPU runtime)\n- Each platform ships the command-line tool and the desktop app separately",
               "pr_template": "- #{{TITLE}} (#{{NUMBER}}) @#{{AUTHOR}}"
             }
           toTag: ${{ github.ref }}
@@ -648,12 +762,16 @@ jobs:
             ### Desktop app
             - Windows: `purr-VERSION-desktop-windows-x64-cuda-vulkan-setup.exe` (installer, Vulkan and CPU) or `purr-VERSION-desktop-windows-x64-cuda-vulkan-portable.zip` (includes the CUDA runtime DLLs)
             - macOS (Apple Silicon): `purr-VERSION-desktop-macos-arm64-metal.dmg`
-            - Linux: `purr-VERSION-desktop-linux-x64-cuda.deb`. Requires the CUDA 13 runtime and an NVIDIA driver.
+            - Linux: `purr-VERSION-desktop-linux-x64-all.deb` (an `.AppImage` is attached when it could be built). Includes the CUDA runtime: uses an NVIDIA GPU when the NVIDIA driver is installed, otherwise Vulkan, otherwise the CPU.
 
             ### Command-line tool
             - Windows: `purr-VERSION-cli-windows-x64-cuda-vulkan.zip`. Extract all files to one folder.
             - macOS (Apple Silicon): `purr-VERSION-cli-macos-arm64-metal.tar.gz`
-            - Linux: `purr-VERSION-cli-linux-x64-cuda.tar.gz`. Keep the `lib` folder next to `purr`.
+            - Linux: `purr-VERSION-cli-linux-x64-all.tar.gz` (recommended). Keep the `lib` folder next to `purr`. Uses CUDA, otherwise Vulkan, otherwise the CPU.
+              - `purr-VERSION-cli-linux-x64-vulkan.tar.gz`: smaller, Vulkan otherwise the CPU.
+              - `purr-VERSION-cli-linux-x64-cpu.tar.gz`: smallest, CPU only.
+              - `purr-VERSION-cli-linux-x64-cuda.tar.gz`: NVIDIA only; does not start without the NVIDIA driver.
+              - All Linux builds need an x86-64 CPU with AVX2 (2013 or later).
 
             ### Web
             `purr-VERSION-web.tar.gz` for deployment.
