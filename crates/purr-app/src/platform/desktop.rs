@@ -478,10 +478,10 @@ fn describe_parse_error(contents: &str, error: &toml::de::Error) -> String {
         .span()
         .and_then(|span| contents.get(..span.start))
         .map(|before| before.matches('\n').count() + 1);
-    match line {
-        Some(line) => format!("{} (line {line})", error.message()),
-        None => error.message().to_owned(),
-    }
+    line.map_or_else(
+        || error.message().to_owned(),
+        |line| format!("{} (line {line})", error.message()),
+    )
 }
 
 fn lookup_shared(manager: &ModelManager, model_id: &str) -> Result<Arc<ModelSpec>, PlatformError> {
