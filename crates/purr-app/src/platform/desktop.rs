@@ -354,14 +354,14 @@ impl Platform for DesktopPlatformImpl {
             .map_err(PlatformError::device_detection)
     }
 
-    async fn plan_browser_engine(
+    fn plan_browser_engine(
         &self,
         _model_id: &str,
         _accel: AccelPolicy,
-    ) -> Result<EnginePlan, PlatformError> {
-        Err(PlatformError::unsupported(
+    ) -> impl std::future::Future<Output = Result<EnginePlan, PlatformError>> + Send {
+        std::future::ready(Err(PlatformError::unsupported(
             "planning a browser engine on the desktop",
-        ))
+        )))
     }
 
     // ========================================
