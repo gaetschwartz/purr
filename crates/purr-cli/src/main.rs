@@ -4,6 +4,7 @@ mod fmt;
 mod json;
 mod models;
 mod progress;
+mod runtime;
 mod trace;
 
 use crate::fmt::{MyFormatter, Verbosity, VerbosityLevel};
@@ -388,6 +389,7 @@ async fn handle_command(command: Commands, verbosity: Verbosity) -> miette::Resu
     match command {
         Commands::Models { command } => models::handle_model_command(command, verbosity).await,
         Commands::Sys {} => handle_sys_command(verbosity).await,
+        Commands::Runtime { command } => runtime::handle_runtime_command(command),
     }
 }
 
@@ -398,7 +400,7 @@ async fn handle_sys_command(_verbosity: Verbosity) -> miette::Result<()> {
     fn feature_status(feature: &FeatureStatus) -> String {
         match feature {
             FeatureStatus::Disabled => "Not built".yellow().to_string(),
-            FeatureStatus::RuntimeLibraryMissing { library } => {
+            FeatureStatus::RuntimeLibraryMissing { library, .. } => {
                 format!("Built, but the runtime library {library} cannot be loaded")
                     .red()
                     .to_string()
@@ -433,6 +435,9 @@ async fn handle_sys_command(_verbosity: Verbosity) -> miette::Result<()> {
             backend.pretty_name(),
             feature_status(status)
         );
+        if let FeatureStatus::RuntimeLibraryMissing { searched, .. } = status {
+            println!("    {}", runtime::searched_summary(searched).dimmed());
+        }
     }
     println!();
 

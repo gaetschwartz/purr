@@ -76,8 +76,14 @@ fn unavailable(reason: UnavailableReason) -> BackendUnavailable {
     match reason {
         UnavailableReason::NotBuilt => BackendUnavailable::NotBuilt,
         UnavailableReason::NoDevice => BackendUnavailable::NoDevice,
-        UnavailableReason::RuntimeLibraryMissing { library } => {
-            BackendUnavailable::RuntimeLibraryMissing { library }
+        UnavailableReason::RuntimeLibraryMissing { library, searched } => {
+            BackendUnavailable::RuntimeLibraryMissing {
+                library,
+                searched: searched
+                    .iter()
+                    .map(|dir| dir.display().to_string())
+                    .collect(),
+            }
         }
         UnavailableReason::NotBuiltOrNoDevice => BackendUnavailable::NotBuiltOrNoDevice,
     }
@@ -197,6 +203,8 @@ pub fn probe(last_run: Option<LastRun>) -> SystemReport {
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
     use super::*;
     use purr_core::accel::{
         backend::BuildStatus,
@@ -289,6 +297,7 @@ mod tests {
                 })
                 .collect(),
             missing_runtime: HashMap::from([(CoreBackend::Cuda, "cudart64_13.dll".to_owned())]),
+            runtime_dirs: vec![PathBuf::from("runtime")],
         }
     }
 
@@ -321,7 +330,8 @@ mod tests {
                 (
                     AccelBackend::Cuda,
                     BackendStatus::Unavailable(BackendUnavailable::RuntimeLibraryMissing {
-                        library: "cudart64_13.dll".to_owned()
+                        library: "cudart64_13.dll".to_owned(),
+                        searched: vec!["runtime".to_owned()],
                     }),
                     0
                 ),

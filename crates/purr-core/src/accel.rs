@@ -12,6 +12,7 @@ pub mod library_loader;
 pub mod plan;
 pub mod probe;
 pub mod report;
+pub mod runtime_dir;
 pub mod runtime_library;
 #[cfg(all(target_os = "linux", target_env = "gnu", feature = "vulkan"))]
 pub mod vulkan_loader;

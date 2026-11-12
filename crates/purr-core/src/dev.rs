@@ -1,6 +1,6 @@
 //! GPU detection and information
 
-use std::{collections::HashMap, ffi::CStr};
+use std::{collections::HashMap, ffi::CStr, path::PathBuf};
 
 use serde::{Deserialize, Serialize};
 use whisper_rs::whisper_rs_sys::{self, ggml_backend_dev_caps, ggml_backend_dev_count};
@@ -45,8 +45,8 @@ impl SystemInfo {
                 .map(|backend| {
                     let status = match locate(*backend, &inventory) {
                         Ok(_) => FeatureStatus::Available(None),
-                        Err(UnavailableReason::RuntimeLibraryMissing { library }) => {
-                            FeatureStatus::RuntimeLibraryMissing { library }
+                        Err(UnavailableReason::RuntimeLibraryMissing { library, searched }) => {
+                            FeatureStatus::RuntimeLibraryMissing { library, searched }
                         }
                         Err(UnavailableReason::NoDevice) => FeatureStatus::EnabledButNotAvailable,
                         Err(
@@ -65,7 +65,11 @@ impl SystemInfo {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 pub enum FeatureStatus {
     Disabled,
-    RuntimeLibraryMissing { library: String },
+    RuntimeLibraryMissing {
+        library: String,
+        #[serde(default)]
+        searched: Vec<PathBuf>,
+    },
     EnabledButNotAvailable,
     Available(Option<u16>),
 }

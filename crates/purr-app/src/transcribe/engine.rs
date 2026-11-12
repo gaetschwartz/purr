@@ -31,7 +31,9 @@ pub fn why_passed_over(reason: &PassedReason) -> String {
         PassedReason::Unavailable(BackendUnavailable::NoDevice) => {
             "no usable device responded".to_owned()
         }
-        PassedReason::Unavailable(BackendUnavailable::RuntimeLibraryMissing { library }) => {
+        PassedReason::Unavailable(BackendUnavailable::RuntimeLibraryMissing {
+            library, ..
+        }) => {
             format!("{library} is missing")
         }
         PassedReason::Failed(failure) => failure.clone(),
@@ -214,6 +216,7 @@ mod tests {
                 AccelBackend::Cuda,
                 PassedReason::Unavailable(BackendUnavailable::RuntimeLibraryMissing {
                     library: "cudart64_12.dll".to_owned(),
+                    searched: Vec::new(),
                 }),
             )],
         );

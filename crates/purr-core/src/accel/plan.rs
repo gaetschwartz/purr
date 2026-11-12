@@ -59,6 +59,7 @@ pub fn locate(
     if let Some(library) = inventory.missing_runtime.get(&backend) {
         return Err(UnavailableReason::RuntimeLibraryMissing {
             library: library.clone(),
+            searched: inventory.runtime_dirs.clone(),
         });
     }
     let target = match backend {
@@ -129,7 +130,7 @@ pub fn resolve(config: &AccelConfig, inventory: &Inventory) -> Result<Plan, Acce
 mod tests {
     use super::*;
     use AccelBackend::{Cpu, Cuda, Hip, Metal, Vulkan};
-    use std::collections::HashMap;
+    use std::{collections::HashMap, path::PathBuf};
 
     fn device(id: i32, backend: AccelBackend, tpe: DeviceType) -> Device {
         Device {
@@ -159,6 +160,7 @@ mod tests {
                 })
                 .collect::<HashMap<_, _>>(),
             missing_runtime: HashMap::new(),
+            runtime_dirs: vec![PathBuf::from("/runtime")],
         }
     }
 
@@ -277,7 +279,8 @@ mod tests {
             Some(&AccelAttempt {
                 backend: Cuda,
                 outcome: AttemptOutcome::Unavailable(UnavailableReason::RuntimeLibraryMissing {
-                    library: "cublas64_13.dll".to_owned()
+                    library: "cublas64_13.dll".to_owned(),
+                    searched: vec![PathBuf::from("/runtime")],
                 }),
             })
         );
@@ -355,6 +358,7 @@ mod tests {
             devices: vec![device(0, Cpu, DeviceType::Cpu)],
             build: HashMap::new(),
             missing_runtime: HashMap::new(),
+            runtime_dirs: Vec::new(),
         };
         let result = resolve(&AccelConfig::forced(Hip, false), &inventory);
         assert!(matches!(

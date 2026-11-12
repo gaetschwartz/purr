@@ -146,6 +146,19 @@ pub enum Commands {
     /// System commands
     #[clap(alias = "s")]
     Sys {},
+    /// GPU runtime libraries: where they are looked for and where to put them
+    Runtime {
+        #[command(subcommand)]
+        command: RuntimeCommands,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum RuntimeCommands {
+    /// Show where GPU runtime libraries are searched, in order, and what each place holds
+    Status,
+    /// Print the directory a runtime pack should be unpacked into
+    Path,
 }
 
 #[derive(Subcommand, Debug)]

@@ -10,7 +10,13 @@ use std::{
     sync::OnceLock,
 };
 
-use super::{backend::AccelBackend, runtime_library::required, vulkan_stand_in};
+use super::{
+    backend::AccelBackend,
+    library_loader::{SystemLoader, open_all},
+    runtime_dir::{Environment, search_dirs},
+    runtime_library::required,
+    vulkan_stand_in,
+};
 
 /// A library handle or a function address, both valid for the whole process.
 #[derive(Clone, Copy)]
@@ -25,7 +31,13 @@ unsafe impl Sync for Address {}
 fn loader() -> Option<Address> {
     static LOADER: OnceLock<Option<Address>> = OnceLock::new();
     *LOADER.get_or_init(|| {
-        let name = CString::new(*required(AccelBackend::Vulkan).first()?).ok()?;
+        let libraries = required(AccelBackend::Vulkan);
+        let dirs: Vec<_> = search_dirs(&Environment::current())
+            .into_iter()
+            .map(|dir| dir.path)
+            .collect();
+        open_all(&SystemLoader, &libraries, &dirs).ok()?;
+        let name = CString::new(*libraries.first()?).ok()?;
         let handle = unsafe { libc::dlopen(name.as_ptr(), libc::RTLD_NOW | libc::RTLD_LOCAL) };
         NonNull::new(handle).map(Address)
     })

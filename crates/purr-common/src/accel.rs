@@ -138,7 +138,12 @@ pub enum BackendUnavailable {
     /// Built in, but no usable device was found.
     NoDevice,
     /// Built in, but the runtime library it loads at start cannot be found.
-    RuntimeLibraryMissing { library: String },
+    RuntimeLibraryMissing {
+        library: String,
+        /// The directories looked in before the system's own library search.
+        #[serde(default)]
+        searched: Vec<String>,
+    },
     /// Not built in, or no device was found; the build cannot tell which.
     NotBuiltOrNoDevice,
 }

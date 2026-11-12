@@ -10,7 +10,12 @@ pub enum UnavailableReason {
     #[error("support for it was not compiled into this build")]
     NotBuilt,
     #[error("support for it is compiled in but the runtime library {library} cannot be loaded")]
-    RuntimeLibraryMissing { library: String },
+    RuntimeLibraryMissing {
+        library: String,
+        /// The directories looked in before the system's own library search.
+        #[serde(default)]
+        searched: Vec<PathBuf>,
+    },
     #[error("support for it is compiled in but no usable device was detected")]
     NoDevice,
     #[error("support for it is not compiled in, or no usable device was detected")]

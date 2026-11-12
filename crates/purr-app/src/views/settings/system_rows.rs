@@ -96,6 +96,17 @@ fn available_rows(report: &BackendReport, cpu: &CpuReport) -> Vec<SystemRow> {
         .collect()
 }
 
+fn missing_library_detail(searched: &[String]) -> String {
+    if searched.is_empty() {
+        "Purr supports it, but the library it needs is not installed.".to_owned()
+    } else {
+        format!(
+            "Purr supports it, but the library it needs is not installed. Looked in {}, then the system's library folders.",
+            searched.join(", ")
+        )
+    }
+}
+
 fn unavailable_row(backend: AccelBackend, why: &BackendUnavailable) -> SystemRow {
     let (name, detail, badge) = match why {
         BackendUnavailable::NotBuilt => {
@@ -106,9 +117,9 @@ fn unavailable_row(backend: AccelBackend, why: &BackendUnavailable) -> SystemRow
             Some("Purr supports it, but no device or driver responded.".to_owned()),
             Badge::BuiltUnavailable,
         ),
-        BackendUnavailable::RuntimeLibraryMissing { library } => (
+        BackendUnavailable::RuntimeLibraryMissing { library, searched } => (
             format!("Missing {library}"),
-            Some("Purr supports it, but the library it needs is not installed.".to_owned()),
+            Some(missing_library_detail(searched)),
             Badge::BuiltUnavailable,
         ),
         BackendUnavailable::NotBuiltOrNoDevice => (
@@ -283,6 +294,7 @@ mod tests {
                     AccelBackend::Cuda,
                     BackendStatus::Unavailable(BackendUnavailable::RuntimeLibraryMissing {
                         library: "cudart64_13.dll".to_owned(),
+                        searched: vec!["/opt/purr/runtime".to_owned(), "/opt/purr".to_owned()],
                     }),
                     vec![],
                 ),
@@ -351,7 +363,9 @@ mod tests {
                 row(
                     "CUDA",
                     "Missing cudart64_13.dll",
-                    Some("Purr supports it, but the library it needs is not installed."),
+                    Some(
+                        "Purr supports it, but the library it needs is not installed. Looked in /opt/purr/runtime, /opt/purr, then the system's library folders."
+                    ),
                     Badge::BuiltUnavailable
                 ),
                 row("Metal", "Not part of this build", None, Badge::NotBuilt),
@@ -522,6 +536,7 @@ mod tests {
                         reason: PassedReason::Unavailable(
                             BackendUnavailable::RuntimeLibraryMissing {
                                 library: "cudart64_13.dll".to_owned(),
+                                searched: Vec::new(),
                             },
                         ),
                     },
