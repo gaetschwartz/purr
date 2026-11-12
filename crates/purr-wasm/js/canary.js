@@ -20,6 +20,15 @@ async function canarySamples() {
     return samples;
 }
 
+const warmed = new WeakSet();
+
+export async function warmUp(transcriber, englishOnly) {
+    if (!warmed.has(transcriber)) {
+        await transcribeCanary(transcriber, englishOnly);
+        warmed.add(transcriber);
+    }
+}
+
 export async function transcribeCanary(transcriber, englishOnly) {
     const options = { top_k: 0, do_sample: false, max_new_tokens: MAX_TOKENS };
     if (!englishOnly) {

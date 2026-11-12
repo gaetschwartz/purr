@@ -77,13 +77,12 @@ pub enum WorkerRequest {
     },
     /// Look for a WebGPU adapter.
     ProbeGpu { request_id: RequestId },
-    /// Transcribe the check recording with `model` on `provider` and time it; with `warm_up` the
-    /// recording is transcribed once untimed first, so the timed run leaves out one-off setup.
+    /// Transcribe the check recording with `model` on `provider` and time it, leaving out the
+    /// one-off setup of a new model.
     TranscribeCanary {
         request_id: RequestId,
         model: WorkerModel,
         provider: Provider,
-        warm_up: bool,
         english_only: bool,
         #[serde(default, deserialize_with = "HuggingFaceToken::deserialize_optional")]
         hugging_face_token: Option<HuggingFaceToken>,
@@ -361,7 +360,6 @@ mod tests {
             request_id: RequestId::new(2),
             model: model(),
             provider: Provider::WebGpu,
-            warm_up: true,
             english_only: false,
             hugging_face_token: HuggingFaceToken::new("hf_dummy"),
         };
@@ -371,7 +369,7 @@ mod tests {
              repo: \"onnx-community/whisper-tiny\", \
              revision: \"ff4177021cc41f7db950912b73ea4fdf7d01d8e7\", \
              encoder_dtype: Fp32, decoder_dtype: Q4, requires_shader_f16: false }, \
-             provider: WebGpu, warm_up: true, english_only: false, \
+             provider: WebGpu, english_only: false, \
              hugging_face_token: Some(HuggingFaceToken(<redacted>)) }"
         );
     }
@@ -426,7 +424,6 @@ mod tests {
                 request_id: RequestId::new(5),
                 model: model(),
                 provider: Provider::Cpu,
-                warm_up: false,
                 english_only: false,
                 hugging_face_token: HuggingFaceToken::new("hf_dummy"),
             },

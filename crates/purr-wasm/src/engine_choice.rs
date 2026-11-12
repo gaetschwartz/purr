@@ -182,8 +182,6 @@ async fn transcribe_canary(
         request_id: worker.next_request_id(),
         model: WorkerModel::from(spec),
         provider,
-        // the first WebGPU run compiles every shader the model uses
-        warm_up: provider == Provider::WebGpu,
         english_only: spec.english_only(),
         hugging_face_token: hugging_face_token.cloned(),
     };

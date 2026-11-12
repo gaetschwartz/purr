@@ -1,5 +1,5 @@
 import "./console_filter.js";
-import { configureCanary, transcribeCanary } from "./canary.js";
+import { configureCanary, transcribeCanary, warmUp } from "./canary.js";
 import { useHuggingFaceToken } from "./hugging_face_auth.js";
 import { emit, emitFailure, FailureKind, WorkerFailure } from "./events.js";
 import { probeGpu } from "./gpu.js";
@@ -10,6 +10,20 @@ import { keepWebGpuPolled } from "./webgpu_polling.js";
 keepWebGpuPolled();
 
 let queue = Promise.resolve();
+
+// Firefox builds every WebGPU pipeline again on each page load, one at a time: https://bugzilla.mozilla.org/show_bug.cgi?id=2083378
+async function readyTranscriber(message) {
+    useHuggingFaceToken(message.hugging_face_token);
+    const transcriber = await loadTranscriber(message.model, message.provider, message.request_id);
+    if (message.provider === Provider.WebGpu) {
+        try {
+            await warmUp(transcriber, message.english_only);
+        } catch (error) {
+            console.warn("Warming up the GPU failed; the run itself will report the cause", error);
+        }
+    }
+    return transcriber;
+}
 
 async function handle(message) {
     switch (message.type) {
@@ -25,16 +39,8 @@ async function handle(message) {
             emit({ type: "GpuProbed", request_id: message.request_id, probe: await probeGpu() });
             return;
         case "TranscribeCanary": {
-            useHuggingFaceToken(message.hugging_face_token);
-            const transcriber = await loadTranscriber(
-                message.model,
-                message.provider,
-                message.request_id,
-            );
+            const transcriber = await readyTranscriber(message);
             try {
-                if (message.warm_up) {
-                    await transcribeCanary(transcriber, message.english_only);
-                }
                 const startedAt = performance.now();
                 const text = await transcribeCanary(transcriber, message.english_only);
                 emit({
@@ -49,12 +55,7 @@ async function handle(message) {
             return;
         }
         case "Transcribe": {
-            useHuggingFaceToken(message.hugging_face_token);
-            const transcriber = await loadTranscriber(
-                message.model,
-                message.provider,
-                message.request_id,
-            );
+            const transcriber = await readyTranscriber(message);
             emit({ type: "Transcribing", request_id: message.request_id });
             try {
                 await transcribe(transcriber, message);
