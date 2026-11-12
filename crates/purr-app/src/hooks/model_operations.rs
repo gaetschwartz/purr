@@ -43,7 +43,8 @@ fn failure(models: ModelsHandle, kind: ModelFailureKind, message: String) -> Dow
 }
 
 async fn receive(models: ModelsHandle, id: &str) -> Outcome {
-    let mut stream = match platform::get_platform().fetch_model(id).await {
+    let token = models.settings.peek().model.hugging_face_token;
+    let mut stream = match platform::get_platform().fetch_model(id, token).await {
         Ok(stream) => stream,
         Err(error) => {
             return Outcome::Failed(failure(models, ModelFailureKind::Other, error.to_string()));

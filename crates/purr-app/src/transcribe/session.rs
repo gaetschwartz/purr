@@ -397,6 +397,7 @@ impl TranscribeSession {
             language: language.request_code(),
             translate: settings.model.translate,
             engine: EngineOptions::from_settings(&settings),
+            hugging_face_token: settings.model.hugging_face_token.clone(),
         };
         let run = Run::new(language == LanguageChoice::Automatic, now_ms());
         tracing::info!(

@@ -107,6 +107,7 @@ impl Platform for UnimplementedPlatformImpl {
     async fn fetch_model(
         &self,
         model_id: &str,
+        token: Option<purr_common::hugging_face_token::HuggingFaceToken>,
     ) -> Result<purr_common::platform::ModelProgressStream, PlatformError> {
         unsupported!()
     }

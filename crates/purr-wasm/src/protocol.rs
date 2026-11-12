@@ -3,6 +3,7 @@
 //! Both directions carry JSON text so the shapes are defined once, here, and covered by native
 //! tests. Audio samples travel beside the JSON as a transferred `Float32Array`.
 
+use purr_common::hugging_face_token::HuggingFaceToken;
 use purr_common::platform::TranscriptSegment;
 use purr_common::web_model::attributes::OnnxDtype;
 use purr_common::web_model::registry::WebModelSpec;
@@ -60,6 +61,8 @@ pub enum WorkerRequest {
     LoadModel {
         request_id: RequestId,
         model: WorkerModel,
+        #[serde(default, deserialize_with = "HuggingFaceToken::deserialize_optional")]
+        hugging_face_token: Option<HuggingFaceToken>,
     },
     /// Transcribe the 16 kHz mono samples that accompany the message.
     Transcribe {
@@ -68,6 +71,8 @@ pub enum WorkerRequest {
         language: Option<String>,
         translate: bool,
         english_only: bool,
+        #[serde(default, deserialize_with = "HuggingFaceToken::deserialize_optional")]
+        hugging_face_token: Option<HuggingFaceToken>,
     },
 }
 
@@ -239,6 +244,7 @@ mod tests {
             language: Some("fr".to_owned()),
             translate: false,
             english_only: false,
+            hugging_face_token: None,
         };
         assert_eq!(
             serde_json::to_value(&request)?,
@@ -255,9 +261,47 @@ mod tests {
                 "language": "fr",
                 "translate": false,
                 "english_only": false,
+                "hugging_face_token": null,
             })
         );
         Ok(())
+    }
+
+    #[test]
+    fn the_token_travels_as_a_plain_field_of_the_request() -> Result<(), serde_json::Error> {
+        let request = WorkerRequest::LoadModel {
+            request_id: RequestId::new(3),
+            model: model(),
+            hugging_face_token: HuggingFaceToken::new("hf_dummy"),
+        };
+        assert_eq!(
+            serde_json::to_value(&request)?["hugging_face_token"],
+            json!("hf_dummy")
+        );
+        let decoded: WorkerRequest = serde_json::from_str(&serde_json::to_string(&request)?)?;
+        assert_eq!(decoded, request);
+        Ok(())
+    }
+
+    #[test]
+    fn the_debug_form_of_a_request_hides_the_token() {
+        let request = WorkerRequest::Transcribe {
+            request_id: RequestId::new(1),
+            model: model(),
+            language: None,
+            translate: false,
+            english_only: false,
+            hugging_face_token: HuggingFaceToken::new("hf_dummy"),
+        };
+        assert_eq!(
+            format!("{request:?}"),
+            "Transcribe { request_id: RequestId(1), model: WorkerModel { \
+             repo: \"onnx-community/whisper-tiny\", \
+             revision: \"ff4177021cc41f7db950912b73ea4fdf7d01d8e7\", \
+             encoder_dtype: Fp32, decoder_dtype: Q4, requires_shader_f16: false }, \
+             language: None, translate: false, english_only: false, \
+             hugging_face_token: Some(HuggingFaceToken(<redacted>)) }"
+        );
     }
 
     #[test]
@@ -268,6 +312,7 @@ mod tests {
             language: None,
             translate: true,
             english_only: true,
+            hugging_face_token: None,
         };
         assert_eq!(serde_json::to_value(&request)?["language"], json!(null));
         Ok(())
@@ -295,6 +340,7 @@ mod tests {
         let request = WorkerRequest::LoadModel {
             request_id: RequestId::new(3),
             model: model(),
+            hugging_face_token: None,
         };
         let decoded: WorkerRequest = serde_json::from_str(&serde_json::to_string(&request)?)?;
         assert_eq!(decoded, request);

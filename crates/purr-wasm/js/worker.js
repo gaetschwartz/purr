@@ -1,4 +1,5 @@
 import "./console_filter.js";
+import { useHuggingFaceToken } from "./hugging_face_auth.js";
 import { emit, emitFailure, FailureKind, WorkerFailure } from "./events.js";
 import { configureRuntime, loadTranscriber } from "./model_loader.js";
 import { transcribe } from "./transcriber.js";
@@ -11,9 +12,11 @@ async function handle(message) {
             configureRuntime(message);
             return;
         case "LoadModel":
+            useHuggingFaceToken(message.hugging_face_token);
             await loadTranscriber(message.model, message.request_id);
             return;
         case "Transcribe": {
+            useHuggingFaceToken(message.hugging_face_token);
             const transcriber = await loadTranscriber(message.model, message.request_id);
             emit({ type: "Transcribing", request_id: message.request_id });
             await transcribe(transcriber, message);

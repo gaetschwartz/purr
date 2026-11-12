@@ -15,6 +15,7 @@ use purr_common::history::{
     listing::{HistoryListing, Saved},
     retention::Limits,
 };
+use purr_common::hugging_face_token::HuggingFaceToken;
 use purr_common::platform::{
     DeviceInfo, FileId, FileSource, IntegrityProblem, ModelFailureKind, ModelInfo, ModelIntegrity,
     ModelMetadata, ModelOperationProgress, ModelProgressStream, TranscriptionStream, model_flag,
@@ -273,8 +274,9 @@ impl Platform for DesktopPlatformImpl {
     fn fetch_model(
         &self,
         model_id: &str,
+        token: Option<HuggingFaceToken>,
     ) -> impl Future<Output = Result<ModelProgressStream, PlatformError>> + Send {
-        std::future::ready(self.start_download(model_id))
+        std::future::ready(self.start_download(model_id, token))
     }
 
     async fn get_model_info(&self, model_id: &str) -> Result<ModelInfo, PlatformError> {
@@ -383,12 +385,12 @@ impl Platform for DesktopPlatformImpl {
 
         // Parse TOML content
         let settings: Settings = toml::from_str(&contents).map_err(|e| {
+            let reason = describe_parse_error(&contents, &e);
             error!(
-                "Failed to parse settings file {}: {}",
-                settings_path.display(),
-                e
+                "Failed to parse settings file {}: {reason}",
+                settings_path.display()
             );
-            PlatformError::settings_persistence(e)
+            PlatformError::settings_persistence(reason)
         })?;
 
         info!(
@@ -468,6 +470,18 @@ fn lookup<'a>(manager: &'a ModelManager, model_id: &str) -> Result<&'a ModelSpec
         .registry()
         .get(model_id)
         .map_err(|err| PlatformError::model_not_found(err.model_name))
+}
+
+/// Where and why the file failed to parse, without the line of the file that holds the token.
+fn describe_parse_error(contents: &str, error: &toml::de::Error) -> String {
+    let line = error
+        .span()
+        .and_then(|span| contents.get(..span.start))
+        .map(|before| before.matches('\n').count() + 1);
+    match line {
+        Some(line) => format!("{} (line {line})", error.message()),
+        None => error.message().to_owned(),
+    }
 }
 
 fn lookup_shared(manager: &ModelManager, model_id: &str) -> Result<Arc<ModelSpec>, PlatformError> {
@@ -668,6 +682,7 @@ async fn emit(tx: &mut ProgressSender, progress: ModelOperationProgress) -> bool
 async fn run_download(
     manager: Arc<ModelManager>,
     model: Arc<ModelSpec>,
+    token: Option<HuggingFaceToken>,
     mut tx: ProgressSender,
     cancelled: oneshot::Receiver<()>,
 ) {
@@ -678,7 +693,7 @@ async fn run_download(
             discard_partial(&manager, &model).await;
             return;
         }
-        outcome = download(&manager, &model, &mut tx) => outcome,
+        outcome = download(&manager, &model, token.as_ref(), &mut tx) => outcome,
     };
     if let Err(failure) = outcome {
         emit(&mut tx, failure).await;
@@ -701,6 +716,7 @@ async fn discard_partial(manager: &ModelManager, model: &ModelSpec) {
 async fn download(
     manager: &ModelManager,
     model: &ModelSpec,
+    token: Option<&HuggingFaceToken>,
     tx: &mut ProgressSender,
 ) -> Result<(), ModelOperationProgress> {
     let model_id = model.id.clone();
@@ -734,7 +750,7 @@ async fn download(
     let started = Instant::now();
     let mut progress_tx = tx.clone();
     let local_path = manager
-        .download_model_with_progress(model, |downloaded, total| {
+        .download_model_with_progress(model, token, |downloaded, total| {
             let seconds = started.elapsed().as_secs_f64();
             let progress = ModelOperationProgress::Downloading {
                 model_id: model_id.clone(),
@@ -832,13 +848,17 @@ impl DesktopPlatformImpl {
             .map_err(Into::into)
     }
 
-    fn start_download(&self, model_id: &str) -> Result<ModelProgressStream, PlatformError> {
+    fn start_download(
+        &self,
+        model_id: &str,
+        token: Option<HuggingFaceToken>,
+    ) -> Result<ModelProgressStream, PlatformError> {
         let model = lookup_shared(&self.model_manager, model_id)?;
         let manager = Arc::clone(&self.model_manager);
         let (tx, rx) = mpsc::channel(10);
         let (cancel, cancelled) = oneshot::channel::<()>();
 
-        tokio::spawn(run_download(manager, model, tx, cancelled));
+        tokio::spawn(run_download(manager, model, token, tx, cancelled));
 
         Ok(Box::pin(CancelOnDrop {
             progress: rx,
@@ -902,6 +922,16 @@ mod tests {
         let labels: HashSet<&str> = entries.iter().map(|entry| entry.label.as_str()).collect();
         assert_eq!(labels.len(), entries.len());
         Ok(())
+    }
+
+    #[test]
+    fn a_parse_error_names_the_line_but_not_its_text() {
+        let contents = "version = 2\n\n[model]\nhugging_face_token = hf_secret\n";
+        let error = toml::from_str::<Settings>(contents).unwrap_err();
+        assert_eq!(
+            describe_parse_error(contents, &error),
+            "string values must be quoted, expected literal string (line 4)".to_owned()
+        );
     }
 
     #[test]

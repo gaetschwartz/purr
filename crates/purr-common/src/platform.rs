@@ -21,6 +21,7 @@ use crate::{
         entry::{HistoryEntry, HistoryId, HistoryRecord},
         listing::{HistoryListing, Saved},
     },
+    hugging_face_token::HuggingFaceToken,
     settings::Settings,
 };
 
@@ -346,6 +347,8 @@ pub struct TranscriptionRequest {
     pub translate: bool,
     /// How the engine runs; platforms that do not choose their own hardware ignore it
     pub engine: EngineOptions,
+    /// Authenticates the downloads of a model that is not stored yet; desktop never downloads here
+    pub hugging_face_token: Option<HuggingFaceToken>,
 }
 
 /// How the transcription engine runs, taken from the performance and model settings.
@@ -945,6 +948,7 @@ pub trait Platform: Send + Sync + 'static {
     ///
     /// # Arguments
     /// * `model_id` - Unique identifier of the model to fetch
+    /// * `token` - Authenticates the requests to Hugging Face, when the user set one
     ///
     /// # Returns
     /// Stream of progress updates during download and installation
@@ -961,6 +965,7 @@ pub trait Platform: Send + Sync + 'static {
     fn fetch_model(
         &self,
         model_id: &str,
+        token: Option<HuggingFaceToken>,
     ) -> impl std::future::Future<Output = Result<ModelProgressStream, PlatformError>> + Send;
 
     /// Get detailed information about a specific model

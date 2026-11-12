@@ -22,6 +22,7 @@ use purr_common::history::{
     listing::{HistoryListing, Saved},
     retention::Limits,
 };
+use purr_common::hugging_face_token::HuggingFaceToken;
 use purr_common::platform::{
     DeviceInfo, DeviceType, FileId, FileSource, ModelFailureKind, ModelInfo, ModelIntegrity,
     ModelOperationProgress, ModelProgressStream, Platform, PlatformError, TranscriptionRequest,
@@ -204,6 +205,7 @@ struct Transcription {
     bytes: Bytes,
     language: Option<String>,
     translate: bool,
+    hugging_face_token: Option<HuggingFaceToken>,
 }
 
 async fn run_transcription(
@@ -218,6 +220,7 @@ async fn run_transcription(
         bytes,
         language,
         translate,
+        hugging_face_token,
     } = job;
     if !send_status(&tx, TranscriptionStatus::Starting)
         || !send_status(&tx, TranscriptionStatus::ProcessingAudio)
@@ -253,6 +256,7 @@ async fn run_transcription(
         language,
         translate,
         english_only: spec.english_only(),
+        hugging_face_token,
     };
     let mut events = match worker.submit(request, Some(decoded.samples)) {
         Ok(events) => events,
@@ -289,6 +293,7 @@ async fn run_transcription(
 async fn run_preload(
     worker: Arc<WorkerClient>,
     spec: WebModelSpec,
+    hugging_face_token: Option<HuggingFaceToken>,
     tx: mpsc::UnboundedSender<Result<ModelOperationProgress, PlatformError>>,
 ) {
     let model_id = spec.id.clone();
@@ -353,6 +358,7 @@ async fn run_preload(
     let request = WorkerRequest::LoadModel {
         request_id: worker.next_request_id(),
         model: WorkerModel::from(&spec),
+        hugging_face_token,
     };
     let mut events = match worker.submit(request, None) {
         Ok(events) => events,
@@ -499,6 +505,7 @@ impl Platform for WasmPlatformImpl {
                 bytes,
                 language,
                 translate: request.translate,
+                hugging_face_token: request.hugging_face_token,
             },
             tx,
         ));
@@ -593,12 +600,16 @@ impl Platform for WasmPlatformImpl {
         Ok(available)
     }
 
-    async fn fetch_model(&self, model_id: &str) -> Result<ModelProgressStream, PlatformError> {
+    async fn fetch_model(
+        &self,
+        model_id: &str,
+        token: Option<HuggingFaceToken>,
+    ) -> Result<ModelProgressStream, PlatformError> {
         self.ensure_initialized().await?;
 
         let spec = self.model_manager.model(model_id)?.clone();
         let (tx, rx) = mpsc::unbounded_channel();
-        spawn_local(run_preload(Arc::clone(&self.worker), spec, tx));
+        spawn_local(run_preload(Arc::clone(&self.worker), spec, token, tx));
         Ok(Box::pin(UnboundedReceiverStream::new(rx)))
     }
 

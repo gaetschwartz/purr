@@ -8,6 +8,7 @@ use purr_common::{
         entry::{HistoryEntry, HistoryId, HistoryRecord},
         listing::{HistoryListing, Saved},
     },
+    hugging_face_token::HuggingFaceToken,
     settings::Settings,
 };
 use std::path::Path;

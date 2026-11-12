@@ -10,6 +10,7 @@ use crate::{
         state::{ModelState, model_state},
     },
     platform::{self, IS_WEB},
+    settings_store::{SettingsStore, use_settings},
     utils::delay::sleep,
 };
 use dioxus::{
@@ -67,6 +68,7 @@ pub struct ModelsHandle {
     pub(super) activity: Signal<HashMap<String, ModelActivity>>,
     downloads: Signal<HashMap<String, RunningDownload>>,
     pub(super) toasts: Toasts,
+    pub(super) settings: SettingsStore,
     refresh: Signal<u32>,
     gpu_check: Signal<u32>,
 }
@@ -315,7 +317,7 @@ struct Sources {
     handle: ModelsHandle,
 }
 
-fn create_sources(toasts: Toasts) -> Sources {
+fn create_sources(toasts: Toasts, settings: SettingsStore) -> Sources {
     let models = Signal::new(None);
     let gpu = Signal::new(GpuSupport::Checking);
     let online = Signal::new(true);
@@ -328,6 +330,7 @@ fn create_sources(toasts: Toasts) -> Sources {
         activity: Signal::new(HashMap::new()),
         downloads: Signal::new(HashMap::new()),
         toasts,
+        settings,
         refresh,
         gpu_check,
     };
@@ -342,9 +345,10 @@ fn create_sources(toasts: Toasts) -> Sources {
 }
 
 /// Loads the model list and watches the GPU and the connection; call once at the app root,
-/// after the toast provider.
+/// after the toast and settings providers.
 pub fn use_models_provider() -> ModelsHandle {
     let toasts = use_toasts();
+    let settings = use_settings();
     let Sources {
         mut models,
         mut gpu,
@@ -352,7 +356,9 @@ pub fn use_models_provider() -> ModelsHandle {
         refresh,
         gpu_check,
         handle,
-    } = use_hook(|| Runtime::current().in_scope(ScopeId::ROOT, || create_sources(toasts)));
+    } = use_hook(|| {
+        Runtime::current().in_scope(ScopeId::ROOT, || create_sources(toasts, settings))
+    });
 
     use_resource(move || async move {
         gpu_check();
