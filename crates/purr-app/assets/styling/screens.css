@@ -18,6 +18,14 @@
 .drop .link{color:var(--accent-text);font-weight:600}
 .runbar{display:flex;align-items:center;gap:8px;padding:8px;border-radius:999px;flex-wrap:wrap}
 .runbar .rb-spacer{flex:1;min-width:8px}
+.engine-chip{display:inline-flex;align-items:center;gap:8px;min-height:44px;min-width:0;max-width:100%;padding:6px 12px;border-radius:999px;font-size:13px;color:var(--fg-2);transition:background .2s}
+.engine-chip:hover{background:var(--fill)}
+.engine-chip svg{flex:none;color:var(--fg-3)}
+.engine-chip .et{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.engine-chip .eb{font-weight:600;color:var(--fg)}
+.runbar .engine-chip{flex:1 1 180px;min-width:120px;justify-content:flex-start}
+.runbar .engine-chip + .rb-spacer{display:none}
+.runbar .engine-chip ~ .btn{margin-left:auto}
 .privacy-line{display:flex;align-items:center;justify-content:center;gap:8px;font-size:13px;color:var(--fg-2);margin:0}
 .privacy-line svg{color:var(--success)}
 .filecard{display:flex;align-items:center;gap:16px;padding:16px;border-radius:var(--r-card)}
@@ -181,7 +189,8 @@ mark.cur{background:var(--accent);color:#fff}
   h1.lt.file{font-size:22px;line-height:28px}
   .drop{min-height:240px;padding:28px 18px}
   .runbar{border-radius:22px;flex-direction:column;align-items:stretch}
-  .runbar .pill{width:100%}
+  .runbar .pill,.runbar .engine-chip{width:100%}
+  .runbar .engine-chip{flex:none}
   .runbar .rb-spacer{display:none}
   .runbar .btn{width:100%;height:44px}
   .filecard .replace{display:none}

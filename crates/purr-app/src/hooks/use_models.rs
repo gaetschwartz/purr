@@ -22,7 +22,10 @@ use std::{collections::HashMap, time::Duration};
 pub enum GpuSupport {
     Checking,
     Unavailable,
-    Available { name: String, shader_f16: bool },
+    Available {
+        name: Option<String>,
+        shader_f16: bool,
+    },
 }
 
 impl GpuSupport {
@@ -277,7 +280,7 @@ pub fn use_models_provider() -> ModelsHandle {
                         .capabilities
                         .as_ref()
                         .is_some_and(|capabilities| capabilities.contains_key("shader-f16")),
-                    name: device.name,
+                    name: Some(device.name).filter(|name| !name.trim().is_empty()),
                 }),
             Err(error) => {
                 tracing::warn!("Could not detect the GPU: {error}");

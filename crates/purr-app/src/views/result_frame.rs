@@ -32,7 +32,7 @@ pub struct ResultDetails {
     pub language_text: String,
     pub took_seconds: f64,
     /// The hardware the run used, when the platform reported it.
-    pub engine: Option<&'static str>,
+    pub engine: Option<String>,
 }
 
 /// What to show where the player goes.
@@ -87,6 +87,7 @@ pub fn ResultFrame(
         .unwrap_or_default();
     let engine = details
         .engine
+        .as_ref()
         .map(|engine| format!(" · {engine}"))
         .unwrap_or_default();
     let copy_now = export.clone();

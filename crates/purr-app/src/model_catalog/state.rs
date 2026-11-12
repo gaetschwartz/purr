@@ -149,7 +149,7 @@ mod tests {
     }
 
     const NO_F16: GpuSupport = GpuSupport::Available {
-        name: String::new(),
+        name: None,
         shader_f16: false,
     };
 
@@ -240,7 +240,7 @@ mod tests {
             None
         );
         let capable = GpuSupport::Available {
-            name: String::new(),
+            name: None,
             shader_f16: true,
         };
         assert_eq!(unavailable_reason(&entry(false, true), &capable), None);

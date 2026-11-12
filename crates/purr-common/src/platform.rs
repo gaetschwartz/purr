@@ -754,7 +754,7 @@ pub enum DeviceType {
 pub struct DeviceInfo {
     /// Unique device identifier
     pub id: i32,
-    /// Human-readable device name
+    /// Device name; empty when the platform gives none
     pub name: String,
     /// Device description (optional)
     pub description: Option<String>,

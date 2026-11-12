@@ -4,6 +4,7 @@ mod about;
 mod appearance;
 mod browser_panel;
 mod changes;
+pub mod jump;
 mod logging;
 mod performance;
 mod saved_tick;

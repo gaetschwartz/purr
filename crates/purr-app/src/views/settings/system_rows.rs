@@ -154,7 +154,8 @@ pub fn browser_rows(gpu: &GpuSupport) -> Vec<SystemRow> {
             Badge::Unavailable,
         ),
         GpuSupport::Available { name, shader_f16 } => (
-            name.clone(),
+            name.clone()
+                .unwrap_or_else(|| "WebGPU adapter".to_owned()),
             Some(if *shader_f16 {
                 "16-bit floats supported".to_owned()
             } else {
@@ -311,6 +312,7 @@ mod tests {
                 ),
             ],
             cpu: CpuReport {
+                name: None,
                 logical_threads: Some(24),
                 features: vec![CpuFeature::Avx2, CpuFeature::Fma],
             },
@@ -377,6 +379,7 @@ mod tests {
                 vec![],
             )],
             cpu: CpuReport {
+                name: None,
                 logical_threads: None,
                 features: vec![],
             },
@@ -431,7 +434,7 @@ mod tests {
     fn the_browser_reports_its_adapter_and_what_it_lacks() {
         let with = |shader_f16| {
             browser_rows(&GpuSupport::Available {
-                name: "Some Adapter".to_owned(),
+                name: Some("Some Adapter".to_owned()),
                 shader_f16,
             })
         };

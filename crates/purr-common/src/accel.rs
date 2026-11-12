@@ -183,6 +183,8 @@ impl CpuFeature {
 /// What the processor offers.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CpuReport {
+    /// The processor's marketing name, when the system gives one.
+    pub name: Option<String>,
     /// Threads the processor runs at once, when the system says.
     pub logical_threads: Option<u32>,
     pub features: Vec<CpuFeature>,

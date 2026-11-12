@@ -2,6 +2,7 @@
 
 pub mod chosen_file;
 pub mod engine;
+pub mod engine_label;
 pub mod export_format;
 pub mod language_choice;
 pub mod playback;

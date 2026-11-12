@@ -1,4 +1,5 @@
 pub mod accel;
+pub mod adapter_name;
 pub mod audio_overview;
 pub mod export_format;
 pub mod history;

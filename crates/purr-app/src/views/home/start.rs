@@ -8,21 +8,23 @@ use crate::{
         banner::{Banner, BannerTone},
         button::{Button, ButtonSize, ButtonVariant},
         drop_pad::{DropPad, FILE_INPUT_ID},
+        engine_chip::EngineChip,
         file_card::FileCard,
         icon::{Icon, IconName, IconSize},
         language_picker::LanguagePill,
         model_picker::ModelPill,
         page::Page,
     },
-    hooks::use_models::use_models,
+    hooks::{use_models::use_models, use_system_probe::use_system_probe},
     platform::{IS_WEB, Platform as _, get_platform},
     settings_store::use_settings,
     shortcuts::{Key, KeyChord, Shortcut, use_shortcut},
     transcribe::{
-        chosen_file::OverviewState, engine::Planned, language_choice::LanguageChoice,
+        chosen_file::OverviewState, engine_label::EngineLabel, language_choice::LanguageChoice,
         session::use_transcribe_session, timing,
     },
     utils::{byte_size::ByteSize, file_kind::kind_label, primary_key::use_primary_key_label},
+    views::settings::{jump::open_section, sections::SettingsSection},
 };
 use dioxus::{html::HasFileData, prelude::*};
 
@@ -43,6 +45,8 @@ pub fn Start() -> Element {
     let models = use_models();
     let settings = use_settings();
     let primary_key = use_primary_key_label();
+    let probe = use_system_probe();
+    let navigator = use_navigator();
 
     use_shortcut(
         Shortcut::new(KeyChord::primary(Key::Char('o')), "Choose an audio file").in_inputs(),
@@ -69,15 +73,15 @@ pub fn Start() -> Element {
         "Turn a recording into text. Nothing leaves this computer."
     };
     let engine = if IS_WEB {
-        "WebGPU".to_owned()
+        EngineLabel::browser(&models.gpu.read())
     } else {
         let policy = settings.with(|settings| settings.performance.accel_policy());
-        Planned::of(
-            policy,
-            session.engine_memory().as_ref(),
-            models.gpu.read().found(),
-        )
-        .sentence()
+        EngineLabel::planned(policy, session.engine_memory().as_ref(), &probe.read())
+    };
+    let engine_settings = if IS_WEB {
+        SettingsSection::Transcription
+    } else {
+        SettingsSection::Performance
     };
 
     let start = move |_| {
@@ -160,6 +164,11 @@ pub fn Start() -> Element {
                     aria_label: "Transcription options",
                     ModelPill { id: "pick-model" }
                     LanguagePill { id: "pick-lang" }
+                    EngineChip {
+                        id: "engine-chip",
+                        label: engine,
+                        onclick: move |_| open_section(navigator, engine_settings),
+                    }
                     span { class: "rb-spacer" }
                     Button {
                         variant: ButtonVariant::Primary,
@@ -174,7 +183,7 @@ pub fn Start() -> Element {
                 ModelNotice {}
                 p { class: "privacy-line",
                     Icon { name: IconName::Lock, size: IconSize::Small }
-                    "Processed on this device with {engine}. Audio is never uploaded."
+                    "Processed on this device. Audio is never uploaded."
                 }
                 Recent {}
             }

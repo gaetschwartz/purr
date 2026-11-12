@@ -465,7 +465,7 @@ details>.preview{margin:8px 0 0;font-family:var(--font)}
 
 /* ---------- Forced colours: shapes drawn only with backgrounds get system-colour borders and fills ---------- */
 @media (forced-colors:active){
-  .btn,.icon-btn,.pill,.field,.select select,.text-input,.seg,.stepper,.sect-nav button,.chip,.recent button,.player,.opt{border:1px solid ButtonText}
+  .btn,.icon-btn,.pill,.field,.select select,.text-input,.seg,.stepper,.sect-nav button,.chip,.engine-chip,.recent button,.player,.opt{border:1px solid ButtonText}
   .btn[disabled],.pill[disabled]{border-color:GrayText}
   .seg button[aria-checked="true"],.nav-item[aria-current="page"],.tabbar a[aria-current="page"]{forced-color-adjust:none;background:Highlight;color:HighlightText}
   .nav-item[aria-current="page"] svg,.nav-item[aria-current="page"] .count,.seg button[aria-checked="true"] svg{color:HighlightText}

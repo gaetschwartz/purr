@@ -8,10 +8,10 @@ use crate::{
         progress_bar::{Progress, ProgressBar},
         spinner::Spinner,
     },
-    hooks::use_models::use_models,
+    hooks::{use_models::use_models, use_system_probe::use_system_probe},
     platform::IS_WEB,
     transcribe::{
-        engine::Planned,
+        engine_label::EngineLabel,
         language_choice::LanguageChoice,
         run::{ModelLoad, Stage},
         session::{RunRecord, use_transcribe_session},
@@ -32,6 +32,7 @@ const TICK: Duration = Duration::from_millis(500);
 pub fn Running(record: RunRecord) -> Element {
     let session = use_transcribe_session();
     let models = use_models();
+    let probe = use_system_probe();
     let mut now = use_signal(now_ms);
     use_future(move || async move {
         loop {
@@ -47,22 +48,21 @@ pub fn Running(record: RunRecord) -> Element {
     let speed = run.live_speed(now());
     let segments = run.transcript.segments();
     let engine = if IS_WEB {
-        "WebGPU"
+        EngineLabel::browser(&models.gpu.read())
     } else {
         match &run.engine {
-            Some(ran) => Planned::of_backend(ran.backend),
-            None => Planned::of(
+            Some(ran) => EngineLabel::ran(ran, &probe.read()),
+            None => EngineLabel::planned(
                 record.accel,
                 session.engine_memory().as_ref(),
-                models.gpu.read().found(),
+                &probe.read(),
             ),
         }
-        .label()
     };
     let file_meta = [
         duration.map(timing::clock),
         Some(record.model.label.clone()),
-        Some(engine.to_owned()),
+        Some(engine.to_string()),
     ]
     .into_iter()
     .flatten()

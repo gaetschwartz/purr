@@ -8,10 +8,12 @@ use crate::{
         model_picker::ModelPicker,
     },
     history::save_state::SaveState,
+    hooks::{use_models::use_models, use_system_probe::use_system_probe},
     main_app::Route,
-    platform::playback_source::AudioSource,
+    platform::{IS_WEB, playback_source::AudioSource},
     transcribe::{
         chosen_file::OverviewState,
+        engine_label::EngineLabel,
         language_choice::LanguageChoice,
         run::Completion,
         session::{RunRecord, use_transcribe_session},
@@ -26,6 +28,8 @@ use std::rc::Rc;
 #[component]
 pub fn ResultView(record: RunRecord, completion: Completion) -> Element {
     let session = use_transcribe_session();
+    let models = use_models();
+    let probe = use_system_probe();
     let player = use_audio_player(&AudioSource::Upload(record.file.clone()));
     let mut picking = use_signal(|| false);
 
@@ -45,6 +49,16 @@ pub fn ResultView(record: RunRecord, completion: Completion) -> Element {
         (LanguageChoice::Automatic, None) => "Language not reported".to_owned(),
         (LanguageChoice::Spoken(_), _) => record.language.label(),
     };
+    let engine = if IS_WEB {
+        Some(EngineLabel::browser(&models.gpu.read()))
+    } else {
+        record
+            .run
+            .engine
+            .as_ref()
+            .map(|ran| EngineLabel::ran(ran, &probe.read()))
+    }
+    .map(|label| label.to_string());
     let peaks = match &overview {
         OverviewState::Ready { peaks, .. } => Some(Rc::clone(peaks)),
         OverviewState::Reading | OverviewState::Undecodable(_) => None,
@@ -108,7 +122,7 @@ pub fn ResultView(record: RunRecord, completion: Completion) -> Element {
                 model_label: record.model.label.clone(),
                 language_text,
                 took_seconds: completion.processing_seconds,
-                engine: record.run.engine.as_ref().map(|ran| ran.backend.label()),
+                engine,
             },
             notice: rsx! {
                 EngineNotice { record: record.clone() }

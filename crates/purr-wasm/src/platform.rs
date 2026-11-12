@@ -15,6 +15,7 @@ use crate::worker_client::WorkerClient;
 use bytes::Bytes;
 use futures::StreamExt as _;
 use purr_common::accel::SystemReport;
+use purr_common::adapter_name::{AdapterStrings, adapter_name};
 use purr_common::audio_overview::{AudioOverview, peaks};
 use purr_common::history::{
     entry::{HistoryEntry, HistoryId, HistoryRecord},
@@ -733,18 +734,15 @@ async fn detect_webgpu() -> WebResult<Option<DeviceInfo>> {
         }
     }
 
-    let name = [info.vendor(), info.architecture(), info.device()]
-        .into_iter()
-        .filter(|part| !part.trim().is_empty())
-        .collect::<Vec<_>>()
-        .join(" ");
+    let name = adapter_name(AdapterStrings {
+        vendor: &info.vendor(),
+        architecture: &info.architecture(),
+        device: &info.device(),
+        description: &info.description(),
+    });
     Ok(Some(DeviceInfo {
         id: 1,
-        name: if name.is_empty() {
-            "WebGPU adapter".to_owned()
-        } else {
-            name
-        },
+        name: name.unwrap_or_default(),
         description: Some("WebGPU-based transcription".to_owned()),
         device_type: DeviceType::Gpu,
         memory_free: None,

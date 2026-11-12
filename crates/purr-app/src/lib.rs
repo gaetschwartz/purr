@@ -36,6 +36,7 @@ use components::{
     toast::{ToastRegion, use_toast_provider},
 };
 use hooks::use_models::use_models_provider;
+use hooks::use_system_probe::use_system_probe_provider;
 use main_app::MainApp;
 use settings_store::{status::LoadState, use_settings_store_provider};
 use shortcuts::use_shortcut_provider;
@@ -110,6 +111,7 @@ pub fn App() -> Element {
     let settings = use_settings_store_provider(toasts);
     use_appearance_provider(settings);
     use_models_provider();
+    use_system_probe_provider();
     history::store::use_history_provider();
     let session = transcribe::session::use_transcribe_session_provider();
     platform::playback_source::use_audio_route(session);

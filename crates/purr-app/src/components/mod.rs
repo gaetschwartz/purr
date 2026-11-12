@@ -8,6 +8,7 @@ pub mod chip;
 pub mod dialog;
 pub mod drop_pad;
 pub mod empty_state;
+pub mod engine_chip;
 pub mod export_menu;
 pub mod file_card;
 pub mod group;
