@@ -297,7 +297,8 @@ mod tests {
             cpu: CpuReport {
                 name: Some(CPU_NAME.to_owned()),
                 logical_threads: Some(32),
-                features: vec![],
+                built_with: vec![],
+                detected: None,
             },
             last_run: None,
         })

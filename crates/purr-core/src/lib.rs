@@ -5,6 +5,7 @@
 pub mod accel;
 pub mod audio;
 pub mod config;
+pub mod cpu;
 pub mod dev;
 pub mod error;
 pub mod http;

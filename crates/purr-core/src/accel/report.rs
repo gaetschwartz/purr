@@ -22,6 +22,17 @@ pub enum UnavailableReason {
     NotBuiltOrNoDevice,
 }
 
+impl UnavailableReason {
+    /// The usual fix for `backend` being unavailable for this reason, when there is one.
+    #[must_use]
+    pub const fn remedy(&self, backend: AccelBackend) -> Option<&'static str> {
+        match self {
+            Self::RuntimeLibraryMissing { .. } => backend.runtime_library_hint(),
+            Self::NotBuilt | Self::NoDevice | Self::NotBuiltOrNoDevice => None,
+        }
+    }
+}
+
 /// Why a backend that looked available failed while loading the model.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
 pub enum AttemptFailure {
@@ -63,4 +74,41 @@ pub struct AccelReport {
     pub device: Option<String>,
     /// Backends tried or considered before `selected`, in priority order.
     pub attempts: Vec<AccelAttempt>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn missing_library() -> UnavailableReason {
+        UnavailableReason::RuntimeLibraryMissing {
+            library: "vulkan-1.dll".to_owned(),
+        }
+    }
+
+    #[test]
+    fn a_missing_vulkan_library_has_a_remedy() {
+        assert_eq!(
+            missing_library().remedy(AccelBackend::Vulkan),
+            Some(
+                "install your GPU's Vulkan driver (on Linux, Intel and AMD use Mesa's Vulkan driver)"
+            )
+        );
+    }
+
+    #[test]
+    fn a_missing_library_of_another_backend_has_no_remedy() {
+        assert_eq!(missing_library().remedy(AccelBackend::Cuda), None);
+    }
+
+    #[test]
+    fn other_reasons_have_no_remedy() {
+        for reason in [
+            UnavailableReason::NotBuilt,
+            UnavailableReason::NoDevice,
+            UnavailableReason::NotBuiltOrNoDevice,
+        ] {
+            assert_eq!(reason.remedy(AccelBackend::Vulkan), None);
+        }
+    }
 }

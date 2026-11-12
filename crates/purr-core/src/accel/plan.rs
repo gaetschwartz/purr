@@ -1,3 +1,5 @@
+use std::cmp::Ordering;
+
 use crate::{
     dev::{Device, DeviceType},
     error::AccelerationError,
@@ -46,6 +48,21 @@ fn is_gpu(device: &Device) -> bool {
     matches!(device.tpe, DeviceType::Gpu | DeviceType::Igpu)
 }
 
+/// Discrete GPUs first, then integrated ones, then the one with more memory, then the lower index.
+fn gpu_preference(a: &Device, b: &Device) -> Ordering {
+    const fn kind(device: &Device) -> u8 {
+        match device.tpe {
+            DeviceType::Gpu => 0,
+            DeviceType::Igpu => 1,
+            DeviceType::Cpu | DeviceType::Accel | DeviceType::Unknown => 2,
+        }
+    }
+    kind(a)
+        .cmp(&kind(b))
+        .then_with(|| b.vram_total.cmp(&a.vram_total))
+        .then_with(|| a.id.cmp(&b.id))
+}
+
 /// Where `backend` would run, or why it cannot.
 pub fn locate(
     backend: AccelBackend,
@@ -76,7 +93,8 @@ pub fn locate(
             let device = inventory
                 .devices
                 .iter()
-                .find(|d| d.backend == Some(backend) && is_gpu(d))
+                .filter(|d| d.backend == Some(backend) && is_gpu(d))
+                .min_by(|a, b| gpu_preference(a, b))
                 .ok_or_else(unavailable)?;
             let ordinal = inventory
                 .devices
@@ -137,6 +155,7 @@ mod tests {
             id,
             name: format!("{backend}{id}"),
             description: String::new(),
+            device_id: None,
             vram_free: 0,
             vram_total: 0,
             tpe,
@@ -230,15 +249,88 @@ mod tests {
         assert_eq!((vulkan.device_id, vulkan.ordinal), (4, 1));
     }
 
+    fn with_memory(mut device: Device, vram_total: usize) -> Device {
+        device.vram_total = vram_total;
+        device
+    }
+
+    fn chosen(devices: Vec<Device>) -> (i32, i32) {
+        let plan = resolve(
+            &AccelConfig::forced(Vulkan, false),
+            &inventory(devices, &[Vulkan, Cpu]),
+        )
+        .unwrap();
+        let vulkan = gpu_target(&plan, Vulkan).unwrap();
+        (vulkan.device_id, vulkan.ordinal)
+    }
+
     #[test]
-    fn first_device_of_a_backend_is_chosen() {
+    fn a_discrete_gpu_is_chosen_over_an_integrated_one_listed_first() {
         let plan = resolve(
             &AccelConfig::forced(Vulkan, false),
             &cuda_and_vulkan_machine(),
         )
         .unwrap();
         let vulkan = gpu_target(&plan, Vulkan).unwrap();
-        assert_eq!((vulkan.device_id, vulkan.ordinal), (1, 1));
+        assert_eq!((vulkan.device_id, vulkan.ordinal), (2, 2));
+    }
+
+    #[test]
+    fn a_discrete_gpu_is_chosen_over_a_larger_integrated_one() {
+        assert_eq!(
+            chosen(vec![
+                with_memory(device(0, Vulkan, DeviceType::Igpu), 32 << 30),
+                with_memory(device(1, Vulkan, DeviceType::Gpu), 4 << 30),
+                device(2, Cpu, DeviceType::Cpu),
+            ]),
+            (1, 1)
+        );
+    }
+
+    #[test]
+    fn among_discrete_gpus_the_one_with_more_memory_is_chosen() {
+        assert_eq!(
+            chosen(vec![
+                with_memory(device(0, Vulkan, DeviceType::Gpu), 8 << 30),
+                with_memory(device(1, Vulkan, DeviceType::Gpu), 16 << 30),
+            ]),
+            (1, 1)
+        );
+    }
+
+    #[test]
+    fn among_equal_gpus_the_lower_index_is_chosen() {
+        assert_eq!(
+            chosen(vec![
+                device(0, Cpu, DeviceType::Cpu),
+                device(1, Vulkan, DeviceType::Igpu),
+                device(2, Vulkan, DeviceType::Igpu),
+            ]),
+            (1, 0)
+        );
+    }
+
+    #[test]
+    fn a_lone_integrated_gpu_is_still_used() {
+        assert_eq!(chosen(vec![device(0, Vulkan, DeviceType::Igpu)]), (0, 0));
+    }
+
+    #[test]
+    fn devices_of_other_backends_do_not_take_part_in_the_ranking() {
+        assert_eq!(
+            chosen(vec![
+                with_memory(device(0, Cuda, DeviceType::Gpu), 24 << 30),
+                with_memory(device(1, Vulkan, DeviceType::Igpu), 1 << 30),
+            ]),
+            (1, 1)
+        );
+    }
+
+    #[test]
+    fn a_discrete_gpu_is_preferred_when_the_backend_is_picked_by_priority() {
+        let plan = resolve(&AccelConfig::default(), &cuda_and_vulkan_machine()).unwrap();
+        let vulkan = gpu_target(&plan, Vulkan).unwrap();
+        assert_eq!((vulkan.device_id, vulkan.ordinal), (2, 2));
     }
 
     #[test]

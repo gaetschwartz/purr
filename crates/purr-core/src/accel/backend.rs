@@ -78,6 +78,17 @@ impl AccelBackend {
         }
     }
 
+    /// What to do when the backend's runtime library cannot be loaded, where there is a usual fix.
+    #[must_use]
+    pub const fn runtime_library_hint(self) -> Option<&'static str> {
+        match self {
+            Self::Vulkan => Some(
+                "install your GPU's Vulkan driver (on Linux, Intel and AMD use Mesa's Vulkan driver)",
+            ),
+            Self::Cuda | Self::Hip | Self::CoreMl | Self::Metal | Self::Sycl | Self::Cpu => None,
+        }
+    }
+
     /// Backend owning a ggml device, from the name of its ggml backend registry.
     #[must_use]
     pub fn from_ggml_registry_name(name: &str) -> Option<Self> {

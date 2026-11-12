@@ -7,8 +7,8 @@ use crate::{
 };
 use purr_common::{
     accel::{
-        AccelBackend, AccelSelection, BackendReport, BackendStatus, BackendUnavailable, CpuReport,
-        LastRun, SystemReport,
+        AccelBackend, AccelSelection, BackendReport, BackendStatus, BackendUnavailable, CpuFeature,
+        CpuReport, LastRun, SystemReport,
     },
     platform::DeviceInfo,
 };
@@ -56,9 +56,19 @@ fn cpu_detail(cpu: &CpuReport) -> Option<String> {
     if let Some(threads) = cpu.logical_threads {
         parts.push(format!("{threads} threads"));
     }
-    if !cpu.features.is_empty() {
-        let names: Vec<_> = cpu.features.iter().map(|feature| feature.label()).collect();
-        parts.push(names.join(", "));
+    if !cpu.built_with.is_empty() {
+        parts.push(CpuFeature::join_labels(&cpu.built_with));
+    }
+    let missing = cpu.missing_on_cpu();
+    if !missing.is_empty() {
+        parts.push(format!(
+            "not on this CPU: {}",
+            CpuFeature::join_labels(&missing)
+        ));
+    }
+    let unused = cpu.unused_by_build();
+    if !unused.is_empty() {
+        parts.push(format!("unused: {}", CpuFeature::join_labels(&unused)));
     }
     (!parts.is_empty()).then(|| parts.join(" · "))
 }
@@ -340,10 +350,48 @@ mod tests {
             cpu: CpuReport {
                 name: None,
                 logical_threads: Some(24),
-                features: vec![CpuFeature::Avx2, CpuFeature::Fma],
+                built_with: vec![CpuFeature::Avx2, CpuFeature::Fma],
+                detected: Some(vec![CpuFeature::Avx2, CpuFeature::Fma]),
             },
             last_run: None,
         }
+    }
+
+    fn cpu(built_with: &[CpuFeature], detected: Option<&[CpuFeature]>) -> CpuReport {
+        CpuReport {
+            name: None,
+            logical_threads: Some(8),
+            built_with: built_with.to_vec(),
+            detected: detected.map(<[CpuFeature]>::to_vec),
+        }
+    }
+
+    #[test]
+    fn the_cpu_detail_lists_what_the_build_uses() {
+        let both = [CpuFeature::Avx2, CpuFeature::Fma];
+        assert_eq!(
+            cpu_detail(&cpu(&both, Some(&both))),
+            Some("8 threads · AVX2, FMA".to_owned())
+        );
+    }
+
+    #[test]
+    fn the_cpu_detail_flags_a_mismatch_between_the_build_and_the_processor() {
+        assert_eq!(
+            cpu_detail(&cpu(
+                &[CpuFeature::Avx2, CpuFeature::Avx512F],
+                Some(&[CpuFeature::Avx2, CpuFeature::Bmi2])
+            )),
+            Some("8 threads · AVX2, AVX512F · not on this CPU: AVX512F · unused: BMI2".to_owned())
+        );
+    }
+
+    #[test]
+    fn the_cpu_detail_makes_no_claim_where_the_processor_cannot_be_probed() {
+        assert_eq!(
+            cpu_detail(&cpu(&[CpuFeature::Avx2], None)),
+            Some("8 threads · AVX2".to_owned())
+        );
     }
 
     fn row(backend: &'static str, name: &str, detail: Option<&str>, badge: Badge) -> SystemRow {
@@ -409,7 +457,8 @@ mod tests {
             cpu: CpuReport {
                 name: None,
                 logical_threads: None,
-                features: vec![],
+                built_with: vec![],
+                detected: None,
             },
             last_run: None,
         };

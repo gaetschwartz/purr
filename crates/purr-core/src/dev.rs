@@ -2,11 +2,18 @@
 
 use std::{collections::HashMap, ffi::CStr, path::PathBuf};
 
+use purr_common::accel::CpuReport;
 use serde::{Deserialize, Serialize};
-use whisper_rs::whisper_rs_sys::{self, ggml_backend_dev_caps, ggml_backend_dev_count};
+use whisper_rs::whisper_rs_sys::{ggml_backend_dev_caps, ggml_backend_dev_count};
 
-use crate::accel::{
-    backend::AccelBackend, inventory::Inventory, plan::locate, report::UnavailableReason,
+use crate::{
+    accel::{
+        backend::AccelBackend,
+        inventory::Inventory,
+        plan::{Candidate, Target, locate},
+        report::UnavailableReason,
+    },
+    cpu,
 };
 
 /// GPU device information
@@ -15,6 +22,8 @@ pub struct Device {
     pub id: i32,
     pub name: String,
     pub description: String, // Optional description field
+    /// The id ggml reports; for PCI devices the bus id as "domain:bus:device.function".
+    pub device_id: Option<String>,
     pub vram_free: usize,
     pub vram_total: usize,
     pub tpe: DeviceType,
@@ -24,12 +33,33 @@ pub struct Device {
     pub caps: Option<ggml_backend_dev_caps>, // Optional capabilities
 }
 
+impl Device {
+    /// The capabilities ggml reports as set, under ggml's names; `None` when it reported none.
+    #[must_use]
+    pub fn capability_names(&self) -> Option<Vec<&'static str>> {
+        let caps = self.caps?;
+        Some(
+            [
+                (caps.async_, "async"),
+                (caps.host_buffer, "host_buffer"),
+                (caps.buffer_from_host_ptr, "buffer_from_host_ptr"),
+                (caps.events, "events"),
+            ]
+            .into_iter()
+            .filter_map(|(set, name)| set.then_some(name))
+            .collect(),
+        )
+    }
+}
+
 /// GPU acceleration status
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SystemInfo {
     #[serde(flatten)]
     pub backends: HashMap<AccelBackend, FeatureStatus>,
-    pub system_info: SystemCapabilities,
+    pub cpu: CpuReport,
+    /// The ggml id of the GPU each usable GPU backend picks when the device is not chosen.
+    pub picked_gpus: HashMap<AccelBackend, i32>,
     pub devices: Vec<Device>,
 }
 
@@ -40,6 +70,20 @@ impl SystemInfo {
         let inventory = Inventory::detect();
 
         Self {
+            picked_gpus: AccelBackend::ALL
+                .iter()
+                .filter_map(|backend| match locate(*backend, &inventory) {
+                    Ok(Candidate {
+                        target: Target::Gpu(gpu),
+                        ..
+                    }) => Some((*backend, gpu.device_id)),
+                    Ok(Candidate {
+                        target: Target::Cpu | Target::CoreMl,
+                        ..
+                    })
+                    | Err(_) => None,
+                })
+                .collect(),
             backends: AccelBackend::ALL
                 .iter()
                 .map(|backend| {
@@ -56,7 +100,7 @@ impl SystemInfo {
                     (*backend, status)
                 })
                 .collect(),
-            system_info: SystemCapabilities::get(),
+            cpu: cpu::report(&inventory.devices),
             devices: inventory.devices,
         }
     }
@@ -103,28 +147,6 @@ impl SystemInfo {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SystemCapabilities {
-    pub avx: bool,
-    pub avx2: bool,
-    pub fma: bool,
-    pub f16c: bool,
-}
-
-impl SystemCapabilities {
-    #[must_use]
-    pub fn get() -> Self {
-        unsafe {
-            Self {
-                avx: whisper_rs_sys::ggml_cpu_has_avx() != 0,
-                avx2: whisper_rs_sys::ggml_cpu_has_avx2() != 0,
-                fma: whisper_rs_sys::ggml_cpu_has_fma() != 0,
-                f16c: whisper_rs_sys::ggml_cpu_has_f16c() != 0,
-            }
-        }
-    }
-}
-
 /// List available GPU devices
 #[must_use]
 pub fn list_devices() -> Vec<Device> {
@@ -165,6 +187,11 @@ pub fn list_devices() -> Vec<Device> {
                     .to_string_lossy()
                     .into_owned()
             },
+            device_id: (!props.device_id.is_null()).then(|| unsafe {
+                CStr::from_ptr(props.device_id)
+                    .to_string_lossy()
+                    .into_owned()
+            }),
             vram_free: props.memory_free,
             vram_total: props.memory_total,
             caps: Some(props.caps),
@@ -188,7 +215,7 @@ fn backend_of(device: whisper_rs::whisper_rs_sys::ggml_backend_dev_t) -> Option<
     AccelBackend::from_ggml_registry_name(&name)
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, strum::FromRepr, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, strum::FromRepr, PartialEq, Eq)]
 #[repr(u8)]
 pub enum DeviceType {
     Cpu = 0,
@@ -196,6 +223,69 @@ pub enum DeviceType {
     Igpu = 2,
     Accel = 3,
     Unknown = 255,
+}
+
+impl DeviceType {
+    /// What kind of device it is, in plain words.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Cpu => "CPU",
+            Self::Gpu => "discrete GPU",
+            Self::Igpu => "integrated GPU",
+            Self::Accel => "accelerator",
+            Self::Unknown => "unknown",
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn device(caps: Option<ggml_backend_dev_caps>) -> Device {
+        Device {
+            id: 0,
+            name: "Vulkan0".to_owned(),
+            description: String::new(),
+            device_id: None,
+            vram_free: 0,
+            vram_total: 0,
+            tpe: DeviceType::Gpu,
+            backend: Some(AccelBackend::Vulkan),
+            caps,
+        }
+    }
+
+    #[test]
+    fn capabilities_are_named_as_ggml_names_them() {
+        let caps = ggml_backend_dev_caps {
+            async_: true,
+            host_buffer: false,
+            buffer_from_host_ptr: true,
+            events: true,
+        };
+        assert_eq!(
+            device(Some(caps)).capability_names(),
+            Some(vec!["async", "buffer_from_host_ptr", "events"])
+        );
+    }
+
+    #[test]
+    fn a_device_with_no_capabilities_set_lists_none() {
+        let caps = ggml_backend_dev_caps {
+            async_: false,
+            host_buffer: false,
+            buffer_from_host_ptr: false,
+            events: false,
+        };
+        assert_eq!(device(Some(caps)).capability_names(), Some(vec![]));
+    }
+
+    #[test]
+    fn a_device_without_reported_capabilities_has_no_names() {
+        assert_eq!(device(None).capability_names(), None);
+    }
 }
 
 mod serde_ggml_backend_dev_caps {

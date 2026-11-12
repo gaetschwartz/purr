@@ -167,32 +167,145 @@ pub struct BackendReport {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CpuFeature {
     Avx,
+    AvxVnni,
     Avx2,
+    Bmi2,
     Fma,
     F16c,
+    Avx512F,
+    Avx512Bw,
+    Avx512Vl,
+    Avx512Vbmi,
+    Avx512Vnni,
+    Avx512Bf16,
+    AmxInt8,
 }
 
 impl CpuFeature {
+    /// Every instruction set, in the order they are listed.
+    pub const ALL: [Self; 13] = [
+        Self::Avx,
+        Self::AvxVnni,
+        Self::Avx2,
+        Self::Bmi2,
+        Self::Fma,
+        Self::F16c,
+        Self::Avx512F,
+        Self::Avx512Bw,
+        Self::Avx512Vl,
+        Self::Avx512Vbmi,
+        Self::Avx512Vnni,
+        Self::Avx512Bf16,
+        Self::AmxInt8,
+    ];
+
     /// The name chip makers use.
     #[must_use]
     pub const fn label(self) -> &'static str {
         match self {
             Self::Avx => "AVX",
+            Self::AvxVnni => "AVX-VNNI",
             Self::Avx2 => "AVX2",
+            Self::Bmi2 => "BMI2",
             Self::Fma => "FMA",
             Self::F16c => "F16C",
+            Self::Avx512F => "AVX512F",
+            Self::Avx512Bw => "AVX512BW",
+            Self::Avx512Vl => "AVX512VL",
+            Self::Avx512Vbmi => "AVX512VBMI",
+            Self::Avx512Vnni => "AVX512VNNI",
+            Self::Avx512Bf16 => "AVX512BF16",
+            Self::AmxInt8 => "AMX-INT8",
         }
+    }
+
+    /// Whether the ggml build says if it was compiled with this instruction set.
+    #[must_use]
+    pub const fn reported_by_build(self) -> bool {
+        match self {
+            Self::Avx512Bw | Self::Avx512Vl => false,
+            Self::Avx
+            | Self::AvxVnni
+            | Self::Avx2
+            | Self::Bmi2
+            | Self::Fma
+            | Self::F16c
+            | Self::Avx512F
+            | Self::Avx512Vbmi
+            | Self::Avx512Vnni
+            | Self::Avx512Bf16
+            | Self::AmxInt8 => true,
+        }
+    }
+
+    /// Whether the running processor can be asked for this instruction set.
+    #[must_use]
+    pub const fn probed_at_runtime(self) -> bool {
+        match self {
+            Self::AmxInt8 => false,
+            Self::Avx
+            | Self::AvxVnni
+            | Self::Avx2
+            | Self::Bmi2
+            | Self::Fma
+            | Self::F16c
+            | Self::Avx512F
+            | Self::Avx512Bw
+            | Self::Avx512Vl
+            | Self::Avx512Vbmi
+            | Self::Avx512Vnni
+            | Self::Avx512Bf16 => true,
+        }
+    }
+
+    /// The labels of `features`, comma separated.
+    #[must_use]
+    pub fn join_labels(features: &[Self]) -> String {
+        features
+            .iter()
+            .map(|feature| feature.label())
+            .collect::<Vec<_>>()
+            .join(", ")
     }
 }
 
-/// What the processor offers.
+/// What the processor offers and what this build was compiled to use.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CpuReport {
     /// The processor's marketing name, when the system gives one.
     pub name: Option<String>,
     /// Threads the processor runs at once, when the system says.
     pub logical_threads: Option<u32>,
-    pub features: Vec<CpuFeature>,
+    /// Instruction sets the binary was compiled with.
+    pub built_with: Vec<CpuFeature>,
+    /// Instruction sets the running processor reports; `None` where this platform cannot be asked.
+    pub detected: Option<Vec<CpuFeature>>,
+}
+
+impl CpuReport {
+    /// Instruction sets the binary needs that the processor lacks.
+    #[must_use]
+    pub fn missing_on_cpu(&self) -> Vec<CpuFeature> {
+        let Some(detected) = &self.detected else {
+            return Vec::new();
+        };
+        self.built_with
+            .iter()
+            .copied()
+            .filter(|feature| feature.probed_at_runtime() && !detected.contains(feature))
+            .collect()
+    }
+
+    /// Instruction sets the processor has that the binary was not compiled with.
+    #[must_use]
+    pub fn unused_by_build(&self) -> Vec<CpuFeature> {
+        self.detected
+            .iter()
+            .flatten()
+            .copied()
+            .filter(|feature| feature.reported_by_build() && !self.built_with.contains(feature))
+            .collect()
+    }
 }
 
 /// Why the last transcription did not run on a backend it considered.
@@ -247,6 +360,72 @@ mod tests {
             .collect();
         assert_eq!(AccelSelection::ALL.first(), Some(&AccelSelection::Auto));
         assert_eq!(named, AccelBackend::PRIORITY);
+    }
+
+    fn report(built_with: &[CpuFeature], detected: Option<&[CpuFeature]>) -> CpuReport {
+        CpuReport {
+            name: None,
+            logical_threads: None,
+            built_with: built_with.to_vec(),
+            detected: detected.map(<[CpuFeature]>::to_vec),
+        }
+    }
+
+    #[test]
+    fn every_instruction_set_is_listed_once() {
+        let mut seen = Vec::new();
+        for feature in CpuFeature::ALL {
+            assert!(!seen.contains(&feature));
+            seen.push(feature);
+        }
+        assert_eq!(seen.len(), 13);
+    }
+
+    #[test]
+    fn labels_are_joined_in_the_given_order() {
+        assert_eq!(
+            CpuFeature::join_labels(&[CpuFeature::Avx2, CpuFeature::Avx512F]),
+            "AVX2, AVX512F"
+        );
+        assert_eq!(CpuFeature::join_labels(&[]), "");
+    }
+
+    #[test]
+    fn a_build_matching_the_processor_has_no_mismatch() {
+        let both = [CpuFeature::Avx2, CpuFeature::Fma];
+        let report = report(&both, Some(&both));
+        assert_eq!(report.missing_on_cpu(), []);
+        assert_eq!(report.unused_by_build(), []);
+    }
+
+    #[test]
+    fn instruction_sets_the_binary_needs_but_the_processor_lacks_are_missing() {
+        let report = report(
+            &[CpuFeature::Avx2, CpuFeature::Avx512F, CpuFeature::AmxInt8],
+            Some(&[CpuFeature::Avx2]),
+        );
+        assert_eq!(report.missing_on_cpu(), [CpuFeature::Avx512F]);
+    }
+
+    #[test]
+    fn instruction_sets_the_build_cannot_report_are_never_unused() {
+        let report = report(
+            &[CpuFeature::Avx2],
+            Some(&[
+                CpuFeature::Avx2,
+                CpuFeature::Avx512F,
+                CpuFeature::Avx512Bw,
+                CpuFeature::Avx512Vl,
+            ]),
+        );
+        assert_eq!(report.unused_by_build(), [CpuFeature::Avx512F]);
+    }
+
+    #[test]
+    fn a_platform_that_cannot_be_probed_reports_no_mismatch() {
+        let report = report(&[CpuFeature::Avx2], None);
+        assert_eq!(report.missing_on_cpu(), []);
+        assert_eq!(report.unused_by_build(), []);
     }
 
     #[test]

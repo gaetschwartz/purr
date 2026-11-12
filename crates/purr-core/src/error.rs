@@ -202,8 +202,8 @@ pub enum TranscriptionError {
 #[derive(Debug, thiserror::Error, miette::Diagnostic)]
 pub enum AccelerationError {
     #[error(
-        "{} acceleration was requested but is unavailable: {reason}; choose another backend or allow falling back",
-        backend.pretty_name()
+        "{} acceleration was requested but is unavailable: {reason}{}; choose another backend or allow falling back",        backend.pretty_name(),
+        remedy_clause(*backend, reason)
     )]
     #[diagnostic(code(whisper::accel::unavailable))]
     Unavailable {
@@ -217,6 +217,13 @@ pub enum AccelerationError {
     )]
     #[diagnostic(code(whisper::accel::exhausted))]
     Exhausted { attempts: Vec<AccelAttempt> },
+}
+
+fn remedy_clause(backend: AccelBackend, reason: &UnavailableReason) -> String {
+    reason
+        .remedy(backend)
+        .map(|remedy| format!("; {remedy}"))
+        .unwrap_or_default()
 }
 
 fn describe_attempts(attempts: &[AccelAttempt]) -> String {
@@ -395,3 +402,27 @@ into_whisper_error_via_configuration!(UnknownModelError, ManifestError, ModelInt
 
 /// Result type alias for purr operations
 pub type Result<T> = std::result::Result<T, WhisperError>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_remedy_is_appended_as_a_clause() {
+        let reason = UnavailableReason::RuntimeLibraryMissing {
+            library: "libvulkan.so.1".to_owned(),
+        };
+        assert_eq!(
+            remedy_clause(AccelBackend::Vulkan, &reason),
+            "; install your GPU's Vulkan driver (on Linux, Intel and AMD use Mesa's Vulkan driver)"
+        );
+    }
+
+    #[test]
+    fn no_remedy_adds_nothing() {
+        assert_eq!(
+            remedy_clause(AccelBackend::Vulkan, &UnavailableReason::NoDevice),
+            ""
+        );
+    }
+}

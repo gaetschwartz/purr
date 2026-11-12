@@ -5,6 +5,7 @@ mod json;
 mod models;
 mod progress;
 mod runtime;
+mod sys_report;
 mod trace;
 
 use crate::fmt::{MyFormatter, Verbosity, VerbosityLevel};
@@ -19,8 +20,8 @@ use purr_core::model::vad_or_none;
 use purr_core::{
     ModelManager, StreamEvent, StreamingTranscription, TranscriptionConfig,
     accel::backend::AccelBackend, dev::FeatureStatus, install_logging_hooks, is_file_path,
-    is_valid_url, list_devices, transcribe_file_stream, transcribe_file_sync,
-    transcribe_url_stream, transcribe_url_sync,
+    is_valid_url, transcribe_file_stream, transcribe_file_sync, transcribe_url_stream,
+    transcribe_url_sync,
 };
 use purr_core::{SystemInfo, math::ByteSpeed};
 use shadow_rs::shadow;
@@ -397,11 +398,15 @@ async fn handle_command(command: Commands, verbosity: Verbosity) -> miette::Resu
 async fn handle_sys_command(_verbosity: Verbosity) -> miette::Result<()> {
     let sys = SystemInfo::get();
 
-    fn feature_status(feature: &FeatureStatus) -> String {
+    fn feature_status(backend: AccelBackend, feature: &FeatureStatus) -> String {
         match feature {
             FeatureStatus::Disabled => "Not built".yellow().to_string(),
             FeatureStatus::RuntimeLibraryMissing { library, .. } => {
-                format!("Built, but the runtime library {library} cannot be loaded")
+                let hint = backend
+                    .runtime_library_hint()
+                    .map(|hint| format!("; {hint}"))
+                    .unwrap_or_default();
+                format!("Built, but the runtime library {library} cannot be loaded{hint}")
                     .red()
                     .to_string()
             }
@@ -433,7 +438,7 @@ async fn handle_sys_command(_verbosity: Verbosity) -> miette::Result<()> {
         println!(
             "  * {:longest$} - {}",
             backend.pretty_name(),
-            feature_status(status)
+            feature_status(*backend, status)
         );
         if let FeatureStatus::RuntimeLibraryMissing { searched, .. } = status {
             println!("    {}", runtime::searched_summary(searched).dimmed());
@@ -444,75 +449,41 @@ async fn handle_sys_command(_verbosity: Verbosity) -> miette::Result<()> {
     println!("{}", "Devices:".blue().bold());
     println!();
 
-    let devices = list_devices();
-
-    if devices.is_empty() {
+    if sys.devices.is_empty() {
         warn!("{} No devices found.", "Info:".blue().bold());
         warn!("{} To enable GPU support, ensure:", "Info:".blue().bold());
         warn!("  • Vulkan drivers are installed");
         warn!("  • Compatible GPU hardware is available");
         warn!("  • Vulkan feature is enabled (use --features vulkan)");
     } else {
-        for device in devices {
-            println!(
-                "{} - {} {} {}",
-                format_args!("Device {}", device.id.bold()).green(),
-                device.name.bold(),
-                if device.description.is_empty() {
-                    String::new()
-                } else {
-                    device.description
-                },
-                match device.tpe {
-                    purr_core::dev::DeviceType::Cpu =>
-                        format_args!("({})", "CPU".green()).dimmed().to_string(),
-                    purr_core::dev::DeviceType::Gpu =>
-                        format_args!("({})", "GPU".blue()).dimmed().to_string(),
-                    purr_core::dev::DeviceType::Igpu =>
-                        format_args!("({})", "iGPU".blue()).dimmed().to_string(),
-                    purr_core::dev::DeviceType::Accel =>
-                        format_args!("({})", "Accel".yellow()).dimmed().to_string(),
-                    purr_core::dev::DeviceType::Unknown =>
-                        format_args!("({})", "Unknown").dimmed().to_string(),
-                },
-            );
-            if device.vram_total != 0 {
-                if device.vram_free != 0 && device.vram_free <= device.vram_total {
-                    println!(
-                        "    VRAM available: {}/{}",
-                        format_file_size(device.vram_free as u64).green(),
-                        format_file_size(device.vram_total as u64).green(),
-                    );
-                } else {
-                    println!(
-                        "    VRAM total: {}",
-                        format_file_size(device.vram_total as u64).green()
-                    );
-                }
+        for device in &sys.devices {
+            let picked_for: Vec<_> = AccelBackend::DEFAULT_PRIORITY
+                .iter()
+                .copied()
+                .filter(|backend| sys.picked_gpus.get(backend) == Some(&device.id))
+                .collect();
+            let mut lines = sys_report::device_lines(device, &picked_for).into_iter();
+            if let Some(headline) = lines.next() {
+                println!("{}", headline.green());
+            }
+            for line in lines {
+                println!("{line}");
             }
             println!();
         }
     }
 
+    println!("{}", "CPU:".blue().bold());
+    println!();
+    let mut lines = sys_report::cpu_lines(&sys.cpu).into_iter();
+    if let Some(headline) = lines.next() {
+        println!("{}", headline.green());
+    }
+    for line in lines {
+        println!("{line}");
+    }
+
     Ok(())
-}
-
-/// Format file size in human readable format
-fn format_file_size(size: u64) -> String {
-    const UNITS: &[&str] = &["B", "KB", "MB", "GB"];
-    let mut size = size as f64;
-    let mut unit_index = 0;
-
-    while size >= 1024.0 && unit_index < UNITS.len() - 1 {
-        size /= 1024.0;
-        unit_index += 1;
-    }
-
-    if unit_index == 0 {
-        format!("{} {}", size as u64, UNITS[unit_index])
-    } else {
-        format!("{:.1} {}", size, UNITS[unit_index])
-    }
 }
 
 /// Format time for SRT subtitles (HH:MM:SS,mmm)

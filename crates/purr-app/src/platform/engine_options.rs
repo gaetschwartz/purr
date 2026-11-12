@@ -2,8 +2,8 @@
 
 use purr_common::{
     accel::{
-        AccelBackend, AccelPolicy, BackendReport, BackendStatus, BackendUnavailable, CpuFeature,
-        CpuReport, LastRun, PassedOver, PassedReason, SystemReport,
+        AccelBackend, AccelPolicy, BackendReport, BackendStatus, BackendUnavailable, LastRun,
+        PassedOver, PassedReason, SystemReport,
     },
     platform::{DeviceInfo, DeviceType, EngineOptions},
 };
@@ -16,7 +16,8 @@ use purr_core::{
         plan::locate,
         report::{AccelReport, AttemptOutcome, UnavailableReason},
     },
-    dev::{self, Device, SystemCapabilities},
+    cpu,
+    dev::{self, Device},
 };
 use std::collections::HashMap;
 
@@ -162,41 +163,12 @@ pub fn backend_reports(inventory: &Inventory) -> Vec<BackendReport> {
         .collect()
 }
 
-fn cpu_name(devices: &[Device]) -> Option<String> {
-    devices
-        .iter()
-        .find(|device| device.tpe == dev::DeviceType::Cpu)
-        .map(|device| device.description.trim())
-        .filter(|name| !name.is_empty() && !name.eq_ignore_ascii_case("cpu"))
-        .map(str::to_owned)
-}
-
-/// The processor's name, instruction sets and thread count.
-pub fn cpu_report(capabilities: &SystemCapabilities, devices: &[Device]) -> CpuReport {
-    let features = [
-        (capabilities.avx, CpuFeature::Avx),
-        (capabilities.avx2, CpuFeature::Avx2),
-        (capabilities.fma, CpuFeature::Fma),
-        (capabilities.f16c, CpuFeature::F16c),
-    ]
-    .into_iter()
-    .filter_map(|(present, feature)| present.then_some(feature))
-    .collect();
-    CpuReport {
-        name: cpu_name(devices),
-        logical_threads: std::thread::available_parallelism()
-            .ok()
-            .and_then(|threads| u32::try_from(threads.get()).ok()),
-        features,
-    }
-}
-
 /// Probes this machine; this calls into the native backends and can take a moment.
 pub fn probe(last_run: Option<LastRun>) -> SystemReport {
     let inventory = Inventory::detect();
     SystemReport {
         backends: backend_reports(&inventory),
-        cpu: cpu_report(&SystemCapabilities::get(), &inventory.devices),
+        cpu: cpu::report(&inventory.devices),
         last_run,
     }
 }
@@ -306,6 +278,7 @@ mod tests {
             id: 0,
             name: "CPU".to_owned(),
             description: "A processor".to_owned(),
+            device_id: None,
             vram_free: 0,
             vram_total: 0,
             tpe: dev::DeviceType::Cpu,
@@ -386,44 +359,5 @@ mod tests {
                 }],
             }
         );
-    }
-
-    #[test]
-    fn instruction_sets_are_listed_in_a_stable_order() {
-        let report = cpu_report(
-            &SystemCapabilities {
-                avx: true,
-                avx2: true,
-                fma: false,
-                f16c: true,
-            },
-            &[],
-        );
-        assert_eq!(
-            report.features,
-            [CpuFeature::Avx, CpuFeature::Avx2, CpuFeature::F16c]
-        );
-    }
-
-    fn named_cpu(description: &str) -> Device {
-        Device {
-            description: description.to_owned(),
-            ..cpu_device()
-        }
-    }
-
-    #[test]
-    fn the_processor_is_named_by_its_device_description() {
-        assert_eq!(
-            cpu_name(&[named_cpu("  AMD Ryzen 9 7950X 16-Core Processor ")]),
-            Some("AMD Ryzen 9 7950X 16-Core Processor".to_owned())
-        );
-    }
-
-    #[test]
-    fn a_processor_the_system_does_not_name_stays_unnamed() {
-        assert_eq!(cpu_name(&[named_cpu("CPU")]), None);
-        assert_eq!(cpu_name(&[named_cpu("  ")]), None);
-        assert_eq!(cpu_name(&[]), None);
     }
 }
