@@ -439,6 +439,8 @@ jobs:
         shell: pwsh
     env:
       CARGO_TARGET_DIR: D:\t
+      # Ninja runs nvcc on every core; the Visual Studio generator compiles the CUDA sources one at a time
+      CMAKE_GENERATOR_x86_64_pc_windows_msvc: Ninja
     strategy:
       fail-fast: false
       matrix:
@@ -472,7 +474,7 @@ jobs:
           # rust-cache joins the target onto the workspace path, and CARGO_TARGET_DIR is D:\t
           workspaces: ". -> ../../../t"
           # whisper-rs-sys does not rebuild ggml when GGML_* or the GPU SDKs change, so each configuration needs its own cache
-          key: ${{ matrix.label || matrix.backend }}-ggml-native-${{ env.GGML_NATIVE }}-crt-static-cuda-${{ env.CUDA_VERSION }}-vulkan-${{ env.VULKAN_SDK_VERSION }}
+          key: ${{ matrix.label || matrix.backend }}-ggml-native-${{ env.GGML_NATIVE }}-crt-static-${{ env.CMAKE_GENERATOR_x86_64_pc_windows_msvc || 'msbuild' }}-cuda-${{ env.CUDA_VERSION }}-vulkan-${{ env.VULKAN_SDK_VERSION }}
           save-if: ${{ github.ref == 'refs/heads/develop' && matrix.is_release == true }}
       - name: Build the CLI
         run: |
@@ -521,6 +523,8 @@ jobs:
         shell: pwsh
     env:
       CARGO_TARGET_DIR: D:\t
+      # Ninja runs nvcc on every core; the Visual Studio generator compiles the CUDA sources one at a time
+      CMAKE_GENERATOR_x86_64_pc_windows_msvc: Ninja
       FEATURES: static-ffmpeg,cuda,vulkan
     steps:
       - uses: actions/checkout@v7
@@ -546,7 +550,7 @@ jobs:
           # rust-cache joins the target onto the workspace path, and CARGO_TARGET_DIR is D:\t
           workspaces: ". -> ../../../t"
           # whisper-rs-sys does not rebuild ggml when GGML_* or the GPU SDKs change, so each configuration needs its own cache
-          key: cuda-vulkan-ggml-native-${{ env.GGML_NATIVE }}-crt-static-cuda-${{ env.CUDA_VERSION }}-vulkan-${{ env.VULKAN_SDK_VERSION }}
+          key: cuda-vulkan-ggml-native-${{ env.GGML_NATIVE }}-crt-static-${{ env.CMAKE_GENERATOR_x86_64_pc_windows_msvc || 'msbuild' }}-cuda-${{ env.CUDA_VERSION }}-vulkan-${{ env.VULKAN_SDK_VERSION }}
           save-if: ${{ github.ref == 'refs/heads/develop' }}
       - uses: ./.github/actions/setup-dioxus
         with:

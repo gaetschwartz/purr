@@ -52,7 +52,12 @@ The script only reads names in this list. The other build variants upload as `pu
 | Vulkan `VULKAN_SDK_VERSION` | Ubuntu packages and the LunarG SDK tarball | LunarG SDK installer |
 | FFmpeg | vcpkg `x64-linux` | vcpkg `x64-windows-static` (static CRT) |
 
-To fall back to the full CUDA toolkit, set `method: installer` on `setup-cuda-windows` or `packages: cuda-toolkit` on `setup-cuda-linux`.
+On Windows the `cmake` crate builds ggml with Ninja, set through `CMAKE_GENERATOR_x86_64_pc_windows_msvc`. That variable reaches only the `cmake` crate, not vcpkg. It takes the MSVC environment from the `cc` crate. Ninja runs nvcc on every core, while the Visual Studio generator compiles the CUDA sources one at a time.
+
+Fallbacks:
+
+- Full CUDA toolkit: set `method: installer` on `setup-cuda-windows`, or `packages: cuda-toolkit` on `setup-cuda-linux`.
+- Visual Studio generator: delete the `CMAKE_GENERATOR_x86_64_pc_windows_msvc` lines. The CUDA build customizations are still installed for it.
 
 ## Caches
 
@@ -60,9 +65,9 @@ All caches share the repository's 10 GB limit. Over the limit, GitHub evicts the
 
 | Cache | Key | Saved by |
 |---|---|---|
-| vcpkg FFmpeg binaries | `vcpkg-ffmpeg-<os>-<triplet>-<vcpkg commit>` | `ffmpeg (<os>)` on a miss |
+| vcpkg FFmpeg binaries | `vcpkg-ffmpeg-<os>-<vcpkg commit>`, plus the triplet on Windows | `ffmpeg (<os>)` on a miss |
 | dx | `dioxus-cli-<os>-<version>` | the first job that misses |
-| Rust (`Swatinem/rust-cache`): registry and `target`, including the ggml build of whisper-rs-sys | job id, variant, `GGML_*`, CUDA and Vulkan versions, `crt-static` on Windows, toolchain and `Cargo.lock` hashes | `develop` only. Jobs on other refs restore `develop`'s cache. |
+| Rust (`Swatinem/rust-cache`): registry and `target`, including the ggml build of whisper-rs-sys | job id, variant, `GGML_*`, CUDA and Vulkan versions, `crt-static` and the CMake generator on Windows, toolchain and `Cargo.lock` hashes | `develop` only. Jobs on other refs restore `develop`'s cache. |
 
 - Rust caches are saved only for the jobs on the critical path: the CUDA and Vulkan CLIs, the desktop apps, web, macOS metal and `test`. The cheap CPU-only CLIs restore but do not save.
 - On Windows, `CARGO_TARGET_DIR` is `D:\t` to stay under the MSBuild path length limit. rust-cache is given `. -> ../../../t` because it joins the target onto the workspace path.
@@ -78,9 +83,9 @@ All caches share the repository's 10 GB limit. Over the limit, GitHub evicts the
 
 ## First-run checklist
 
-1. `ffmpeg (*)`: the Linux and macOS keys are new, so they build FFmpeg once and save it.
+1. `ffmpeg (*)`: each one finishes in seconds on a cache hit.
 2. `cli (windows, cuda-vulkan)`, step `Install CUDA`: the components download, the checksums match, `nvcc --version` prints 13.5, and the customizations are copied to `...\18\Enterprise\MSBuild\Microsoft\VC\v180\BuildCustomizations`.
-3. The same job's build gets through whisper-rs-sys. That proves CMake found CUDA through the Visual Studio generator.
+3. The same job's build gets through whisper-rs-sys with Ninja. That proves CMake found nvcc and cl from the `cc` environment. If it fails, apply the generator fallback above.
 4. `Prepare CLI artifact` finds `cudart64_13.dll`, `cublas64_13.dll` and `cublasLt64_13.dll` under `bin\x64`.
 5. `setup-msvc` prints Visual Studio 18 and passes the libclang check. Then the import and start checks pass.
 6. `cli (linux, cuda | all)`: the `Install CUDA` step lists `/usr/local/cuda/lib64/stubs/libcuda.so` and `libculibos.a`.

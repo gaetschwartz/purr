@@ -4,7 +4,7 @@ description: >
   In prepare mode, only check the cache and build and save it on a miss.
 inputs:
   triplet:
-    description: vcpkg triplet
+    description: vcpkg triplet (part of the cache key on Windows only, where it selects the static CRT)
     required: true
   prepare:
     description: "true: build and save the cache on a miss, without exporting anything"
@@ -26,7 +26,7 @@ runs:
       uses: actions/cache/restore@v6
       with:
         path: .vcpkg-cache
-        key: vcpkg-ffmpeg-${{ runner.os }}-${{ inputs.triplet }}-${{ inputs.vcpkg-commit }}
+        key: vcpkg-ffmpeg-${{ runner.os }}-${{ runner.os == 'Windows' && format('{0}-', inputs.triplet) || '' }}${{ inputs.vcpkg-commit }}
         lookup-only: ${{ inputs.prepare }}
 
     - name: Install the FFmpeg build tools
@@ -39,7 +39,9 @@ runs:
     - name: Install the FFmpeg build tools
       if: steps.cache.outputs.cache-hit != 'true' && runner.os == 'macOS'
       shell: bash
-      run: brew install nasm autoconf automake libtool pkg-config
+      run: |
+        brew uninstall cmake || true
+        brew install cmake nasm autoconf automake libtool pkg-config
 
     - name: Install FFmpeg
       if: runner.os != 'Windows' && (inputs.prepare != 'true' || steps.cache.outputs.cache-hit != 'true')

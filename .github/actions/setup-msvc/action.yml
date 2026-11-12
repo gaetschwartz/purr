@@ -28,6 +28,10 @@ runs:
         cmake --version
         $generator = "Visual Studio $env:VS_MAJOR"
         if (-not (cmake --help | Select-String -SimpleMatch $generator)) { throw "cmake has no '$generator' generator" }
+        if ($env:CMAKE_GENERATOR_x86_64_pc_windows_msvc -eq 'Ninja') {
+          if (-not (Get-Command ninja -ErrorAction SilentlyContinue)) { throw 'ninja is not on the PATH' }
+          Write-Host "ninja $(ninja --version)"
+        }
 
     - name: Add MSBuild to the PATH
       uses: microsoft/setup-msbuild@v3.0.0
