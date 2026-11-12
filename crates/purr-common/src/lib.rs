@@ -9,6 +9,7 @@ pub mod hugging_face_token;
 pub mod platform;
 pub mod progress;
 pub mod settings;
+pub mod transcript_view;
 pub mod web_model;
 pub mod word;
 

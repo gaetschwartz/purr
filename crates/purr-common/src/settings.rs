@@ -7,6 +7,7 @@
 use crate::accel::{AccelBackend, AccelPolicy, AccelSelection};
 use crate::export_format::ExportFormat;
 use crate::hugging_face_token::HuggingFaceToken;
+use crate::transcript_view::TranscriptView;
 use serde::{Deserialize, Serialize};
 
 /// The version of the settings schema this build writes.
@@ -75,6 +76,9 @@ pub struct UiSettings {
     /// The format the Export menu offers first
     #[serde(default)]
     pub export_format: ExportFormat,
+    /// How the transcript is shown
+    #[serde(default)]
+    pub transcript: TranscriptView,
 }
 
 /// Performance and optimization settings
@@ -157,6 +161,7 @@ impl Default for UiSettings {
             language: "auto".to_owned(),
             reduce_transparency: false,
             export_format: ExportFormat::default(),
+            transcript: TranscriptView::default(),
         }
     }
 }
@@ -313,6 +318,7 @@ pub enum SettingsError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::transcript_view::{TranscriptLayout, UnsureShare};
 
     #[test]
     fn default_settings_are_valid() {
@@ -341,6 +347,7 @@ mod tests {
                 language: "fr".to_owned(),
                 reduce_transparency: false,
                 export_format: ExportFormat::Txt,
+                transcript: TranscriptView::default(),
             }
         );
     }
@@ -571,6 +578,9 @@ log_file_path = "C:/logs/purr.log"
         settings.performance.accel_fallback = false;
         settings.performance.threads = Some(6);
         settings.ui.export_format = ExportFormat::Vtt;
+        settings.ui.transcript.layout = TranscriptLayout::Reading;
+        settings.ui.transcript.show_times = false;
+        settings.ui.transcript.unsure_share = UnsureShare::new(25);
         let saved = toml::to_string_pretty(&settings).unwrap();
         assert_eq!(toml::from_str::<Settings>(&saved).unwrap(), settings);
     }
