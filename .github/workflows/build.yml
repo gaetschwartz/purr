@@ -156,7 +156,7 @@ jobs:
       - name: Check the CLI starts on a bare Ubuntu without GPU runtimes
         if: matrix.portable
         run: |
-          docker run --rm -v "$PWD/artifacts/cli:/opt/purr:ro" ubuntu:24.04 sh -c '
+          docker run --rm -v "$PWD/artifacts/cli:/opt/purr:ro" "ubuntu:$(lsb_release -rs)" sh -c '
             set -e
             ldd /opt/purr/purr
             if ldd /opt/purr/purr | grep -F "not found"; then exit 1; fi
@@ -186,8 +186,30 @@ jobs:
           dx bundle -p purr-app --release --linux --package-types appimage \
             --out-dir dist-appimage \
             --features ${{ matrix.features }}
-          ls -l dist-appimage
-          cp dist-appimage/*.AppImage dist-linux/
+          images=(dist-appimage/*.AppImage)
+          [ "${#images[@]}" -eq 1 ] && [ -f "${images[0]}" ] || { echo "::error::expected one AppImage"; exit 1; }
+          image="$(realpath "${images[0]}")"
+          check="$RUNNER_TEMP/appimage-check"
+          rm -rf "$check"
+          mkdir -p "$check"
+          chmod +x "$image"
+          (cd "$check" && "$image" --appimage-extract >/dev/null)
+          app="$check/squashfs-root/usr/bin/purr-app"
+          env -u LD_LIBRARY_PATH ldd "$app"
+          if env -u LD_LIBRARY_PATH ldd "$app" | grep -F "not found"; then
+            echo "::error::the AppImage has unresolved libraries"
+            exit 1
+          fi
+          for file in "$app" "$check"/squashfs-root/usr/lib/*.so*; do
+            [ -f "$file" ] || continue
+            for library in ${{ matrix.deferred_libs }}; do
+              if patchelf --print-needed "$file" | grep -qxF "$library"; then
+                echo "::error file=$file::$file has a hard dependency on $library"
+                exit 1
+              fi
+            done
+          done
+          cp "$image" dist-linux/
       - name: Add the CUDA runtime to the desktop package
         if: matrix.desktop && contains(matrix.features, 'cuda')
         run: |
