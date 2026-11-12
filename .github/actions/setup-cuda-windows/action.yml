@@ -1,0 +1,81 @@
+name: Set up CUDA on Windows
+description: >
+  Install the CUDA components that ggml-cuda builds and links against from NVIDIA's
+  redistributable archives, and register the CUDA build customizations with Visual Studio.
+inputs:
+  version:
+    description: CUDA release, as in redistrib_<version>.json
+    required: true
+  components:
+    description: Redistributable components to install
+    required: false
+    default: cuda_crt cuda_cudart cuda_nvcc libnvvm libcublas cccl visual_studio_integration
+  method:
+    description: "redist: the components above; installer: the full toolkit from Chocolatey"
+    required: false
+    default: redist
+outputs:
+  path:
+    description: The CUDA toolkit root
+    value: ${{ steps.install.outputs.path }}
+runs:
+  using: composite
+  steps:
+    - name: Install CUDA
+      id: install
+      shell: pwsh
+      env:
+        CUDA_VERSION: ${{ inputs.version }}
+        CUDA_COMPONENTS: ${{ inputs.components }}
+        CUDA_METHOD: ${{ inputs.method }}
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $ProgressPreference = 'SilentlyContinue'
+        $short = ($env:CUDA_VERSION -split '\.')[0..1] -join '.'
+        $root = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$short"
+
+        if ($env:CUDA_METHOD -eq 'installer') {
+          choco install -r cuda --version $env:CUDA_VERSION
+          if ($LASTEXITCODE -ne 0) { throw "choco install cuda failed" }
+        } else {
+          $base = 'https://developer.download.nvidia.com/compute/cuda/redist'
+          $manifest = Invoke-RestMethod "$base/redistrib_$($env:CUDA_VERSION).json"
+          $downloads = Join-Path $env:RUNNER_TEMP cuda-redist
+          New-Item -ItemType Directory -Force -Path $downloads, $root | Out-Null
+          foreach ($component in -split $env:CUDA_COMPONENTS) {
+            $entry = $manifest.$component.'windows-x86_64'
+            if (-not $entry) { throw "CUDA $env:CUDA_VERSION has no windows-x86_64 archive for $component" }
+            $archive = Join-Path $downloads (Split-Path $entry.relative_path -Leaf)
+            Invoke-WebRequest "$base/$($entry.relative_path)" -OutFile $archive
+            if ((Get-FileHash $archive -Algorithm SHA256).Hash -ne $entry.sha256) { throw "checksum mismatch: $archive" }
+            $extracted = Join-Path $downloads $component
+            New-Item -ItemType Directory -Force -Path $extracted | Out-Null
+            & "$env:SystemRoot\System32\tar.exe" -xf $archive -C $extracted
+            if ($LASTEXITCODE -ne 0) { throw "extracting $archive failed" }
+            $top = Get-ChildItem $extracted -Directory | Select-Object -First 1
+            & xcopy "$($top.FullName)\*" $root /E /I /H /Y /Q
+            if ($LASTEXITCODE -ne 0) { throw "copying $component into $root failed" }
+            Write-Host "$component $($manifest.$component.version)"
+            Remove-Item -Recurse -Force $archive, $extracted
+          }
+
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $customizations = & $vswhere -all -products * -property installationPath |
+            ForEach-Object { Get-ChildItem "$_\MSBuild\Microsoft\VC\*\BuildCustomizations" -Directory -ErrorAction SilentlyContinue }
+          if (-not $customizations) { throw 'no Visual Studio BuildCustomizations directory found' }
+          foreach ($directory in $customizations) {
+            Copy-Item "$root\visual_studio_integration\MSBuildExtensions\*" $directory.FullName -Force
+            Write-Host "CUDA build customizations copied to $($directory.FullName)"
+          }
+        }
+
+        if (-not (Test-Path "$root\bin\nvcc.exe")) { throw "nvcc.exe not found under $root" }
+        & "$root\bin\nvcc.exe" --version
+        $suffix = $short -replace '\.', '_'
+        Add-Content $env:GITHUB_ENV "CUDA_PATH=$root"
+        Add-Content $env:GITHUB_ENV "CUDA_PATH_V$suffix=$root"
+        Add-Content $env:GITHUB_ENV "CUDA_BIN_PATH=$root\bin"
+        Add-Content $env:GITHUB_ENV "CUDA_LIB_PATH=$root\lib\x64"
+        Add-Content $env:GITHUB_PATH "$root\bin\x64"
+        Add-Content $env:GITHUB_PATH "$root\bin"
+        Add-Content $env:GITHUB_OUTPUT "path=$root"

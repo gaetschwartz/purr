@@ -1,0 +1,24 @@
+name: Set up the Dioxus CLI
+description: Restore dx from the cache, or install it with cargo
+inputs:
+  version:
+    description: dioxus-cli version
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Restore the Dioxus CLI
+      id: cache
+      uses: actions/cache@v6
+      with:
+        path: ~/.cargo/bin/dx${{ runner.os == 'Windows' && '.exe' || '' }}
+        key: dioxus-cli-${{ runner.os }}-${{ inputs.version }}
+
+    - name: Install the Dioxus CLI
+      if: steps.cache.outputs.cache-hit != 'true'
+      # outside the workspace, so its .cargo/config.toml rustflags (crt-static) do not apply
+      working-directory: ${{ runner.temp }}
+      shell: bash
+      env:
+        DIOXUS_VERSION: ${{ inputs.version }}
+      run: cargo install dioxus-cli --version "$DIOXUS_VERSION" --locked

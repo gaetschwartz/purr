@@ -1,0 +1,38 @@
+name: Set up CUDA on Linux
+description: Install the CUDA compiler and the cuBLAS and runtime development packages from NVIDIA's apt repository
+inputs:
+  version:
+    description: CUDA release (only major.minor selects the packages)
+    required: true
+  packages:
+    description: "Packages to install, without the version suffix; cuda-toolkit installs everything"
+    required: false
+    default: cuda-nvcc cuda-cudart-dev libcublas-dev
+runs:
+  using: composite
+  steps:
+    - name: Install CUDA
+      shell: bash
+      env:
+        CUDA_VERSION: ${{ inputs.version }}
+        CUDA_PACKAGES: ${{ inputs.packages }}
+      run: |
+        set -euo pipefail
+        short="$(echo "$CUDA_VERSION" | cut -d. -f1-2)"
+        suffix="${short/./-}"
+        repo="ubuntu$(lsb_release -rs | tr -d '.')"
+        keyring="$RUNNER_TEMP/cuda-keyring.deb"
+        wget -q -O "$keyring" "https://developer.download.nvidia.com/compute/cuda/repos/$repo/x86_64/cuda-keyring_1.1-1_all.deb"
+        sudo dpkg -i "$keyring"
+        sudo apt-get update
+        packages=()
+        for package in $CUDA_PACKAGES; do packages+=("$package-$suffix"); done
+        sudo apt-get install -y --no-install-recommends "${packages[@]}"
+        cuda_path="/usr/local/cuda-$short"
+        # whisper-rs-sys links libcuda and libculibos from /usr/local/cuda only
+        [ -e /usr/local/cuda ] || sudo ln -s "$cuda_path" /usr/local/cuda
+        ls /usr/local/cuda/lib64/stubs/libcuda.so /usr/local/cuda/lib64/libculibos.a
+        "$cuda_path/bin/nvcc" --version
+        echo "CUDA_PATH=$cuda_path" >> "$GITHUB_ENV"
+        echo "$cuda_path/bin" >> "$GITHUB_PATH"
+        echo "LD_LIBRARY_PATH=$cuda_path/lib64${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" >> "$GITHUB_ENV"

@@ -1,0 +1,33 @@
+name: Set up MSVC
+description: >
+  Point bindgen at Visual Studio's libclang, put MSBuild on the PATH and check that the
+  preinstalled Visual Studio is the one the build expects.
+inputs:
+  vs-major:
+    description: Visual Studio major version the cmake crate must pick its generator from
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Check Visual Studio and point bindgen at its libclang
+      shell: pwsh
+      env:
+        VS_MAJOR: ${{ inputs.vs-major }}
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+        $installation = & $vswhere -latest -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -format json | ConvertFrom-Json | Select-Object -First 1
+        if (-not $installation) { throw 'no Visual Studio with the x64 C++ tools found' }
+        Write-Host "$($installation.displayName) $($installation.installationVersion) at $($installation.installationPath)"
+        if ($installation.installationVersion.Split('.')[0] -ne $env:VS_MAJOR) {
+          throw "expected Visual Studio $env:VS_MAJOR, found $($installation.installationVersion)"
+        }
+        $libclang = "$($installation.installationPath)\VC\Tools\LLVM\x64\bin"
+        if (-not (Test-Path "$libclang\libclang.dll")) { throw "libclang.dll not found in $libclang" }
+        Add-Content $env:GITHUB_ENV "LIBCLANG_PATH=$libclang"
+        cmake --version
+        $generator = "Visual Studio $env:VS_MAJOR"
+        if (-not (cmake --help | Select-String -SimpleMatch $generator)) { throw "cmake has no '$generator' generator" }
+
+    - name: Add MSBuild to the PATH
+      uses: microsoft/setup-msbuild@v3.0.0

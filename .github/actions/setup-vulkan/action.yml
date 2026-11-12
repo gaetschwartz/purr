@@ -1,0 +1,40 @@
+name: Set up the Vulkan SDK
+description: Install the LunarG Vulkan SDK (and the Ubuntu Vulkan development packages on Linux)
+inputs:
+  version:
+    description: Vulkan SDK version
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Install the Vulkan SDK
+      if: runner.os == 'Linux'
+      shell: bash
+      env:
+        VULKAN_SDK_VERSION: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+        sudo apt-get update
+        sudo apt-get install -y libvulkan-dev vulkan-tools vulkan-utility-libraries-dev spirv-tools
+        archive="$RUNNER_TEMP/vulkansdk.tar.xz"
+        wget -q -O "$archive" "https://sdk.lunarg.com/sdk/download/$VULKAN_SDK_VERSION/linux/vulkansdk-linux-x86_64-$VULKAN_SDK_VERSION.tar.xz"
+        tar -xf "$archive" -C "$RUNNER_TEMP"
+        sdk="$RUNNER_TEMP/$VULKAN_SDK_VERSION/x86_64"
+        echo "VULKAN_SDK=$sdk" >> "$GITHUB_ENV"
+        echo "$sdk/bin" >> "$GITHUB_PATH"
+
+    - name: Install the Vulkan SDK
+      if: runner.os == 'Windows'
+      shell: pwsh
+      env:
+        VULKAN_SDK_VERSION: ${{ inputs.version }}
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $ProgressPreference = 'SilentlyContinue'
+        $installer = Join-Path $env:RUNNER_TEMP VulkanSDK-Installer.exe
+        Invoke-WebRequest "https://sdk.lunarg.com/sdk/download/$($env:VULKAN_SDK_VERSION)/windows/vulkansdk-windows-X64-$($env:VULKAN_SDK_VERSION).exe" -OutFile $installer
+        $sdk = "C:\VulkanSDK\$($env:VULKAN_SDK_VERSION)"
+        Start-Process -Wait -FilePath $installer -ArgumentList "--accept-licenses --default-answer --confirm-command install --root $sdk --no-shortcuts --no-start-menu --no-desktop-icon --no-update-check"
+        if (-not (Test-Path "$sdk\Lib\vulkan-1.lib")) { throw "the Vulkan SDK was not installed to $sdk" }
+        Add-Content $env:GITHUB_ENV "VULKAN_SDK=$sdk"
+        Add-Content $env:GITHUB_PATH "$sdk\Bin"

@@ -1,5 +1,3 @@
-# https://github.com/zmwangx/rust-ffmpeg/blob/master/.github/workflows/build.yml
-
 name: build
 on:
   push:
@@ -13,22 +11,68 @@ on:
         required: false
         default: false
         type: boolean
+      windows_single_backends:
+        description: "Also build the Windows CLI with CUDA only and with Vulkan only"
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  # scheduled and manual runs get their own group so a push to develop never replaces a nightly
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'push' && github.ref_type == 'branch' }}
+
+permissions:
+  contents: read
 
 env:
   DIOXUS_VERSION: 0.8.0-alpha.3
-  VCPKG_COMMIT: efecf268f3a3ec78f4bf1f0c36759bdb23c6f653
-  VCPKG_FFMPEG: ffmpeg[core,avcodec,avformat,swresample]
-  VCPKG_WINDOWS_TRIPLET: x64-windows-static
-  VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/.vcpkg-cache,readwrite
+  CUDA_VERSION: 13.5.0
+  VULKAN_SDK_VERSION: 1.4.363.1
+  GGML_NATIVE: "OFF"
   # true: the release archives leave the Windows CUDA libraries out, and they ship as the runtime pack only
   PURR_SPLIT_CUDA_RUNTIME: "false"
 
 jobs:
-  build-linux:
-    name: Build Linux - ${{ matrix.variant }}
-    runs-on: ubuntu-latest
+  ffmpeg-linux:
+    name: ffmpeg (linux)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-ffmpeg
+        with:
+          triplet: x64-linux
+          prepare: true
+
+  ffmpeg-macos:
+    name: ffmpeg (macos)
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-ffmpeg
+        with:
+          triplet: arm64-osx
+          prepare: true
+
+  ffmpeg-windows:
+    name: ffmpeg (windows)
+    runs-on: windows-2025-vs2026
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-ffmpeg
+        with:
+          triplet: x64-windows-static
+          prepare: true
+
+  cli-linux:
+    name: cli (linux, ${{ matrix.variant }})
+    needs: [ffmpeg-linux]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
     env:
-      GGML_NATIVE: "OFF"
       GGML_CUDA_NO_VMM: ${{ matrix.cuda_no_vmm && 'ON' || 'OFF' }}
     strategy:
       fail-fast: false
@@ -37,92 +81,48 @@ jobs:
           - variant: cpu
             features: static-ffmpeg
             portable: true
-            web: true
           - variant: vulkan
             features: static-ffmpeg,vulkan
             portable: true
+            save_cache: true
             deferred_libs: libvulkan.so.1
             expect_missing: vulkan=libvulkan.so.1
           - variant: cuda
             features: static-ffmpeg,cuda
+            save_cache: true
           - variant: all
             features: static-ffmpeg,cuda,vulkan
             cuda_no_vmm: true
             portable: true
-            desktop: true
+            save_cache: true
             deferred_libs: libcuda.so.1 libvulkan.so.1
             expect_missing: cuda=libcuda.so.1 vulkan=libvulkan.so.1
     steps:
       - uses: actions/checkout@v7
       - name: Install dependencies
         run: |
-          sudo apt update
-          sudo apt install -y --no-install-recommends clang curl pkg-config gcc ca-certificates openssl libssl-dev cmake libc6-dev make wget fuse libfuse2 \
-            nasm autoconf automake libtool \
-            llvm patchelf \
-            libgtk-3-dev libglib2.0-dev libcairo2-dev libpango1.0-dev libgdk-pixbuf2.0-dev libatk1.0-dev \
-            libjavascriptcoregtk-4.1-dev libsoup-3.0-dev libwebkit2gtk-4.1-dev libxdo-dev
-      - name: Cache vcpkg binaries
-        uses: actions/cache@v6
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends clang curl pkg-config gcc ca-certificates openssl libssl-dev cmake libc6-dev make wget llvm patchelf
+      - uses: ./.github/actions/setup-ffmpeg
         with:
-          path: .vcpkg-cache
-          key: vcpkg-ffmpeg-${{ runner.os }}-${{ env.VCPKG_COMMIT }}
-      - name: Install FFmpeg (static)
-        run: |
-          VCPKG_DIR="$RUNNER_TEMP/vcpkg"
-          git clone --quiet --filter=blob:none --no-checkout https://github.com/microsoft/vcpkg "$VCPKG_DIR"
-          git -C "$VCPKG_DIR" checkout --quiet "$VCPKG_COMMIT"
-          "$VCPKG_DIR/bootstrap-vcpkg.sh" -disableMetrics
-          "$VCPKG_DIR/vcpkg" install "$VCPKG_FFMPEG:x64-linux"
-          echo "PKG_CONFIG_PATH=$VCPKG_DIR/installed/x64-linux/lib/pkgconfig" >> "$GITHUB_ENV"
-      - name: Install cuda
-        if: contains(matrix.features, 'cuda')
-        run: |
-          CUDA_REPO="ubuntu$(lsb_release -rs | tr -d '.')"
-          CUDA_VERSION="13-5"
-          CUDA_PATH_VERSION="13.5"
-
-          wget https://developer.download.nvidia.com/compute/cuda/repos/${CUDA_REPO}/x86_64/cuda-keyring_1.1-1_all.deb
-          sudo dpkg -i cuda-keyring_1.1-1_all.deb
-          sudo apt update
-          sudo apt install -y cuda-toolkit-${CUDA_VERSION}
-          CUDA_PATH=/usr/local/cuda-${CUDA_PATH_VERSION}/
-          echo "CUDA_PATH=$CUDA_PATH" >> $GITHUB_ENV
-          echo "$CUDA_PATH/bin" >> $GITHUB_PATH
-          echo "LD_LIBRARY_PATH=$CUDA_PATH/lib64${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" >> $GITHUB_ENV
-      - name: Install Vulkan SDK
-        if: contains(matrix.features, 'vulkan')
-        run: |
-          # Install Vulkan SDK using system packages for Ubuntu 24.04
-          sudo apt update
-          sudo apt install -y libvulkan-dev vulkan-tools vulkan-utility-libraries-dev spirv-tools
-          # Download and install latest Vulkan SDK manually
-          VULKAN_SDK_VERSION="1.4.363.1"
-          wget https://sdk.lunarg.com/sdk/download/${VULKAN_SDK_VERSION}/linux/vulkansdk-linux-x86_64-${VULKAN_SDK_VERSION}.tar.xz
-          tar -xf vulkansdk-linux-x86_64-${VULKAN_SDK_VERSION}.tar.xz
-          export VULKAN_SDK="$(pwd)/${VULKAN_SDK_VERSION}/x86_64"
-          echo "VULKAN_SDK=$VULKAN_SDK" >> $GITHUB_ENV
-          echo "$VULKAN_SDK/bin" >> $GITHUB_PATH
-      - name: Set up Rust
-        uses: dtolnay/rust-toolchain@stable
+          triplet: x64-linux
+      - if: contains(matrix.features, 'cuda')
+        uses: ./.github/actions/setup-cuda-linux
+        with:
+          version: ${{ env.CUDA_VERSION }}
+      - if: contains(matrix.features, 'vulkan')
+        uses: ./.github/actions/setup-vulkan
+        with:
+          version: ${{ env.VULKAN_SDK_VERSION }}
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
           toolchain: stable
-          targets: x86_64-unknown-linux-gnu, wasm32-unknown-unknown
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@v2.9.3
         with:
-          # whisper-rs-sys does not rebuild ggml when GGML_* changes, so each ggml configuration needs its own cache
-          key: ${{ matrix.variant }}-ggml-native-${{ env.GGML_NATIVE }}-no-vmm-${{ env.GGML_CUDA_NO_VMM }}
-      - name: Cache Dioxus CLI
-        id: cache-dx-linux
-        uses: actions/cache@v6
-        with:
-          path: ~/.cargo/bin/dx
-          key: dioxus-cli-${{ runner.os }}-${{ env.DIOXUS_VERSION }}
-      - name: Install Dioxus CLI
-        if: steps.cache-dx-linux.outputs.cache-hit != 'true'
-        run: |
-          cargo install dioxus-cli --version ${{ env.DIOXUS_VERSION }} --locked
-      - name: Build CLI - ${{ matrix.variant }}
+          # whisper-rs-sys does not rebuild ggml when GGML_* or the GPU SDKs change, so each configuration needs its own cache
+          key: ${{ matrix.variant }}-ggml-native-${{ env.GGML_NATIVE }}-no-vmm-${{ env.GGML_CUDA_NO_VMM }}-cuda-${{ env.CUDA_VERSION }}-vulkan-${{ env.VULKAN_SDK_VERSION }}
+          save-if: ${{ github.ref == 'refs/heads/develop' && matrix.save_cache == true }}
+      - name: Build the CLI
         env:
           RUSTFLAGS: -C link-arg=-Wl,-rpath,$ORIGIN/lib:$ORIGIN/../lib/purr-desktop --cfg=web_sys_unstable_apis
         run: |
@@ -176,23 +176,68 @@ jobs:
               '(.backends[$backend] | objects | .RuntimeLibraryMissing.library) == $library' purr-sys.json > /dev/null \
               || { echo "::error::$backend is not reported as missing $library"; exit 1; }
           done
-      - name: Build desktop app - ${{ matrix.variant }}
-        if: matrix.desktop
+      - name: Archive CLI
+        uses: actions/upload-artifact@v7
+        with:
+          name: purr-cli-linux-x64-${{ matrix.variant }}
+          path: artifacts/cli/
+          retention-days: 30
+
+  desktop-linux:
+    name: desktop (linux, all)
+    needs: [ffmpeg-linux]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      # without it the app links libcuda.so.1 and does not start without the NVIDIA driver
+      GGML_CUDA_NO_VMM: "ON"
+      FEATURES: static-ffmpeg,cuda,vulkan
+      DEFERRED_LIBS: libcuda.so.1 libvulkan.so.1
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends clang curl pkg-config gcc ca-certificates openssl libssl-dev cmake libc6-dev make wget fuse libfuse2 \
+            llvm patchelf \
+            libgtk-3-dev libglib2.0-dev libcairo2-dev libpango1.0-dev libgdk-pixbuf2.0-dev libatk1.0-dev \
+            libjavascriptcoregtk-4.1-dev libsoup-3.0-dev libwebkit2gtk-4.1-dev libxdo-dev
+      - uses: ./.github/actions/setup-ffmpeg
+        with:
+          triplet: x64-linux
+      - uses: ./.github/actions/setup-cuda-linux
+        with:
+          version: ${{ env.CUDA_VERSION }}
+      - uses: ./.github/actions/setup-vulkan
+        with:
+          version: ${{ env.VULKAN_SDK_VERSION }}
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: stable
+          targets: x86_64-unknown-linux-gnu, wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2.9.3
+        with:
+          # whisper-rs-sys does not rebuild ggml when GGML_* or the GPU SDKs change, so each configuration needs its own cache
+          key: all-ggml-native-${{ env.GGML_NATIVE }}-no-vmm-${{ env.GGML_CUDA_NO_VMM }}-cuda-${{ env.CUDA_VERSION }}-vulkan-${{ env.VULKAN_SDK_VERSION }}
+          save-if: ${{ github.ref == 'refs/heads/develop' }}
+      - uses: ./.github/actions/setup-dioxus
+        with:
+          version: ${{ env.DIOXUS_VERSION }}
+      - name: Build the desktop package
         env:
           RUSTFLAGS: -C link-arg=-Wl,-rpath,$ORIGIN/lib:$ORIGIN/../lib/purr-desktop --cfg=web_sys_unstable_apis
         run: |
           dx bundle -p purr-app --release --linux --package-types deb \
             --out-dir dist-linux \
-            --features ${{ matrix.features }}
-      - name: Build desktop AppImage - ${{ matrix.variant }}
-        if: matrix.desktop
+            --features "$FEATURES"
+      - name: Build the desktop AppImage
         continue-on-error: true
         env:
           RUSTFLAGS: -C link-arg=-Wl,-rpath,$ORIGIN/lib:$ORIGIN/../lib/purr-desktop --cfg=web_sys_unstable_apis
         run: |
           dx bundle -p purr-app --release --linux --package-types appimage \
             --out-dir dist-appimage \
-            --features ${{ matrix.features }}
+            --features "$FEATURES"
           images=(dist-appimage/*.AppImage)
           [ "${#images[@]}" -eq 1 ] && [ -f "${images[0]}" ] || { echo "::error::expected one AppImage"; exit 1; }
           image="$(realpath "${images[0]}")"
@@ -209,7 +254,7 @@ jobs:
           fi
           for file in "$app" "$check"/squashfs-root/usr/lib/*.so*; do
             [ -f "$file" ] || continue
-            for library in ${{ matrix.deferred_libs }}; do
+            for library in $DEFERRED_LIBS; do
               if patchelf --print-needed "$file" | grep -qxF "$library"; then
                 echo "::error file=$file::$file has a hard dependency on $library"
                 exit 1
@@ -218,7 +263,6 @@ jobs:
           done
           cp "$image" dist-linux/
       - name: Add the CUDA runtime to the desktop package
-        if: matrix.desktop && contains(matrix.features, 'cuda')
         run: |
           debs=(dist-linux/*.deb)
           [ "${#debs[@]}" -eq 1 ] || { echo "::error::expected one .deb, found ${debs[*]}"; exit 1; }
@@ -236,7 +280,6 @@ jobs:
           dpkg-deb --root-owner-group --build "$root" "$deb"
           dpkg-deb --info "$deb"
       - name: Check the desktop package
-        if: matrix.desktop
         run: |
           root="$RUNNER_TEMP/deb-check"
           rm -rf "$root"
@@ -250,7 +293,7 @@ jobs:
           status=0
           for file in "$app" "$root"/usr/lib/purr-desktop/*; do
             [ -f "$file" ] || continue
-            for library in ${{ matrix.deferred_libs }}; do
+            for library in $DEFERRED_LIBS; do
               if patchelf --print-needed "$file" | grep -qxF "$library"; then
                 echo "::error file=$file::$file has a hard dependency on $library"
                 status=1
@@ -258,38 +301,49 @@ jobs:
             done
           done
           exit $status
-      - name: Build Dioxus web
-        if: matrix.web
-        run: |
-          dx bundle --verbose -p purr-app --release --web --out-dir dist-web
-      - name: Archive CLI
-        uses: actions/upload-artifact@v7
-        with:
-          name: purr-cli-linux-x64-${{ matrix.variant }}
-          path: artifacts/cli/
-          retention-days: 30
       - name: Archive desktop app
-        if: matrix.desktop
         uses: actions/upload-artifact@v7
         with:
-          name: purr-desktop-linux-x64-${{ matrix.variant }}
+          name: purr-desktop-linux-x64-all
           path: |
             dist-linux/*.deb
             dist-linux/*.AppImage
           if-no-files-found: error
           retention-days: 30
+
+  web:
+    name: web
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: stable
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2.9.3
+        with:
+          key: web
+          save-if: ${{ github.ref == 'refs/heads/develop' }}
+      - uses: ./.github/actions/setup-dioxus
+        with:
+          version: ${{ env.DIOXUS_VERSION }}
+      - name: Build the web app
+        run: |
+          dx bundle --verbose -p purr-app --release --web --out-dir dist-web
       - name: Archive web artifacts
-        if: matrix.web
         uses: actions/upload-artifact@v7
         with:
           name: purr-web
           path: dist-web/
+          if-no-files-found: error
 
-  build-macos:
-    name: Build macOS ${{ matrix.backend != 'none' && format(' - {0}', matrix.backend) || '' }}
-    runs-on: macos-latest
+  cli-macos:
+    name: cli (macos, ${{ matrix.backend == 'none' && 'cpu' || matrix.backend }})
+    needs: [ffmpeg-macos]
+    runs-on: macos-26
+    timeout-minutes: 60
     env:
-      GGML_NATIVE: "OFF"
       GGML_CPU_ARM_ARCH: armv8.2-a+dotprod+fp16
     strategy:
       fail-fast: false
@@ -304,51 +358,22 @@ jobs:
         run: |
           brew uninstall cmake || true
           brew install cmake nasm autoconf automake libtool pkg-config
-      - name: Cache vcpkg binaries
-        uses: actions/cache@v6
+      - uses: ./.github/actions/setup-ffmpeg
         with:
-          path: .vcpkg-cache
-          key: vcpkg-ffmpeg-${{ runner.os }}-${{ env.VCPKG_COMMIT }}
-      - name: Install FFmpeg (static)
-        run: |
-          VCPKG_DIR="$RUNNER_TEMP/vcpkg"
-          git clone --quiet --filter=blob:none --no-checkout https://github.com/microsoft/vcpkg "$VCPKG_DIR"
-          git -C "$VCPKG_DIR" checkout --quiet "$VCPKG_COMMIT"
-          "$VCPKG_DIR/bootstrap-vcpkg.sh" -disableMetrics
-          "$VCPKG_DIR/vcpkg" install "$VCPKG_FFMPEG:arm64-osx"
-          echo "PKG_CONFIG_PATH=$VCPKG_DIR/installed/arm64-osx/lib/pkgconfig" >> "$GITHUB_ENV"
-      - name: Set up Rust
-        uses: dtolnay/rust-toolchain@stable
+          triplet: arm64-osx
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
           toolchain: stable
-          targets: wasm32-unknown-unknown
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@v2.9.3
         with:
           # whisper-rs-sys does not rebuild ggml when GGML_* changes, so each ggml configuration needs its own cache
           key: ${{ matrix.backend }}-ggml-native-${{ env.GGML_NATIVE }}-arm-${{ env.GGML_CPU_ARM_ARCH }}
-      - name: Cache Dioxus CLI
-        id: cache-dx-macos
-        uses: actions/cache@v6
-        with:
-          path: ~/.cargo/bin/dx
-          key: dioxus-cli-${{ runner.os }}-${{ env.DIOXUS_VERSION }}
-      - name: Install Dioxus CLI
-        if: steps.cache-dx-macos.outputs.cache-hit != 'true'
-        run: |
-          cargo install dioxus-cli --version ${{ env.DIOXUS_VERSION }} --locked
-      - name: Build CLI${{ matrix.backend != 'none' && format(' - {0}', matrix.backend) || '' }}
+          save-if: ${{ github.ref == 'refs/heads/develop' && matrix.is_release == true }}
+      - name: Build the CLI
         run: |
           export CFLAGS="-march=armv8.2-a+crypto+noi8mm"
           export CXXFLAGS="-march=armv8.2-a+crypto+noi8mm"
           cargo build -p purr-cli --release --features static-ffmpeg${{ matrix.backend != 'none' && format(',{0}', matrix.backend) || '' }}
-      - name: Build desktop app${{ matrix.backend != 'none' && format(' - {0}', matrix.backend) || '' }}
-        if: matrix.is_release == true
-        run: |
-          export CFLAGS="-march=armv8.2-a+crypto+noi8mm"
-          export CXXFLAGS="-march=armv8.2-a+crypto+noi8mm"
-          dx bundle -p purr-app --release --macos \
-            --out-dir dist-macos \
-            --features static-ffmpeg${{ matrix.backend != 'none' && format(',{0}', matrix.backend) || '' }}
       - name: Prepare CLI artifact
         run: |
           mkdir -p artifacts/cli
@@ -360,153 +385,105 @@ jobs:
           name: purr-${{ matrix.is_release == true && 'cli' || 'dev-cli' }}-macos-arm64-${{ matrix.backend == 'none' && 'cpu' || matrix.backend }}
           path: artifacts/cli/
           retention-days: ${{ matrix.is_release == true && 30 || 7 }}
-      - name: Archive desktop app
-        if: matrix.is_release == true
-        uses: actions/upload-artifact@v7
-        with:
-          name: purr-desktop-macos-arm64-${{ matrix.backend }}
-          path: dist-macos/*.dmg
-          if-no-files-found: error
-          retention-days: 30
 
-  prepare-ffmpeg-windows:
-    defaults:
-      run:
-        shell: pwsh
-    name: Prepare FFmpeg Windows
-    runs-on: windows-latest
-    steps:
-      - name: Cache vcpkg binaries
-        id: vcpkg-cache
-        uses: actions/cache@v6
-        with:
-          path: .vcpkg-cache
-          key: vcpkg-ffmpeg-${{ runner.os }}-${{ env.VCPKG_WINDOWS_TRIPLET }}-${{ env.VCPKG_COMMIT }}
-      - name: Install dependencies
-        if: steps.vcpkg-cache.outputs.cache-hit != 'true'
-        run: |
-          $VCINSTALLDIR = $(& "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath)
-          Add-Content $env:GITHUB_ENV "LIBCLANG_PATH=${VCINSTALLDIR}\VC\Tools\LLVM\x64\bin`n"
-          choco install -y cmake
-          choco install -y visualstudio2022buildtools
-          choco install -y visualstudio2022-workload-vctools
-          choco install -y llvm
-          choco install -y windows-sdk-10.0
-      - name: Build FFmpeg (static)
-        if: steps.vcpkg-cache.outputs.cache-hit != 'true'
-        run: |
-          $vcpkg = Join-Path $env:RUNNER_TEMP vcpkg
-          git clone --quiet --filter=blob:none --no-checkout https://github.com/microsoft/vcpkg $vcpkg
-          git -C $vcpkg checkout --quiet $env:VCPKG_COMMIT
-          & "$vcpkg\bootstrap-vcpkg.bat" -disableMetrics
-          & "$vcpkg\vcpkg.exe" install "$($env:VCPKG_FFMPEG):$($env:VCPKG_WINDOWS_TRIPLET)"
-
-  build-windows:
-    needs: [prepare-ffmpeg-windows]
-    defaults:
-      run:
-        shell: pwsh
-    name: Build Windows${{ matrix.backend != 'none' && format(' - {0}', matrix.backend) || '' }}
-    runs-on: windows-latest
+  desktop-macos:
+    name: desktop (macos, metal)
+    needs: [ffmpeg-macos]
+    runs-on: macos-26
+    timeout-minutes: 60
     env:
-      CARGO_TARGET_DIR: D:\t
-      GGML_NATIVE: "OFF"
-    strategy:
-      fail-fast: false
-      matrix:
-        backend: ${{ fromJSON(github.event_name == 'push' && github.ref_type != 'tag' && '["none","cuda,vulkan"]' || '["none","cuda","vulkan","cuda,vulkan"]') }}
-        include:
-          - backend: "cuda,vulkan"
-            label: cuda-vulkan
-            is_release: true # Mark CUDA + Vulkan as the release variant for Windows
+      GGML_CPU_ARM_ARCH: armv8.2-a+dotprod+fp16
     steps:
       - uses: actions/checkout@v7
       - name: Install dependencies
         run: |
-          $VCINSTALLDIR = $(& "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath)
-          Add-Content $env:GITHUB_ENV "LIBCLANG_PATH=${VCINSTALLDIR}\VC\Tools\LLVM\x64\bin`n"
-          choco install -y cmake
-          choco install -y visualstudio2022buildtools
-          choco install -y visualstudio2022-workload-vctools
-          choco install -y llvm
-          choco install -y windows-sdk-10.0
-      - name: Restore vcpkg binaries
-        uses: actions/cache/restore@v6
+          brew uninstall cmake || true
+          brew install cmake nasm autoconf automake libtool pkg-config
+      - uses: ./.github/actions/setup-ffmpeg
         with:
-          path: .vcpkg-cache
-          key: vcpkg-ffmpeg-${{ runner.os }}-${{ env.VCPKG_WINDOWS_TRIPLET }}-${{ env.VCPKG_COMMIT }}
-      - name: Install FFmpeg (static)
-        run: |
-          $vcpkg = Join-Path $env:RUNNER_TEMP vcpkg
-          git clone --quiet --filter=blob:none --no-checkout https://github.com/microsoft/vcpkg $vcpkg
-          git -C $vcpkg checkout --quiet $env:VCPKG_COMMIT
-          & "$vcpkg\bootstrap-vcpkg.bat" -disableMetrics
-          & "$vcpkg\vcpkg.exe" install "$($env:VCPKG_FFMPEG):$($env:VCPKG_WINDOWS_TRIPLET)"
-          Add-Content $env:GITHUB_ENV "VCPKG_ROOT=$vcpkg"
-          Add-Content $env:GITHUB_ENV "VCPKGRS_TRIPLET=$($env:VCPKG_WINDOWS_TRIPLET)"
-      - name: Install cuda
-        if: contains(matrix.backend, 'cuda')
-        run: |
-          choco install -r cuda --version 13.5.0
-          $CUDA_PATH = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.5\"
-          # check if CUDA_PATH exists
-          if (-Not (Test-Path $CUDA_PATH)) {
-              Write-Error "CUDA_PATH does not exist: $CUDA_PATH"
-              exit 1
-          }
-          Add-Content $env:GITHUB_ENV "CUDA_PATH=${CUDA_PATH}"
-          Add-Content $env:GITHUB_ENV "CUDA_PATH_V13_5=${CUDA_PATH}"
-          Add-Content $env:GITHUB_ENV "CUDA_BIN_PATH=${CUDA_PATH}\bin"
-          Add-Content $env:GITHUB_ENV "CUDA_LIB_PATH=${CUDA_PATH}\lib\x64"
-          Add-Content $env:GITHUB_PATH "${CUDA_PATH}\bin\x64"
-          Add-Content $env:GITHUB_PATH "${CUDA_PATH}\bin"
-      - name: Install Vulkan SDK
-        if: contains(matrix.backend, 'vulkan')
-        run: |
-          $VulkanSDKVersion = "1.4.363.1"
-          $VulkanSDKUrl = "https://sdk.lunarg.com/sdk/download/${VulkanSDKVersion}/windows/vulkansdk-windows-X64-${VulkanSDKVersion}.exe"
-          Invoke-WebRequest -Uri ${VulkanSDKUrl} -OutFile VulkanSDK-Installer.exe
-          Start-Process -Wait -FilePath .\VulkanSDK-Installer.exe -ArgumentList "--accept-licenses --default-answer --confirm-command install --root C:\VulkanSDK\${VulkanSDKVersion} --no-shortcuts --no-start-menu --no-desktop-icon --no-update-check"
-          $VULKAN_SDK = "C:\VulkanSDK\${VulkanSDKVersion}"
-          Add-Content $env:GITHUB_ENV "VULKAN_SDK=${VULKAN_SDK}"
-          Add-Content $env:GITHUB_PATH "${VULKAN_SDK}\Bin"
-      - name: Set up Rust
-        uses: dtolnay/rust-toolchain@stable
+          triplet: arm64-osx
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
           toolchain: stable
           targets: wasm32-unknown-unknown
-          components: rustfmt
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@v2.9.3
         with:
           # whisper-rs-sys does not rebuild ggml when GGML_* changes, so each ggml configuration needs its own cache
-          key: ${{ matrix.label || matrix.backend }}-ggml-native-${{ env.GGML_NATIVE }}-crt-static
-      - name: Cache Dioxus CLI
-        id: cache-dx-windows
-        uses: actions/cache@v6
+          key: metal-ggml-native-${{ env.GGML_NATIVE }}-arm-${{ env.GGML_CPU_ARM_ARCH }}
+          save-if: ${{ github.ref == 'refs/heads/develop' }}
+      - uses: ./.github/actions/setup-dioxus
         with:
-          path: ~/.cargo/bin/dx.exe
-          key: dioxus-cli-${{ runner.os }}-${{ env.DIOXUS_VERSION }}
-      - name: Install Dioxus CLI
-        if: steps.cache-dx-windows.outputs.cache-hit != 'true'
-        working-directory: ${{ runner.temp }}
+          version: ${{ env.DIOXUS_VERSION }}
+      - name: Build the desktop app
         run: |
-          cargo install dioxus-cli --version ${{ env.DIOXUS_VERSION }} --locked
-      - name: Install Visual Studio Build Tools
-        uses: microsoft/setup-msbuild@v3
-      - name: Build CLI${{ matrix.backend != 'none' && format(' - {0}', matrix.backend) || '' }}
+          export CFLAGS="-march=armv8.2-a+crypto+noi8mm"
+          export CXXFLAGS="-march=armv8.2-a+crypto+noi8mm"
+          dx bundle -p purr-app --release --macos \
+            --out-dir dist-macos \
+            --features static-ffmpeg,metal
+      - name: Archive desktop app
+        uses: actions/upload-artifact@v7
+        with:
+          name: purr-desktop-macos-arm64-metal
+          path: dist-macos/*.dmg
+          if-no-files-found: error
+          retention-days: 30
+
+  cli-windows:
+    name: cli (windows, ${{ matrix.backend == 'none' && 'cpu' || matrix.label || matrix.backend }})
+    needs: [ffmpeg-windows]
+    runs-on: windows-2025-vs2026
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      CARGO_TARGET_DIR: D:\t
+    strategy:
+      fail-fast: false
+      matrix:
+        backend: ${{ fromJSON(inputs.windows_single_backends && '["none","cuda","vulkan","cuda,vulkan"]' || '["none","cuda,vulkan"]') }}
+        include:
+          - backend: "cuda,vulkan"
+            label: cuda-vulkan
+            is_release: true
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-msvc
+        with:
+          vs-major: "18"
+      - uses: ./.github/actions/setup-ffmpeg
+        with:
+          triplet: x64-windows-static
+      - if: contains(matrix.backend, 'cuda')
+        uses: ./.github/actions/setup-cuda-windows
+        with:
+          version: ${{ env.CUDA_VERSION }}
+      - if: contains(matrix.backend, 'vulkan')
+        uses: ./.github/actions/setup-vulkan
+        with:
+          version: ${{ env.VULKAN_SDK_VERSION }}
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: stable
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2.9.3
+        with:
+          # rust-cache joins the target onto the workspace path, and CARGO_TARGET_DIR is D:\t
+          workspaces: ". -> ../../../t"
+          # whisper-rs-sys does not rebuild ggml when GGML_* or the GPU SDKs change, so each configuration needs its own cache
+          key: ${{ matrix.label || matrix.backend }}-ggml-native-${{ env.GGML_NATIVE }}-crt-static-cuda-${{ env.CUDA_VERSION }}-vulkan-${{ env.VULKAN_SDK_VERSION }}
+          save-if: ${{ github.ref == 'refs/heads/develop' && matrix.is_release == true }}
+      - name: Build the CLI
         run: |
           cargo build -p purr-cli --release --features static-ffmpeg${{ matrix.backend != 'none' && format(',{0}', matrix.backend) || '' }}
-      - name: Build desktop app${{ matrix.backend != 'none' && format(' - {0}', matrix.backend) || '' }}
-        if: matrix.is_release == true
-        run: |
-          dx bundle --verbose --trace -p purr-app --release --profile r --windows --package-types nsis --out-dir dist-windows --features static-ffmpeg${{ matrix.backend != 'none' && format(',{0}', matrix.backend) || '' }}
       - name: Prepare CLI artifact
         run: |
           New-Item -ItemType Directory -Force -Path artifacts\cli
           Copy-Item "$env:CARGO_TARGET_DIR\release\purr.exe" artifacts\cli\purr.exe
           Get-ChildItem "$env:CARGO_TARGET_DIR\release\*.dll" | Copy-Item -Destination artifacts\cli\
           if ("${{ matrix.backend }}" -match "cuda") {
-            $cudaBinPath = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.5\bin\x64"
+            $cudaBinPath = "$env:CUDA_PATH\bin\x64"
             foreach ($pattern in "cudart64_*.dll", "cublas64_*.dll", "cublasLt64_*.dll") {
               $found = Get-ChildItem "$cudaBinPath\$pattern"
               if (-Not $found) {
@@ -533,8 +510,51 @@ jobs:
           name: purr-${{ matrix.is_release == true && 'cli' || 'dev-cli' }}-windows-x64-${{ matrix.backend == 'none' && 'cpu' || matrix.label || matrix.backend }}
           path: artifacts/cli/
           retention-days: ${{ matrix.is_release == true && 30 || 7 }}
+
+  desktop-windows:
+    name: desktop (windows, cuda-vulkan)
+    needs: [ffmpeg-windows]
+    runs-on: windows-2025-vs2026
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      CARGO_TARGET_DIR: D:\t
+      FEATURES: static-ffmpeg,cuda,vulkan
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-msvc
+        with:
+          vs-major: "18"
+      - uses: ./.github/actions/setup-ffmpeg
+        with:
+          triplet: x64-windows-static
+      - uses: ./.github/actions/setup-cuda-windows
+        with:
+          version: ${{ env.CUDA_VERSION }}
+      - uses: ./.github/actions/setup-vulkan
+        with:
+          version: ${{ env.VULKAN_SDK_VERSION }}
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: stable
+          targets: wasm32-unknown-unknown
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2.9.3
+        with:
+          # rust-cache joins the target onto the workspace path, and CARGO_TARGET_DIR is D:\t
+          workspaces: ". -> ../../../t"
+          # whisper-rs-sys does not rebuild ggml when GGML_* or the GPU SDKs change, so each configuration needs its own cache
+          key: cuda-vulkan-ggml-native-${{ env.GGML_NATIVE }}-crt-static-cuda-${{ env.CUDA_VERSION }}-vulkan-${{ env.VULKAN_SDK_VERSION }}
+          save-if: ${{ github.ref == 'refs/heads/develop' }}
+      - uses: ./.github/actions/setup-dioxus
+        with:
+          version: ${{ env.DIOXUS_VERSION }}
+      - name: Build the desktop app
+        run: |
+          dx bundle --verbose --trace -p purr-app --release --profile r --windows --package-types nsis --out-dir dist-windows --features $env:FEATURES
       - name: Prepare desktop artifacts
-        if: matrix.is_release == true
         run: |
           New-Item -ItemType Directory -Force -Path artifacts\desktop
           Copy-Item dist-windows\*-setup.exe artifacts\desktop\
@@ -550,26 +570,29 @@ jobs:
           New-Item -ItemType Directory -Force -Path $portable
           Copy-Item "$($appExe.DirectoryName)\*" $portable -Recurse
           Get-ChildItem "$env:CARGO_TARGET_DIR\r\*.dll" -ErrorAction SilentlyContinue | Copy-Item -Destination $portable
-          if ("${{ matrix.backend }}" -match "cuda") {
-            $cudaBinPath = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.5\bin\x64"
-            foreach ($pattern in "cudart64_*.dll", "cublas64_*.dll", "cublasLt64_*.dll") {
-              Get-ChildItem "$cudaBinPath\$pattern" | Copy-Item -Destination $portable
+          $cudaBinPath = "$env:CUDA_PATH\bin\x64"
+          foreach ($pattern in "cudart64_*.dll", "cublas64_*.dll", "cublasLt64_*.dll") {
+            $found = Get-ChildItem "$cudaBinPath\$pattern"
+            if (-Not $found) {
+              Write-Error "CUDA runtime DLL not found: $cudaBinPath\$pattern"
+              exit 1
             }
+            $found | Copy-Item -Destination $portable
           }
           Compress-Archive -Path "$portable\*" -DestinationPath artifacts\desktop\purr-desktop-portable.zip
       - name: Archive desktop app
-        if: matrix.is_release == true
         uses: actions/upload-artifact@v7
         with:
-          name: purr-desktop-windows-x64-${{ matrix.label || matrix.backend }}
+          name: purr-desktop-windows-x64-cuda-vulkan
           path: artifacts/desktop/
           if-no-files-found: error
           retention-days: 30
 
-  deploy-vercel:
-    name: Deploy to Vercel
-    runs-on: ubuntu-latest
-    needs: [build-linux]
+  deploy-web:
+    name: deploy web (vercel)
+    runs-on: ubuntu-24.04
+    needs: [web]
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - name: Download Web Artifacts
@@ -596,11 +619,12 @@ jobs:
           vercel --yes ${{ steps.setup-env.outputs.environment == 'production' && '--prod' || '' }} --token=${{ secrets.VERCEL_TOKEN }} --archive=tgz --prebuilt
 
   nightly-release:
-    name: Create Nightly Release
-    runs-on: ubuntu-latest
+    name: release (nightly)
+    runs-on: ubuntu-24.04
     # Only run for scheduled nightly builds or manual trigger with nightly input
     if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.nightly == true)
-    needs: [build-linux, build-macos, build-windows]
+    needs: [cli-linux, desktop-linux, web, cli-macos, desktop-macos, cli-windows, desktop-windows]
+    timeout-minutes: 30
     permissions:
       contents: write
       pull-requests: read
@@ -628,7 +652,7 @@ jobs:
 
       - name: Generate Changelog
         id: changelog
-        uses: mikepenz/release-changelog-builder-action@v6
+        uses: mikepenz/release-changelog-builder-action@v6.5
         with:
           configuration: |
             {
@@ -692,7 +716,7 @@ jobs:
         run: bash scripts/package-release-assets.sh
 
       - name: Create Nightly Release
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@v3.0.4
         with:
           tag_name: nightly-${{ steps.date.outputs.date }}
           name: Nightly Build - ${{ steps.date.outputs.date }}
@@ -742,11 +766,12 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   tagged-release:
-    name: Create Tagged Release
-    runs-on: ubuntu-latest
+    name: release (tag)
+    runs-on: ubuntu-24.04
     # Only run on version tags (e.g., v1.0.0, v2.1.3-beta)
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-    needs: [build-linux, build-macos, build-windows]
+    needs: [cli-linux, desktop-linux, web, cli-macos, desktop-macos, cli-windows, desktop-windows]
+    timeout-minutes: 30
     permissions:
       contents: write
       pull-requests: read
@@ -772,7 +797,7 @@ jobs:
 
       - name: Generate Release Notes
         id: changelog
-        uses: mikepenz/release-changelog-builder-action@v6
+        uses: mikepenz/release-changelog-builder-action@v6.5
         with:
           configuration: |
             {
@@ -839,7 +864,7 @@ jobs:
         run: bash scripts/package-release-assets.sh "${{ steps.version.outputs.version }}"
 
       - name: Create Release
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@v3.0.4
         with:
           name: Purr ${{ steps.version.outputs.version }}
           body: |
@@ -876,7 +901,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   publish-nightly-packages:
-    name: Publish Nightly Packages
+    name: publish packages (nightly)
     needs: [nightly-release]
     permissions:
       contents: read
@@ -889,7 +914,7 @@ jobs:
       PURR_BUCKET_DEPLOY_KEY: ${{ secrets.PURR_BUCKET_DEPLOY_KEY }}
 
   publish-release-packages:
-    name: Publish Release Packages
+    name: publish packages (stable)
     needs: [tagged-release]
     if: needs.tagged-release.outputs.prerelease == 'false'
     permissions:
@@ -901,3 +926,27 @@ jobs:
     secrets:
       PURR_TAP_DEPLOY_KEY: ${{ secrets.PURR_TAP_DEPLOY_KEY }}
       PURR_BUCKET_DEPLOY_KEY: ${{ secrets.PURR_BUCKET_DEPLOY_KEY }}
+
+  prune-caches:
+    name: prune caches
+    if: ${{ !cancelled() && github.ref == 'refs/heads/develop' }}
+    needs: [cli-linux, desktop-linux, web, cli-macos, desktop-macos, cli-windows, desktop-windows]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      actions: write
+    steps:
+      - name: Delete the Rust caches superseded by a newer one of the same job
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          gh cache list --ref refs/heads/develop --key v0-rust- --limit 1000 --json id,key,createdAt \
+            | jq -r 'group_by(.key | sub("-[0-9a-f]{8}-[0-9a-f]{8}$"; ""))
+                     | map(sort_by(.createdAt) | reverse | .[1:][])
+                     | .[] | "\(.id) \(.key)"' \
+            | while read -r id key; do
+                echo "deleting $key"
+                gh cache delete "$id"
+              done

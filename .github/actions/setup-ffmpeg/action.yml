@@ -1,0 +1,85 @@
+name: Set up static FFmpeg
+description: >
+  Install FFmpeg from a pinned vcpkg checkout, restoring its binaries from the cache.
+  In prepare mode, only check the cache and build and save it on a miss.
+inputs:
+  triplet:
+    description: vcpkg triplet
+    required: true
+  prepare:
+    description: "true: build and save the cache on a miss, without exporting anything"
+    required: false
+    default: "false"
+  vcpkg-commit:
+    description: vcpkg commit to build from
+    required: false
+    default: efecf268f3a3ec78f4bf1f0c36759bdb23c6f653
+  ffmpeg:
+    description: vcpkg FFmpeg port and features
+    required: false
+    default: ffmpeg[core,avcodec,avformat,swresample]
+runs:
+  using: composite
+  steps:
+    - name: Restore the vcpkg binaries
+      id: cache
+      uses: actions/cache/restore@v6
+      with:
+        path: .vcpkg-cache
+        key: vcpkg-ffmpeg-${{ runner.os }}-${{ inputs.triplet }}-${{ inputs.vcpkg-commit }}
+        lookup-only: ${{ inputs.prepare }}
+
+    - name: Install the FFmpeg build tools
+      if: steps.cache.outputs.cache-hit != 'true' && runner.os == 'Linux'
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends nasm autoconf automake libtool pkg-config
+
+    - name: Install the FFmpeg build tools
+      if: steps.cache.outputs.cache-hit != 'true' && runner.os == 'macOS'
+      shell: bash
+      run: brew install nasm autoconf automake libtool pkg-config
+
+    - name: Install FFmpeg
+      if: runner.os != 'Windows' && (inputs.prepare != 'true' || steps.cache.outputs.cache-hit != 'true')
+      shell: bash
+      env:
+        TRIPLET: ${{ inputs.triplet }}
+        VCPKG_COMMIT: ${{ inputs.vcpkg-commit }}
+        VCPKG_FFMPEG: ${{ inputs.ffmpeg }}
+        VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/.vcpkg-cache,readwrite
+      run: |
+        set -euo pipefail
+        vcpkg_dir="$RUNNER_TEMP/vcpkg"
+        git clone --quiet --filter=blob:none --no-checkout https://github.com/microsoft/vcpkg "$vcpkg_dir"
+        git -C "$vcpkg_dir" checkout --quiet "$VCPKG_COMMIT"
+        "$vcpkg_dir/bootstrap-vcpkg.sh" -disableMetrics
+        "$vcpkg_dir/vcpkg" install "$VCPKG_FFMPEG:$TRIPLET"
+        echo "PKG_CONFIG_PATH=$vcpkg_dir/installed/$TRIPLET/lib/pkgconfig" >> "$GITHUB_ENV"
+
+    - name: Install FFmpeg
+      if: runner.os == 'Windows' && (inputs.prepare != 'true' || steps.cache.outputs.cache-hit != 'true')
+      shell: pwsh
+      env:
+        TRIPLET: ${{ inputs.triplet }}
+        VCPKG_COMMIT: ${{ inputs.vcpkg-commit }}
+        VCPKG_FFMPEG: ${{ inputs.ffmpeg }}
+        VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/.vcpkg-cache,readwrite
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $PSNativeCommandUseErrorActionPreference = $true
+        $vcpkg = Join-Path $env:RUNNER_TEMP vcpkg
+        git clone --quiet --filter=blob:none --no-checkout https://github.com/microsoft/vcpkg $vcpkg
+        git -C $vcpkg checkout --quiet $env:VCPKG_COMMIT
+        & "$vcpkg\bootstrap-vcpkg.bat" -disableMetrics
+        & "$vcpkg\vcpkg.exe" install "$($env:VCPKG_FFMPEG):$($env:TRIPLET)"
+        Add-Content $env:GITHUB_ENV "VCPKG_ROOT=$vcpkg"
+        Add-Content $env:GITHUB_ENV "VCPKGRS_TRIPLET=$($env:TRIPLET)"
+
+    - name: Save the vcpkg binaries
+      if: inputs.prepare == 'true' && steps.cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v6
+      with:
+        path: .vcpkg-cache
+        key: ${{ steps.cache.outputs.cache-primary-key }}
