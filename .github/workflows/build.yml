@@ -18,6 +18,7 @@ env:
   DIOXUS_VERSION: 0.8.0-alpha.3
   VCPKG_COMMIT: efecf268f3a3ec78f4bf1f0c36759bdb23c6f653
   VCPKG_FFMPEG: ffmpeg[core,avcodec,avformat,swresample]
+  VCPKG_WINDOWS_TRIPLET: x64-windows-static
   VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/.vcpkg-cache,readwrite
   # true: the release archives leave the Windows CUDA libraries out, and they ship as the runtime pack only
   PURR_SPLIT_CUDA_RUNTIME: "false"
@@ -368,7 +369,40 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+  prepare-ffmpeg-windows:
+    defaults:
+      run:
+        shell: pwsh
+    name: Prepare FFmpeg Windows
+    runs-on: windows-latest
+    steps:
+      - name: Cache vcpkg binaries
+        id: vcpkg-cache
+        uses: actions/cache@v6
+        with:
+          path: .vcpkg-cache
+          key: vcpkg-ffmpeg-${{ runner.os }}-${{ env.VCPKG_WINDOWS_TRIPLET }}-${{ env.VCPKG_COMMIT }}
+      - name: Install dependencies
+        if: steps.vcpkg-cache.outputs.cache-hit != 'true'
+        run: |
+          $VCINSTALLDIR = $(& "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath)
+          Add-Content $env:GITHUB_ENV "LIBCLANG_PATH=${VCINSTALLDIR}\VC\Tools\LLVM\x64\bin`n"
+          choco install -y cmake
+          choco install -y visualstudio2022buildtools
+          choco install -y visualstudio2022-workload-vctools
+          choco install -y llvm
+          choco install -y windows-sdk-10.0
+      - name: Build FFmpeg (static)
+        if: steps.vcpkg-cache.outputs.cache-hit != 'true'
+        run: |
+          $vcpkg = Join-Path $env:RUNNER_TEMP vcpkg
+          git clone --quiet --filter=blob:none --no-checkout https://github.com/microsoft/vcpkg $vcpkg
+          git -C $vcpkg checkout --quiet $env:VCPKG_COMMIT
+          & "$vcpkg\bootstrap-vcpkg.bat" -disableMetrics
+          & "$vcpkg\vcpkg.exe" install "$($env:VCPKG_FFMPEG):$($env:VCPKG_WINDOWS_TRIPLET)"
+
   build-windows:
+    needs: [prepare-ffmpeg-windows]
     defaults:
       run:
         shell: pwsh
@@ -377,7 +411,6 @@ jobs:
     env:
       CARGO_TARGET_DIR: D:\t
       GGML_NATIVE: "OFF"
-      VCPKG_TRIPLET: x64-windows-static
     strategy:
       fail-fast: false
       matrix:
@@ -397,20 +430,20 @@ jobs:
           choco install -y visualstudio2022-workload-vctools
           choco install -y llvm
           choco install -y windows-sdk-10.0
-      - name: Cache vcpkg binaries
-        uses: actions/cache@v6
+      - name: Restore vcpkg binaries
+        uses: actions/cache/restore@v6
         with:
           path: .vcpkg-cache
-          key: vcpkg-ffmpeg-${{ runner.os }}-${{ env.VCPKG_TRIPLET }}-${{ env.VCPKG_COMMIT }}
+          key: vcpkg-ffmpeg-${{ runner.os }}-${{ env.VCPKG_WINDOWS_TRIPLET }}-${{ env.VCPKG_COMMIT }}
       - name: Install FFmpeg (static)
         run: |
           $vcpkg = Join-Path $env:RUNNER_TEMP vcpkg
           git clone --quiet --filter=blob:none --no-checkout https://github.com/microsoft/vcpkg $vcpkg
           git -C $vcpkg checkout --quiet $env:VCPKG_COMMIT
           & "$vcpkg\bootstrap-vcpkg.bat" -disableMetrics
-          & "$vcpkg\vcpkg.exe" install "$($env:VCPKG_FFMPEG):$($env:VCPKG_TRIPLET)"
+          & "$vcpkg\vcpkg.exe" install "$($env:VCPKG_FFMPEG):$($env:VCPKG_WINDOWS_TRIPLET)"
           Add-Content $env:GITHUB_ENV "VCPKG_ROOT=$vcpkg"
-          Add-Content $env:GITHUB_ENV "VCPKGRS_TRIPLET=$($env:VCPKG_TRIPLET)"
+          Add-Content $env:GITHUB_ENV "VCPKGRS_TRIPLET=$($env:VCPKG_WINDOWS_TRIPLET)"
       - name: Install cuda
         if: contains(matrix.backend, 'cuda')
         run: |
