@@ -698,12 +698,14 @@ fn count_run(text: &str, phrase: &str) -> usize {
         .count()
 }
 
+type TestResult<T> = Result<T, Box<dyn std::error::Error>>;
+
 /// The sample spoken twice, two seconds apart, as a WAV file.
-async fn spoken_twice(sample: &str) -> NamedTempFile {
+async fn spoken_twice(sample: &str) -> TestResult<NamedTempFile> {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../samples")
         .join(sample);
-    let audio = AudioProcessor::load_audio(&path).await.unwrap();
+    let audio = AudioProcessor::load_audio(&path).await?;
     let speech: Vec<i16> = audio
         .samples
         .iter()
@@ -711,34 +713,25 @@ async fn spoken_twice(sample: &str) -> NamedTempFile {
         .collect();
     let silence = vec![0i16; audio.sample_rate as usize * 2];
     let samples = [speech.as_slice(), &silence, &speech].concat();
-    let file = NamedTempFile::with_suffix(".wav").unwrap();
+    let file = NamedTempFile::with_suffix(".wav")?;
     fs::write(
         file.path(),
-        whisper_fixtures::create_wav_bytes(samples, audio.sample_rate).unwrap(),
+        whisper_fixtures::create_wav_bytes(samples, audio.sample_rate)?,
     )
-    .await
-    .unwrap();
-    file
+    .await?;
+    Ok(file)
 }
 
-async fn stream_text(audio: &std::path::Path, config: TranscriptionConfig) -> String {
-    let mut stream = transcribe_file_stream(audio, config).await.unwrap();
+async fn stream_chunks(
+    audio: &std::path::Path,
+    config: TranscriptionConfig,
+) -> TestResult<Vec<purr_core::StreamingChunk>> {
+    let mut stream = transcribe_file_stream(audio, config).await?;
     let mut chunks = Vec::new();
     while let Some(chunk) = stream.next().await {
-        chunks.push(chunk.unwrap());
+        chunks.push(chunk?);
     }
-    assert!(validation::validate_streaming_chunks(&chunks));
-    assert!(chunks.windows(2).all(|w| w[0].end <= w[1].start + 0.01));
-    let stats = chunks.last().unwrap().final_stats.clone().unwrap();
-    assert_eq!(
-        stats.segment_count,
-        chunks.iter().filter(|c| !c.text.is_empty()).count()
-    );
-    chunks
-        .iter()
-        .map(|c| c.text.as_str())
-        .collect::<Vec<_>>()
-        .join(" ")
+    Ok(chunks)
 }
 
 /// The voice activity model the streaming tests use: `PURR_VAD_MODEL`, or the default file in
@@ -761,7 +754,7 @@ async fn test_streaming_keeps_a_sentence_spoken_twice() {
         println!("⏭ Skipping test - ggml-base.bin not available");
         return;
     }
-    let audio = spoken_twice("jfk.wav").await;
+    let audio = spoken_twice("jfk.wav").await.unwrap();
 
     let mut config = TranscriptionConfig::new().with_gpu(false).with_beam_size(1);
     config.model_path = Some(model_path);
@@ -772,7 +765,23 @@ async fn test_streaming_keeps_a_sentence_spoken_twice() {
     }
 
     for config in configs {
-        let text = stream_text(audio.path(), config).await;
+        let chunks = stream_chunks(audio.path(), config).await.unwrap();
+        assert!(validation::validate_streaming_chunks(&chunks));
+        assert!(
+            chunks
+                .windows(2)
+                .all(|pair| matches!(pair, [a, b] if a.end <= b.start + 0.01))
+        );
+        let stats = chunks.last().unwrap().final_stats.clone().unwrap();
+        assert_eq!(
+            stats.segment_count,
+            chunks.iter().filter(|c| !c.text.is_empty()).count()
+        );
+        let text = chunks
+            .iter()
+            .map(|c| c.text.as_str())
+            .collect::<Vec<_>>()
+            .join(" ");
         assert_eq!(
             count_run(&text, "ask what you can do for your country"),
             2,
