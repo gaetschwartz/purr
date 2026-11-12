@@ -6,6 +6,7 @@
 
 use crate::accel::{AccelBackend, AccelPolicy, AccelSelection};
 use crate::export_format::ExportFormat;
+use crate::hugging_face_token::HuggingFaceToken;
 use serde::{Deserialize, Serialize};
 
 /// The version of the settings schema this build writes.
@@ -54,6 +55,9 @@ pub struct ModelSettings {
     /// Write English text whatever language is spoken
     #[serde(default)]
     pub translate: bool,
+    /// Token that authenticates Hugging Face downloads
+    #[serde(default, deserialize_with = "HuggingFaceToken::deserialize_optional")]
+    pub hugging_face_token: Option<HuggingFaceToken>,
 }
 
 /// User interface settings
@@ -140,6 +144,7 @@ impl Default for ModelSettings {
             model_name: "base".to_owned(),
             temperature: 0.0,
             translate: false,
+            hugging_face_token: None,
         }
     }
 }
@@ -236,6 +241,12 @@ impl Settings {
             errors.push(SettingsError::EmptyLanguage);
         }
 
+        if let Some(token) = &self.model.hugging_face_token
+            && !token.is_header_safe()
+        {
+            errors.push(SettingsError::InvalidHuggingFaceToken);
+        }
+
         errors
     }
 
@@ -288,6 +299,9 @@ pub enum SettingsError {
 
     #[error("Language code cannot be empty")]
     EmptyLanguage,
+
+    #[error("The Hugging Face token can only contain letters, digits and punctuation")]
+    InvalidHuggingFaceToken,
 
     #[error("Unsupported settings version: current={current}, target={target}")]
     UnsupportedVersion { current: u32, target: u32 },
@@ -559,6 +573,88 @@ log_file_path = "C:/logs/purr.log"
         settings.ui.export_format = ExportFormat::Vtt;
         let saved = toml::to_string_pretty(&settings).unwrap();
         assert_eq!(toml::from_str::<Settings>(&saved).unwrap(), settings);
+    }
+
+    #[test]
+    fn a_saved_token_is_kept_and_needs_no_new_version() {
+        let mut settings = Settings::default();
+        settings.model.hugging_face_token = HuggingFaceToken::new("hf_abc");
+        let saved = toml::to_string_pretty(&settings).unwrap();
+        let mut loaded: Settings = toml::from_str(&saved).unwrap();
+        assert_eq!(loaded, settings);
+        assert_eq!(loaded.migrate_from_version(CURRENT_VERSION), Ok(()));
+        assert_eq!(loaded, settings);
+    }
+
+    #[test]
+    fn current_settings_saved_before_the_token_load_without_one() {
+        let saved = r#"
+version = 2
+
+[model]
+model_name = "small"
+temperature = 0.0
+translate = true
+
+[ui]
+theme = "Dark"
+compact_mode = false
+language = "fr"
+
+[performance]
+gpu_acceleration = true
+
+[logging]
+level = "Info"
+"#;
+        let mut settings: Settings = toml::from_str(saved).unwrap();
+        assert_eq!(settings.migrate_from_version(2), Ok(()));
+        assert_eq!(settings.model.hugging_face_token, None);
+        assert_eq!(settings.validate(), []);
+    }
+
+    #[test]
+    fn the_default_settings_hold_no_token() {
+        assert_eq!(Settings::default().model.hugging_face_token, None);
+        let saved = toml::to_string_pretty(&Settings::default()).unwrap();
+        assert_eq!(saved.matches("hugging_face_token").count(), 0);
+    }
+
+    #[test]
+    fn a_blank_stored_token_loads_as_none() {
+        let saved = toml::to_string_pretty(&Settings::default())
+            .unwrap()
+            .replace(
+                "translate = false",
+                "translate = false\nhugging_face_token = \"  \"",
+            );
+        let settings: Settings = toml::from_str(&saved).unwrap();
+        assert_eq!(settings, Settings::default());
+    }
+
+    #[test]
+    fn a_token_that_cannot_be_a_header_is_invalid() {
+        let mut settings = Settings::default();
+        settings.model.hugging_face_token = HuggingFaceToken::new("hf abc");
+        assert_eq!(
+            settings.validate(),
+            [SettingsError::InvalidHuggingFaceToken]
+        );
+        settings.model.hugging_face_token = HuggingFaceToken::new("hf_abc");
+        assert_eq!(settings.validate(), []);
+    }
+
+    #[test]
+    fn the_debug_form_of_the_settings_hides_the_token() {
+        let model = ModelSettings {
+            hugging_face_token: HuggingFaceToken::new("hf_secret"),
+            ..ModelSettings::default()
+        };
+        assert_eq!(
+            format!("{model:?}"),
+            "ModelSettings { model_name: \"base\", temperature: 0.0, translate: false, \
+             hugging_face_token: Some(HuggingFaceToken(<redacted>)) }"
+        );
     }
 
     #[test]

@@ -3,6 +3,7 @@ pub mod adapter_name;
 pub mod audio_overview;
 pub mod export_format;
 pub mod history;
+pub mod hugging_face_token;
 pub mod platform;
 pub mod settings;
 pub mod web_model;
