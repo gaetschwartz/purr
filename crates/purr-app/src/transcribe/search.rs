@@ -80,43 +80,6 @@ pub const fn previous(current: usize, count: usize) -> usize {
     }
 }
 
-/// A piece of a segment's text, marked when it is a match.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Piece<'a> {
-    Plain(&'a str),
-    /// A match; `index` is its position among all the matches of the transcript.
-    Marked {
-        text: &'a str,
-        index: usize,
-    },
-}
-
-/// Splits `text` around `ranges`, numbering the marks from `first_index`.
-#[must_use]
-pub fn pieces<'a>(text: &'a str, ranges: &[Range<usize>], first_index: usize) -> Vec<Piece<'a>> {
-    let mut out = Vec::new();
-    let mut cursor = 0;
-    for (offset, range) in ranges.iter().enumerate() {
-        if let Some(plain) = text
-            .get(cursor..range.start)
-            .filter(|plain| !plain.is_empty())
-        {
-            out.push(Piece::Plain(plain));
-        }
-        if let Some(marked) = text.get(range.clone()) {
-            out.push(Piece::Marked {
-                text: marked,
-                index: first_index + offset,
-            });
-        }
-        cursor = range.end;
-    }
-    if let Some(rest) = text.get(cursor..).filter(|rest| !rest.is_empty()) {
-        out.push(Piece::Plain(rest));
-    }
-    out
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -184,21 +147,5 @@ mod tests {
         assert_eq!(previous(2, 3), 1);
         assert_eq!(next(0, 0), 0);
         assert_eq!(previous(0, 0), 0);
-    }
-
-    #[test]
-    fn pieces_alternate_plain_and_marked_text() {
-        assert_eq!(
-            pieces("a cat sat", &[Range { start: 2, end: 5 }], 4),
-            vec![
-                Piece::Plain("a "),
-                Piece::Marked {
-                    text: "cat",
-                    index: 4
-                },
-                Piece::Plain(" sat"),
-            ]
-        );
-        assert_eq!(pieces("plain", &[], 0), vec![Piece::Plain("plain")]);
     }
 }

@@ -454,8 +454,8 @@ details>.preview{margin:8px 0 0;font-family:var(--font)}
   .popover,.popover.menu{left:8px!important;right:8px!important;width:auto;max-width:none;top:auto!important;bottom:8px;max-height:70%;transform-origin:bottom center}
   .layer.pop .scrim{background:var(--scrim);animation:fadein .25s ease}
   .toasts{bottom:88px}
-  .btn,.seg button,.sect-nav button,.icon-btn,.stepper button,.field .clear{position:relative}
-  .btn::after,.seg button::after,.sect-nav button::after,.icon-btn::after,.stepper button::after,.field .clear::after,.switch::before{content:"";position:absolute;left:50%;top:50%;width:max(100%,44px);height:max(100%,44px);transform:translate(-50%,-50%)}
+  .btn,.seg button,.sect-nav button,.icon-btn,.stepper button,.field .clear,.seg-row.split .ts{position:relative}
+  .btn::after,.seg button::after,.sect-nav button::after,.icon-btn::after,.stepper button::after,.field .clear::after,.seg-row.split .ts::after,.switch::before{content:"";position:absolute;left:50%;top:50%;width:max(100%,44px);height:max(100%,44px);transform:translate(-50%,-50%)}
   .field,.select select,.text-input{height:44px}
   .skip-link{padding:13px 16px}
 }

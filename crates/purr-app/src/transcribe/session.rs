@@ -35,7 +35,7 @@ use dioxus::{
 use futures::{StreamExt as _, channel::oneshot};
 use purr_common::{
     accel::AccelPolicy,
-    beams::BeamSwitch,
+    beams::{BeamSnapshot, BeamSwitch},
     browser_engine::BrowserEngine,
     history::entry::{HistoryEntry, HistoryId, LanguageOrigin},
     platform::{
@@ -100,6 +100,7 @@ pub struct TranscribeSession {
     task: Signal<Option<Task>>,
     /// The model the current run is downloading before it starts.
     fetching: Signal<Option<String>>,
+    beam_switch: Signal<BeamSwitch>,
     saved: Signal<SaveState>,
     originals: Signal<HashMap<String, PathBuf>>,
     toasts: Toasts,
@@ -400,6 +401,8 @@ impl TranscribeSession {
         self.cancelled.set(None);
         let language = language.for_model(model.language == Language::EnglishOnly);
         let settings = self.settings.peek();
+        let beam_switch = BeamSwitch::new(!IS_WEB && settings.ui.transcript.show_beams);
+        self.beam_switch.set(beam_switch.clone());
         let request = TranscriptionRequest {
             file: FileSource::Uploaded(file.id.clone()),
             model: ModelId::new(model.id.clone()),
@@ -407,7 +410,7 @@ impl TranscribeSession {
             translate: settings.model.translate,
             engine: EngineOptions::from_settings(&settings),
             hugging_face_token: settings.model.hugging_face_token.clone(),
-            beam_telemetry: BeamSwitch::default(),
+            beam_telemetry: beam_switch,
         };
         let run = Run::new(language == LanguageChoice::Automatic, now_ms());
         tracing::info!(
@@ -531,6 +534,7 @@ impl TranscribeSession {
     }
 
     fn announce_end(self) {
+        self.set_beam_telemetry(false);
         let Some(record) = self.record.peek().clone() else {
             return;
         };
@@ -635,7 +639,22 @@ impl TranscribeSession {
         }
     }
 
+    /// Turns the decoder's beam telemetry on or off for the current run, from its next window.
+    pub fn set_beam_telemetry(&self, on: bool) {
+        self.beam_switch.peek().set(on);
+    }
+
+    /// The decoder's latest beams, without subscribing the caller.
+    #[must_use]
+    pub fn latest_beams(&self) -> Option<BeamSnapshot> {
+        self.record
+            .peek()
+            .as_ref()
+            .and_then(|record| record.run.beams.clone())
+    }
+
     fn stop_task(mut self) {
+        self.set_beam_telemetry(false);
         if let Some(task) = self.task.take() {
             task.cancel();
         }
@@ -733,6 +752,7 @@ pub fn use_transcribe_session_provider() -> TranscribeSession {
             browser_engine: Signal::new(None),
             task: Signal::new(None),
             fetching: Signal::new(None),
+            beam_switch: Signal::new(BeamSwitch::default()),
             saved: Signal::new(SaveState::Idle),
             originals: Signal::new(HashMap::new()),
             toasts,

@@ -3,7 +3,7 @@
 mod about;
 mod appearance;
 mod browser_panel;
-mod changes;
+pub mod changes;
 mod hugging_face_token;
 pub mod jump;
 mod logging;

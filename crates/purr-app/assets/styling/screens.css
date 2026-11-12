@@ -139,6 +139,55 @@ mark.cur{background:var(--accent);color:#fff}
 .more .prow.acts{gap:4px;padding-left:2px;min-height:36px}
 .more .prow.acts .btn.danger{background:none}
 .more .prow.acts .btn.danger:hover{background:linear-gradient(var(--danger-soft),var(--danger-soft)),var(--under)}
+.more .prow.na .t{color:var(--fg-2)}
+.more .prow.sub{padding-top:0}
+.more .prow.sub .slider-row{flex:1}
+.more .prow.sub output{font-size:12.5px;color:var(--fg-2);min-width:52px;text-align:right;font-variant-numeric:tabular-nums}
+
+/* unsure words, word seek and the tentative tail */
+.unsure{text-decoration:underline dotted var(--warning);text-decoration-thickness:2px;text-underline-offset:4px}
+.words .wd{cursor:pointer;border-radius:4px}
+.words .wd:hover{background:var(--accent-soft)}
+.seg-row.split{cursor:default;position:relative}
+.seg-row.split .ts{background:none;text-align:left;border-radius:6px;color:var(--fg-3);font:inherit;font-size:13px;font-weight:500;padding:1px 0 0;cursor:pointer;font-variant-numeric:tabular-nums}
+.seg-row.split .ts:hover{color:var(--accent-text)}
+.no-ts .seg-row.split .ts{display:block;position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.no-ts .seg-row.split .ts:focus-visible{width:auto;height:auto;overflow:visible;clip:auto;left:6px;top:0;z-index:1;padding:0 6px;background:var(--accent-soft)}
+.seg-row.tentative .tx,.para p.tentative{color:var(--fg-3)}
+.para p.tentative .caret{margin-left:4px}
+
+/* the beam lanes: a side card when the app is wide, else a block at the top of the transcript card */
+.fold{display:grid;grid-template-rows:1fr;transition:grid-template-rows .24s var(--ease-out),opacity .2s var(--ease-out)}
+.fold>*{min-height:0;overflow:hidden}
+.fold[data-off]{grid-template-rows:0fr;opacity:0;visibility:hidden;transition:grid-template-rows .24s var(--ease-out),opacity .16s ease,visibility 0s .24s}
+.runview{transition:max-width .3s var(--ease-out)}
+.runcols{display:grid;grid-template-columns:minmax(0,1fr) 0px;column-gap:0;align-items:start;transition:grid-template-columns .3s var(--ease-out),column-gap .3s var(--ease-out)}
+.side-beams{display:none}
+.inline-beams{display:grid}
+@container app (min-width:1240px){
+  .runview.beams-on{max-width:1040px}
+  .runview.beams-on .runcols{grid-template-columns:minmax(0,1fr) 280px;column-gap:16px}
+  .side-beams{display:block;position:sticky;top:12px;min-width:0;transition:opacity .2s var(--ease-out)}
+  .inline-beams{display:none}
+}
+.runview:not(.beams-on) .side-beams{opacity:0;visibility:hidden}
+.side-beams .card{padding:10px}
+.beams{border-radius:12px;background:var(--fill-hover);padding:6px 8px}
+.inline-beams .beams{margin:2px 8px 6px}
+.beams summary{font-size:12px;color:var(--fg-3);padding:2px;list-style:none;display:flex;justify-content:space-between;gap:8px;font-variant-numeric:tabular-nums;cursor:pointer}
+.beams summary::-webkit-details-marker{display:none}
+.beams summary::before{content:"▸";margin-right:4px}
+.beams[open] summary::before{content:"▾"}
+.beams summary span:first-child{flex:1}
+.beams .bh{display:flex;justify-content:space-between;gap:8px;font-size:12px;color:var(--fg-3);font-variant-numeric:tabular-nums;padding:0 2px 4px}
+.beams ol{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:1px}
+.beams li{display:grid;grid-template-columns:14px minmax(0,1fr) 44px;gap:6px;align-items:baseline;padding:3px 6px;border-radius:8px;font-family:ui-monospace,"Cascadia Mono","SF Mono",Consolas,monospace;font-size:12.5px;color:var(--fg-2)}
+.beams li.lead{background:var(--accent-soft);color:var(--fg)}
+.beams .rk{color:var(--fg-3);font-variant-numeric:tabular-nums}
+.beams .bt{white-space:pre;overflow:hidden;text-overflow:ellipsis;direction:rtl;text-align:left}
+.beams .bt bdi{direction:ltr;unicode-bidi:isolate}
+.beams .sc{text-align:right;font-variant-numeric:tabular-nums;color:var(--fg-3)}
+.beams li.lead .sc{color:var(--fg-2)}
 
 /* ---------- Models ---------- */
 .filters{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
@@ -235,6 +284,7 @@ mark.cur{background:var(--accent);color:#fff}
   .tacts .chev{display:none}
   .tacts .lbl{position:absolute!important;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
   .more .prow{min-height:48px}
+  .more .prow.sub input[type=range].slider{height:44px}
   .seg-row{grid-template-columns:52px minmax(0,1fr);gap:8px;padding:8px 6px}
   .sys .dev{grid-template-columns:minmax(0,1fr) auto}
   .sys .be{grid-column:1/-1;margin-bottom:-6px}
@@ -248,4 +298,6 @@ mark.cur{background:var(--accent);color:#fff}
   .gwave .layer-fill i{forced-color-adjust:none;background:Highlight}
   .gwave .edge{forced-color-adjust:none;background:CanvasText}
   .play.stop{border:1px solid ButtonText}
+  .unsure{text-decoration-color:CanvasText}
+  .beams li.lead{outline:1px solid Highlight}
 }

@@ -1,5 +1,6 @@
 //! One view for a run in progress, its result and its failure, so nothing remounts at the end.
 
+mod beam_feed;
 mod glide_driver;
 mod status;
 
@@ -18,6 +19,7 @@ use crate::{
     hooks::use_models::use_models,
     main_app::Route,
     platform::{IS_WEB, playback_source::AudioSource},
+    settings_store::use_settings,
     shortcuts::{Key, KeyChord, Shortcut, use_shortcut},
     transcribe::{
         chosen_file::OverviewState,
@@ -30,9 +32,11 @@ use crate::{
     utils::language_label::language_label,
     views::result_frame::{
         ResultAudio, ResultFrame, ViewPhase,
+        beam_panel::BeamsView,
         more_menu::{MORE_ID, MoreAction, TranscriptionFacts},
     },
 };
+use beam_feed::use_beam_feed;
 use dioxus::prelude::*;
 use glide_driver::{GlideDriver, GlideInput, GlidePhase};
 use status::RunStatus;
@@ -106,6 +110,7 @@ fn glide_input(record: &RunRecord, duration: f64) -> GlideInput {
 #[component]
 pub fn RunView(record: RunRecord) -> Element {
     let session = use_transcribe_session();
+    let settings = use_settings();
     let models = use_models();
     let navigator = use_navigator();
     let player = use_audio_player(&AudioSource::Upload(record.file.clone()));
@@ -140,6 +145,10 @@ pub fn RunView(record: RunRecord) -> Element {
     }
 
     let run = &record.run;
+    let beams_on = !IS_WEB
+        && run.outcome == RunOutcome::Running
+        && settings.with(|settings| settings.ui.transcript.show_beams);
+    let latest_beams = use_beam_feed(&session, beams_on);
     let overview = session.overview(&record.file.id);
     let duration = audio_length(&record, &overview);
     let total = duration.unwrap_or(0.0);
@@ -302,6 +311,11 @@ pub fn RunView(record: RunRecord) -> Element {
             },
             status_shown: status.is_some(),
             segments,
+            tentative: run.transcript.tentative().cloned(),
+            beams: BeamsView {
+                on: beams_on,
+                snapshot: latest_beams(),
+            },
             export,
             facts: TranscriptionFacts {
                 model_label: record.model.label.clone(),

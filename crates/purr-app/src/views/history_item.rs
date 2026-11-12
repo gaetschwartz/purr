@@ -18,7 +18,7 @@ use crate::{
     views::{
         history::{delete_dialog::DeleteDialog, rename_dialog::RenameDialog},
         result_frame::{
-            ResultAudio, ResultFrame, ViewPhase,
+            ResultAudio, ResultFrame, ResultOrigin, ViewPhase,
             more_menu::{MoreAction, TranscriptionFacts},
         },
     },
@@ -179,6 +179,7 @@ fn Entry(record: HistoryRecord, audio: ResultAudio) -> Element {
         ResultFrame {
             title: title.clone(),
             phase: ViewPhase::Finished,
+            origin: ResultOrigin::Saved,
             file_name: entry.file_name.clone(),
             duration_seconds: Some(entry.audio_seconds),
             audio,

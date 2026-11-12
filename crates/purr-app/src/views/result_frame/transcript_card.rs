@@ -1,4 +1,9 @@
-use super::more_menu::{Layout, MORE_ID, MoreAction, MoreMenu, TranscriptionFacts};
+use super::{
+    beam_panel::{BeamsView, InlineBeams},
+    marked_text::MarkedText,
+    more_menu::{MORE_ID, MoreAction, MoreMenu, TranscriptionFacts},
+    segment_row::{SegmentRow, TentativeRow},
+};
 use crate::{
     components::{
         audio_player::PlayerHandle,
@@ -9,19 +14,29 @@ use crate::{
         search_field::SearchField,
         toast::use_toasts,
     },
+    platform::IS_WEB,
+    settings_store::use_settings,
     transcribe::{
+        live_rows::{Row, rows},
         playback::segment_at,
         reading::{SEGMENTS_PER_PARAGRAPH, paragraphs},
-        search::{self, Match, Piece, find_all, pieces},
+        row_text::word_spans,
+        search::{self, Match, find_all},
         timing,
+        unsure::unsure_words,
+        view_options::{Evidence, Moment, details},
     },
 };
 use dioxus::prelude::*;
-use purr_common::{export_format::ExportFormat, platform::TranscriptSegment};
+use purr_common::{
+    export_format::ExportFormat, platform::TranscriptSegment, transcript_view::TranscriptLayout,
+};
 use std::{ops::Range, rc::Rc};
 
 /// The DOM id of the transcript search field.
 pub const SEARCH_ID: &str = "t-search";
+
+const TENTATIVE_KEY: &str = "tentative";
 
 const REVEAL_CURRENT: &str =
     "document.querySelector('#segs mark.cur')?.scrollIntoView({block:'center'})";
@@ -40,15 +55,30 @@ fn ranges_of(matches: &[Match], segment: usize) -> (Vec<Range<usize>>, usize) {
     (ranges, first)
 }
 
+fn evidence(segments: &[TranscriptSegment], playable: bool) -> Evidence {
+    let words = || segments.iter().flat_map(|segment| segment.words.iter());
+    Evidence {
+        scores: words().any(|word| word.score.is_some()),
+        times: words().any(|word| word.start_cs.is_some()),
+        playable,
+    }
+}
+
 /// The transcript with its toolbar: search, Copy, Export and the More menu.
 #[component]
 pub fn TranscriptCard(
     segments: Rc<Vec<TranscriptSegment>>,
+    /// The uncommitted end of a run, shown after the segments while `live`.
+    tentative: Option<TranscriptSegment>,
     /// Absent while the run is going or when the audio is not available: the lines are plain text.
     player: Option<PlayerHandle>,
+    /// The audio can be played, though not necessarily yet.
+    playable: bool,
     /// The run is still writing the transcript.
     #[props(default)]
     live: bool,
+    moment: Moment,
+    beams: BeamsView,
     export: ExportSource,
     /// Export waits in its place until the transcript is final.
     #[props(default = true)]
@@ -58,10 +88,10 @@ pub fn TranscriptCard(
     on_more: EventHandler<MoreAction>,
 ) -> Element {
     let toasts = use_toasts();
+    let settings = use_settings();
+    let view = settings.with(|settings| settings.ui.transcript);
     let mut query = use_signal(String::new);
     let mut current = use_signal(|| 0_usize);
-    let layout = use_signal(|| Layout::Segments);
-    let show_times = use_signal(|| true);
     let mut more_open = use_signal(|| false);
 
     let texts: Vec<&str> = segments.iter().map(|segment| segment.text.trim()).collect();
@@ -73,6 +103,12 @@ pub fn TranscriptCard(
         segment_at(&segments, player.position())
             .filter(|_| player.is_playing() || player.position() > 0.0)
     });
+    let unsure = if view.mark_unsure {
+        unsure_words(&segments, view.unsure_share)
+    } else {
+        Vec::new()
+    };
+    let unsure_of = |index: usize| unsure.get(index).cloned().unwrap_or_default();
 
     let mut step = move |forward: bool| {
         if count == 0 {
@@ -94,7 +130,12 @@ pub fn TranscriptCard(
         format!("{} of {count}", active + 1)
     };
     let copy_source = export.clone();
-    let list_class = if show_times() { "live" } else { "live no-ts" };
+    let list_class = if view.show_times {
+        "live"
+    } else {
+        "live no-ts"
+    };
+    let shown_tentative = tentative.as_ref().filter(|_| live);
 
     rsx! {
         section { class: "card glass tight tcard", aria_label: "Transcript",
@@ -162,53 +203,74 @@ pub fn TranscriptCard(
                     onclick: move |_| more_open.toggle(),
                 }
             }
+            if !IS_WEB {
+                InlineBeams { beams }
+            }
             div { class: "tbody",
                 if segments.is_empty() && !live {
                     p { class: "faint", style: "margin:0;padding:6px 10px", "No speech was recognised in this audio." }
                 } else {
-                    match layout() {
-                        Layout::Segments => rsx! {
+                    match view.layout {
+                        TranscriptLayout::Segments => rsx! {
                             div { class: list_class, id: "segs",
-                                for (index , segment) in segments.iter().enumerate() {
-                                    SegmentRow {
-                                        key: "{index}",
-                                        segment: segment.clone(),
-                                        matches: ranges_of(&matches, index),
-                                        current: has_query.then_some(active),
-                                        playing: playing == Some(index),
-                                        player,
-                                        live,
+                                for row in rows(&segments, shown_tentative, live) {
+                                    match row {
+                                        Row::Committed(index, segment) => rsx! {
+                                            SegmentRow {
+                                                key: "{index}",
+                                                segment: segment.clone(),
+                                                matches: ranges_of(&matches, index),
+                                                current: has_query.then_some(active),
+                                                unsure: unsure_of(index),
+                                                playing: playing == Some(index),
+                                                player,
+                                                word_seek: view.word_seek,
+                                                live,
+                                            }
+                                        },
+                                        Row::Tentative(segment) => rsx! {
+                                            TentativeRow { key: "{TENTATIVE_KEY}", segment: segment.clone() }
+                                        },
                                     }
                                 }
                             }
                         },
-                        Layout::Reading => rsx! {
+                        TranscriptLayout::Reading => rsx! {
                             div { class: "para", id: "segs",
                                 for range in paragraphs(segments.len(), SEGMENTS_PER_PARAGRAPH) {
                                     p { key: "{range.start}", dir: "auto",
-                                        if show_times() {
+                                        if view.show_times {
                                             span { class: "faint tnum", style: "font-size:13px;margin-right:8px",
                                                 {segments.get(range.start).map(|segment| timing::clock(segment.start_time))}
                                             }
                                         }
                                         for index in range {
                                             if let Some(segment) = segments.get(index) {
-                                                Marked {
+                                                MarkedText {
                                                     key: "{index}",
                                                     text: segment.text.trim().to_owned(),
+                                                    words: word_spans(&segment.text, &segment.words),
+                                                    unsure: unsure_of(index),
                                                     matches: ranges_of(&matches, index),
                                                     current: has_query.then_some(active),
+                                                    seek: None,
                                                 }
                                                 " "
                                             }
                                         }
                                     }
                                 }
+                                if let Some(segment) = shown_tentative {
+                                    p { key: "{TENTATIVE_KEY}", class: "tentative", dir: "auto",
+                                        "{segment.text.trim()}"
+                                        span { class: "caret", aria_hidden: "true" }
+                                    }
+                                }
                             }
                         },
                     }
                 }
-                if live {
+                if live && shown_tentative.is_none() {
                     div { class: "seg-row caret-row", aria_hidden: "true",
                         span { class: "ts" }
                         span { class: "tx",
@@ -223,69 +285,8 @@ pub fn TranscriptCard(
                 facts,
                 actions: more,
                 on_action: on_more,
-                layout,
-                show_times,
+                details: details(IS_WEB, moment, evidence(&segments, playable)),
                 on_close: move |()| more_open.set(false),
-            }
-        }
-    }
-}
-
-#[component]
-fn SegmentRow(
-    segment: TranscriptSegment,
-    matches: (Vec<Range<usize>>, usize),
-    current: Option<usize>,
-    playing: bool,
-    player: Option<PlayerHandle>,
-    live: bool,
-) -> Element {
-    let start = segment.start_time;
-    let clock = timing::clock(start);
-    let line = rsx! {
-        span { class: "tx", dir: "auto",
-            Marked {
-                text: segment.text.trim().to_owned(),
-                matches,
-                current,
-            }
-        }
-    };
-    match player {
-        Some(player) => rsx! {
-            button {
-                class: if playing { "seg-row playing" } else { "seg-row" },
-                r#type: "button",
-                aria_current: playing.then_some("true"),
-                onclick: move |_| player.play_from(start),
-                span { class: "ts",
-                    span { class: "sr", "Play from " }
-                    "{clock}"
-                }
-                {line}
-            }
-        },
-        None => rsx! {
-            div { class: if live { "seg-row still new" } else { "seg-row still" },
-                span { class: "ts", "{clock}" }
-                {line}
-            }
-        },
-    }
-}
-
-#[component]
-fn Marked(text: String, matches: (Vec<Range<usize>>, usize), current: Option<usize>) -> Element {
-    let (ranges, first) = matches;
-    rsx! {
-        for (position , piece) in pieces(&text, &ranges, first).into_iter().enumerate() {
-            match piece {
-                Piece::Plain(plain) => rsx! {
-                    span { key: "{position}", "{plain}" }
-                },
-                Piece::Marked { text, index } => rsx! {
-                    mark { key: "{position}", class: if current == Some(index) { "cur" }, "{text}" }
-                },
             }
         }
     }
