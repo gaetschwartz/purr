@@ -1,7 +1,9 @@
 import "./console_filter.js";
+import { configureCanary, transcribeCanary } from "./canary.js";
 import { useHuggingFaceToken } from "./hugging_face_auth.js";
 import { emit, emitFailure, FailureKind, WorkerFailure } from "./events.js";
-import { configureRuntime, loadTranscriber } from "./model_loader.js";
+import { probeGpu } from "./gpu.js";
+import { asProviderFailure, configureRuntime, loadTranscriber, Provider } from "./model_loader.js";
 import { transcribe } from "./transcriber.js";
 
 let queue = Promise.resolve();
@@ -10,16 +12,43 @@ async function handle(message) {
     switch (message.type) {
         case "Configure":
             configureRuntime(message);
+            configureCanary(message.canary_url);
             return;
         case "LoadModel":
             useHuggingFaceToken(message.hugging_face_token);
-            await loadTranscriber(message.model, message.request_id);
+            await loadTranscriber(message.model, message.provider, message.request_id);
             return;
+        case "ProbeGpu":
+            emit({ type: "GpuProbed", request_id: message.request_id, probe: await probeGpu() });
+            return;
+        case "CheckGpu": {
+            useHuggingFaceToken(message.hugging_face_token);
+            const transcriber = await loadTranscriber(
+                message.model,
+                Provider.WebGpu,
+                message.request_id,
+            );
+            try {
+                const text = await transcribeCanary(transcriber, message.english_only);
+                emit({ type: "GpuChecked", request_id: message.request_id, text });
+            } catch (error) {
+                throw asProviderFailure(Provider.WebGpu, error);
+            }
+            return;
+        }
         case "Transcribe": {
             useHuggingFaceToken(message.hugging_face_token);
-            const transcriber = await loadTranscriber(message.model, message.request_id);
+            const transcriber = await loadTranscriber(
+                message.model,
+                message.provider,
+                message.request_id,
+            );
             emit({ type: "Transcribing", request_id: message.request_id });
-            await transcribe(transcriber, message);
+            try {
+                await transcribe(transcriber, message);
+            } catch (error) {
+                throw asProviderFailure(message.provider, error);
+            }
             return;
         }
         default:

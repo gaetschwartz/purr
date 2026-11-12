@@ -1,6 +1,7 @@
 pub mod accel;
 pub mod adapter_name;
 pub mod audio_overview;
+pub mod browser_engine;
 pub mod export_format;
 pub mod history;
 pub mod hugging_face_token;

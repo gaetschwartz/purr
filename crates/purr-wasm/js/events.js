@@ -1,6 +1,7 @@
 export const FailureKind = Object.freeze({
     WebGpuUnavailable: "WebGpuUnavailable",
     ShaderF16Unavailable: "ShaderF16Unavailable",
+    WebGpuFailed: "WebGpuFailed",
     ModelLoad: "ModelLoad",
     Inference: "Inference",
     Protocol: "Protocol",

@@ -3,6 +3,7 @@
 //! Both directions carry JSON text so the shapes are defined once, here, and covered by native
 //! tests. Audio samples travel beside the JSON as a transferred `Float32Array`.
 
+use crate::gpu_check::GpuProbe;
 use purr_common::hugging_face_token::HuggingFaceToken;
 use purr_common::platform::TranscriptSegment;
 use purr_common::web_model::attributes::OnnxDtype;
@@ -43,13 +44,22 @@ impl From<&WebModelSpec> for WorkerModel {
     }
 }
 
-/// First message of a worker: where it finds the ONNX runtime files.
+/// The ONNX Runtime execution provider a model runs on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Provider {
+    WebGpu,
+    /// WebAssembly on the CPU.
+    Cpu,
+}
+
+/// First message of a worker: where it finds the ONNX runtime files and the GPU check recording.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum WorkerSetup {
     Configure {
         ort_module_url: String,
         ort_wasm_url: String,
+        canary_url: String,
     },
 }
 
@@ -61,6 +71,17 @@ pub enum WorkerRequest {
     LoadModel {
         request_id: RequestId,
         model: WorkerModel,
+        provider: Provider,
+        #[serde(default, deserialize_with = "HuggingFaceToken::deserialize_optional")]
+        hugging_face_token: Option<HuggingFaceToken>,
+    },
+    /// Look for a WebGPU adapter.
+    ProbeGpu { request_id: RequestId },
+    /// Transcribe the check recording with `model` on WebGPU.
+    CheckGpu {
+        request_id: RequestId,
+        model: WorkerModel,
+        english_only: bool,
         #[serde(default, deserialize_with = "HuggingFaceToken::deserialize_optional")]
         hugging_face_token: Option<HuggingFaceToken>,
     },
@@ -68,6 +89,7 @@ pub enum WorkerRequest {
     Transcribe {
         request_id: RequestId,
         model: WorkerModel,
+        provider: Provider,
         language: Option<String>,
         translate: bool,
         english_only: bool,
@@ -80,7 +102,10 @@ impl WorkerRequest {
     #[must_use]
     pub const fn request_id(&self) -> RequestId {
         match self {
-            Self::LoadModel { request_id, .. } | Self::Transcribe { request_id, .. } => *request_id,
+            Self::LoadModel { request_id, .. }
+            | Self::ProbeGpu { request_id }
+            | Self::CheckGpu { request_id, .. }
+            | Self::Transcribe { request_id, .. } => *request_id,
         }
     }
 }
@@ -90,6 +115,8 @@ impl WorkerRequest {
 pub enum FailureKind {
     WebGpuUnavailable,
     ShaderF16Unavailable,
+    /// WebGPU failed while loading or running a model.
+    WebGpuFailed,
     ModelLoad,
     Inference,
     Protocol,
@@ -118,6 +145,16 @@ pub enum WorkerEvent {
     },
     ModelReady {
         request_id: RequestId,
+    },
+    /// The WebGPU adapter the worker found, `None` when there is none.
+    GpuProbed {
+        request_id: RequestId,
+        probe: Option<GpuProbe>,
+    },
+    /// The text the GPU wrote for the check recording.
+    GpuChecked {
+        request_id: RequestId,
+        text: String,
     },
     /// The model is loaded and speech decoding has started.
     Transcribing {
@@ -162,6 +199,8 @@ impl WorkerEvent {
             Self::ModelFile { request_id, .. }
             | Self::ModelFileDone { request_id, .. }
             | Self::ModelReady { request_id }
+            | Self::GpuProbed { request_id, .. }
+            | Self::GpuChecked { request_id, .. }
             | Self::Transcribing { request_id }
             | Self::LanguageDetected { request_id, .. }
             | Self::Segment { request_id, .. }
@@ -176,6 +215,8 @@ impl WorkerEvent {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RequestKind {
     LoadModel,
+    ProbeGpu,
+    CheckGpu,
     Transcribe,
 }
 
@@ -184,6 +225,8 @@ impl WorkerRequest {
     pub const fn kind(&self) -> RequestKind {
         match self {
             Self::LoadModel { .. } => RequestKind::LoadModel,
+            Self::ProbeGpu { .. } => RequestKind::ProbeGpu,
+            Self::CheckGpu { .. } => RequestKind::CheckGpu,
             Self::Transcribe { .. } => RequestKind::Transcribe,
         }
     }
@@ -196,11 +239,15 @@ impl WorkerEvent {
         match (self, kind) {
             (Self::Failed { .. }, _)
             | (Self::ModelReady { .. }, RequestKind::LoadModel)
+            | (Self::GpuProbed { .. }, RequestKind::ProbeGpu)
+            | (Self::GpuChecked { .. }, RequestKind::CheckGpu)
             | (Self::Completed { .. }, RequestKind::Transcribe) => true,
             (
                 Self::ModelFile { .. }
                 | Self::ModelFileDone { .. }
                 | Self::ModelReady { .. }
+                | Self::GpuProbed { .. }
+                | Self::GpuChecked { .. }
                 | Self::Transcribing { .. }
                 | Self::LanguageDetected { .. }
                 | Self::Segment { .. }
@@ -241,6 +288,7 @@ mod tests {
         let request = WorkerRequest::Transcribe {
             request_id: RequestId::new(7),
             model: model(),
+            provider: Provider::Cpu,
             language: Some("fr".to_owned()),
             translate: false,
             english_only: false,
@@ -258,6 +306,7 @@ mod tests {
                     "decoder_dtype": "q4",
                     "requires_shader_f16": false,
                 },
+                "provider": "Cpu",
                 "language": "fr",
                 "translate": false,
                 "english_only": false,
@@ -272,6 +321,7 @@ mod tests {
         let request = WorkerRequest::LoadModel {
             request_id: RequestId::new(3),
             model: model(),
+            provider: Provider::Cpu,
             hugging_face_token: HuggingFaceToken::new("hf_dummy"),
         };
         assert_eq!(
@@ -288,6 +338,7 @@ mod tests {
         let request = WorkerRequest::Transcribe {
             request_id: RequestId::new(1),
             model: model(),
+            provider: Provider::WebGpu,
             language: None,
             translate: false,
             english_only: false,
@@ -299,8 +350,22 @@ mod tests {
              repo: \"onnx-community/whisper-tiny\", \
              revision: \"ff4177021cc41f7db950912b73ea4fdf7d01d8e7\", \
              encoder_dtype: Fp32, decoder_dtype: Q4, requires_shader_f16: false }, \
-             language: None, translate: false, english_only: false, \
+             provider: WebGpu, language: None, translate: false, english_only: false, \
              hugging_face_token: Some(HuggingFaceToken(<redacted>)) }"
+        );
+        let check = WorkerRequest::CheckGpu {
+            request_id: RequestId::new(2),
+            model: model(),
+            english_only: false,
+            hugging_face_token: HuggingFaceToken::new("hf_dummy"),
+        };
+        assert_eq!(
+            format!("{check:?}"),
+            "CheckGpu { request_id: RequestId(2), model: WorkerModel { \
+             repo: \"onnx-community/whisper-tiny\", \
+             revision: \"ff4177021cc41f7db950912b73ea4fdf7d01d8e7\", \
+             encoder_dtype: Fp32, decoder_dtype: Q4, requires_shader_f16: false }, \
+             english_only: false, hugging_face_token: Some(HuggingFaceToken(<redacted>)) }"
         );
     }
 
@@ -309,6 +374,7 @@ mod tests {
         let request = WorkerRequest::Transcribe {
             request_id: RequestId::new(1),
             model: model(),
+            provider: Provider::WebGpu,
             language: None,
             translate: true,
             english_only: true,
@@ -323,6 +389,7 @@ mod tests {
         let setup = WorkerSetup::Configure {
             ort_module_url: "/assets/ort.mjs".to_owned(),
             ort_wasm_url: "/assets/ort.wasm".to_owned(),
+            canary_url: "/assets/canary.pcm".to_owned(),
         };
         assert_eq!(
             serde_json::to_value(&setup)?,
@@ -330,20 +397,65 @@ mod tests {
                 "type": "Configure",
                 "ort_module_url": "/assets/ort.mjs",
                 "ort_wasm_url": "/assets/ort.wasm",
+                "canary_url": "/assets/canary.pcm",
             })
         );
         Ok(())
     }
 
     #[test]
-    fn load_model_request_round_trips() -> Result<(), serde_json::Error> {
-        let request = WorkerRequest::LoadModel {
-            request_id: RequestId::new(3),
-            model: model(),
-            hugging_face_token: None,
-        };
-        let decoded: WorkerRequest = serde_json::from_str(&serde_json::to_string(&request)?)?;
-        assert_eq!(decoded, request);
+    fn load_model_and_gpu_requests_round_trip() -> Result<(), serde_json::Error> {
+        for request in [
+            WorkerRequest::LoadModel {
+                request_id: RequestId::new(3),
+                model: model(),
+                provider: Provider::WebGpu,
+                hugging_face_token: None,
+            },
+            WorkerRequest::ProbeGpu {
+                request_id: RequestId::new(4),
+            },
+            WorkerRequest::CheckGpu {
+                request_id: RequestId::new(5),
+                model: model(),
+                english_only: false,
+                hugging_face_token: HuggingFaceToken::new("hf_dummy"),
+            },
+        ] {
+            let decoded: WorkerRequest = serde_json::from_str(&serde_json::to_string(&request)?)?;
+            assert_eq!(decoded, request);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn parses_the_gpu_probe_and_check() -> Result<(), serde_json::Error> {
+        let probed = parse(&json!({
+            "type": "GpuProbed",
+            "request_id": 4,
+            "probe": {"fingerprint": "{\"vendor\":\"\"}"},
+        }))?;
+        assert_eq!(
+            probed,
+            WorkerEvent::GpuProbed {
+                request_id: RequestId::new(4),
+                probe: Some(GpuProbe {
+                    fingerprint: "{\"vendor\":\"\"}".to_owned(),
+                }),
+            }
+        );
+        assert!(probed.ends(RequestKind::ProbeGpu));
+        let none = parse(&json!({"type": "GpuProbed", "request_id": 4, "probe": null}))?;
+        assert_eq!(
+            none,
+            WorkerEvent::GpuProbed {
+                request_id: RequestId::new(4),
+                probe: None,
+            }
+        );
+        let checked = parse(&json!({"type": "GpuChecked", "request_id": 5, "text": " >>"}))?;
+        assert!(checked.ends(RequestKind::CheckGpu));
+        assert!(!checked.ends(RequestKind::Transcribe));
         Ok(())
     }
 

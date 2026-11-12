@@ -180,6 +180,7 @@ impl LiveWorker {
         let setup = serde_json::to_string(&WorkerSetup::Configure {
             ort_module_url,
             ort_wasm_url,
+            canary_url: crate::canary_url(),
         })
         .map_err(|e| e.to_string())?;
         let message = Object::new();

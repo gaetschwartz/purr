@@ -30,6 +30,10 @@ fn failure_status(kind: FailureKind, message: String) -> TranscriptionStatus {
             "WebGPU",
             "Choose a smaller model; it does not need this GPU feature.",
         ),
+        FailureKind::WebGpuFailed => init_failed(
+            "WebGPU",
+            "Choose the CPU in Settings › Transcription, then try again.",
+        ),
         FailureKind::ModelLoad => init_failed(
             "Model",
             "Check your internet connection and try again. Files that were already downloaded are kept.",
@@ -83,7 +87,9 @@ impl TranscriptionMapper {
                 self.progress.finish(&file);
                 Some(self.loading())
             }
-            WorkerEvent::ModelReady { .. } => None,
+            WorkerEvent::ModelReady { .. }
+            | WorkerEvent::GpuProbed { .. }
+            | WorkerEvent::GpuChecked { .. } => None,
             WorkerEvent::Transcribing { .. } => Some(TranscriptionStatus::Transcribing),
             WorkerEvent::LanguageDetected { language, .. } => {
                 Some(TranscriptionStatus::LanguageDetected { language })
@@ -168,7 +174,9 @@ impl PreloadMapper {
             }
             WorkerEvent::ModelReady { .. } => PreloadStep::Loaded,
             WorkerEvent::Failed { message, .. } => PreloadStep::Failed(message),
-            WorkerEvent::Transcribing { .. }
+            WorkerEvent::GpuProbed { .. }
+            | WorkerEvent::GpuChecked { .. }
+            | WorkerEvent::Transcribing { .. }
             | WorkerEvent::LanguageDetected { .. }
             | WorkerEvent::Segment { .. }
             | WorkerEvent::Segments { .. }

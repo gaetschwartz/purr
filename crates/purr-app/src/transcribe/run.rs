@@ -1,7 +1,7 @@
 //! One transcription run, folded from the platform's status updates.
 
 use super::transcript::Transcript;
-use purr_common::{accel::LastRun, platform::TranscriptionStatus};
+use purr_common::{accel::LastRun, browser_engine::BrowserEngine, platform::TranscriptionStatus};
 
 /// The step a running transcription is in, in the order they happen.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -58,6 +58,8 @@ pub struct Run {
     pub model_load: Option<ModelLoad>,
     /// What the engine ran on, once the model has loaded and the platform says.
     pub engine: Option<LastRun>,
+    /// Where a browser run settled, once the platform says.
+    pub browser_engine: Option<BrowserEngine>,
     pub transcript: Transcript,
     /// The Whisper code the platform recognised, when it was asked to detect the language.
     pub detected_language: Option<String>,
@@ -75,6 +77,7 @@ impl Run {
             stage: Stage::LoadingModel,
             model_load: None,
             engine: None,
+            browser_engine: None,
             transcript: Transcript::default(),
             detected_language: None,
             outcome: RunOutcome::Running,
@@ -100,6 +103,9 @@ impl Run {
             }
             TranscriptionStatus::Engine { run } => {
                 self.engine = Some(run.clone());
+            }
+            TranscriptionStatus::BrowserEngine { engine } => {
+                self.browser_engine = Some(*engine);
             }
             TranscriptionStatus::Transcribing => {
                 self.transcribing_since_ms.get_or_insert(now_ms);

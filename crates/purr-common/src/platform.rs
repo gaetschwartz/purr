@@ -17,6 +17,7 @@ use std::{
 use crate::{
     accel::{AccelPolicy, LastRun, SystemReport},
     audio_overview::AudioOverview,
+    browser_engine::BrowserEngine,
     history::{
         entry::{HistoryEntry, HistoryId, HistoryRecord},
         listing::{HistoryListing, Saved},
@@ -436,6 +437,8 @@ pub enum TranscriptionStatus {
     Transcribing,
     /// The hardware the engine settled on, reported once the model has loaded
     Engine { run: LastRun },
+    /// The execution provider a browser run settled on, reported before the model runs
+    BrowserEngine { engine: BrowserEngine },
     /// The platform recognised the spoken language (a Whisper language code)
     LanguageDetected { language: String },
     /// Transcription in progress; `text` is the whole current text of segment `chunk_index`

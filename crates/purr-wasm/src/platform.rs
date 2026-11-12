@@ -1,19 +1,21 @@
 //! Web platform implementation of the Platform trait
 
 use crate::audio;
+use crate::engine_choice::{self, CheckMode};
 use crate::error::{IntegrityError, WebError, WebResult};
 use crate::history_store;
 use crate::local::run_local;
 use crate::model::WebModelManager;
 use crate::model_cache;
 use crate::model_info::model_info;
-use crate::protocol::{WorkerModel, WorkerRequest};
+use crate::protocol::{FailureKind, WorkerEvent, WorkerModel, WorkerRequest};
 use crate::status_mapper::{PreloadMapper, PreloadStep, TranscriptionMapper};
 use crate::storage::WebStorage;
 use crate::storage_space;
 use crate::worker_client::WorkerClient;
 use bytes::Bytes;
 use futures::StreamExt as _;
+use purr_common::accel::AccelPolicy;
 use purr_common::accel::SystemReport;
 use purr_common::adapter_name::{AdapterStrings, adapter_name};
 use purr_common::audio_overview::{AudioOverview, peaks};
@@ -206,6 +208,7 @@ struct Transcription {
     language: Option<String>,
     translate: bool,
     hugging_face_token: Option<HuggingFaceToken>,
+    policy: AccelPolicy,
 }
 
 async fn run_transcription(
@@ -221,6 +224,7 @@ async fn run_transcription(
         language,
         translate,
         hugging_face_token,
+        policy,
     } = job;
     if !send_status(&tx, TranscriptionStatus::Starting)
         || !send_status(&tx, TranscriptionStatus::ProcessingAudio)
@@ -250,43 +254,91 @@ async fn run_transcription(
         spec.id
     );
 
-    let request = WorkerRequest::Transcribe {
-        request_id: worker.next_request_id(),
-        model: WorkerModel::from(&spec),
-        language,
-        translate,
-        english_only: spec.english_only(),
-        hugging_face_token,
+    let mut mapper = TranscriptionMapper::new(&spec, model_cached);
+    let mut forward = |event: WorkerEvent| {
+        if let Some(status) = mapper.map(event) {
+            send_status(&tx, status);
+        }
     };
-    let mut events = match worker.submit(request, Some(decoded.samples)) {
-        Ok(events) => events,
-        Err(error) => {
-            send_status(
-                &tx,
-                TranscriptionStatus::InitFailed {
-                    component: "Worker".to_owned(),
-                    reason: error.to_string(),
-                    error_details: None,
-                },
-            );
+    let mut choice = tokio::select! {
+        () = tx.closed() => {
+            tracing::info!("Transcription stream dropped while choosing the engine; cancelling");
             return;
         }
+        choice = engine_choice::choose(&worker, &spec, policy, CheckMode::Run, hugging_face_token.as_ref(), &mut forward) => choice,
     };
-
-    let mut mapper = TranscriptionMapper::new(&spec, model_cached);
+    let samples = decoded.samples;
     loop {
-        tokio::select! {
-            () = tx.closed() => {
-                tracing::info!("Transcription stream dropped; cancelling");
+        tracing::info!("Transcribing with {} on {:?}", spec.id, choice.engine);
+        if !send_status(
+            &tx,
+            TranscriptionStatus::BrowserEngine {
+                engine: choice.engine,
+            },
+        ) {
+            return;
+        }
+        let request = WorkerRequest::Transcribe {
+            request_id: worker.next_request_id(),
+            model: WorkerModel::from(&spec),
+            provider: choice.provider(),
+            language: language.clone(),
+            translate,
+            english_only: spec.english_only(),
+            hugging_face_token: hugging_face_token.clone(),
+        };
+        let mut events = match worker.submit(request, Some(samples.clone())) {
+            Ok(events) => events,
+            Err(error) => {
+                send_status(
+                    &tx,
+                    TranscriptionStatus::InitFailed {
+                        component: "Worker".to_owned(),
+                        reason: error.to_string(),
+                        error_details: None,
+                    },
+                );
                 return;
             }
-            next = events.next() => {
-                let Some(event) = next else { return };
-                if let Some(status) = mapper.map(event) && !send_status(&tx, status) {
+        };
+        let fallback = loop {
+            tokio::select! {
+                () = tx.closed() => {
+                    tracing::info!("Transcription stream dropped; cancelling");
                     return;
                 }
+                next = events.next() => {
+                    let Some(event) = next else { return };
+                    if let WorkerEvent::Failed { kind, message, .. } = &event
+                        && let Some(cpu) = choice.after_gpu_failure(*kind)
+                    {
+                        tracing::warn!("WebGPU failed, moving to the CPU: {message}");
+                        if *kind == FailureKind::WebGpuFailed {
+                            choice.remember_gpu_failure();
+                        }
+                        break cpu;
+                    }
+                    if let Some(status) = mapper.map(event) && !send_status(&tx, status) {
+                        return;
+                    }
+                }
             }
-        }
+        };
+        choice = fallback;
+    }
+}
+
+fn load_request(
+    worker: &WorkerClient,
+    spec: &WebModelSpec,
+    choice: &engine_choice::Choice,
+    hugging_face_token: Option<&HuggingFaceToken>,
+) -> WorkerRequest {
+    WorkerRequest::LoadModel {
+        request_id: worker.next_request_id(),
+        model: WorkerModel::from(spec),
+        provider: choice.provider(),
+        hugging_face_token: hugging_face_token.cloned(),
     }
 }
 
@@ -355,12 +407,15 @@ async fn run_preload(
         }
     };
 
-    let request = WorkerRequest::LoadModel {
-        request_id: worker.next_request_id(),
-        model: WorkerModel::from(&spec),
-        hugging_face_token,
+    let mut ignore = |_: WorkerEvent| {};
+    let mut choice = tokio::select! {
+        () = tx.closed() => return,
+        choice = engine_choice::choose(&worker, &spec, AccelPolicy::Auto, CheckMode::Skip, hugging_face_token.as_ref(), &mut ignore) => choice,
     };
-    let mut events = match worker.submit(request, None) {
+    let mut events = match worker.submit(
+        load_request(&worker, &spec, &choice, hugging_face_token.as_ref()),
+        None,
+    ) {
         Ok(events) => events,
         Err(error) => {
             let failure = fail("download", error.to_string(), ModelFailureKind::Other);
@@ -380,6 +435,24 @@ async fn run_preload(
             }
             next = events.next() => {
                 let Some(event) = next else { return };
+                if let WorkerEvent::Failed { kind, message, .. } = &event
+                    && let Some(cpu) = choice.after_gpu_failure(*kind)
+                {
+                    tracing::warn!("WebGPU could not load {model_id}, loading it for the CPU: {message}");
+                    choice = cpu;
+                    match worker.submit(load_request(&worker, &spec, &choice, hugging_face_token.as_ref()), None) {
+                        Ok(retry) => {
+                            events = retry;
+                            continue;
+                        }
+                        Err(error) => {
+                            if tx.send(Ok(fail("download", error.to_string(), ModelFailureKind::Other))).is_err() {
+                                tracing::warn!("Preload of {model_id} failed after its listener left");
+                            }
+                            return;
+                        }
+                    }
+                }
                 let outcome = match mapper.map(event, now_ms()) {
                     PreloadStep::Progress(progress) => Ok(progress),
                     PreloadStep::Ignored => continue,
@@ -506,6 +579,7 @@ impl Platform for WasmPlatformImpl {
                 language,
                 translate: request.translate,
                 hugging_face_token: request.hugging_face_token,
+                policy: request.engine.accel,
             },
             tx,
         ));
