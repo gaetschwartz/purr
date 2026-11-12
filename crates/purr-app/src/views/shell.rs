@@ -6,6 +6,7 @@ use crate::{
     main_app::{NavSection, Route},
     platform::IS_WEB,
     shortcuts::{Key, KeyChord, Shortcut, use_shortcut},
+    transcribe::session::use_transcribe_session,
     views::{
         about::AboutSheet, settings_load_banner::SettingsLoadBanner,
         shortcuts_sheet::ShortcutsSheet,
@@ -86,6 +87,27 @@ const fn tab_is_current(tab: NavSection, current: Option<NavSection>) -> bool {
             | NavSection::Logs,
             _,
         ) => false,
+    }
+}
+
+/// Activating Transcribe while it is shown leaves an ended run for the start screen.
+fn on_activate(
+    section: NavSection,
+    current: Option<NavSection>,
+) -> Option<EventHandler<MouseEvent>> {
+    let session = use_transcribe_session();
+    match (section, current) {
+        (NavSection::Transcribe, Some(NavSection::Transcribe)) => {
+            Some(EventHandler::new(move |_| session.start_over()))
+        }
+        (
+            NavSection::Transcribe
+            | NavSection::History
+            | NavSection::Models
+            | NavSection::Settings
+            | NavSection::Logs,
+            _,
+        ) => None,
     }
 }
 
@@ -207,10 +229,12 @@ fn NavLink(section: NavSection, current: Option<NavSection>) -> Element {
         label,
     } = entry(section);
     let here = current == Some(section);
+    let onclick = on_activate(section, current);
     rsx! {
         Link {
             class: "nav-item",
             to,
+            onclick,
             title: label,
             aria_current: here.then_some("page"),
             Icon { name: icon }
@@ -224,9 +248,11 @@ fn TabLink(section: NavSection, current: Option<NavSection>) -> Element {
     let NavEntry {
         to, icon, label, ..
     } = entry(section);
+    let onclick = on_activate(section, current);
     rsx! {
         Link {
             to,
+            onclick,
             aria_current: tab_is_current(section, current).then_some("page"),
             Icon { name: icon }
             "{label}"

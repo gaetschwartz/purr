@@ -663,6 +663,20 @@ impl TranscribeSession {
             .set(cancelled_record.map(|record| Cancelled { detail, record }));
     }
 
+    /// Goes back to the start screen from an ended run, unless that would lose an unsaved result.
+    pub fn start_over(self) {
+        let leave = starts_over(
+            self.record
+                .peek()
+                .as_ref()
+                .map(|record| &record.run.outcome),
+            &self.saved.peek(),
+        );
+        if leave {
+            self.new_transcription();
+        }
+    }
+
     /// Leaves the result and the chosen file for a new pick.
     pub fn new_transcription(mut self) {
         self.stop_task();
@@ -675,6 +689,19 @@ impl TranscribeSession {
         if let Some(file) = file {
             self.release(file);
         }
+    }
+}
+
+/// Whether the Transcribe item leaves the run shown: a failed run, or a result saved to History.
+fn starts_over(outcome: Option<&RunOutcome>, saved: &SaveState) -> bool {
+    match (outcome, saved) {
+        (Some(RunOutcome::Failed(_)), _)
+        | (Some(RunOutcome::Completed(_)), SaveState::Saved(_)) => true,
+        (None | Some(RunOutcome::Running), _)
+        | (
+            Some(RunOutcome::Completed(_)),
+            SaveState::Idle | SaveState::Saving | SaveState::Failed { .. },
+        ) => false,
     }
 }
 
@@ -723,6 +750,27 @@ pub fn use_transcribe_session() -> TranscribeSession {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::transcribe::run::RunFailure;
+
+    #[test]
+    fn the_transcribe_item_keeps_a_result_until_it_is_saved() {
+        let completed = RunOutcome::Completed(Completion {
+            processing_seconds: 1.0,
+            audio_seconds: 2.0,
+            word_count: 3,
+        });
+        let saved = SaveState::Saved(HistoryId::parse("entry").unwrap());
+        assert!(starts_over(Some(&completed), &saved));
+        assert!(!starts_over(Some(&completed), &SaveState::Saving));
+        assert!(!starts_over(Some(&completed), &SaveState::Idle));
+        assert!(!starts_over(Some(&RunOutcome::Running), &saved));
+        assert!(!starts_over(None, &saved));
+        let failed = RunOutcome::Failed(RunFailure {
+            message: "no".to_owned(),
+            hint: None,
+        });
+        assert!(starts_over(Some(&failed), &SaveState::Idle));
+    }
 
     #[test]
     fn only_a_browser_download_stops_with_the_run() {
