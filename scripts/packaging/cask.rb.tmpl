@@ -1,0 +1,25 @@
+cask "$token" do
+  version "$version"
+  sha256 "$sha256"
+
+  url "$url"
+  name "Purr"
+  desc "Transcribe audio files and URLs with Whisper"
+  homepage "https://github.com/$repo"
+
+  livecheck do
+$livecheck
+  end
+
+  conflicts_with cask: "$conflict"
+  depends_on arch: :arm64
+  depends_on formula: "$formula"
+
+  app "$app_bundle"
+
+  # The app is not notarized, so Gatekeeper would refuse to open it.
+  postflight do
+    system_command "/usr/bin/xattr",
+                   args: ["-dr", "com.apple.quarantine", "#{appdir}/$app_bundle"]
+  end
+end

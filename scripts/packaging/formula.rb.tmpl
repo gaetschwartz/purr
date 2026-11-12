@@ -1,0 +1,39 @@
+class $class_name < Formula
+  desc "Transcribe audio files and URLs with Whisper"
+  homepage "https://github.com/$repo"
+  version "$version"
+  license "MIT"
+
+  on_macos do
+    depends_on arch: :arm64
+
+    url "$macos_url"
+    sha256 "$macos_sha256"
+  end
+
+  on_linux do
+    depends_on arch: :x86_64
+
+    url "$linux_url"
+    sha256 "$linux_sha256"
+  end
+
+  livecheck do
+$livecheck
+  end
+
+  conflicts_with "$conflict", because: "both install a `purr` binary"
+
+  def install
+    if OS.linux?
+      libexec.install Dir["*"]
+      bin.install_symlink libexec/"purr"
+    else
+      bin.install "purr"
+    end
+  end
+
+  test do
+    system bin/"purr", "--version"
+  end
+end

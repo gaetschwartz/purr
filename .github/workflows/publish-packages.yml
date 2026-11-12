@@ -1,0 +1,132 @@
+name: publish-packages
+
+on:
+  workflow_call:
+    inputs:
+      channel:
+        required: true
+        type: string
+      tag:
+        required: true
+        type: string
+    secrets:
+      PURR_TAP_DEPLOY_KEY:
+        required: false
+      PURR_BUCKET_DEPLOY_KEY:
+        required: false
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: "Release channel"
+        required: true
+        type: choice
+        options: [nightly, stable]
+      tag:
+        description: "Release tag to publish (nightly-YYYY.MM.DD or vX.Y.Z)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-packages
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish ${{ inputs.channel }} ${{ inputs.tag }} to the tap and bucket
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/develop' || startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Check the deploy keys
+        id: keys
+        env:
+          TAP_KEY: ${{ secrets.PURR_TAP_DEPLOY_KEY }}
+          BUCKET_KEY: ${{ secrets.PURR_BUCKET_DEPLOY_KEY }}
+        run: |
+          if [ -n "$TAP_KEY" ]; then
+            echo "tap=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::PURR_TAP_DEPLOY_KEY is not set, so the Homebrew tap was not updated"
+          fi
+          if [ -n "$BUCKET_KEY" ]; then
+            echo "bucket=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::PURR_BUCKET_DEPLOY_KEY is not set, so the Scoop bucket was not updated"
+          fi
+
+      - uses: actions/checkout@v7
+        if: steps.keys.outputs.tap == 'true' || steps.keys.outputs.bucket == 'true'
+        with:
+          sparse-checkout: scripts
+          persist-credentials: false
+
+      - name: Check out the Homebrew tap
+        if: steps.keys.outputs.tap == 'true'
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ github.repository_owner }}/homebrew-tap
+          ssh-key: ${{ secrets.PURR_TAP_DEPLOY_KEY }}
+          path: tap
+
+      - name: Check out the Scoop bucket
+        if: steps.keys.outputs.bucket == 'true'
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ github.repository_owner }}/scoop-gaetschwartz
+          ssh-key: ${{ secrets.PURR_BUCKET_DEPLOY_KEY }}
+          path: bucket
+
+      - name: Download the release checksums
+        if: steps.keys.outputs.tap == 'true' || steps.keys.outputs.bucket == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern SHA256SUMS.txt --dir sums
+
+      - name: Render the package definitions
+        id: render
+        if: steps.keys.outputs.tap == 'true' || steps.keys.outputs.bucket == 'true'
+        env:
+          CHANNEL: ${{ inputs.channel }}
+          TAG: ${{ inputs.tag }}
+          TAP: ${{ steps.keys.outputs.tap == 'true' && 'tap' || '' }}
+          BUCKET: ${{ steps.keys.outputs.bucket == 'true' && 'bucket' || '' }}
+        run: |
+          args=()
+          [ -z "$TAP" ] || args+=(--tap "$TAP")
+          [ -z "$BUCKET" ] || args+=(--bucket "$BUCKET")
+          python3 scripts/publish-packages.py \
+            --channel "$CHANNEL" --tag "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --sums sums/SHA256SUMS.txt "${args[@]}"
+
+      - name: Push the Homebrew tap
+        if: ${{ !cancelled() && steps.render.outcome == 'success' && steps.keys.outputs.tap == 'true' }}
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          git -C tap add -A
+          if git -C tap diff --cached --quiet; then
+            echo "tap is already up to date"
+            exit 0
+          fi
+          git -C tap -c user.name=github-actions[bot] \
+            -c user.email=41898282+github-actions[bot]@users.noreply.github.com \
+            commit -m "chore(purr): publish $TAG"
+          git -C tap push
+
+      - name: Push the Scoop bucket
+        if: ${{ !cancelled() && steps.render.outcome == 'success' && steps.keys.outputs.bucket == 'true' }}
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          git -C bucket add -A
+          if git -C bucket diff --cached --quiet; then
+            echo "bucket is already up to date"
+            exit 0
+          fi
+          git -C bucket -c user.name=github-actions[bot] \
+            -c user.email=41898282+github-actions[bot]@users.noreply.github.com \
+            commit -m "chore(purr): publish $TAG"
+          git -C bucket push
