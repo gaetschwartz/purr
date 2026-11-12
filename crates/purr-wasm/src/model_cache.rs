@@ -153,9 +153,9 @@ pub async fn is_installed(spec: &WebModelSpec) -> WebResult<bool> {
     run_local(move || all_cached(urls)).await
 }
 
-/// Drops every cached file of the model.
-pub async fn remove(spec: &WebModelSpec) -> WebResult<()> {
-    let urls = file_urls(spec);
+/// Drops the given cached files of the model.
+pub async fn remove(spec: &WebModelSpec, files: &[&WebModelFile]) -> WebResult<()> {
+    let urls = files.iter().map(|file| spec.file_url(file)).collect();
     run_local(move || delete_all(urls)).await
 }
 
@@ -169,7 +169,8 @@ pub async fn verify(spec: &WebModelSpec) -> WebResult<()> {
         .collect();
     let outcome = run_local(move || verify_all(files)).await;
     if matches!(outcome, Err(WebError::Integrity(_))) {
-        remove(spec).await?;
+        let everything: Vec<&WebModelFile> = spec.files.iter().collect();
+        remove(spec, &everything).await?;
     }
     outcome
 }

@@ -70,12 +70,28 @@ mod tests {
     }
 
     #[test]
-    fn only_the_turbo_model_needs_shader_f16() -> Result<(), Box<dyn std::error::Error>> {
-        assert!(
-            info("large-v3-turbo", false)?
-                .metadata
-                .has_flag(model_flag::REQUIRES_SHADER_F16)
+    fn the_quantization_names_the_encoder_and_decoder_dtypes()
+    -> Result<(), Box<dyn std::error::Error>> {
+        assert_eq!(
+            info("base", false)?.metadata.quantization.as_deref(),
+            Some("fp32/q4")
         );
+        assert_eq!(
+            info("base-q4", false)?.metadata.quantization.as_deref(),
+            Some("q4/q4")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn only_the_turbo_models_need_shader_f16() -> Result<(), Box<dyn std::error::Error>> {
+        for id in ["large-v3-turbo", "large-v3-turbo-q4f16"] {
+            assert!(
+                info(id, false)?
+                    .metadata
+                    .has_flag(model_flag::REQUIRES_SHADER_F16)
+            );
+        }
         assert!(
             !info("small", false)?
                 .metadata

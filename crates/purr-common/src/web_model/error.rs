@@ -1,5 +1,7 @@
 //! Errors for the browser model manifest.
 
+use crate::web_model::attributes::OnnxDtype;
+
 /// Error for an invalid or inconsistent web model manifest
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error, miette::Diagnostic)]
 pub enum WebManifestError {
@@ -42,6 +44,10 @@ pub enum WebManifestError {
     #[error("Web model {model_id} file {path} has no SHA-256 digest")]
     #[diagnostic(code(purr::web_manifest::missing_digest))]
     MissingDigest { model_id: String, path: String },
+
+    #[error("Web model {model_id} uses {dtype}, which the WebGPU execution provider cannot run")]
+    #[diagnostic(code(purr::web_manifest::unsupported_dtype))]
+    UnsupportedDtype { model_id: String, dtype: OnnxDtype },
 
     #[error("Default web model {id} is not in the manifest")]
     #[diagnostic(code(purr::web_manifest::unknown_default_model))]

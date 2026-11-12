@@ -1,5 +1,5 @@
 use super::{
-    entry::{Language, ModelEntry},
+    entry::{Language, ModelEntry, Precision},
     family::ModelGroup,
     listing::ModelRow,
     state::ModelState,
@@ -22,14 +22,27 @@ impl Device {
     }
 }
 
-/// The smallest multilingual model of `group` that runs here.
-fn pick(rows: &[ModelRow], group: ModelGroup) -> Option<&ModelEntry> {
+impl Device {
+    /// Whether a quantized model of the catalog is a fair suggestion here. Browser quantization
+    /// only shrinks the download; on WebGPU it runs slower than the unquantized weights.
+    const fn suggests_quantized(self) -> bool {
+        match self {
+            Self::Desktop { .. } => true,
+            Self::Browser => false,
+        }
+    }
+}
+
+/// The smallest multilingual model of `group` that runs on `device`.
+fn pick(rows: &[ModelRow], group: ModelGroup, device: Device) -> Option<&ModelEntry> {
     rows.iter()
         .filter(|row| {
             row.entry.group == group
                 && row.entry.language == Language::Multilingual
                 && !row.entry.speaker_turns
                 && !matches!(row.state, ModelState::Unavailable { .. })
+                && (device.suggests_quantized()
+                    || !matches!(row.entry.precision, Precision::Quantized { .. }))
         })
         .map(|row| &row.entry)
         .min_by_key(|entry| entry.size_bytes)
@@ -41,7 +54,7 @@ pub fn recommend(rows: &[ModelRow], device: Device) -> Option<ModelEntry> {
     device
         .groups()
         .iter()
-        .find_map(|group| pick(rows, *group))
+        .find_map(|group| pick(rows, *group, device))
         .cloned()
 }
 
@@ -52,7 +65,17 @@ mod tests {
     use purr_common::platform::{ModelInfo, ModelMetadata, model_flag};
 
     fn row(id: &str, family: &str, size: u64, english: bool) -> ModelRow {
-        let metadata = ModelMetadata::new(
+        row_with_quantization(id, family, size, english, None)
+    }
+
+    fn row_with_quantization(
+        id: &str,
+        family: &str,
+        size: u64,
+        english: bool,
+        quantization: Option<&str>,
+    ) -> ModelRow {
+        let mut metadata = ModelMetadata::new(
             "ggml".to_owned(),
             "whisper".to_owned(),
             "multilingual".to_owned(),
@@ -60,6 +83,9 @@ mod tests {
         )
         .with_platform_attribute("family".to_owned(), family.to_owned())
         .with_platform_attribute(model_flag::ENGLISH_ONLY.to_owned(), english.to_string());
+        if let Some(quantization) = quantization {
+            metadata = metadata.with_quantization(quantization.to_owned());
+        }
         ModelRow {
             entry: ModelEntry::from_info(&ModelInfo::new(
                 id.to_owned(),
@@ -131,6 +157,23 @@ mod tests {
         assert_eq!(
             id(recommend(&catalog, Device::Browser)),
             Some("tiny".to_owned())
+        );
+    }
+
+    #[test]
+    fn the_browser_never_suggests_a_quantized_variant_over_the_unquantized_one() {
+        let catalog = vec![
+            row_with_quantization("tiny", "tiny", 122, false, Some("fp32/q4")),
+            row_with_quantization("base", "base", 209, false, Some("fp32/q4")),
+            row_with_quantization("base-q4", "base", 145, false, Some("q4/q4")),
+        ];
+        assert_eq!(
+            id(recommend(&catalog, Device::Browser)),
+            Some("base".to_owned())
+        );
+        assert_eq!(
+            id(recommend(&catalog, Device::Desktop { gpu: false })),
+            Some("base-q4".to_owned())
         );
     }
 

@@ -109,6 +109,16 @@ impl OnnxDtype {
         }
     }
 
+    /// Whether the WebGPU execution provider can run this dtype. Dynamically quantized 8-bit
+    /// weights need integer operators it lacks, and `bnb4` weights decode to garbage there.
+    #[must_use]
+    pub const fn runs_on_webgpu(self) -> bool {
+        match self {
+            Self::Fp32 | Self::Fp16 | Self::Q4 | Self::Q4F16 => true,
+            Self::Q8 | Self::Int8 | Self::Uint8 | Self::Bnb4 => false,
+        }
+    }
+
     /// Whether running this dtype on WebGPU needs the `shader-f16` adapter feature.
     #[must_use]
     pub const fn requires_shader_f16(self) -> bool {

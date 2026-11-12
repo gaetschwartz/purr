@@ -40,8 +40,16 @@ impl WebModelManager {
         model_cache::is_installed(self.model(model_id)?).await
     }
 
-    /// Evicts the model's files from the browser cache.
+    /// Evicts the model's files from the browser cache, keeping those an installed sibling
+    /// variant still loads.
     pub async fn remove_model(&self, model_id: &str) -> WebResult<()> {
-        model_cache::remove(self.model(model_id)?).await
+        let spec = self.model(model_id)?;
+        let mut kept = Vec::new();
+        for sibling in self.registry.siblings(spec) {
+            if model_cache::is_installed(sibling).await? {
+                kept.push(sibling);
+            }
+        }
+        model_cache::remove(spec, &spec.files_not_loaded_by(&kept)).await
     }
 }

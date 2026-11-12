@@ -27,6 +27,7 @@ pub struct WorkerModel {
     pub revision: String,
     pub encoder_dtype: OnnxDtype,
     pub decoder_dtype: OnnxDtype,
+    pub requires_shader_f16: bool,
 }
 
 impl From<&WebModelSpec> for WorkerModel {
@@ -36,6 +37,7 @@ impl From<&WebModelSpec> for WorkerModel {
             revision: spec.revision.clone(),
             encoder_dtype: spec.encoder_dtype,
             decoder_dtype: spec.decoder_dtype,
+            requires_shader_f16: spec.requires_shader_f16(),
         }
     }
 }
@@ -216,7 +218,17 @@ mod tests {
             revision: "ff4177021cc41f7db950912b73ea4fdf7d01d8e7".to_owned(),
             encoder_dtype: OnnxDtype::Fp32,
             decoder_dtype: OnnxDtype::Q4,
+            requires_shader_f16: false,
         }
+    }
+
+    #[test]
+    fn the_worker_model_carries_the_shader_f16_requirement()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let registry = purr_common::web_model::registry::WebModelRegistry::embedded()?;
+        assert!(!WorkerModel::from(registry.get("base-q4")?).requires_shader_f16);
+        assert!(WorkerModel::from(registry.get("large-v3-turbo-q4f16")?).requires_shader_f16);
+        Ok(())
     }
 
     #[test]
@@ -238,6 +250,7 @@ mod tests {
                     "revision": "ff4177021cc41f7db950912b73ea4fdf7d01d8e7",
                     "encoder_dtype": "fp32",
                     "decoder_dtype": "q4",
+                    "requires_shader_f16": false,
                 },
                 "language": "fr",
                 "translate": false,

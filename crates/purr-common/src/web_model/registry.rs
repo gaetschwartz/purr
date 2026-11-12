@@ -75,6 +75,22 @@ impl WebModelSpec {
     pub const fn requires_shader_f16(&self) -> bool {
         self.encoder_dtype.requires_shader_f16() || self.decoder_dtype.requires_shader_f16()
     }
+
+    /// Files of this model that none of the `kept` models loads, so evicting them leaves every
+    /// kept model whole.
+    #[must_use]
+    pub fn files_not_loaded_by(&self, kept: &[&Self]) -> Vec<&WebModelFile> {
+        self.files
+            .iter()
+            .filter(|file| {
+                !kept.iter().any(|other| {
+                    other.repo == self.repo
+                        && other.revision == self.revision
+                        && other.files.iter().any(|shared| shared.path == file.path)
+                })
+            })
+            .collect()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -139,6 +155,17 @@ impl WebModelRegistry {
             })
     }
 
+    /// The other models pinned to the same repository revision as `spec`; they may load the
+    /// same files.
+    pub fn siblings<'a>(
+        &'a self,
+        spec: &'a WebModelSpec,
+    ) -> impl Iterator<Item = &'a WebModelSpec> {
+        self.models.iter().map(|model| &**model).filter(|other| {
+            other.id != spec.id && other.repo == spec.repo && other.revision == spec.revision
+        })
+    }
+
     /// Recommended model for users who have not chosen one.
     #[must_use]
     pub fn default_model(&self) -> &WebModelSpec {
@@ -167,6 +194,15 @@ fn resolve(entry: WebManifestModel) -> Result<WebModelSpec, WebManifestError> {
             model_id: entry.id,
             revision: entry.revision,
         });
+    }
+
+    for dtype in [entry.encoder_dtype, entry.decoder_dtype] {
+        if !dtype.runs_on_webgpu() {
+            return Err(WebManifestError::UnsupportedDtype {
+                model_id: entry.id,
+                dtype,
+            });
+        }
     }
 
     let expected: Vec<(ModelFileRole, String)> = ModelFileRole::ALL

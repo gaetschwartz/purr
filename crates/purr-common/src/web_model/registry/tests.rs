@@ -145,6 +145,93 @@ fn shader_f16_is_required_by_half_precision_dtypes() -> Result<(), Box<dyn std::
 }
 
 #[test]
+fn files_a_kept_sibling_loads_are_not_evicted() -> Result<(), Box<dyn std::error::Error>> {
+    let registry = registry_with(|v| {
+        v["models"][1]["repo"] = "owner/alpha".into();
+    })?;
+    let alpha = registry.get("alpha")?;
+    let beta = registry.get("beta")?;
+    let paths = |spec: &WebModelSpec, kept: &[&WebModelSpec]| -> Vec<String> {
+        spec.files_not_loaded_by(kept)
+            .into_iter()
+            .map(|file| file.path.clone())
+            .collect()
+    };
+    assert_eq!(paths(alpha, &[beta]), ["onnx/encoder_model.onnx"]);
+    assert_eq!(paths(beta, &[alpha]), ["onnx/encoder_model_fp16.onnx"]);
+    assert_eq!(paths(alpha, &[]).len(), alpha.files.len());
+    Ok(())
+}
+
+#[test]
+fn files_of_a_model_in_another_repository_are_always_evicted()
+-> Result<(), Box<dyn std::error::Error>> {
+    let registry = registry_with(|_| {})?;
+    let alpha = registry.get("alpha")?;
+    let beta = registry.get("beta")?;
+    assert_eq!(alpha.files_not_loaded_by(&[beta]).len(), alpha.files.len());
+    Ok(())
+}
+
+#[test]
+fn siblings_share_a_repository_revision() -> Result<(), Box<dyn std::error::Error>> {
+    let registry = registry_with(|v| {
+        v["models"][1]["repo"] = "owner/alpha".into();
+    })?;
+    let ids = |id: &str| -> Result<Vec<&str>, Box<dyn std::error::Error>> {
+        Ok(registry
+            .siblings(registry.get(id)?)
+            .map(|sibling| sibling.id.as_str())
+            .collect())
+    };
+    assert_eq!(ids("alpha")?, ["beta"]);
+    let separate = registry_with(|_| {})?;
+    assert_eq!(separate.siblings(separate.get("alpha")?).count(), 0);
+    Ok(())
+}
+
+#[test]
+fn only_dtypes_the_webgpu_provider_runs_are_accepted() {
+    let supported: Vec<OnnxDtype> = [
+        OnnxDtype::Fp32,
+        OnnxDtype::Fp16,
+        OnnxDtype::Q8,
+        OnnxDtype::Int8,
+        OnnxDtype::Uint8,
+        OnnxDtype::Q4,
+        OnnxDtype::Bnb4,
+        OnnxDtype::Q4F16,
+    ]
+    .into_iter()
+    .filter(|dtype| dtype.runs_on_webgpu())
+    .collect();
+    assert_eq!(
+        supported,
+        [
+            OnnxDtype::Fp32,
+            OnnxDtype::Fp16,
+            OnnxDtype::Q4,
+            OnnxDtype::Q4F16
+        ]
+    );
+}
+
+#[test]
+fn rejects_a_dtype_webgpu_cannot_run() {
+    let result = registry_with(|v| {
+        v["models"][0]["decoder_dtype"] = "q8".into();
+        v["models"][0]["files"] = files_json(OnnxDtype::Fp32, OnnxDtype::Q8);
+    });
+    assert_eq!(
+        result.err(),
+        Some(WebManifestError::UnsupportedDtype {
+            model_id: "alpha".to_owned(),
+            dtype: OnnxDtype::Q8
+        })
+    );
+}
+
+#[test]
 fn dtype_file_suffixes_match_transformers_js() {
     let suffixes: Vec<&str> = [
         OnnxDtype::Fp32,
@@ -343,10 +430,15 @@ fn embedded_manifest_parses() -> Result<(), WebManifestError> {
             "tiny",
             "tiny.en",
             "base",
+            "base-q4",
             "base.en",
+            "base.en-q4",
             "small",
+            "small-q4",
             "small.en",
-            "large-v3-turbo"
+            "small.en-q4",
+            "large-v3-turbo",
+            "large-v3-turbo-q4f16"
         ]
     );
     assert_eq!(registry.default_model().id, "base");
@@ -364,15 +456,15 @@ fn embedded_manifest_pins_every_model_to_a_complete_file_set() -> Result<(), Web
 }
 
 #[test]
-fn only_the_dot_en_models_are_english_only() -> Result<(), WebManifestError> {
+fn only_the_english_families_are_english_only() -> Result<(), WebManifestError> {
     let registry = WebModelRegistry::embedded()?;
     for model in registry.models() {
         assert_eq!(
             model.english_only(),
-            model
-                .id
-                .rsplit_once('.')
-                .is_some_and(|(_, suffix)| suffix == "en"),
+            matches!(
+                model.family,
+                WebModelFamily::TinyEn | WebModelFamily::BaseEn | WebModelFamily::SmallEn
+            ),
             "{}",
             model.id
         );
@@ -381,7 +473,7 @@ fn only_the_dot_en_models_are_english_only() -> Result<(), WebManifestError> {
 }
 
 #[test]
-fn only_the_embedded_turbo_model_requires_shader_f16() -> Result<(), WebManifestError> {
+fn only_the_embedded_turbo_models_require_shader_f16() -> Result<(), WebManifestError> {
     let registry = WebModelRegistry::embedded()?;
     let needing: Vec<&str> = registry
         .models()
@@ -389,6 +481,44 @@ fn only_the_embedded_turbo_model_requires_shader_f16() -> Result<(), WebManifest
         .filter(|model| model.requires_shader_f16())
         .map(|model| model.id.as_str())
         .collect();
-    assert_eq!(needing, ["large-v3-turbo"]);
+    assert_eq!(needing, ["large-v3-turbo", "large-v3-turbo-q4f16"]);
+    Ok(())
+}
+
+#[test]
+fn embedded_quantized_variants_are_smaller_than_the_default_of_their_family()
+-> Result<(), WebManifestError> {
+    let registry = WebModelRegistry::embedded()?;
+    let is_quantized =
+        |model: &WebModelSpec| matches!(model.encoder_dtype, OnnxDtype::Q4 | OnnxDtype::Q4F16);
+    for variant in registry.models().iter().filter(|model| is_quantized(model)) {
+        let original = registry
+            .models()
+            .iter()
+            .find(|model| model.family == variant.family && !is_quantized(model))
+            .ok_or_else(|| WebManifestError::UnknownDefaultModel {
+                id: variant.id.clone(),
+            })?;
+        assert!(
+            variant.total_size_bytes() < original.total_size_bytes(),
+            "{}",
+            variant.id
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn the_q4_variant_shares_everything_but_the_encoder_with_the_original()
+-> Result<(), Box<dyn std::error::Error>> {
+    let registry = WebModelRegistry::embedded()?;
+    let base = registry.get("base")?;
+    let variant = registry.get("base-q4")?;
+    let evicted: Vec<ModelFileRole> = variant
+        .files_not_loaded_by(&[base])
+        .into_iter()
+        .map(|file| file.role)
+        .collect();
+    assert_eq!(evicted, [ModelFileRole::Encoder]);
     Ok(())
 }

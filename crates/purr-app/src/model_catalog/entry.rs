@@ -44,10 +44,9 @@ impl Precision {
         };
         match raw.split_once('/') {
             Some((encoder, decoder)) => {
-                if Self::parse_single(encoder) == Self::Full
-                    && Self::parse_single(decoder) == Self::Full
-                {
-                    Self::Full
+                let (encoder, decoder) = (Self::parse_single(encoder), Self::parse_single(decoder));
+                if encoder == decoder {
+                    encoder
                 } else {
                     Self::Mixed
                 }
@@ -167,9 +166,8 @@ impl ModelEntry {
         }
         match (&self.precision, self.language) {
             (Precision::Other(_), _) => described,
-            (Precision::Quantized { bits }, _) => {
-                let size = if *bits >= 8 { "half" } else { "a third" };
-                Some(format!("About {size} of the size, slightly less accurate."))
+            (Precision::Quantized { .. }, _) => {
+                Some("Quantized: a smaller download, slightly less accurate.".to_owned())
             }
             (Precision::Mixed | Precision::Full, Language::EnglishOnly) => {
                 Some("A little more accurate on English speech.".to_owned())
@@ -233,6 +231,15 @@ mod tests {
             Precision::Quantized { bits: 8 }
         );
         assert_eq!(Precision::parse(Some("fp32/q4")), Precision::Mixed);
+        assert_eq!(
+            Precision::parse(Some("q4/q4")),
+            Precision::Quantized { bits: 4 }
+        );
+        assert_eq!(
+            Precision::parse(Some("q4f16/q4f16")),
+            Precision::Quantized { bits: 4 }
+        );
+        assert_eq!(Precision::parse(Some("q4/q8")), Precision::Mixed);
         assert_eq!(Precision::parse(Some("fp32/fp16")), Precision::Full);
         assert_eq!(
             Precision::parse(Some("weird")),
@@ -277,13 +284,10 @@ mod tests {
         let quantized = ModelEntry::from_info(&info("small-q5_1", "small", "q5_1", false));
         assert_eq!(
             quantized.hint().as_deref(),
-            Some("About a third of the size, slightly less accurate.")
+            Some("Quantized: a smaller download, slightly less accurate.")
         );
         let eight_bit = ModelEntry::from_info(&info("small-q8_0", "small", "q8_0", false));
-        assert_eq!(
-            eight_bit.hint().as_deref(),
-            Some("About half of the size, slightly less accurate.")
-        );
+        assert_eq!(eight_bit.hint(), quantized.hint());
         let old = ModelEntry::from_info(&info("large-v1", "large-v1", "fp16", false));
         assert_eq!(
             old.hint().as_deref(),
