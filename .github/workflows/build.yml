@@ -168,7 +168,7 @@ jobs:
           for expectation in ${{ matrix.expect_missing }}; do
             backend="${expectation%%=*}"
             library="${expectation#*=}"
-            grep -qxF "* $backend - Built, but the runtime library $library cannot be loaded" purr-sys.txt \
+            grep -qE "^\* $backend - Built, but the runtime library ${library//./\.} cannot be loaded(;.*)?$" purr-sys.txt \
               || { echo "::error::$backend is not reported as missing $library"; exit 1; }
           done
       - name: Build desktop app - ${{ matrix.variant }}

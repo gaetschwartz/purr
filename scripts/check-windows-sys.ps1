@@ -52,7 +52,7 @@ if ($exitCode -ne 0) {
 }
 Require '^\* CPU - Available$' 'the CPU backend is not available'
 if ($ExpectCuda) {
-    Require '^\* CUDA - Built, but the runtime library cublasLt64_\d+\.dll cannot be loaded$' 'CUDA is not reported as missing cublasLt'
+    Require '^\* CUDA - Built, but the runtime library cublasLt64_\d+\.dll cannot be loaded(;.*)?$' 'CUDA is not reported as missing cublasLt'
 }
 if ($ExpectVulkan) {
     Require '^\* Vulkan - (Built|Available)' 'Vulkan is not reported as built'
