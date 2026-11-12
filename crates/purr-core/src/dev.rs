@@ -55,7 +55,6 @@ impl Device {
 /// GPU acceleration status
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SystemInfo {
-    #[serde(flatten)]
     pub backends: HashMap<AccelBackend, FeatureStatus>,
     pub cpu: CpuReport,
     /// The ggml id of the GPU each usable GPU backend picks when the device is not chosen.
