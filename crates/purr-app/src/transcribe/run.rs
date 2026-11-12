@@ -157,6 +157,12 @@ impl Run {
         self.stage = self.stage.max(stage);
     }
 
+    /// When the run started, in the clock's milliseconds; it tells two runs of one file apart.
+    #[must_use]
+    pub const fn started_ms(&self) -> f64 {
+        self.started_ms
+    }
+
     /// Seconds since the run started.
     #[must_use]
     pub fn elapsed_seconds(&self, now_ms: f64) -> f64 {

@@ -1,5 +1,6 @@
 //! The design-system components, one per file.
 
+pub mod audio_card;
 pub mod audio_player;
 pub mod banner;
 pub mod brand_mark;
@@ -11,6 +12,7 @@ pub mod empty_state;
 pub mod engine_chip;
 pub mod export_menu;
 pub mod file_card;
+pub mod file_name;
 pub mod group;
 pub mod icon;
 pub mod icon_button;

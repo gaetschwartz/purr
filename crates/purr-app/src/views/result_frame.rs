@@ -1,40 +1,62 @@
-//! The result page of a transcription: details, the player, the transcript and its exports.
+//! The run view frame: banners, the audio card and the transcript card, under a hidden title.
 //!
-//! A fresh run and a saved transcription both render through it.
+//! A run in progress, its result, a failed run and a saved transcription all render through it,
+//! so a run that ends changes attributes in place instead of mounting a new page.
 
+pub mod more_menu;
 mod playback_shortcut;
 mod transcript_card;
 
 use crate::{
     components::{
-        audio_player::{AudioPlayer, PlayerHandle},
-        button::Button,
-        export_menu::{ExportMenu, ExportSource, copy_export},
-        icon::IconName,
-        page::Page,
+        audio_card::{AudioCard, SilentAudioCard, WaveMode},
+        audio_player::PlayerHandle,
+        export_menu::{ExportSource, copy_export},
+        page::{Page, TitleStyle},
         toast::use_toasts,
     },
     shortcuts::{Key, KeyChord, Shortcut, use_shortcut},
-    transcribe::timing,
 };
 use dioxus::prelude::*;
+use more_menu::{MoreAction, TranscriptionFacts};
 use playback_shortcut::PlaybackShortcut;
 use purr_common::{export_format::ExportFormat, platform::TranscriptSegment};
 use std::rc::Rc;
 use transcript_card::{SEARCH_ID, TranscriptCard};
 
-/// What the page says about the transcription.
-#[derive(Debug, Clone, PartialEq)]
-pub struct ResultDetails {
-    pub duration_seconds: f64,
-    pub model_label: String,
-    pub language_text: String,
-    pub took_seconds: f64,
-    /// The hardware the run used, when the platform reported it.
-    pub engine: Option<String>,
+/// Where the view stands; it drives the classes the transitions hang from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ViewPhase {
+    /// Downloading or loading the model.
+    Preparing,
+    DetectingLanguage,
+    Transcribing,
+    /// The transcript is final.
+    Finished,
+    /// The run stopped with an error; the text so far stays.
+    Stopped,
 }
 
-/// What to show where the player goes.
+impl ViewPhase {
+    const fn class(self) -> &'static str {
+        match self {
+            Self::Preparing => "runview waiting",
+            Self::DetectingLanguage => "runview detecting",
+            Self::Transcribing => "runview",
+            Self::Finished => "runview done",
+            Self::Stopped => "runview stopped",
+        }
+    }
+
+    const fn is_live(self) -> bool {
+        match self {
+            Self::Preparing | Self::DetectingLanguage | Self::Transcribing => true,
+            Self::Finished | Self::Stopped => false,
+        }
+    }
+}
+
+/// What to show where the audio card goes.
 #[derive(Clone, PartialEq)]
 pub enum ResultAudio {
     /// The audio plays; `peaks` draw the waveform.
@@ -46,21 +68,28 @@ pub enum ResultAudio {
     Unavailable(String),
 }
 
-/// The page frame of a result: title, actions, details, audio and transcript.
+/// The run view: banners, the audio card, then the transcript with its toolbar.
 #[component]
 pub fn ResultFrame(
+    /// The hidden page heading.
     title: String,
-    eyebrow: Element,
-    /// Buttons that come before Copy and Export.
-    actions: Element,
-    details: ResultDetails,
-    /// A last detail, such as where the transcription is kept.
-    keeping: Element,
-    /// A banner above the details.
+    phase: ViewPhase,
+    file_name: String,
+    duration_seconds: Option<f64>,
+    /// Banners above the audio card.
     notice: Option<Element>,
+    audio: ResultAudio,
+    wave: WaveMode,
+    /// Set while the round button stops the run.
+    on_stop: Option<EventHandler<()>>,
+    /// The phase or time left on the audio card.
+    status: Element,
+    #[props(default)] status_shown: bool,
     segments: Rc<Vec<TranscriptSegment>>,
     export: ExportSource,
-    audio: ResultAudio,
+    facts: TranscriptionFacts,
+    more: Vec<MoreAction>,
+    on_more: EventHandler<MoreAction>,
 ) -> Element {
     let toasts = use_toasts();
     let copy_source = export.clone();
@@ -79,58 +108,49 @@ pub fn ResultFrame(
         },
     );
 
-    let speed = timing::speed(details.duration_seconds, details.took_seconds)
-        .map(|speed| format!(" · {} real time", timing::speed_text(speed)))
-        .unwrap_or_default();
-    let engine = details
-        .engine
-        .as_ref()
-        .map(|engine| format!(" · {engine}"))
-        .unwrap_or_default();
-    let copy_now = export.clone();
+    let live = phase.is_live();
     let player = match &audio {
         ResultAudio::Player { player, .. } => Some(*player),
         ResultAudio::Unavailable(_) => None,
     };
+    let seekable = player.filter(|_| phase == ViewPhase::Finished);
 
     rsx! {
         Page {
             title,
-            file_title: true,
-            eyebrow,
-            actions: rsx! {
-                div { class: "row wrap",
-                    {actions}
-                    Button {
-                        icon: IconName::Copy,
-                        id: "copy-btn",
-                        disabled: segments.is_empty(),
-                        onclick: move |_| copy_export(&copy_now, ExportFormat::Txt, toasts),
-                        "Copy"
-                    }
-                    ExportMenu { id: "export-btn", source: export }
-                }
-            },
+            title_style: TitleStyle::Hidden,
+            class: phase.class(),
             {notice}
-            div { class: "metas tnum", aria_label: "Details",
-                span { {timing::clock(details.duration_seconds)} }
-                span { "{details.model_label}" }
-                span { "{details.language_text}" }
-                span { "Took {timing::took(details.took_seconds)}{speed}{engine}" }
-                {keeping}
-            }
             match audio {
                 ResultAudio::Player { player, peaks } => rsx! {
-                    AudioPlayer { player, duration: Some(details.duration_seconds), peaks }
+                    AudioCard {
+                        player,
+                        duration: duration_seconds,
+                        peaks,
+                        file_name,
+                        wave,
+                        on_stop,
+                        status,
+                        status_shown,
+                    }
                 },
                 ResultAudio::Unavailable(note) => rsx! {
-                    p { class: "foot", role: "note", style: "margin:0", "{note}" }
+                    SilentAudioCard { file_name, note }
                 },
             }
-            if let Some(player) = player {
+            if let Some(player) = player.filter(|_| !live) {
                 PlaybackShortcut { player }
             }
-            TranscriptCard { segments: Rc::clone(&segments), player }
+            TranscriptCard {
+                segments: Rc::clone(&segments),
+                player: seekable,
+                live,
+                export,
+                export_shown: !live,
+                facts,
+                more,
+                on_more,
+            }
         }
     }
 }

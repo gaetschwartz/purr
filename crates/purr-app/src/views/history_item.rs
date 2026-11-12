@@ -2,11 +2,12 @@
 
 use crate::{
     components::{
+        audio_card::WaveMode,
         audio_player::use_audio_player,
         banner::{Banner, BannerTone},
         button::{Button, ButtonSize, ButtonVariant},
         empty_state::EmptyState,
-        icon::{Icon, IconName},
+        icon::IconName,
         page::Page,
         spinner::Spinner,
     },
@@ -14,10 +15,12 @@ use crate::{
     main_app::Route,
     platform::{self, IS_WEB, Platform as _, PlatformError, playback_source::AudioSource},
     transcribe::session::use_transcribe_session,
-    utils::{clock::unix_ms, local_time::when_text},
     views::{
         history::{delete_dialog::DeleteDialog, rename_dialog::RenameDialog},
-        result_frame::{ResultAudio, ResultDetails, ResultFrame},
+        result_frame::{
+            ResultAudio, ResultFrame, ViewPhase,
+            more_menu::{MoreAction, TranscriptionFacts},
+        },
     },
 };
 use dioxus::prelude::*;
@@ -171,59 +174,28 @@ fn Entry(record: HistoryRecord, audio: ResultAudio) -> Element {
                 .map(|summary| summary.title.clone())
         })
         .unwrap_or_else(|| entry.title.clone());
-    let saved = when_text(entry.created_at_ms, unix_ms());
 
     rsx! {
         ResultFrame {
             title: title.clone(),
-            eyebrow: rsx! {
-                p { class: "sub", style: "margin:0 0 2px",
-                    Button {
-                        variant: ButtonVariant::Plain,
-                        size: ButtonSize::Small,
-                        icon: IconName::Back,
-                        id: "back-history",
-                        style: "margin-left:-8px",
-                        onclick: move |_| {
-                            navigator.push(Route::History {});
-                        },
-                        "History"
-                    }
-                }
-            },
-            actions: rsx! {
-                Button {
-                    icon: IconName::Pencil,
-                    id: "rename-btn",
-                    aria_haspopup: "dialog",
-                    onclick: move |_| renaming.set(true),
-                    "Rename"
-                }
-                Button {
-                    variant: ButtonVariant::Danger,
-                    icon: IconName::Trash,
-                    id: "delete-btn",
-                    aria_haspopup: "dialog",
-                    onclick: move |_| deleting.set(true),
-                    "Delete"
-                }
-            },
-            details: ResultDetails {
-                duration_seconds: entry.audio_seconds,
-                model_label: entry.model_label.clone(),
-                language_text: language_text(entry.language.as_deref(), entry.language_origin),
-                took_seconds: entry.processing_seconds,
-                engine: None,
-            },
-            keeping: rsx! {
-                span {
-                    Icon { name: IconName::Lock }
-                    "Saved {saved}"
-                }
-            },
+            phase: ViewPhase::Finished,
+            file_name: entry.file_name.clone(),
+            duration_seconds: Some(entry.audio_seconds),
+            audio,
+            wave: WaveMode::Playback,
+            status: rsx! {},
             segments: Rc::new(entry.segments.clone()),
             export: export_source(entry),
-            audio,
+            facts: TranscriptionFacts {
+                model_label: entry.model_label.clone(),
+                language_text: language_text(entry.language.as_deref(), entry.language_origin),
+            },
+            more: vec![MoreAction::Rename, MoreAction::Delete],
+            on_more: move |action| match action {
+                MoreAction::Rename => renaming.set(true),
+                MoreAction::Delete => deleting.set(true),
+                MoreAction::RunAgain | MoreAction::NewTranscription => {}
+            },
         }
         if renaming() {
             RenameDialog {

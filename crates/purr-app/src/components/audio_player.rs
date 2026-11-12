@@ -1,13 +1,6 @@
-use super::icon::{Icon, IconName};
-use crate::{
-    platform::playback_source::{self, AudioSource},
-    transcribe::{playback, timing},
-};
+use crate::platform::playback_source::{self, AudioSource};
 use dioxus::{document::Eval, prelude::*};
 use serde::{Deserialize, Serialize};
-use std::rc::Rc;
-
-const SEEK_STEP_SECONDS: f64 = 5.0;
 
 const PLAYER: &str = r"
 const init = await dioxus.recv();
@@ -25,7 +18,7 @@ for (const type of ['timeupdate', 'play', 'pause', 'ended', 'loadedmetadata', 's
 audio.addEventListener('error', () => fail(audio.error ? `the browser could not play it (media error ${audio.error.code})` : 'the browser could not play it'));
 const onClick = (event) => {
   const wave = event.target.closest && event.target.closest('#' + CSS.escape(init.wave));
-  if (!wave || !Number.isFinite(audio.duration)) return;
+  if (!wave || wave.getAttribute('role') !== 'slider' || !Number.isFinite(audio.duration)) return;
   const box = wave.getBoundingClientRect();
   const fraction = Math.min(1, Math.max(0, (event.clientX - box.left) / box.width));
   audio.currentTime = fraction * audio.duration;
@@ -88,8 +81,8 @@ enum PlayerEvent {
     },
 }
 
-/// The DOM id of the player's waveform, which takes clicks to seek.
-const WAVE_ID: &str = "player-wave";
+/// The DOM id of the player's waveform, which takes clicks to seek while it is a slider.
+pub const WAVE_ID: &str = "player-wave";
 
 /// Plays one file in the page and reports where it is; from [`use_audio_player`]. Cheap to copy.
 #[derive(Clone, Copy)]
@@ -112,6 +105,12 @@ impl PlayerHandle {
     #[must_use]
     pub fn position(&self) -> f64 {
         *self.position.read()
+    }
+
+    /// The length of the audio, once the player knows it (subscribes the caller).
+    #[must_use]
+    pub fn length(&self) -> Option<f64> {
+        *self.duration.read()
     }
 
     #[must_use]
@@ -149,7 +148,8 @@ impl PlayerHandle {
         });
     }
 
-    fn seek(&self, position: f64) {
+    /// Jumps to `position` seconds without starting playback.
+    pub fn seek(&self, position: f64) {
         self.send(&Command::Seek {
             position,
             play: false,
@@ -227,79 +227,4 @@ pub fn use_audio_player(source: &AudioSource) -> PlayerHandle {
         }
     });
     handle
-}
-
-/// Play button, waveform (a slider: arrows step 5 s, Home and End jump) and time, for `player`.
-#[component]
-pub fn AudioPlayer(
-    player: PlayerHandle,
-    /// The length of the audio from the decoder, used until the player knows it.
-    duration: Option<f64>,
-    /// Waveform bars between 0 and 1; a flat line while unknown.
-    peaks: Option<Rc<Vec<f32>>>,
-) -> Element {
-    let length = player.duration.read().or(duration).unwrap_or(0.0);
-    let position = player.position();
-    let playing = player.is_playing();
-    let bars: Vec<f32> = peaks.map_or_else(|| vec![0.15; 60], |peaks| peaks.as_ref().clone());
-    let played = if length > 0.0 {
-        (position / length * bars.len() as f64).floor() as usize
-    } else {
-        0
-    };
-    let value_text = format!("{} of {}", timing::clock(position), timing::clock(length));
-
-    rsx! {
-        div { class: "player glass", role: "group", aria_label: "Source audio",
-            button {
-                class: "play",
-                r#type: "button",
-                id: "play-btn",
-                aria_label: if playing { "Pause" } else { "Play" },
-                onclick: move |_| player.toggle(),
-                Icon { name: if playing { IconName::Pause } else { IconName::Play } }
-            }
-            div {
-                class: "wave",
-                id: WAVE_ID,
-                role: "slider",
-                tabindex: "0",
-                aria_label: "Playback position",
-                aria_valuemin: "0",
-                aria_valuemax: "{length.round()}",
-                aria_valuenow: "{position.round()}",
-                aria_valuetext: "{value_text}",
-                onkeydown: move |event: KeyboardEvent| {
-                    let target = match event.key() {
-                        Key::Named(NamedKey::ArrowLeft | NamedKey::ArrowDown) => {
-                            Some(playback::step(position, -SEEK_STEP_SECONDS, length))
-                        }
-                        Key::Named(NamedKey::ArrowRight | NamedKey::ArrowUp) => {
-                            Some(playback::step(position, SEEK_STEP_SECONDS, length))
-                        }
-                        Key::Named(NamedKey::Home) => Some(0.0),
-                        Key::Named(NamedKey::End) => Some(length),
-                        Key::Named(_) | Key::Character(_) => None,
-                    };
-                    if let Some(target) = target {
-                        event.prevent_default();
-                        player.seek(target);
-                    }
-                },
-                for (index , height) in bars.iter().enumerate() {
-                    i {
-                        key: "{index}",
-                        class: if index < played { "p" },
-                        style: "height:{(height.max(0.08) * 100.0).round()}%",
-                    }
-                }
-            }
-            span { class: "ptime", "{timing::clock(position)} / {timing::clock(length)}" }
-        }
-        if let Some(error) = player.error() {
-            p { class: "foot", role: "alert", style: "margin:0",
-                "The audio can't be played here: {error}."
-            }
-        }
-    }
 }

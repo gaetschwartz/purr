@@ -105,19 +105,22 @@ pub fn copy_export(source: &ExportSource, format: ExportFormat, toasts: Toasts) 
     });
 }
 
-/// The Export button: a menu of formats, then a sheet with a preview, Copy and Save.
+/// The Export menu button: a menu of formats, then a sheet with a preview, Copy and Save.
 #[component]
 pub fn ExportMenu(
     /// The DOM id of the button, which the menu hangs from.
     #[props(into)]
     id: String,
     source: ExportSource,
+    /// Off while the transcript is still being written; the button and its shortcut rest.
+    #[props(default = true)]
+    available: bool,
 ) -> Element {
     let settings = use_settings();
     let preferred = settings.with(|settings| settings.ui.export_format);
     let mut menu_open = use_signal(|| false);
     let mut sheet = use_signal(|| None::<ExportFormat>);
-    let can_export = !source.segments.is_empty();
+    let can_export = available && !source.segments.is_empty();
     use_shortcut(
         Shortcut::new(KeyChord::primary(Key::Char('e')), "Export the transcript").in_inputs(),
         move || {
@@ -130,14 +133,15 @@ pub fn ExportMenu(
 
     rsx! {
         Button {
-            variant: ButtonVariant::Primary,
             icon: IconName::Share,
             id: id.clone(),
             aria_haspopup: "menu",
             aria_expanded: menu_open(),
-            disabled: source.segments.is_empty(),
+            aria_label: "Export",
+            disabled: !can_export,
             onclick: move |_| menu_open.toggle(),
-            "Export"
+            span { class: "lbl", aria_hidden: "true", "Export" }
+            Icon { name: IconName::ChevronDown, size: IconSize::Small, class: "chev" }
         }
         if menu_open() {
             Popover {

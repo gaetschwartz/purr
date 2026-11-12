@@ -7,6 +7,8 @@ pub enum ButtonVariant {
     Primary,
     #[default]
     Secondary,
+    /// Tinted with the accent: the one most common action of a view.
+    Tonal,
     Plain,
     Danger,
     DangerSolid,
@@ -17,6 +19,7 @@ impl ButtonVariant {
         match self {
             Self::Primary => " primary",
             Self::Secondary => "",
+            Self::Tonal => " tonal",
             Self::Plain => " plain",
             Self::Danger => " danger",
             Self::DangerSolid => " danger solid",

@@ -11,45 +11,68 @@ pub fn document_title(view_title: &str) -> String {
     }
 }
 
-/// The frame of every view: document title, large title (focused when the view opens), optional
-/// subtitle and trailing actions, then the content in an 880 px column (1040 px when `wide`).
+/// How a [`Page`] shows its title.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TitleStyle {
+    /// A large heading in a top bar, with the subtitle, eyebrow and actions.
+    #[default]
+    Large,
+    /// A heading for screen readers only; the page starts with its content.
+    Hidden,
+}
+
+/// The frame of every view: document title, a title heading (focused when the view opens),
+/// optional subtitle and trailing actions, then the content in an 880 px column (1040 px when
+/// `wide`).
 #[component]
 pub fn Page(
     #[props(into)] title: String,
     #[props(into)] subtitle: Option<String>,
     #[props(default)] wide: bool,
+    #[props(default)] title_style: TitleStyle,
+    /// Classes added to the content column.
+    #[props(into, default)]
+    class: String,
     /// A small row above the title, such as a back link.
     eyebrow: Option<Element>,
-    /// The title is a file name that may be long and unbroken, so it wraps anywhere.
-    #[props(default)]
-    file_title: bool,
     actions: Option<Element>,
     children: Element,
 ) -> Element {
-    let class = if wide { "content wide" } else { "content" };
+    let mut column = String::from(if wide { "content wide" } else { "content" });
+    if !class.is_empty() {
+        column.push(' ');
+        column.push_str(&class);
+    }
+    let focus = move |event: MountedEvent| async move {
+        if let Err(error) = event.data().set_focus(true).await {
+            tracing::debug!("Could not focus the page heading: {error}");
+        }
+    };
     rsx! {
         document::Title { {document_title(&title)} }
-        div { class,
-            div { class: "topbar",
-                div { class: "titles",
-                    {eyebrow}
-                    h1 {
-                        class: if file_title { "lt file" } else { "lt" },
-                        title: file_title.then(|| title.clone()),
-                        dir: file_title.then_some("auto"),
-                        tabindex: "-1",
-                        onmounted: move |event: MountedEvent| async move {
-                            if let Err(error) = event.data().set_focus(true).await {
-                                tracing::debug!("Could not focus the page heading: {error}");
+        div { class: column,
+            match title_style {
+                TitleStyle::Large => rsx! {
+                    div { class: "topbar",
+                        div { class: "titles",
+                            {eyebrow}
+                            h1 { class: "lt", tabindex: "-1", onmounted: focus, "{title}" }
+                            if let Some(subtitle) = &subtitle {
+                                p { class: "sub", "{subtitle}" }
                             }
-                        },
+                        }
+                        {actions}
+                    }
+                },
+                TitleStyle::Hidden => rsx! {
+                    h1 {
+                        class: "sr",
+                        dir: "auto",
+                        tabindex: "-1",
+                        onmounted: focus,
                         "{title}"
                     }
-                    if let Some(subtitle) = &subtitle {
-                        p { class: "sub", "{subtitle}" }
-                    }
-                }
-                {actions}
+                },
             }
             {children}
         }
