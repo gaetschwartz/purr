@@ -348,7 +348,7 @@ pub struct TranscriptionRequest {
     pub translate: bool,
     /// How the engine runs; platforms that do not choose their own hardware ignore it
     pub engine: EngineOptions,
-    /// Authenticates the downloads of a model that is not stored yet; desktop never downloads here
+    /// Authenticates the downloads of a model that is not stored yet; desktop only fetches its voice activity model with it
     pub hugging_face_token: Option<HuggingFaceToken>,
 }
 

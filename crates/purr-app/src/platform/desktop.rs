@@ -25,10 +25,10 @@ use purr_common::settings::Settings;
 use purr_core::WhisperError;
 use purr_core::dev;
 use purr_core::error::ConfigurationError;
-use purr_core::model::ModelManager;
 use purr_core::model::attributes::{ModelFeature, ModelLanguage};
 use purr_core::model::registry::ModelSpec;
 use purr_core::model::status::ModelIntegrity as CoreIntegrity;
+use purr_core::model::{ModelManager, vad_or_none};
 use std::{
     collections::VecDeque,
     future::Future,
@@ -48,6 +48,7 @@ const SETTINGS_FILE: &str = "settings.toml";
 pub(super) struct DesktopPlatformImpl {
     temp_dir: PathBuf,
     model_manager: Arc<ModelManager>,
+    vad_gate: Arc<tokio::sync::Mutex<()>>,
     history_lock: tokio::sync::Mutex<()>,
     last_run: Arc<Mutex<Option<LastRun>>>,
 }
@@ -92,6 +93,7 @@ impl DesktopPlatformImpl {
         Ok(Self {
             temp_dir,
             model_manager: Arc::new(model_manager),
+            vad_gate: Arc::new(tokio::sync::Mutex::new(())),
             history_lock: tokio::sync::Mutex::new(()),
             last_run: Arc::new(Mutex::new(None)),
         })
@@ -145,10 +147,15 @@ impl Platform for DesktopPlatformImpl {
         if !installed {
             return Err(PlatformError::model_not_found(request.model.to_string()));
         }
+        let vad = vad_or_none(manager.vad_model_path().await);
+        if vad.is_none() {
+            self.fetch_vad_in_background(request.hugging_face_token.clone());
+        }
         let config = apply_engine(
             purr_core::TranscriptionConfig::new()
                 .with_translate(request.translate)
                 .with_model_path(manager.get_model_path(model))
+                .with_vad_model(vad)
                 .with_opt_language(request.language),
             &request.engine,
         );
@@ -784,6 +791,18 @@ async fn download(
     Ok(())
 }
 
+async fn fetch_vad(
+    manager: Arc<ModelManager>,
+    gate: Arc<tokio::sync::Mutex<()>>,
+    token: Option<HuggingFaceToken>,
+) {
+    let _one_at_a_time = gate.lock().await;
+    let fetched = manager.ensure_vad_model(token.as_ref()).await.map(Some);
+    if let Some(path) = vad_or_none(fetched) {
+        debug!("The voice activity model is at {}", path.display());
+    }
+}
+
 fn model_info(manager: &ModelManager, model: &ModelSpec, is_installed: bool) -> ModelInfo {
     let mut info = ModelInfo::new(
         model.id.clone(),
@@ -859,6 +878,15 @@ impl DesktopPlatformImpl {
             .map_err(Into::into)
     }
 
+    /// Fetches the voice activity model without holding anything up; a failure is only logged.
+    fn fetch_vad_in_background(&self, token: Option<HuggingFaceToken>) {
+        tokio::spawn(fetch_vad(
+            Arc::clone(&self.model_manager),
+            Arc::clone(&self.vad_gate),
+            token,
+        ));
+    }
+
     fn start_download(
         &self,
         model_id: &str,
@@ -869,6 +897,7 @@ impl DesktopPlatformImpl {
         let (tx, rx) = mpsc::channel(10);
         let (cancel, cancelled) = oneshot::channel::<()>();
 
+        self.fetch_vad_in_background(token.clone());
         tokio::spawn(run_download(manager, model, token, tx, cancelled));
 
         Ok(Box::pin(CancelOnDrop {
