@@ -30,12 +30,12 @@ static WORKER_SCRIPT: Asset = asset!(
 );
 
 static ORT_MODULE: Asset = asset!(
-    "/node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.jsep.mjs",
+    "/node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.asyncify.mjs",
     AssetOptions::js().with_minify(false).into_asset_options()
 );
 
 static ORT_WASM: Asset =
-    asset!("/node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.jsep.wasm");
+    asset!("/node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.asyncify.wasm");
 
 /// URL paths of the ONNX runtime files the worker loads.
 #[must_use]

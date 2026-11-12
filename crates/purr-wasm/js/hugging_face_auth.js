@@ -1,3 +1,5 @@
+import { env } from "@huggingface/transformers";
+
 const HUGGING_FACE_ORIGIN = "https://huggingface.co";
 
 let token = null;
@@ -17,10 +19,10 @@ function targetOf(input) {
     }
 }
 
-const nativeFetch = globalThis.fetch.bind(globalThis);
+const nativeFetch = env.fetch;
 
-// transformers.js offers no way to add headers, and only huggingface.co may get the token: the CDN behind it serves pre-signed URLs
-globalThis.fetch = (input, init) => {
+// only huggingface.co may get the token: the CDN behind it serves pre-signed URLs
+env.fetch = (input, init) => {
     if (token === null || targetOf(input)?.origin !== HUGGING_FACE_ORIGIN) {
         return nativeFetch(input, init);
     }

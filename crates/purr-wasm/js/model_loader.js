@@ -1,9 +1,10 @@
-import { env, pipeline } from "@huggingface/transformers";
+import { env, LogLevel, pipeline } from "@huggingface/transformers";
 import { emit, FailureKind, WorkerFailure } from "./events.js";
 import { requireWebGpu } from "./gpu.js";
 
 env.allowLocalModels = false;
-env.backends.onnx.logLevel = "error";
+env.logLevel = LogLevel.ERROR;
+env.useWasmCache = false;
 
 let loaded = { key: null, promise: null };
 
@@ -102,6 +103,8 @@ export async function loadTranscriber(model, provider, requestId) {
             promise: pipeline("automatic-speech-recognition", model.repo, {
                 revision: model.revision,
                 dtype: {
+                    // transformers.js names the encoder `model` when it lists the files to report progress on
+                    model: model.encoder_dtype,
                     encoder_model: model.encoder_dtype,
                     decoder_model_merged: model.decoder_dtype,
                 },
