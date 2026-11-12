@@ -5,6 +5,7 @@ use crate::{
     whisper::{
         StreamingChunk, TranscriptionResult, TranscriptionStats, WhisperTranscriber,
         commit::{Span, WindowKind, commit},
+        language::{LanguageCode, StreamLanguage},
         loader::load_model,
     },
 };
@@ -66,8 +67,7 @@ struct Session {
     pending: Vec<f32>,
     origin: usize,
     received: usize,
-    /// The language the user picked; without one Whisper detects it in each window
-    language: Option<&'static str>,
+    language: StreamLanguage,
     chunk_index: usize,
     segment_count: usize,
     word_count: usize,
@@ -124,8 +124,8 @@ impl Session {
             None => std::thread::available_parallelism()?.get().min(4),
         };
         let language = match config.language.as_deref() {
-            None | Some("auto") => None,
-            Some(code) => Some(
+            None | Some("auto") => StreamLanguage::Detecting,
+            Some(code) => StreamLanguage::Chosen(
                 whisper_rs::get_lang_id(code)
                     .and_then(whisper_rs::get_lang_str)
                     .ok_or_else(|| TranscriptionError::UnknownLanguage {
@@ -173,7 +173,24 @@ impl Session {
         f64::from(self.config.sample_rate)
     }
 
-    fn decode(&mut self, window: &[f32]) -> crate::Result<Vec<Decoded>> {
+    fn detect_language(&mut self, window: &[f32]) -> crate::Result<(LanguageCode, f32)> {
+        self.state
+            .pcm_to_mel(window, self.threads)
+            .map_err(|source| TranscriptionError::Failed { source })?;
+        let (id, probabilities) = self
+            .state
+            .lang_detect(0, self.threads)
+            .map_err(|source| TranscriptionError::Failed { source })?;
+        let code =
+            whisper_rs::get_lang_str(id).ok_or(TranscriptionError::UnknownLanguageId { id })?;
+        let probability = usize::try_from(id)
+            .ok()
+            .and_then(|i| probabilities.get(i).copied())
+            .ok_or(TranscriptionError::UnknownLanguageId { id })?;
+        Ok((code, probability))
+    }
+
+    fn decode(&mut self, window: &[f32], language: LanguageCode) -> crate::Result<Vec<Decoded>> {
         let beam_size = self.config.beam_size.unwrap_or(5) as i32;
         let mut params = if beam_size > 1 {
             FullParams::new(SamplingStrategy::BeamSearch {
@@ -183,7 +200,7 @@ impl Session {
         } else {
             FullParams::new(SamplingStrategy::Greedy { best_of: 5 })
         };
-        params.set_language(self.language);
+        params.set_language(Some(language));
         params.set_translate(self.config.translate);
         params.set_temperature(self.config.temperature);
         params.set_n_threads(self.threads as i32);
@@ -229,10 +246,19 @@ impl Session {
         let window: Vec<f32> = self.pending.iter().take(len).copied().collect();
         let spoke = len >= self.windows.min;
 
-        let mut decoded = if spoke {
-            self.decode(&window)?
+        let (mut decoded, language) = if spoke {
+            let (language, probability) = match self.language {
+                StreamLanguage::Chosen(code) | StreamLanguage::Locked(code) => (code, 1.0),
+                StreamLanguage::Detecting => self.detect_language(&window)?,
+            };
+            let decoded = self.decode(&window, language)?;
+            let spoken = decoded.iter().any(|d| !d.text.is_empty());
+            if let Some(locked) = self.language.observe(language, probability, spoken) {
+                debug!("Streaming language locked to {locked} (p = {probability:.2})");
+            }
+            (decoded, Some(language))
         } else {
-            Vec::new()
+            (Vec::new(), None)
         };
 
         let spans: Vec<Span> = decoded.iter().map(|d| d.span).collect();
@@ -249,15 +275,9 @@ impl Session {
         decoded.truncate(decision.segments);
 
         let reported = match self.language {
-            Some(_) => None,
-            None if spoke => {
-                let id = self.state.full_lang_id_from_state();
-                Some(
-                    whisper_rs::get_lang_str(id)
-                        .ok_or(TranscriptionError::UnknownLanguageId { id })?,
-                )
-            }
-            None => None,
+            StreamLanguage::Locked(code) => Some(code),
+            StreamLanguage::Detecting if kind == WindowKind::Last => language,
+            StreamLanguage::Chosen(_) | StreamLanguage::Detecting => None,
         };
         let sr = self.sample_rate();
         let mut chunks = Vec::new();

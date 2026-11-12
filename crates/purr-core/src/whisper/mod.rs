@@ -1,4 +1,5 @@
 mod commit;
+mod language;
 pub mod loader;
 pub mod logging;
 pub mod streaming;
