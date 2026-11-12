@@ -41,7 +41,7 @@ jobs:
             features: static-ffmpeg,vulkan
             portable: true
             deferred_libs: libvulkan.so.1
-            expect_missing: Vulkan=libvulkan.so.1
+            expect_missing: vulkan=libvulkan.so.1
           - variant: cuda
             features: static-ffmpeg,cuda
           - variant: all
@@ -50,7 +50,7 @@ jobs:
             portable: true
             desktop: true
             deferred_libs: libcuda.so.1 libvulkan.so.1
-            expect_missing: CUDA=libcuda.so.1 Vulkan=libvulkan.so.1
+            expect_missing: cuda=libcuda.so.1 vulkan=libvulkan.so.1
     steps:
       - uses: actions/checkout@v7
       - name: Install dependencies
@@ -158,17 +158,21 @@ jobs:
       - name: Check the CLI starts on a bare Ubuntu without GPU runtimes
         if: matrix.portable
         run: |
-          docker run --rm -v "$PWD/artifacts/cli:/opt/purr:ro" "ubuntu:$(lsb_release -rs)" sh -c '
+          image="ubuntu:$(lsb_release -rs)"
+          docker run --rm -v "$PWD/artifacts/cli:/opt/purr:ro" "$image" sh -c '
             set -e
             ldd /opt/purr/purr
             if ldd /opt/purr/purr | grep -F "not found"; then exit 1; fi
             /opt/purr/purr sys
-          ' | sed -E 's/\x1b\[[0-9;]*m//g; s/^ +//; s/ +/ /g' | tee purr-sys.txt
-          grep -qxF '* CPU - Available' purr-sys.txt || { echo "::error::the CPU backend is not available"; exit 1; }
+          '
+          docker run --rm -v "$PWD/artifacts/cli:/opt/purr:ro" "$image" /opt/purr/purr sys --json > purr-sys.json
+          jq -e '.backends.cpu | objects | has("Available")' purr-sys.json > /dev/null \
+            || { echo "::error::the CPU backend is not available"; exit 1; }
           for expectation in ${{ matrix.expect_missing }}; do
             backend="${expectation%%=*}"
             library="${expectation#*=}"
-            grep -qE "^\* $backend - Built, but the runtime library ${library//./\.} cannot be loaded(;.*)?$" purr-sys.txt \
+            jq -e --arg backend "$backend" --arg library "$library" \
+              '(.backends[$backend] | objects | .RuntimeLibraryMissing.library) == $library' purr-sys.json > /dev/null \
               || { echo "::error::$backend is not reported as missing $library"; exit 1; }
           done
       - name: Build desktop app - ${{ matrix.variant }}

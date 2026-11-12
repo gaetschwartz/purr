@@ -23,7 +23,9 @@ foreach ($variable in Get-ChildItem Env: | Where-Object { $_.Name -like 'CUDA_PA
 
 try {
     $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot"
-    $output = & (Join-Path $bare 'purr.exe') sys | Out-String
+    $human = & (Join-Path $bare 'purr.exe') sys | Out-String
+    $humanExitCode = $LASTEXITCODE
+    $json = & (Join-Path $bare 'purr.exe') sys --json | Out-String
     $exitCode = $LASTEXITCODE
 }
 finally {
@@ -34,27 +36,29 @@ finally {
     Remove-Item -Recurse -Force $bare
 }
 
-$lines = $output -replace '\x1b\[[0-9;]*m', '' -split "`r?`n" |
-    ForEach-Object { ($_ -replace '\s+', ' ').Trim() }
-$lines | ForEach-Object { Write-Host $_ }
+Write-Host $human
 
 $failed = $false
-function Require([string]$pattern, [string]$what) {
-    if (-not ($lines | Where-Object { $_ -match $pattern })) {
+function Require([bool]$condition, [string]$what) {
+    if (-not $condition) {
         Write-Host "::error::$what"
         $script:failed = $true
     }
 }
 
-if ($exitCode -ne 0) {
-    Write-Host "::error::purr sys exited with $exitCode without GPU runtimes"
-    $failed = $true
+function Status($backend) {
+    if ($backend -is [string]) { return $backend }
+    return @($backend.PSObject.Properties.Name)[0]
 }
-Require '^\* CPU - Available$' 'the CPU backend is not available'
+
+Require ($humanExitCode -eq 0 -and $exitCode -eq 0) "purr sys exited with $humanExitCode (text) and $exitCode (--json) without GPU runtimes"
+$backends = ($json | ConvertFrom-Json).backends
+Require ((Status $backends.cpu) -eq 'Available') 'the CPU backend is not available'
 if ($ExpectCuda) {
-    Require '^\* CUDA - Built, but the runtime library cublasLt64_\d+\.dll cannot be loaded(;.*)?$' 'CUDA is not reported as missing cublasLt'
+    Require ((Status $backends.cuda) -eq 'RuntimeLibraryMissing') 'CUDA is not reported as missing a runtime library'
+    Require ($backends.cuda.RuntimeLibraryMissing.library -match '^cublasLt64_\d+\.dll$') 'CUDA is not reported as missing cublasLt'
 }
 if ($ExpectVulkan) {
-    Require '^\* Vulkan - (Built|Available)' 'Vulkan is not reported as built'
+    Require ((Status $backends.vulkan) -ne 'Disabled') 'Vulkan is not reported as built'
 }
 if ($failed) { exit 1 }
