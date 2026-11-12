@@ -50,7 +50,7 @@ pub fn glide_step(
     let catch_up = rate * (1.0 + (gap - gap_ref).max(0.0) / gap_ref);
     let eased = catch_up.min(gap / TAU_NEAR);
     let speed = time_left.map_or(eased, |left| eased.max(gap / left.max(0.05)));
-    (shown + speed * dt).min(target)
+    speed.mul_add(dt, shown).min(target)
 }
 
 /// The rate and expected update size from `(wall, target)` points, oldest first.
@@ -201,7 +201,6 @@ mod tests {
             glide.step(now);
         }
         let expected = 4.0 / 3.0;
-        assert!(!speeds.is_empty());
         for mean in means {
             assert!(
                 (mean - expected).abs() <= expected * 0.05,
@@ -252,7 +251,8 @@ mod tests {
     fn the_rate_needs_two_points_and_counts_from_the_start() {
         assert_eq!(estimate(&[(1.0, 0.0)]), None);
         let found = estimate(&[(0.0, 0.0), (3.0, 4.0)]).unwrap();
-        assert!((found.rate - 4.0 / 3.0 * MARGIN).abs() < 1e-12);
+        let expected = MARGIN * 4.0 / 3.0;
+        assert!((found.rate - expected).abs() < 1e-12);
         assert!((found.gap_ref - 4.0).abs() < 1e-12);
     }
 

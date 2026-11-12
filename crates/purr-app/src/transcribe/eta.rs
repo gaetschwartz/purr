@@ -40,7 +40,7 @@ impl EtaText {
             Self::Seconds(seconds) => f64::from(seconds),
             Self::Minutes(minutes) => f64::from(minutes) * 60.0,
             Self::HoursMinutes(hours, minutes) => {
-                f64::from(hours) * 3600.0 + f64::from(minutes) * 60.0
+                f64::from(minutes).mul_add(60.0, f64::from(hours) * 3600.0)
             }
         }
     }
@@ -136,7 +136,7 @@ pub fn eta_display(previous: Option<Shown>, now: f64, raw: Option<f64>) -> Optio
         ..previous
     };
     let shown = previous.text.seconds();
-    if bucket.seconds() == shown {
+    if bucket == previous.text {
         return Some(calm);
     }
     if now - previous.at < HOLD {
@@ -209,6 +209,10 @@ impl EtaTracker {
 mod tests {
     use super::*;
 
+    #[expect(
+        clippy::unnecessary_wraps,
+        reason = "the display is optional everywhere it is compared"
+    )]
     fn shown(text: EtaText, at: f64) -> Option<Shown> {
         Some(Shown {
             text,
