@@ -5,7 +5,7 @@
       "src": "/(.*)",
       "headers": {
         "cross-origin-opener-policy": "same-origin",
-        "cross-origin-embedder-policy": "credentialless"
+        "cross-origin-embedder-policy": "require-corp"
       },
       "continue": true
     },
