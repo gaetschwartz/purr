@@ -41,9 +41,11 @@ The browser build needs Node.js and npm: building `purr-wasm` runs `npm ci` and 
 transcription worker (`crates/purr-wasm/js`) and ships it, together with the ONNX runtime files, as dx assets.
 
 ```bash
-dx serve -p purr-app --web                 # development
+dx serve -p purr-app --web --cross-origin-policy   # development, cross-origin isolated like production
 dx bundle -p purr-app --release --web --out-dir dist-web   # production, deploy dist-web/public
 ```
 
 `res/vercel-config.json` serves `index.html` for every route that is not a file, so deep links such as
-`/settings` reload, and answers 404 for a missing file under `/assets/`.
+`/settings` reload, and answers 404 for a missing file under `/assets/`. It also sends
+`Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp`: without
+cross-origin isolation the CPU runtime runs on one thread, about half as fast.

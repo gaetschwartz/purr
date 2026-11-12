@@ -11,13 +11,16 @@ use crate::{
         model_picker::ModelPill,
         page::Page,
     },
-    hooks::{use_models::use_models, use_system_probe::use_system_probe},
+    hooks::{
+        use_engine_plan::use_engine_plan, use_models::use_models,
+        use_system_probe::use_system_probe,
+    },
     platform::{IS_WEB, Platform as _, get_platform},
     settings_store::use_settings,
     shortcuts::{Key, KeyChord, Shortcut, use_shortcut},
     transcribe::{
         chosen_file::OverviewState,
-        engine_label::{EngineLabel, planned_browser_engine},
+        engine_label::{EngineLabel, PlannedEngine},
         language_choice::LanguageChoice,
         session::use_transcribe_session,
         start_plan::{FileReadiness, ModelChoice, StartPlan, plan_start},
@@ -27,7 +30,7 @@ use crate::{
     views::settings::{jump::open_section, sections::SettingsSection},
 };
 use dioxus::{html::HasFileData, prelude::*};
-use purr_common::browser_engine::BrowserEngine;
+use purr_common::browser_engine::EnginePlan;
 
 const OPEN_FILE_CHOOSER: &str = "document.getElementById('file-input')?.click();";
 
@@ -85,15 +88,19 @@ pub fn Start() -> Element {
     let plan = plan_start(readiness, &choice, other_download);
     let can_start = matches!(plan, StartPlan::Start(_));
     let policy = settings.with(|settings| settings.performance.accel_policy());
-    let browser_engine = IS_WEB
-        .then(|| planned_browser_engine(policy, &models.gpu.read(), session.browser_engine()));
-    let engine = browser_engine.map_or_else(
-        || EngineLabel::planned(policy, session.engine_memory().as_ref(), &probe.read()),
-        |engine| EngineLabel::browser(engine, &models.gpu.read()),
-    );
-    let cpu_notice = match browser_engine {
-        Some(BrowserEngine::Cpu(reason)) => reason.notice(),
-        Some(BrowserEngine::WebGpu) | None => None,
+    let engine_plan = use_engine_plan(selected.as_ref().map(|row| row.entry.id.clone()), policy);
+    let engine = if IS_WEB {
+        EngineLabel::browser_plan(engine_plan, &models.gpu.read())
+    } else {
+        EngineLabel::planned(policy, session.engine_memory().as_ref(), &probe.read())
+    };
+    let cpu_notice = match engine_plan {
+        PlannedEngine::Known(EnginePlan::Cpu(reason)) => reason.notice(),
+        PlannedEngine::Known(
+            EnginePlan::WebGpu | EnginePlan::WebGpuAfterCheck | EnginePlan::CannotRun(_),
+        )
+        | PlannedEngine::Pending
+        | PlannedEngine::Unknown => None,
     };
     let engine_settings = if IS_WEB {
         SettingsSection::Transcription

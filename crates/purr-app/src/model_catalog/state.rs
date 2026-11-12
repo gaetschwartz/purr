@@ -11,6 +11,8 @@ pub enum UnavailableReason {
     NeedsShaderF16,
     /// The model needs WebGPU and the browser offers none.
     NeedsWebGpu,
+    /// The model needs WebGPU and the settings chose the CPU.
+    CpuChosen,
 }
 
 /// Where a model stands, for display and for deciding which actions apply.
@@ -77,27 +79,35 @@ impl ModelState {
     }
 }
 
-/// Why this GPU cannot run `entry`, if it cannot. While the GPU is still being detected nothing is ruled out.
+/// Why `entry` cannot run here, if it cannot. Models the CPU can run always can; while the GPU is
+/// still being detected nothing is ruled out.
 #[must_use]
-pub fn unavailable_reason(entry: &ModelEntry, gpu: &GpuSupport) -> Option<UnavailableReason> {
-    if !entry.requires_shader_f16 {
+pub fn unavailable_reason(
+    entry: &ModelEntry,
+    gpu: &GpuSupport,
+    cpu_chosen: bool,
+) -> Option<UnavailableReason> {
+    if !entry.webgpu_only {
         return None;
+    }
+    if cpu_chosen {
+        return Some(UnavailableReason::CpuChosen);
     }
     match gpu {
         GpuSupport::Checking => None,
         GpuSupport::Unavailable => Some(UnavailableReason::NeedsWebGpu),
         GpuSupport::Available { shader_f16, .. } => {
-            (!shader_f16).then_some(UnavailableReason::NeedsShaderF16)
+            (entry.requires_shader_f16 && !shader_f16).then_some(UnavailableReason::NeedsShaderF16)
         }
     }
 }
-
 /// The state of `entry`: what is happening to it wins over what is stored.
 #[must_use]
 pub fn model_state(
     entry: &ModelEntry,
     activity: Option<&ModelActivity>,
     gpu: &GpuSupport,
+    cpu_chosen: bool,
 ) -> ModelState {
     match activity {
         Some(ModelActivity::Downloading(progress)) => return ModelState::Downloading(*progress),
@@ -106,7 +116,7 @@ pub fn model_state(
         Some(ModelActivity::Damaged(damage)) => return ModelState::NeedsRepair(damage.clone()),
         None => {}
     }
-    if let Some(reason) = unavailable_reason(entry, gpu) {
+    if let Some(reason) = unavailable_reason(entry, gpu, cpu_chosen) {
         return ModelState::Unavailable {
             reason,
             installed: entry.installed,
@@ -127,6 +137,10 @@ mod tests {
     };
 
     fn entry(installed: bool, needs_f16: bool) -> ModelEntry {
+        gpu_entry(installed, needs_f16, false)
+    }
+
+    fn gpu_entry(installed: bool, needs_f16: bool, webgpu_only: bool) -> ModelEntry {
         let metadata = ModelMetadata::new(
             "onnx".to_owned(),
             "whisper".to_owned(),
@@ -137,7 +151,8 @@ mod tests {
         .with_platform_attribute(
             model_flag::REQUIRES_SHADER_F16.to_owned(),
             needs_f16.to_string(),
-        );
+        )
+        .with_platform_attribute(model_flag::WEBGPU_ONLY.to_owned(), webgpu_only.to_string());
         ModelEntry::from_info(&ModelInfo::new(
             "tiny".to_owned(),
             "tiny".to_owned(),
@@ -157,11 +172,11 @@ mod tests {
     fn stored_files_decide_when_nothing_is_happening() {
         let gpu = GpuSupport::Checking;
         assert_eq!(
-            model_state(&entry(true, false), None, &gpu),
+            model_state(&entry(true, false), None, &gpu, false),
             ModelState::Downloaded
         );
         assert_eq!(
-            model_state(&entry(false, false), None, &gpu),
+            model_state(&entry(false, false), None, &gpu, false),
             ModelState::NotDownloaded
         );
     }
@@ -176,7 +191,8 @@ mod tests {
             model_state(
                 &entry(true, false),
                 Some(&ModelActivity::Downloading(progress)),
-                &GpuSupport::Checking
+                &GpuSupport::Checking,
+                false
             ),
             ModelState::Downloading(progress)
         );
@@ -188,7 +204,8 @@ mod tests {
             model_state(
                 &entry(false, false),
                 Some(&ModelActivity::Damaged(damage.clone())),
-                &GpuSupport::Checking
+                &GpuSupport::Checking,
+                false
             ),
             ModelState::NeedsRepair(damage)
         );
@@ -200,7 +217,8 @@ mod tests {
             model_state(
                 &entry(false, false),
                 Some(&ModelActivity::Failed(failure.clone())),
-                &GpuSupport::Checking
+                &GpuSupport::Checking,
+                false
             ),
             ModelState::Failed(failure)
         );
@@ -208,47 +226,53 @@ mod tests {
             model_state(
                 &entry(true, false),
                 Some(&ModelActivity::Verifying),
-                &GpuSupport::Checking
+                &GpuSupport::Checking,
+                false
             ),
             ModelState::Verifying
         );
     }
 
     #[test]
-    fn a_missing_gpu_feature_makes_only_flagged_models_unavailable() {
-        assert_eq!(
-            model_state(&entry(false, true), None, &NO_F16),
-            ModelState::Unavailable {
-                reason: UnavailableReason::NeedsShaderF16,
-                installed: false
+    fn models_the_cpu_can_run_are_never_unavailable() {
+        for gpu in [GpuSupport::Unavailable, NO_F16, GpuSupport::Checking] {
+            for cpu_chosen in [false, true] {
+                assert_eq!(
+                    unavailable_reason(&entry(false, true), &gpu, cpu_chosen),
+                    None
+                );
             }
-        );
-        assert_eq!(
-            model_state(&entry(false, false), None, &NO_F16),
-            ModelState::NotDownloaded
-        );
+        }
     }
 
     #[test]
-    fn no_webgpu_at_all_blocks_flagged_models_and_detection_blocks_nothing() {
-        assert_eq!(
-            unavailable_reason(&entry(false, true), &GpuSupport::Unavailable),
-            Some(UnavailableReason::NeedsWebGpu)
-        );
-        assert_eq!(
-            unavailable_reason(&entry(false, true), &GpuSupport::Checking),
-            None
-        );
+    fn a_webgpu_only_model_says_why_it_cannot_run_here() {
+        let turbo = gpu_entry(false, true, true);
         let capable = GpuSupport::Available {
             name: None,
             shader_f16: true,
         };
-        assert_eq!(unavailable_reason(&entry(false, true), &capable), None);
+        assert_eq!(
+            unavailable_reason(&turbo, &GpuSupport::Unavailable, false),
+            Some(UnavailableReason::NeedsWebGpu)
+        );
+        assert_eq!(
+            unavailable_reason(&turbo, &NO_F16, false),
+            Some(UnavailableReason::NeedsShaderF16)
+        );
+        assert_eq!(
+            unavailable_reason(&turbo, &capable, true),
+            Some(UnavailableReason::CpuChosen)
+        );
+        assert_eq!(unavailable_reason(&turbo, &capable, false), None);
+        assert_eq!(
+            unavailable_reason(&turbo, &GpuSupport::Checking, false),
+            None
+        );
     }
-
     #[test]
     fn an_unavailable_model_can_still_be_stored() {
-        let state = model_state(&entry(true, true), None, &NO_F16);
+        let state = model_state(&gpu_entry(true, true, true), None, &NO_F16, false);
         assert!(state.is_on_device());
         assert!(!ModelState::NotDownloaded.is_on_device());
     }

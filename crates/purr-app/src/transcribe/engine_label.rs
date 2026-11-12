@@ -4,7 +4,7 @@ use super::engine::RunMemory;
 use crate::hooks::{use_models::GpuSupport, use_system_probe::SystemProbe};
 use purr_common::{
     accel::{AccelBackend, AccelPolicy, BackendReport, BackendStatus, LastRun, SystemReport},
-    browser_engine::{BrowserEngine, CpuReason},
+    browser_engine::{BrowserEngine, EnginePlan},
     platform::{DeviceInfo, DeviceType},
 };
 use std::fmt;
@@ -35,6 +35,15 @@ impl fmt::Display for BackendLabel {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.text())
     }
+}
+
+/// The browser engine the next run is expected to use, as far as the platform has said.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PlannedEngine {
+    Pending,
+    Known(EnginePlan),
+    /// The platform could not say.
+    Unknown,
 }
 
 /// The backend and the hardware name that go with it, when one is known.
@@ -178,6 +187,26 @@ impl EngineLabel {
         )
     }
 
+    /// What the next browser run is expected to use: "Checking…" while the plan is worked out,
+    /// and "Automatic" while a GPU check has yet to decide or the plan could not be made.
+    #[must_use]
+    pub fn browser_plan(plan: PlannedEngine, gpu: &GpuSupport) -> Self {
+        match plan {
+            PlannedEngine::Pending => Self {
+                backend: BackendLabel::Checking,
+                hardware: None,
+            },
+            PlannedEngine::Known(EnginePlan::WebGpu) => Self::browser(BrowserEngine::WebGpu, gpu),
+            PlannedEngine::Known(EnginePlan::WebGpuAfterCheck) | PlannedEngine::Unknown => Self {
+                backend: BackendLabel::Automatic,
+                hardware: None,
+            },
+            PlannedEngine::Known(EnginePlan::Cpu(reason) | EnginePlan::CannotRun(reason)) => {
+                Self::browser(BrowserEngine::Cpu(reason), gpu)
+            }
+        }
+    }
+
     /// What a browser run used: the WebGPU adapter, or the CPU.
     #[must_use]
     pub fn browser(engine: BrowserEngine, gpu: &GpuSupport) -> Self {
@@ -197,32 +226,11 @@ impl EngineLabel {
     }
 }
 
-/// Where the next browser run is expected to go: the CPU when the settings ask for it, when the
-/// browser has no WebGPU, or when the last run found this browser's GPU unusable.
-#[must_use]
-pub fn planned_browser_engine(
-    policy: AccelPolicy,
-    gpu: &GpuSupport,
-    last: Option<BrowserEngine>,
-) -> BrowserEngine {
-    if policy == AccelPolicy::CPU_ONLY {
-        return BrowserEngine::Cpu(CpuReason::Chosen);
-    }
-    if *gpu == GpuSupport::Unavailable {
-        return BrowserEngine::Cpu(CpuReason::NoWebGpu);
-    }
-    match last {
-        Some(BrowserEngine::Cpu(reason)) if reason.concerns_the_browser() => {
-            BrowserEngine::Cpu(reason)
-        }
-        Some(BrowserEngine::Cpu(_) | BrowserEngine::WebGpu) | None => BrowserEngine::WebGpu,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use purr_common::accel::{CpuReport, PassedOver, PassedReason};
+    use purr_common::browser_engine::CpuReason;
 
     const CPU_NAME: &str = "AMD Ryzen 9 7950X 16-Core Processor";
     const GPU_NAME: &str = "NVIDIA GeForce RTX 4090";
@@ -493,42 +501,50 @@ mod tests {
     }
 
     #[test]
-    fn the_next_browser_run_goes_to_the_cpu_when_asked_or_when_the_gpu_cannot_be_used() {
-        let gpu = adapter(None);
+    fn the_planned_browser_engine_is_never_webgpu_before_it_is_known() {
+        let gpu = adapter(Some("NVIDIA (Ampere)"));
+        let cpu = EngineLabel {
+            backend: BackendLabel::Accel(AccelBackend::Cpu),
+            hardware: None,
+        };
         assert_eq!(
-            planned_browser_engine(AccelPolicy::CPU_ONLY, &gpu, None),
-            BrowserEngine::Cpu(CpuReason::Chosen)
+            EngineLabel::browser_plan(PlannedEngine::Pending, &gpu),
+            EngineLabel {
+                backend: BackendLabel::Checking,
+                hardware: None
+            }
         );
         assert_eq!(
-            planned_browser_engine(AccelPolicy::Auto, &GpuSupport::Unavailable, None),
-            BrowserEngine::Cpu(CpuReason::NoWebGpu)
+            EngineLabel::browser_plan(PlannedEngine::Known(EnginePlan::WebGpuAfterCheck), &gpu),
+            EngineLabel {
+                backend: BackendLabel::Automatic,
+                hardware: None
+            }
         );
         assert_eq!(
-            planned_browser_engine(
-                AccelPolicy::Auto,
-                &gpu,
-                Some(BrowserEngine::Cpu(CpuReason::WrongOutput))
-            ),
-            BrowserEngine::Cpu(CpuReason::WrongOutput)
+            EngineLabel::browser_plan(PlannedEngine::Known(EnginePlan::WebGpu), &gpu),
+            EngineLabel {
+                backend: BackendLabel::WebGpu,
+                hardware: Some("NVIDIA (Ampere)".to_owned())
+            }
         );
         assert_eq!(
-            planned_browser_engine(AccelPolicy::Auto, &gpu, None),
-            BrowserEngine::WebGpu
+            EngineLabel::browser_plan(PlannedEngine::Unknown, &gpu),
+            EngineLabel {
+                backend: BackendLabel::Automatic,
+                hardware: None
+            }
         );
+        for plan in [
+            EnginePlan::Cpu(CpuReason::WrongOutput),
+            EnginePlan::CannotRun(CpuReason::Chosen),
+        ] {
+            assert_eq!(
+                EngineLabel::browser_plan(PlannedEngine::Known(plan), &gpu),
+                cpu
+            );
+        }
     }
-
-    #[test]
-    fn a_cpu_run_the_settings_asked_for_does_not_stick() {
-        assert_eq!(
-            planned_browser_engine(
-                AccelPolicy::Auto,
-                &adapter(None),
-                Some(BrowserEngine::Cpu(CpuReason::Chosen))
-            ),
-            BrowserEngine::WebGpu
-        );
-    }
-
     #[test]
     fn the_text_is_the_backend_then_the_hardware() {
         assert_eq!(

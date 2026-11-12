@@ -18,6 +18,7 @@ use dioxus::{
     prelude::*,
 };
 use futures::channel::oneshot;
+use purr_common::accel::AccelPolicy;
 use purr_common::platform::{DeviceType, ModelInfo, Platform as _};
 use std::{collections::HashMap, time::Duration};
 
@@ -91,10 +92,20 @@ impl ModelsHandle {
             .cloned()
     }
 
+    /// Whether the settings keep browser runs on the CPU (subscribes the caller).
+    fn cpu_chosen(&self) -> bool {
+        IS_WEB
+            && self
+                .settings
+                .with(|settings| settings.performance.accel_policy())
+                == AccelPolicy::CPU_ONLY
+    }
+
     /// The catalog with a state per model (subscribes the caller); `None` until the list has loaded.
     #[must_use]
     pub fn rows(&self) -> Option<Result<Vec<ModelRow>, String>> {
         let gpu = self.gpu.read();
+        let cpu_chosen = self.cpu_chosen();
         let activity = self.activity.read();
         let loaded = self.models.read();
         Some(match loaded.as_ref()? {
@@ -102,7 +113,7 @@ impl ModelsHandle {
                 .iter()
                 .map(|info| {
                     let entry = ModelEntry::from_info(info);
-                    let state = model_state(&entry, activity.get(&info.id), &gpu);
+                    let state = model_state(&entry, activity.get(&info.id), &gpu, cpu_chosen);
                     ModelRow { entry, state }
                 })
                 .collect()),
@@ -137,6 +148,7 @@ impl ModelsHandle {
                 &ModelEntry::from_info(&info),
                 self.activity.read().get(id),
                 &self.gpu.read(),
+                self.cpu_chosen(),
             )
         })
     }

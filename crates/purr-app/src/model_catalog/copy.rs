@@ -65,6 +65,10 @@ pub const fn unavailable(reason: UnavailableReason) -> (&'static str, &'static s
     match reason {
         UnavailableReason::NeedsShaderF16 => ("Needs shader-f16", "This GPU lacks shader-f16."),
         UnavailableReason::NeedsWebGpu => ("Needs WebGPU", "This browser has no WebGPU."),
+        UnavailableReason::CpuChosen => (
+            "Needs WebGPU",
+            "Too large for the CPU, which Settings chose.",
+        ),
     }
 }
 
@@ -92,10 +96,14 @@ mod tests {
     }
 
     #[test]
-    fn each_gpu_reason_has_its_own_chip() {
+    fn each_gpu_reason_has_its_own_hint() {
         assert_ne!(
             unavailable(UnavailableReason::NeedsShaderF16).0,
             unavailable(UnavailableReason::NeedsWebGpu).0
+        );
+        assert_ne!(
+            unavailable(UnavailableReason::NeedsWebGpu).1,
+            unavailable(UnavailableReason::CpuChosen).1
         );
     }
 }

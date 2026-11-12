@@ -101,6 +101,8 @@ pub struct ModelEntry {
     pub precision: Precision,
     pub speaker_turns: bool,
     pub requires_shader_f16: bool,
+    /// The browser can run the model on WebGPU only, not on the CPU.
+    pub webgpu_only: bool,
     pub size_bytes: u64,
     pub installed: bool,
     description: String,
@@ -145,6 +147,7 @@ impl ModelEntry {
             precision,
             speaker_turns,
             requires_shader_f16: metadata.has_flag(model_flag::REQUIRES_SHADER_F16),
+            webgpu_only: metadata.has_flag(model_flag::WEBGPU_ONLY),
             size_bytes: info.size_bytes,
             installed: info.is_installed,
             description: info.description.clone(),
