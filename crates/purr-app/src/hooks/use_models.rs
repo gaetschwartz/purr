@@ -2,20 +2,31 @@ use crate::{
     components::toast::{Toasts, use_toasts},
     hooks::model_operations,
     model_catalog::{
-        activity::{DownloadFailure, ModelActivity},
+        activity::{DownloadFailure, DownloadProgress, ModelActivity},
         entry::ModelEntry,
         listing::ModelRow,
+        recommend::Device,
+        selection::{Selection, resolve},
         state::{ModelState, model_state},
     },
-    platform,
+    platform::{self, IS_WEB},
     utils::delay::sleep,
 };
 use dioxus::{
     core::{Runtime, ScopeId, Task, spawn_forever},
     prelude::*,
 };
+use futures::channel::oneshot;
 use purr_common::platform::{DeviceType, ModelInfo, Platform as _};
 use std::{collections::HashMap, time::Duration};
+
+/// How a download someone waits on ended; a cancelled download drops the waiters instead.
+pub type DownloadEnd = Result<(), DownloadFailure>;
+
+struct RunningDownload {
+    task: Task,
+    waiters: Vec<oneshot::Sender<DownloadEnd>>,
+}
 
 /// What the GPU can do for transcription.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -54,7 +65,7 @@ pub struct ModelsHandle {
     /// Whether the browser or webview reports a network connection.
     pub online: ReadSignal<bool>,
     pub(super) activity: Signal<HashMap<String, ModelActivity>>,
-    pub(super) tasks: Signal<HashMap<String, Task>>,
+    downloads: Signal<HashMap<String, RunningDownload>>,
     pub(super) toasts: Toasts,
     refresh: Signal<u32>,
     gpu_check: Signal<u32>,
@@ -101,6 +112,23 @@ impl ModelsHandle {
                 .collect()),
             Err(error) => Err(error.clone()),
         })
+    }
+
+    /// The model new transcriptions use for the saved id `saved` (subscribes the caller);
+    /// `None` until the list has loaded, [`Selection::Missing`] when it failed to load.
+    #[must_use]
+    pub fn selection(&self, saved: &str) -> Option<Selection> {
+        let device = if IS_WEB {
+            Device::Browser
+        } else {
+            Device::Desktop {
+                gpu: self.gpu.read().found(),
+            }
+        };
+        Some(
+            self.rows()?
+                .map_or(Selection::Missing, |rows| resolve(&rows, saved, device)),
+        )
     }
 
     /// The state of the model with `id`; [`ModelState::NotDownloaded`] for an unknown id.
@@ -153,20 +181,78 @@ impl ModelsHandle {
         let id = id.to_owned();
         self.activity.write().insert(
             id.clone(),
-            ModelActivity::Downloading(crate::model_catalog::activity::DownloadProgress::default()),
+            ModelActivity::Downloading(DownloadProgress::default()),
         );
         let task = spawn_forever({
             let id = id.clone();
             async move { model_operations::download(self, id, replace).await }
         });
-        self.tasks.write().insert(id, task);
+        self.downloads.write().insert(
+            id,
+            RunningDownload {
+                task,
+                waiters: Vec::new(),
+            },
+        );
+    }
+
+    /// Downloads `id`, or joins its running download, and resolves when it ends; `replace`
+    /// deletes the stored files first. `None` while another model downloads.
+    ///
+    /// The receiver is cancelled with the download. While someone waits, the end of the
+    /// download is theirs to report, so no toast says it.
+    pub fn download_and_wait(
+        self,
+        id: &str,
+        replace: bool,
+    ) -> Option<oneshot::Receiver<DownloadEnd>> {
+        let joining = matches!(
+            self.activity.peek().get(id),
+            Some(ModelActivity::Downloading(_))
+        );
+        if !joining {
+            if self.is_downloading() || self.is_busy(id) {
+                return None;
+            }
+            self.start(id, replace);
+        }
+        Some(self.when_downloaded(id))
+    }
+
+    fn when_downloaded(mut self, id: &str) -> oneshot::Receiver<DownloadEnd> {
+        let (sender, receiver) = oneshot::channel();
+        if let Some(download) = self.downloads.write().get_mut(id) {
+            download.waiters.push(sender);
+        }
+        receiver
+    }
+
+    pub(super) fn has_waiters(&self, id: &str) -> bool {
+        self.downloads
+            .peek()
+            .get(id)
+            .is_some_and(|download| !download.waiters.is_empty())
+    }
+
+    pub(super) fn settle(mut self, id: &str, end: &DownloadEnd) {
+        let waiting = self
+            .downloads
+            .write()
+            .get_mut(id)
+            .map(|download| std::mem::take(&mut download.waiters))
+            .unwrap_or_default();
+        for sender in waiting {
+            if sender.send(end.clone()).is_err() {
+                tracing::debug!("Nobody waits on the download of {id} any more");
+            }
+        }
     }
 
     /// Stops the download of `id` and removes what it had stored.
     pub fn cancel(mut self, id: &str) {
         let id = id.to_owned();
-        if let Some(task) = self.tasks.write().remove(&id) {
-            task.cancel();
+        if let Some(download) = self.downloads.write().remove(&id) {
+            download.task.cancel();
         }
         self.activity.write().remove(&id);
         spawn_forever(async move {
@@ -210,11 +296,11 @@ impl ModelsHandle {
 
     pub(super) fn clear_activity(mut self, id: &str) {
         self.activity.write().remove(id);
-        self.tasks.write().remove(id);
+        self.downloads.write().remove(id);
     }
 
     pub(super) fn fail(mut self, id: &str, failure: DownloadFailure) {
-        self.tasks.write().remove(id);
+        self.downloads.write().remove(id);
         self.set_activity(id, ModelActivity::Failed(failure));
     }
 }
@@ -240,7 +326,7 @@ fn create_sources(toasts: Toasts) -> Sources {
         gpu: gpu.into(),
         online: online.into(),
         activity: Signal::new(HashMap::new()),
-        tasks: Signal::new(HashMap::new()),
+        downloads: Signal::new(HashMap::new()),
         toasts,
         refresh,
         gpu_check,

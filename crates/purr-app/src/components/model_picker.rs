@@ -1,5 +1,4 @@
 use super::{
-    button::{Button, ButtonSize, ButtonVariant},
     icon::{Icon, IconName, IconSize},
     pill::Pill,
     popover::{OptionRole, Popover, PopoverOption},
@@ -21,38 +20,53 @@ use crate::{
 };
 use dioxus::prelude::*;
 
-/// Why a model is greyed out in the picker.
 const fn unavailable_text(reason: UnavailableReason) -> &'static str {
     match reason {
-        UnavailableReason::NeedsShaderF16 => "Needs a GPU feature (shader-f16) this device lacks",
-        UnavailableReason::NeedsWebGpu => "Needs WebGPU, which this browser doesn't offer",
+        UnavailableReason::NeedsShaderF16 => "Needs shader-f16, which this GPU lacks",
+        UnavailableReason::NeedsWebGpu => "Needs WebGPU",
     }
+}
+
+/// Language and precision, such as "Multilingual · Q5".
+fn variant(entry: &ModelEntry) -> String {
+    [
+        Some(entry.language.label().to_owned()),
+        entry.precision.tag(),
+    ]
+    .into_iter()
+    .flatten()
+    .collect::<Vec<_>>()
+    .join(" · ")
 }
 
 fn subtitle(row: &ModelRow) -> String {
     match &row.state {
         ModelState::Unavailable { reason, .. } => unavailable_text(*reason).to_owned(),
         ModelState::Downloading(_) => "Downloading…".to_owned(),
-        ModelState::Verifying => "Checking the files…".to_owned(),
-        ModelState::Failed(_) => "The last download failed. Pick it to try again.".to_owned(),
-        ModelState::NeedsRepair(_) => {
-            "Its files are damaged. Pick it to download them again.".to_owned()
-        }
-        ModelState::NotDownloaded | ModelState::Downloaded => row.entry.hint(),
+        ModelState::Verifying => "Checking files…".to_owned(),
+        ModelState::Failed(_) => "Last download failed".to_owned(),
+        ModelState::NeedsRepair(_) => "Files damaged".to_owned(),
+        ModelState::NotDownloaded | ModelState::Downloaded => variant(&row.entry),
     }
 }
 
-fn trailing(row: &ModelRow) -> String {
+/// The size of a model that would have to be downloaded, or how far its download is.
+fn download_size(row: &ModelRow) -> Option<String> {
     match &row.state {
         ModelState::Downloading(progress) => {
-            percent(progress).map_or_else(|| "…".to_owned(), |done| format!("{done}%"))
+            Some(percent(progress).map_or_else(|| "…".to_owned(), |done| format!("{done}%")))
         }
+        ModelState::Downloaded
+        | ModelState::Unavailable {
+            installed: true, ..
+        } => None,
         ModelState::NotDownloaded
-        | ModelState::Downloaded
         | ModelState::Verifying
         | ModelState::Failed(_)
         | ModelState::NeedsRepair(_)
-        | ModelState::Unavailable { .. } => ByteSize(row.entry.size_bytes).to_string(),
+        | ModelState::Unavailable {
+            installed: false, ..
+        } => Some(ByteSize(row.entry.size_bytes).to_string()),
     }
 }
 
@@ -67,11 +81,11 @@ fn in_group(rows: &[ModelRow], group: ModelGroup) -> Vec<ModelRow> {
     found
 }
 
-/// The models of `use_models()` in a popover (a sheet on phones), anchored on the element `anchor`.
+/// Every model of `use_models()` in a popover (a sheet on phones), anchored on the element `anchor`.
 ///
-/// Render it only while open. Models on this device come first, then the others grouped by size
-/// class with a download offer. Picking a downloaded model saves it with `set_model` and calls
-/// `on_pick`; picking another one asks to download it, then selects it. Disabled rows say why.
+/// Render it only while open. Picking a model that can run here saves it with `set_model` and
+/// calls `on_pick`, whether or not it is downloaded; a run downloads it first. Models that would
+/// need a download show their size.
 #[component]
 pub fn ModelPicker(
     /// The id of the element the popover hangs from.
@@ -81,36 +95,28 @@ pub fn ModelPicker(
     #[props(into)]
     selected: String,
     on_close: EventHandler<()>,
-    /// Called after a downloaded model was picked and saved.
+    /// Called after a model was picked and saved.
     on_pick: Option<EventHandler<ModelEntry>>,
 ) -> Element {
     let models = use_models();
     let settings = use_settings();
     let toasts = use_toasts();
     let navigator = use_navigator();
-    let mut offer = use_signal(|| None::<ModelEntry>);
-
-    let save = move |entry: &ModelEntry| match settings.set_model(entry.id.clone()) {
-        Ok(()) => true,
-        Err(error) => {
-            toasts.error("That model can't be used", error.to_string());
-            false
-        }
-    };
 
     let pick = move |row: ModelRow| {
         if matches!(row.state, ModelState::Unavailable { .. }) {
             return;
         }
-        if row.state.is_on_device() {
-            if save(&row.entry) {
+        match settings.set_model(row.entry.id.clone()) {
+            Ok(()) => {
                 on_close.call(());
                 if let Some(handler) = on_pick {
                     handler.call(row.entry);
                 }
             }
-        } else if !models.is_busy(&row.entry.id) {
-            offer.set(Some(row.entry));
+            Err(error) => {
+                toasts.error("That model can't be used", error.to_string());
+            }
         }
     };
 
@@ -123,48 +129,22 @@ pub fn ModelPicker(
         },
         Some(Err(error)) => rsx! {
             p { class: "muted", role: "alert", style: "padding:10px;margin:0",
-                "Could not list the models: {error}"
+                "Couldn't list the models: {error}"
             }
         },
         Some(Ok(rows)) => {
-            let on_device: Vec<ModelRow> = ModelGroup::ORDER
+            let groups = ModelGroup::ORDER
                 .into_iter()
-                .flat_map(|group| in_group(&rows, group))
-                .filter(|row| row.state.is_on_device())
-                .collect();
-            let others = ModelGroup::ORDER
-                .into_iter()
-                .map(|group| {
-                    let rows: Vec<ModelRow> = in_group(&rows, group)
-                        .into_iter()
-                        .filter(|row| !row.state.is_on_device())
-                        .collect();
-                    (group, rows)
-                })
+                .map(|group| (group, in_group(&rows, group)))
                 .filter(|(_, rows)| !rows.is_empty());
             rsx! {
-                if !on_device.is_empty() {
-                    div { class: "ph", "On this device" }
-                    div { class: "plist", role: "listbox", aria_label: "Downloaded models",
-                        for row in on_device {
-                            ModelOption {
-                                key: "{row.entry.id}",
-                                row: row.clone(),
-                                selected: row.entry.id == selected,
-                                onselect: pick,
-                            }
-                        }
-                    }
-                    hr {}
-                }
-                div { class: "ph", "Download another" }
-                for (group , rows) in others {
+                for (group , rows) in groups {
                     div {
                         class: "plist",
                         role: "listbox",
-                        aria_label: "{group.label()} models to download",
+                        aria_label: "{group.label()}",
                         key: "{group.label()}",
-                        div { class: "ph", style: "text-transform:none;letter-spacing:0", "{group.label()}" }
+                        div { class: "ph", "{group.label()}" }
                         for row in rows {
                             ModelOption {
                                 key: "{row.entry.id}",
@@ -181,44 +161,6 @@ pub fn ModelPicker(
 
     rsx! {
         Popover { anchor, label: "Choose a model", on_close,
-            if let Some(entry) = offer() {
-                div { class: "dl-offer", role: "group", aria_label: "Download {entry.label}",
-                    p { style: "margin:0 0 8px;font-size:14px",
-                        b { "{entry.label}" }
-                        " isn't on this device yet. Download it now ({ByteSize(entry.size_bytes)})? You can keep using Purr meanwhile."
-                    }
-                    div { class: "row wrap",
-                        Button {
-                            variant: ButtonVariant::Primary,
-                            size: ButtonSize::Small,
-                            icon: IconName::Download,
-                            autofocus: true,
-                            disabled: models.is_downloading(),
-                            onclick: {
-                                let entry = entry.clone();
-                                move |_| {
-                                if save(&entry) {
-                                    models.download(&entry.id);
-                                    on_close.call(());
-                                }
-                                }
-                            },
-                            "Download and use"
-                        }
-                        Button {
-                            size: ButtonSize::Small,
-                            onclick: move |_| offer.set(None),
-                            "Not now"
-                        }
-                    }
-                    if models.is_downloading() {
-                        p { class: "foot", style: "margin:8px 0 0",
-                            "Another model is downloading. Wait for it to finish, or cancel it in Models."
-                        }
-                    }
-                }
-                hr {}
-            }
             {body}
             hr {}
             div { class: "plist", role: "menu", aria_label: "Models",
@@ -240,18 +182,22 @@ pub fn ModelPicker(
 #[component]
 fn ModelOption(row: ModelRow, selected: bool, onselect: EventHandler<ModelRow>) -> Element {
     let disabled = matches!(row.state, ModelState::Unavailable { .. });
-    let on_device = row.state.is_on_device();
-    let size = trailing(&row);
-    let trailing_text = if on_device {
-        size
-    } else {
-        format!("↓ {size}")
+    let size = download_size(&row);
+    let prefix = match row.state {
+        ModelState::Downloading(_) => "downloaded",
+        ModelState::NotDownloaded
+        | ModelState::Downloaded
+        | ModelState::Verifying
+        | ModelState::Failed(_)
+        | ModelState::NeedsRepair(_)
+        | ModelState::Unavailable { .. } => "download size",
     };
     rsx! {
         PopoverOption {
             title: row.entry.label.clone(),
             subtitle: subtitle(&row),
-            trailing: trailing_text,
+            trailing: size.clone(),
+            trailing_prefix: size.map(|_| prefix.to_owned()),
             role: OptionRole::Option,
             selected,
             disabled,
@@ -265,32 +211,42 @@ fn ModelOption(row: ModelRow, selected: bool, onselect: EventHandler<ModelRow>) 
     }
 }
 
-/// The run-bar pill showing the selected model and its size; it opens a [`ModelPicker`].
+/// The run-bar pill showing the model new transcriptions use; it opens a [`ModelPicker`].
+///
+/// A model that is not downloaded yet shows its download size.
 #[component]
 pub fn ModelPill(
     /// The pill's DOM id, which the popover hangs from.
     #[props(into)]
     id: String,
     #[props(default)] disabled: bool,
-    /// Called after a downloaded model was picked and saved.
+    /// Called after a model was picked and saved.
     on_pick: Option<EventHandler<ModelEntry>>,
 ) -> Element {
     let models = use_models();
     let settings = use_settings();
     let mut open = use_signal(|| false);
-    let selected = settings.with(|settings| settings.model.model_name.clone());
-    let (value, detail) = match models.find(&selected) {
-        Some(info) => {
-            let entry = ModelEntry::from_info(&info);
-            let detail = if models.state(&selected).is_on_device() {
-                ByteSize(entry.size_bytes).to_string()
-            } else {
-                format!("{}, not downloaded", ByteSize(entry.size_bytes))
-            };
-            (entry.label, detail)
-        }
-        None if models.models.read().is_none() => (selected.clone(), "loading…".to_owned()),
-        None => (selected.clone(), "not available here".to_owned()),
+    let saved = settings.with(|settings| settings.model.model_name.clone());
+    let selection = models.selection(&saved);
+    let row = selection
+        .as_ref()
+        .and_then(|selection| selection.row().cloned());
+    let (value, detail, selected) = match (&selection, row) {
+        (_, Some(row)) => (
+            row.entry.label.clone(),
+            download_size(&row).map(|size| match row.state {
+                ModelState::Downloading(_) => format!("downloading, {size}"),
+                ModelState::NotDownloaded
+                | ModelState::Downloaded
+                | ModelState::Verifying
+                | ModelState::Failed(_)
+                | ModelState::NeedsRepair(_)
+                | ModelState::Unavailable { .. } => format!("{size} download"),
+            }),
+            row.entry.id,
+        ),
+        (None, None) => (saved.clone(), Some("loading…".to_owned()), saved),
+        (Some(_), None) => (saved.clone(), Some("not available".to_owned()), saved),
     };
     rsx! {
         Pill {

@@ -1,8 +1,4 @@
-use super::{
-    cancelled_notice::CancelledNotice,
-    model_notice::{ModelNotice, is_ready, selected_model},
-    recent::Recent,
-};
+use super::{cancelled_notice::CancelledNotice, model_notice::ModelNotice, recent::Recent};
 use crate::{
     components::{
         banner::{Banner, BannerTone},
@@ -10,18 +6,25 @@ use crate::{
         drop_pad::{DropPad, FILE_INPUT_ID},
         engine_chip::EngineChip,
         file_card::FileCard,
-        icon::{Icon, IconName, IconSize},
+        icon::IconName,
         language_picker::LanguagePill,
         model_picker::ModelPill,
         page::Page,
     },
-    hooks::{use_models::use_models, use_system_probe::use_system_probe},
+    hooks::{
+        use_models::{GpuSupport, use_models},
+        use_system_probe::use_system_probe,
+    },
     platform::{IS_WEB, Platform as _, get_platform},
     settings_store::use_settings,
     shortcuts::{Key, KeyChord, Shortcut, use_shortcut},
     transcribe::{
-        chosen_file::OverviewState, engine_label::EngineLabel, language_choice::LanguageChoice,
-        session::use_transcribe_session, timing,
+        chosen_file::OverviewState,
+        engine_label::EngineLabel,
+        language_choice::LanguageChoice,
+        session::use_transcribe_session,
+        start_plan::{FileReadiness, ModelChoice, StartPlan, plan_start},
+        timing,
     },
     utils::{byte_size::ByteSize, file_kind::kind_label, primary_key::use_primary_key_label},
     views::settings::{jump::open_section, sections::SettingsSection},
@@ -61,17 +64,30 @@ pub fn Start() -> Element {
             settings.ui.language.clone(),
         )
     });
-    let selected = selected_model(models, &model_id);
+    let selection = models.selection(&model_id);
+    let selected = selection
+        .as_ref()
+        .and_then(|selection| selection.row().cloned());
     let file = session.file();
     let overview = file.as_ref().map(|file| session.overview(&file.id));
-    let decodable = !matches!(overview, Some(OverviewState::Undecodable(_)));
-    let can_start = file.is_some() && decodable && is_ready(selected.as_ref());
-
-    let subtitle = if IS_WEB {
-        "Turn a recording into text. Nothing leaves this browser."
-    } else {
-        "Turn a recording into text. Nothing leaves this computer."
+    let readiness = match (&file, &overview) {
+        (None, _) => FileReadiness::Missing,
+        (Some(_), Some(OverviewState::Undecodable(_))) => FileReadiness::Undecodable,
+        (Some(_), Some(OverviewState::Reading | OverviewState::Ready { .. }) | None) => {
+            FileReadiness::Usable
+        }
     };
+    let choice = match (&selection, &selected) {
+        (None, _) => ModelChoice::Loading,
+        (Some(_), None) => ModelChoice::Missing,
+        (Some(_), Some(row)) => ModelChoice::Chosen(row.state.clone()),
+    };
+    let other_download = selected
+        .as_ref()
+        .is_some_and(|row| models.is_downloading() && !models.is_busy(&row.entry.id));
+    let no_webgpu = IS_WEB && *models.gpu.read() == GpuSupport::Unavailable;
+    let plan = plan_start(readiness, &choice, no_webgpu, other_download);
+    let can_start = matches!(plan, StartPlan::Start(_));
     let engine = if IS_WEB {
         EngineLabel::browser(&models.gpu.read())
     } else {
@@ -85,13 +101,16 @@ pub fn Start() -> Element {
     };
 
     let start = move |_| {
-        if let Some((entry, _)) = selected_model(models, &model_id) {
-            session.start(entry, LanguageChoice::from_setting(&language_setting));
+        if let Some(row) = &selected {
+            session.start(
+                row.entry.clone(),
+                LanguageChoice::from_setting(&language_setting),
+            );
         }
     };
 
     rsx! {
-        Page { title: "Transcribe", subtitle,
+        Page { title: "Transcribe",
             div {
                 class: "stack",
                 ondragover: move |event: DragEvent| event.prevent_default(),
@@ -180,11 +199,7 @@ pub fn Start() -> Element {
                         "Transcribe"
                     }
                 }
-                ModelNotice {}
-                p { class: "privacy-line",
-                    Icon { name: IconName::Lock, size: IconSize::Small }
-                    "Processed on this device. Audio is never uploaded."
-                }
+                ModelNotice { selection, saved: model_id, plan }
                 Recent {}
             }
         }

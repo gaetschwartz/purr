@@ -98,21 +98,35 @@ pub(super) async fn download(models: ModelsHandle, id: String, replace: bool) {
     let (label, _) = describe(models, &id);
     if replace && let Err(error) = platform::get_platform().remove_model(&id).await {
         let failed = failure(models, ModelFailureKind::Other, error.to_string());
+        let watched = models.has_waiters(&id);
+        models.settle(&id, &Err(failed.clone()));
         models.fail(&id, failed);
-        models.toasts.error(
-            format!("Couldn't replace {label}"),
-            "The stored files could not be removed.",
-        );
+        if !watched {
+            models.toasts.error(
+                format!("Couldn't replace {label}"),
+                "The stored files could not be removed.",
+            );
+        }
         return;
     }
 
-    match receive(models, &id).await {
+    let outcome = receive(models, &id).await;
+    let watched = models.has_waiters(&id);
+    match outcome {
         Outcome::Done => {
+            models.settle(&id, &Ok(()));
             models.clear_activity(&id);
             models.refresh();
-            models
-                .toasts
-                .success(format!("{label} is ready"), "Downloaded and checked.");
+            if !watched {
+                models
+                    .toasts
+                    .show(Toast::new(ToastKind::Success, format!("{label} is ready")));
+            }
+        }
+        Outcome::Failed(failed) if watched => {
+            models.settle(&id, &Err(failed.clone()));
+            models.fail(&id, failed);
+            models.refresh();
         }
         Outcome::Failed(failed) => {
             let title = match failed.kind {
@@ -139,7 +153,7 @@ pub(super) async fn discard(models: ModelsHandle, id: String) {
             models.refresh();
             models
                 .toasts
-                .info("Download cancelled", "Partial files were removed.");
+                .show(Toast::new(ToastKind::Info, "Download cancelled"));
         }
         Err(error) => {
             models

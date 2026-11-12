@@ -7,7 +7,7 @@ use crate::{
 };
 use dioxus::prelude::*;
 
-/// Tells that a run was stopped, that nothing was kept, and offers to start it again.
+/// Tells that a run was stopped and offers to start it again.
 #[component]
 pub fn CancelledNotice(cancelled: Cancelled, session: TranscribeSession) -> Element {
     rsx! {
@@ -30,7 +30,9 @@ pub fn CancelledNotice(cancelled: Cancelled, session: TranscribeSession) -> Elem
                     "Dismiss"
                 }
             },
-            "{cancelled.detail}"
+            if let Some(detail) = cancelled.detail {
+                "{detail}"
+            }
         }
     }
 }

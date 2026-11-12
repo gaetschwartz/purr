@@ -5,6 +5,7 @@ use super::{
     engine::RunMemory,
     language_choice::LanguageChoice,
     run::{Completion, Run, RunOutcome},
+    start_plan::{Blocker, Preparation, blocked_text, prepare},
     timing,
 };
 use crate::{
@@ -15,7 +16,10 @@ use crate::{
         store::{HistoryStore, use_history},
     },
     hooks::use_models::{ModelsHandle, use_models},
-    model_catalog::entry::{Language, ModelEntry},
+    model_catalog::{
+        copy,
+        entry::{Language, ModelEntry},
+    },
     platform::{self, IS_WEB},
     settings_store::{SettingsStore, use_settings},
     utils::{
@@ -28,7 +32,7 @@ use dioxus::{
     html::FileData,
     prelude::*,
 };
-use futures::StreamExt as _;
+use futures::{StreamExt as _, channel::oneshot};
 use purr_common::{
     accel::AccelPolicy,
     history::entry::{HistoryEntry, HistoryId, LanguageOrigin},
@@ -54,20 +58,17 @@ pub struct RunRecord {
 /// A run the user stopped, kept until they start again or move on.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Cancelled {
-    pub detail: &'static str,
+    pub detail: Option<&'static str>,
     record: RunRecord,
 }
 
-/// What stopping a run did, for the notice that stays on the Transcribe screen.
-const fn cancel_detail(web: bool, downloading: bool) -> &'static str {
+/// What else stopping a run stopped, for the notice that stays on the Transcribe screen.
+///
+/// In a browser, cancelling restarts the transcription worker, which runs model downloads too.
+const fn cancel_detail(web: bool, downloading: bool) -> Option<&'static str> {
     match (web, downloading) {
-        (true, true) => {
-            "Nothing was saved and the file is still selected. Cancelling restarts the browser's transcription worker, which also stopped the model download; start it again from Models."
-        }
-        (true, false) => {
-            "Nothing was saved and the file is still selected. Cancelling restarts the browser's transcription worker, so the next run loads the model again."
-        }
-        (false, _) => "Nothing was saved and the file is still selected.",
+        (true, true) => Some("The model download stopped too."),
+        (true, false) | (false, _) => None,
     }
 }
 
@@ -94,6 +95,8 @@ pub struct TranscribeSession {
     cancelled: Signal<Option<Cancelled>>,
     engine_memory: Signal<Option<RunMemory>>,
     task: Signal<Option<Task>>,
+    /// The model the current run is downloading before it starts.
+    fetching: Signal<Option<String>>,
     saved: Signal<SaveState>,
     originals: Signal<HashMap<String, PathBuf>>,
     toasts: Toasts,
@@ -353,7 +356,8 @@ impl TranscribeSession {
         });
     }
 
-    /// Transcribes the chosen file with `model`; the English-only lock applies to `language`.
+    /// Transcribes the chosen file with `model`, downloading the model first when it is not on
+    /// this device; the English-only lock applies to `language`.
     pub fn start(self, model: ModelEntry, language: LanguageChoice) {
         let Some(file) = self.file.peek().clone() else {
             self.toasts.error(
@@ -383,6 +387,7 @@ impl TranscribeSession {
 
     fn launch(mut self, file: ChosenFile, model: ModelEntry, language: LanguageChoice) {
         self.stop_task();
+        self.fetching.set(None);
         self.cancelled.set(None);
         let language = language.for_model(model.language == Language::EnglishOnly);
         let settings = self.settings.peek();
@@ -402,6 +407,9 @@ impl TranscribeSession {
         );
         let previous = self.record.peek().clone();
         self.saved.set(SaveState::Idle);
+        let other_download = self.models.is_downloading() && !self.models.is_busy(&model.id);
+        let preparation = prepare(&self.models.state(&model.id), other_download);
+        let model_id = model.id.clone();
         self.record.set(Some(RunRecord {
             file: file.clone(),
             model,
@@ -414,8 +422,47 @@ impl TranscribeSession {
         {
             self.release(previous.file);
         }
-        let task = spawn_forever(async move { self.drive(request).await });
+        let task = spawn_forever(async move {
+            match self.ready_model(&model_id, preparation).await {
+                Ok(()) => self.drive(request).await,
+                Err((message, hint)) => {
+                    if let Some(record) = self.record.write().as_mut() {
+                        record.run.fail(message, hint);
+                    }
+                    self.task.set(None);
+                    self.announce_end();
+                }
+            }
+        });
         self.task.set(Some(task));
+    }
+
+    /// Gets the model `id` onto this device as `preparation` says, or says why it could not.
+    async fn ready_model(
+        mut self,
+        id: &str,
+        preparation: Result<Preparation, Blocker>,
+    ) -> Result<(), (String, Option<String>)> {
+        let replace = match preparation {
+            Ok(Preparation::None) => return Ok(()),
+            Ok(Preparation::Download { replace }) => replace,
+            Ok(Preparation::JoinDownload) => false,
+            Err(blocker) => return Err((blocked_text(&blocker).to_owned(), None)),
+        };
+        let Some(finished) = self.models.download_and_wait(id, replace) else {
+            return Err((blocked_text(&Blocker::OtherDownload).to_owned(), None));
+        };
+        self.fetching.set(Some(id.to_owned()));
+        let end = finished.await;
+        self.fetching.set(None);
+        match end {
+            Ok(Ok(())) => Ok(()),
+            Ok(Err(failure)) => {
+                let text = copy::failure(&failure);
+                Err((text.title.to_owned(), Some(text.body)))
+            }
+            Err(oneshot::Canceled) => Err(("The model download was cancelled.".to_owned(), None)),
+        }
     }
 
     async fn drive(mut self, request: TranscriptionRequest) {
@@ -580,9 +627,12 @@ impl TranscribeSession {
         }
     }
 
-    /// Stops the run and goes back to the chosen file; nothing is kept.
+    /// Stops the run, and the model download it started, and goes back to the chosen file.
     pub fn cancel(mut self) {
         self.stop_task();
+        if let Some(id) = self.fetching.take() {
+            self.models.cancel(&id);
+        }
         let cancelled_record = self.record.take();
         let restore = cancelled_record
             .as_ref()
@@ -640,6 +690,7 @@ pub fn use_transcribe_session_provider() -> TranscribeSession {
             cancelled: Signal::new(None),
             engine_memory: Signal::new(None),
             task: Signal::new(None),
+            fetching: Signal::new(None),
             saved: Signal::new(SaveState::Idle),
             originals: Signal::new(HashMap::new()),
             toasts,
@@ -661,11 +712,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_desktop_says_only_that_nothing_was_saved() {
+    fn only_a_browser_download_stops_with_the_run() {
         assert_eq!(
-            cancel_detail(false, true),
-            "Nothing was saved and the file is still selected."
+            cancel_detail(true, true),
+            Some("The model download stopped too.")
         );
-        assert_eq!(cancel_detail(false, false), cancel_detail(false, true));
+        assert_eq!(cancel_detail(true, false), None);
+        assert_eq!(cancel_detail(false, true), None);
     }
 }

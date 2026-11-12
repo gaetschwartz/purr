@@ -26,8 +26,6 @@
 .runbar .engine-chip{flex:1 1 180px;min-width:120px;justify-content:flex-start}
 .runbar .engine-chip + .rb-spacer{display:none}
 .runbar .engine-chip ~ .btn{margin-left:auto}
-.privacy-line{display:flex;align-items:center;justify-content:center;gap:8px;font-size:13px;color:var(--fg-2);margin:0}
-.privacy-line svg{color:var(--success)}
 .filecard{display:flex;align-items:center;gap:16px;padding:16px;border-radius:var(--r-card)}
 .fileicon{width:52px;height:52px;border-radius:14px;display:grid;place-items:center;background:linear-gradient(160deg,#7173F5,#4B4FE0);color:#fff;flex:none;box-shadow:0 6px 14px -6px #4B4FE0}
 .fileicon.bad{background:linear-gradient(160deg,#F06A7A,#C8263A);box-shadow:0 6px 14px -6px #C8263A}
@@ -40,16 +38,6 @@
 .recent .pv{font-size:13px;color:var(--fg-2);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .recent .mt{font-size:12px;color:var(--fg-3)}
 
-.welcome{display:grid;grid-template-columns:1.1fr 1fr;gap:28px;align-items:center;padding:32px}
-.welcome h2{font-family:var(--font-display);font-size:28px;line-height:1.15;letter-spacing:-.025em;font-weight:700;margin:16px 0 10px;text-wrap:balance}
-.welcome p{margin:0;color:var(--fg-2)}
-.welcome ul{list-style:none;padding:0;margin:18px 0 0;display:flex;flex-direction:column;gap:10px;font-size:14px;color:var(--fg-2)}
-.welcome li{display:flex;gap:10px;align-items:flex-start}
-.welcome li svg{color:var(--accent-text);margin-top:1px}
-.reco{border-radius:18px;padding:18px;background:var(--glass-3);box-shadow:var(--shadow-1);border:1px solid var(--edge-low);display:flex;flex-direction:column;gap:12px}
-.reco .top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
-.reco .nm{font-weight:650;font-size:17px;letter-spacing:-.01em}
-.reco .btn.lg{white-space:normal;height:auto;min-height:44px;padding-block:10px;text-align:center}
 .meters{display:flex;gap:18px;font-size:12px;color:var(--fg-2)}
 .meter{display:flex;align-items:center;gap:6px}
 .dots{display:inline-flex;gap:3px}
@@ -59,7 +47,6 @@
 .drop.idle .halo svg{animation:purr 3.6s ease-in-out 3}
 @keyframes purr{0%,100%{transform:scale(1)}50%{transform:scale(1.08) translateY(-1px)}}
 .file-problem{margin:6px 0 0;font-size:13px;line-height:1.45;color:var(--danger)}
-.dl-offer{padding:10px 10px 4px}
 ol.stages,ol.live{list-style:none;margin:0;padding:0}
 .ellipsis{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .player .wave{gap:min(2px,.45%)} .player .wave i{min-width:0}
@@ -180,7 +167,6 @@ mark.cur{background:var(--accent);color:#fff}
 .lv.trace{background:var(--fill-hover);color:var(--fg-3)}
 
 @container app (max-width:1000px){
-  .welcome{grid-template-columns:minmax(0,1fr);padding:26px}
   .recent{grid-template-columns:repeat(2,minmax(0,1fr))}
   .recent button:nth-child(3){display:none}
   .log{grid-template-columns:90px 70px minmax(0,1fr)} .log .tg{display:none}
@@ -211,6 +197,4 @@ mark.cur{background:var(--accent);color:#fff}
   .loglist{max-height:none}
   .log{grid-template-columns:98px minmax(0,1fr);gap:4px 10px;padding:8px 14px} .log .lv{grid-row:1;grid-column:2} .log .m{grid-column:1/-1}
   .filecard{padding:14px;gap:12px}
-  .welcome{padding:20px}
-  .welcome h2{font-size:24px}
 }

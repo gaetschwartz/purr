@@ -9,6 +9,7 @@ use crate::{
         spinner::Spinner,
     },
     hooks::{use_models::use_models, use_system_probe::use_system_probe},
+    model_catalog::state::ModelState,
     platform::IS_WEB,
     transcribe::{
         engine_label::EngineLabel,
@@ -69,9 +70,20 @@ pub fn Running(record: RunRecord) -> Element {
     .collect::<Vec<_>>()
     .join(" · ");
 
-    let loading_sub = match run.model_load.and_then(ModelLoad::fraction) {
-        Some(done) => format!("Downloading {}%", (done * 100.0).round()),
-        None => ByteSize(record.model.size_bytes).to_string(),
+    let model_state = models.state(&record.model.id);
+    let download = model_state.progress().copied();
+    let loading_sub = match (
+        &model_state,
+        download,
+        run.model_load.and_then(ModelLoad::fraction),
+    ) {
+        (_, Some(progress), _) => progress.fraction().map_or_else(
+            || "Downloading…".to_owned(),
+            |done| format!("Downloading {}%", (done * 100.0).round()),
+        ),
+        (ModelState::Verifying, None, _) => "Checking the download…".to_owned(),
+        (_, None, Some(done)) => format!("Loading {}%", (done * 100.0).round()),
+        (_, None, None) => ByteSize(record.model.size_bytes).to_string(),
     };
     let detected = run.detected_language.as_deref().map(language_label);
     let language_sub = match (&record.language, &detected) {
@@ -102,9 +114,9 @@ pub fn Running(record: RunRecord) -> Element {
     };
     let progress = match (run.stage, fraction) {
         (Stage::Transcribing, Some(done)) => Progress::Determinate(done),
-        (Stage::LoadingModel, _) => run
-            .model_load
-            .and_then(ModelLoad::fraction)
+        (Stage::LoadingModel, _) => download
+            .and_then(|progress| progress.fraction())
+            .or_else(|| run.model_load.and_then(ModelLoad::fraction))
             .map_or(Progress::Indeterminate, Progress::Determinate),
         (Stage::DetectingLanguage | Stage::Transcribing, _) => Progress::Indeterminate,
     };

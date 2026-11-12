@@ -1,45 +1,34 @@
 use crate::{
     components::{
         banner::{Banner, BannerTone},
-        button::{Button, ButtonSize, ButtonVariant},
+        button::{Button, ButtonSize},
         icon::IconName,
         progress_bar::{Progress, ProgressBar},
+        spinner::Spinner,
     },
-    hooks::use_models::{ModelsHandle, use_models},
+    hooks::use_models::{GpuSupport, use_models},
     model_catalog::{
         copy,
-        entry::ModelEntry,
         format::{rate_and_eta, transferred},
-        state::{ModelState, UnavailableReason},
+        selection::Selection,
+        state::ModelState,
     },
-    settings_store::use_settings,
-    utils::byte_size::ByteSize,
+    transcribe::start_plan::{Blocker, StartPlan, blocked_text},
 };
 use dioxus::prelude::*;
+use purr_common::settings::ModelSettings;
 
-/// The selected model and where it stands; `None` until the list loaded or when it is unknown.
-pub fn selected_model(models: ModelsHandle, id: &str) -> Option<(ModelEntry, ModelState)> {
-    let info = models.find(id)?;
-    Some((ModelEntry::from_info(&info), models.state(id)))
-}
-
-/// Whether the selected model can transcribe right now.
-pub fn is_ready(selected: Option<&(ModelEntry, ModelState)>) -> bool {
-    selected.is_some_and(|(_, state)| matches!(state, ModelState::Downloaded))
-}
-
-/// Explains, with a fix, why the selected model cannot transcribe yet; nothing when it can.
+/// What stands between the selected model and a run, when it is worth saying; nothing otherwise.
 #[component]
-pub fn ModelNotice() -> Element {
+pub fn ModelNotice(selection: Option<Selection>, saved: String, plan: StartPlan) -> Element {
     let models = use_models();
-    let settings = use_settings();
-    let id = settings.with(|settings| settings.model.model_name.clone());
+    let mut rechecked = use_signal(|| false);
 
     if let Some(Err(error)) = models.rows() {
         return rsx! {
             Banner {
                 tone: BannerTone::Bad,
-                title: "Purr couldn't list the models",
+                title: "Couldn't list the models",
                 role: "alert",
                 actions: rsx! {
                     Button {
@@ -53,44 +42,61 @@ pub fn ModelNotice() -> Element {
             }
         };
     }
-    let Some((entry, state)) = selected_model(models, &id) else {
-        if models.models.read().is_none() {
-            return rsx! {};
-        }
+    if plan == StartPlan::Blocked(Blocker::NoWebGpu) {
+        let still_missing = rechecked() && *models.gpu.read() == GpuSupport::Unavailable;
         return rsx! {
-            Banner { tone: BannerTone::Warn, title: "The saved model isn't available here", role: "alert",
-                "\"{id}\" can't run in this version of Purr. Pick another one with the Model button."
-            }
-        };
-    };
-
-    let download_id = entry.id.clone();
-    match state {
-        ModelState::Downloaded => rsx! {},
-        ModelState::NotDownloaded => rsx! {
             Banner {
                 tone: BannerTone::Warn,
-                icon: IconName::Download,
-                title: "{entry.label} isn't on this device yet",
+                title: "This browser has no WebGPU",
+                role: "alert",
+                id: "no-webgpu",
                 actions: rsx! {
                     Button {
-                        variant: ButtonVariant::Primary,
                         size: ButtonSize::Small,
-                        icon: IconName::Download,
-                        disabled: models.is_downloading(),
-                        onclick: move |_| models.download(&download_id),
-                        "Download {ByteSize(entry.size_bytes)}"
+                        icon: IconName::Retry,
+                        id: "recheck-webgpu",
+                        onclick: move |_| {
+                            rechecked.set(true);
+                            models.recheck_gpu();
+                        },
+                        "Check again"
                     }
                 },
-                "Download it once, or pick a model you already have with the Model button."
+                "Purr needs it to transcribe. Use a current Chrome or Edge, or turn on hardware acceleration."
+                if still_missing {
+                    " Still not available."
+                }
             }
-        },
+        };
+    }
+
+    let Some(selection) = selection else {
+        return rsx! {};
+    };
+    let Some(row) = selection.row().cloned() else {
+        return rsx! {
+            Banner { tone: BannerTone::Warn, title: "No model is available", role: "alert" }
+        };
+    };
+    let substituted = matches!(selection, Selection::Substitute(_))
+        && saved != ModelSettings::default().model_name;
+    let label = row.entry.label.clone();
+    let id = row.entry.id.clone();
+    let state_notice = match row.state {
+        ModelState::Downloaded | ModelState::NotDownloaded => rsx! {},
         ModelState::Downloading(progress) => rsx! {
             div { class: "card glass stack", role: "status", style: "gap:10px",
-                b { "Downloading {entry.label}" }
+                div { class: "row",
+                    b { class: "grow", "Downloading {label}" }
+                    Button {
+                        size: ButtonSize::Small,
+                        onclick: move |_| models.cancel(&id),
+                        "Cancel"
+                    }
+                }
                 ProgressBar {
                     progress: progress.fraction().map_or(Progress::Indeterminate, Progress::Determinate),
-                    label: "Download of {entry.label}",
+                    label: "Download of {label}",
                 }
                 div { class: "dlmeta",
                     span { {transferred(&progress)} }
@@ -99,58 +105,39 @@ pub fn ModelNotice() -> Element {
             }
         },
         ModelState::Verifying => rsx! {
-            Banner { tone: BannerTone::Info, title: "Checking the files of {entry.label}…", role: "status" }
+            div { class: "row", role: "status",
+                Spinner {}
+                span { class: "muted", "Checking {label}…" }
+            }
         },
         ModelState::Failed(failure) => {
             let text = copy::failure(&failure);
             rsx! {
-                Banner {
-                    tone: BannerTone::Bad,
-                    title: "{text.title}",
-                    role: "alert",
-                    actions: rsx! {
-                        Button {
-                            variant: ButtonVariant::Primary,
-                            size: ButtonSize::Small,
-                            icon: IconName::Retry,
-                            onclick: move |_| models.download(&download_id),
-                            "Try again"
-                        }
-                    },
-                    "{text.body}"
-                }
+                Banner { tone: BannerTone::Bad, title: "{text.title}", role: "alert", "{text.body}" }
             }
         }
         ModelState::NeedsRepair(damage) => rsx! {
-            Banner {
-                tone: BannerTone::Bad,
-                title: "The files of {entry.label} are damaged",
-                role: "alert",
-                actions: rsx! {
-                    Button {
-                        variant: ButtonVariant::Primary,
-                        size: ButtonSize::Small,
-                        icon: IconName::Download,
-                        onclick: move |_| models.download_again(&download_id),
-                        "Download again"
-                    }
-                },
+            Banner { tone: BannerTone::Bad, title: "{label} is damaged", role: "alert",
                 {copy::damage(&damage)}
             }
         },
-        ModelState::Unavailable { reason, .. } => {
-            let why = match reason {
-                UnavailableReason::NeedsShaderF16 => {
-                    "It needs a GPU feature (shader-f16) this device lacks."
-                }
-                UnavailableReason::NeedsWebGpu => {
-                    "It needs WebGPU, which this browser doesn't offer."
-                }
-            };
-            rsx! {
-                Banner { tone: BannerTone::Bad, title: "{entry.label} can't run here", role: "alert",
-                    "{why} Pick another model with the Model button."
-                }
+        ModelState::Unavailable { reason, .. } => rsx! {
+            Banner { tone: BannerTone::Bad, title: "{label} can't run here", role: "alert",
+                {blocked_text(&Blocker::CannotRun(reason))}
+            }
+        },
+    };
+
+    rsx! {
+        if substituted {
+            p { class: "foot", role: "status", style: "margin:0",
+                "“{saved}” isn't available here, so {label} is used."
+            }
+        }
+        {state_notice}
+        if plan == StartPlan::Blocked(Blocker::OtherDownload) {
+            p { class: "foot", role: "status", style: "margin:0",
+                {blocked_text(&Blocker::OtherDownload)}
             }
         }
     }

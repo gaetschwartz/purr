@@ -7,4 +7,5 @@ pub mod family;
 pub mod format;
 pub mod listing;
 pub mod recommend;
+pub mod selection;
 pub mod state;

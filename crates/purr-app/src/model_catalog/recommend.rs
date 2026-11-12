@@ -5,7 +5,7 @@ use super::{
     state::ModelState,
 };
 
-/// What the device running Purr can do, for picking a first model.
+/// What the device running Purr can do, for picking a model when none usable is saved.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Device {
     Desktop { gpu: bool },
@@ -14,21 +14,12 @@ pub enum Device {
 
 impl Device {
     /// Size classes to suggest, best first.
-    const fn groups(self) -> [ModelGroup; 3] {
+    const fn groups(self) -> &'static [ModelGroup] {
         match self {
-            Self::Desktop { gpu: true } => [ModelGroup::Turbo, ModelGroup::Base, ModelGroup::Tiny],
-            Self::Desktop { gpu: false } | Self::Browser => {
-                [ModelGroup::Base, ModelGroup::Tiny, ModelGroup::Tiny]
-            }
+            Self::Desktop { gpu: true } => &[ModelGroup::Turbo, ModelGroup::Base, ModelGroup::Tiny],
+            Self::Desktop { gpu: false } | Self::Browser => &[ModelGroup::Base, ModelGroup::Tiny],
         }
     }
-}
-
-/// The model to suggest on first run, and a smaller one to offer next to it.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Recommendation {
-    pub model: ModelEntry,
-    pub smaller: Option<ModelEntry>,
 }
 
 /// The smallest multilingual model of `group` that runs here.
@@ -44,24 +35,14 @@ fn pick(rows: &[ModelRow], group: ModelGroup) -> Option<&ModelEntry> {
         .min_by_key(|entry| entry.size_bytes)
 }
 
-/// Picks from the real catalog in `rows` for `device`; `None` when nothing fits.
+/// The model to suggest from the real catalog in `rows` for `device`; `None` when nothing fits.
 #[must_use]
-pub fn recommend(rows: &[ModelRow], device: Device) -> Option<Recommendation> {
-    let groups = device.groups();
-    let (position, model) = groups
+pub fn recommend(rows: &[ModelRow], device: Device) -> Option<ModelEntry> {
+    device
+        .groups()
         .iter()
-        .enumerate()
-        .find_map(|(position, group)| pick(rows, *group).map(|model| (position, model)))?;
-    let smaller = groups
-        .iter()
-        .skip(position + 1)
-        .filter_map(|group| pick(rows, *group))
-        .find(|entry| entry.size_bytes < model.size_bytes)
-        .cloned();
-    Some(Recommendation {
-        model: model.clone(),
-        smaller,
-    })
+        .find_map(|group| pick(rows, *group))
+        .cloned()
 }
 
 #[cfg(test)]
@@ -104,29 +85,26 @@ mod tests {
         ]
     }
 
-    fn ids(recommendation: Option<Recommendation>) -> Option<(String, Option<String>)> {
-        recommendation.map(|found| (found.model.id, found.smaller.map(|entry| entry.id)))
+    fn id(recommendation: Option<ModelEntry>) -> Option<String> {
+        recommendation.map(|entry| entry.id)
     }
 
     #[test]
-    fn a_desktop_with_a_gpu_gets_the_quantized_turbo_and_base_as_the_smaller_choice() {
+    fn a_desktop_with_a_gpu_gets_the_quantized_turbo() {
         assert_eq!(
-            ids(recommend(&desktop_catalog(), Device::Desktop { gpu: true })),
-            Some((
-                "large-v3-turbo-q5_0".to_owned(),
-                Some("base-q5_1".to_owned())
-            ))
+            id(recommend(&desktop_catalog(), Device::Desktop { gpu: true })),
+            Some("large-v3-turbo-q5_0".to_owned())
         );
     }
 
     #[test]
     fn a_desktop_without_a_gpu_gets_a_small_base() {
         assert_eq!(
-            ids(recommend(
+            id(recommend(
                 &desktop_catalog(),
                 Device::Desktop { gpu: false }
             )),
-            Some(("base-q5_1".to_owned(), Some("tiny-q5_1".to_owned())))
+            Some("base-q5_1".to_owned())
         );
     }
 
@@ -139,8 +117,8 @@ mod tests {
             row("large-v3-turbo", "large-v3-turbo", 900, false),
         ];
         assert_eq!(
-            ids(recommend(&catalog, Device::Browser)),
-            Some(("base".to_owned(), Some("tiny".to_owned())))
+            id(recommend(&catalog, Device::Browser)),
+            Some("base".to_owned())
         );
         for entry in &mut catalog {
             if entry.entry.id == "base" {
@@ -151,8 +129,8 @@ mod tests {
             }
         }
         assert_eq!(
-            ids(recommend(&catalog, Device::Browser)),
-            Some(("tiny".to_owned(), None))
+            id(recommend(&catalog, Device::Browser)),
+            Some("tiny".to_owned())
         );
     }
 

@@ -58,6 +58,9 @@ pub fn PopoverOption(
     #[props(into)] title: String,
     #[props(into)] subtitle: Option<String>,
     #[props(into)] trailing: Option<String>,
+    /// Words read before `trailing` by screen readers only.
+    #[props(into)]
+    trailing_prefix: Option<String>,
     leading: Option<Element>,
     #[props(default)] role: OptionRole,
     #[props(default)] selected: bool,
@@ -100,7 +103,12 @@ pub fn PopoverOption(
                 }
             }
             if let Some(trailing) = &trailing {
-                span { class: "r", "{trailing}" }
+                span { class: "r",
+                    if let Some(prefix) = &trailing_prefix {
+                        span { class: "sr", "{prefix} " }
+                    }
+                    "{trailing}"
+                }
             }
         }
     }

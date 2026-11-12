@@ -10,5 +10,6 @@ pub mod reading;
 pub mod run;
 pub mod search;
 pub mod session;
+pub mod start_plan;
 pub mod timing;
 pub mod transcript;
