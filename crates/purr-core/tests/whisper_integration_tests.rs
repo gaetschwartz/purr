@@ -4,6 +4,7 @@
 //! audio-to-transcription pipeline including both sync and streaming modes.
 
 use futures::{Stream, StreamExt};
+use purr_common::progress::ProgressPhase;
 use purr_core::{
     ModelManager, StreamEvent, StreamingChunk, StreamingTranscription,
     audio::{AudioData, AudioProcessor},
@@ -836,6 +837,7 @@ async fn test_streaming_progress_follows_the_audio_consumed() {
     let last = frames.last().unwrap();
     assert!(last.source_ended);
     assert_eq!(last.frame.decoding, None);
+    assert_eq!(last.frame.phase, ProgressPhase::Transcribing);
     assert_eq!(last.frame.transcribed_to, last.received);
     assert!((last.received - 24.0).abs() < 0.1, "{}", last.received);
 }

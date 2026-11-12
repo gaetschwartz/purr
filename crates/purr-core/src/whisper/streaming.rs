@@ -242,10 +242,12 @@ impl Session {
                 transcribed_to: self.origin.min(self.received) as f64 / sr,
                 decoding: decoding.map(|(start, end)| (start as f64 / sr, end as f64 / sr)),
                 phase: match self.language {
-                    StreamLanguage::Detecting => ProgressPhase::DetectingLanguage,
-                    StreamLanguage::Chosen(_) | StreamLanguage::Locked(_) => {
-                        ProgressPhase::Transcribing
+                    StreamLanguage::Detecting if self.segment_count == 0 => {
+                        ProgressPhase::DetectingLanguage
                     }
+                    StreamLanguage::Detecting
+                    | StreamLanguage::Chosen(_)
+                    | StreamLanguage::Locked(_) => ProgressPhase::Transcribing,
                 },
             },
             received: self.received as f64 / sr,
