@@ -1,10 +1,8 @@
 //! Failure hook of the MSVC delay-load helper.
 //!
-//! GPU runtime libraries are delay-loaded so a binary starts without them. ggml registers every
-//! compiled-in backend the first time any device is enumerated, and registering Vulkan calls
-//! into the loader, so that import cannot be gated from outside ggml. When the loader is absent
-//! the hook answers those calls with Vulkan's own "initialization failed" status and ggml
-//! skips the backend. Any other missing import is a bug, so it aborts with a readable message.
+//! GPU runtime libraries are delay-loaded so a binary starts without them. When the Vulkan
+//! loader is absent the hook answers its imports with [`vulkan_stand_in`]. Any other missing
+//! import is a bug, so it aborts with a readable message.
 
 use std::ffi::{CStr, c_char, c_void};
 
@@ -13,11 +11,10 @@ use windows::{
     core::w,
 };
 
-use super::{backend::AccelBackend, runtime_library::required};
+use super::{backend::AccelBackend, runtime_library::required, vulkan_stand_in};
 
 const NOTIFY_FAIL_LOAD_LIB: u32 = 3;
 const NOTIFY_FAIL_GET_PROC: u32 = 4;
-const VK_ERROR_INITIALIZATION_FAILED: i32 = -3;
 
 #[repr(C)]
 pub struct DelayLoadProc {
@@ -58,26 +55,6 @@ fn is_vulkan_loader(dll: &str) -> bool {
         .any(|loader| loader.eq_ignore_ascii_case(dll))
 }
 
-extern "system" fn vulkan_call_unavailable() -> i32 {
-    VK_ERROR_INITIALIZATION_FAILED
-}
-
-extern "system" fn vulkan_proc_address_unavailable(
-    _object: *const c_void,
-    _name: *const c_char,
-) -> *const c_void {
-    vulkan_call_unavailable as *const c_void
-}
-
-fn vulkan_stand_in(proc_name: &str) -> *const c_void {
-    match proc_name {
-        "vkGetInstanceProcAddr" | "vkGetDeviceProcAddr" => {
-            vulkan_proc_address_unavailable as *const c_void
-        }
-        _ => vulkan_call_unavailable as *const c_void,
-    }
-}
-
 fn abort_missing(dll: &str, proc_name: &str, last_error: u32) -> ! {
     eprintln!(
         "purr: fatal: the library {dll} is required by {proc_name} but cannot be used (Windows error {last_error}); \
@@ -109,7 +86,7 @@ unsafe extern "system" fn failure_hook(
                 )
         }
         NOTIFY_FAIL_GET_PROC if is_vulkan_loader(&dll) && info.proc.import_by_name != 0 => {
-            vulkan_stand_in(&proc_name)
+            vulkan_stand_in::for_export(&proc_name)
         }
         NOTIFY_FAIL_LOAD_LIB | NOTIFY_FAIL_GET_PROC => {
             abort_missing(&dll, &proc_name, info.last_error)

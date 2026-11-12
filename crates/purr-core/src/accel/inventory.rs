@@ -12,7 +12,7 @@ use super::{
 pub struct Inventory {
     pub devices: Vec<Device>,
     pub build: HashMap<AccelBackend, BuildStatus>,
-    /// Backends that were built in but whose delay-loaded runtime library cannot be loaded.
+    /// Backends that were built in but whose on-demand runtime library cannot be loaded.
     pub missing_runtime: HashMap<AccelBackend, String>,
 }
 
