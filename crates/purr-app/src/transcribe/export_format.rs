@@ -100,6 +100,33 @@ struct JsonSegment<'a> {
     start: f64,
     end: f64,
     text: &'a str,
+    /// Empty when the engine reported no words
+    words: Vec<JsonWord<'a>>,
+}
+
+#[derive(Serialize)]
+struct JsonWord<'a> {
+    text: &'a str,
+    /// Seconds, when the engine timed the word
+    start: Option<f64>,
+    end: Option<f64>,
+    /// Probability of the word's least certain token, rounded to three decimals
+    score: Option<f64>,
+}
+
+fn json_words(segment: &TranscriptSegment) -> Vec<JsonWord<'_>> {
+    segment
+        .words
+        .iter()
+        .filter_map(|word| {
+            Some(JsonWord {
+                text: word.text(&segment.text)?,
+                start: word.start_seconds(),
+                end: word.end_seconds(),
+                score: word.probability().map(|p| (p * 1000.0).round() / 1000.0),
+            })
+        })
+        .collect()
 }
 
 fn json(document: &ExportDocument<'_>) -> serde_json::Result<String> {
@@ -115,6 +142,7 @@ fn json(document: &ExportDocument<'_>) -> serde_json::Result<String> {
                 start: segment.start_time,
                 end: cue_end(segment),
                 text: segment.text.trim(),
+                words: json_words(segment),
             })
             .collect(),
     })
@@ -139,6 +167,7 @@ fn cue_time(seconds: f64, fraction_separator: char) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use purr_common::word::Word;
 
     fn segment(text: &str, start: f64, end: f64) -> TranscriptSegment {
         TranscriptSegment {
@@ -232,8 +261,42 @@ mod tests {
                 "language": "fr",
                 "model": "base",
                 "duration": 3727.5,
-                "segments": [{ "start": 0.0, "end": 1.5, "text": "Bonjour" }]
+                "segments": [{ "start": 0.0, "end": 1.5, "text": "Bonjour", "words": [] }]
             })
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn json_carries_the_words_of_each_segment() -> serde_json::Result<()> {
+        let mut spoken = segment(" Bonjour tout", 0.0, 1.5);
+        spoken.words = vec![
+            Word {
+                range: 1..8,
+                start_cs: Some(10),
+                end_cs: Some(70),
+                score: Some(242),
+            },
+            Word {
+                range: 9..13,
+                start_cs: None,
+                end_cs: None,
+                score: None,
+            },
+        ];
+        let segments = vec![spoken];
+        let rendered = render(ExportFormat::Json, &document(&segments))?;
+        let value: serde_json::Value = serde_json::from_str(&rendered)?;
+        assert_eq!(
+            value["segments"][0]["words"],
+            serde_json::json!([
+                { "text": "Bonjour", "start": 0.1, "end": 0.7, "score": 0.949 },
+                { "text": "tout", "start": null, "end": null, "score": null }
+            ])
+        );
+        assert_eq!(
+            render(ExportFormat::Txt, &document(&segments))?,
+            "Bonjour tout"
         );
         Ok(())
     }

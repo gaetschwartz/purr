@@ -86,7 +86,7 @@ pub struct Cli {
     #[arg(long)]
     pub timestamps: bool,
 
-    /// Include word-level timestamps (if supported)
+    /// Time every word, and add each segment's words (text, start, end, score) to --output json
     #[arg(long)]
     pub word_timestamps: bool,
 

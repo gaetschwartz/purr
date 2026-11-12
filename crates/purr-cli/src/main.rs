@@ -1,6 +1,7 @@
 //! Whisper UI CLI - Audio transcription command-line interface
 mod cli;
 mod fmt;
+mod json;
 mod models;
 
 use crate::fmt::{MyFormatter, Verbosity, VerbosityLevel};
@@ -194,7 +195,11 @@ async fn handle_streaming_output(
                         Cow::Borrowed(&chunk.text)
                     }
                 }
-                OutputFormat::Json => serde_json::to_string(&chunk).into_diagnostic()?.into(),
+                OutputFormat::Json => {
+                    serde_json::to_string(&json::chunk(&chunk, cli.word_timestamps))
+                        .into_diagnostic()?
+                        .into()
+                }
                 OutputFormat::Srt => format!(
                     "{}\n{} --> {}\n{}\n",
                     chunk.chunk_index + 1,
@@ -580,7 +585,10 @@ fn handle_output(result: purr_core::SyncTranscriptionResult, cli: &Cli) -> miett
                 result.text.clone()
             }
         }
-        OutputFormat::Json => serde_json::to_string_pretty(&result).into_diagnostic()?,
+        OutputFormat::Json => {
+            serde_json::to_string_pretty(&json::document(&result, cli.word_timestamps))
+                .into_diagnostic()?
+        }
         OutputFormat::Srt => result
             .segments
             .iter()

@@ -122,6 +122,10 @@ cargo test -p purr-cli
 # SRT subtitle format
 ./target/release/purr-cli audio.wav --output srt
 
+# JSON with every word: its text, start and end in seconds, and score (the probability of
+# its least certain token, 0 to 1)
+./target/release/purr-cli audio.wav --output json --word-timestamps
+
 # Disable GPU acceleration (same as --accel cpu)
 ./target/release/purr-cli audio.wav --no-gpu
 
@@ -173,7 +177,8 @@ Options:
   -t, --threads <THREADS>          Number of threads to use
   -o, --output <OUTPUT>            Output format [default: text] [possible values: text, json, srt]
       --timestamps                 Include timestamps in output (text format only)
-      --word-timestamps            Include word-level timestamps (if supported)
+      --word-timestamps            Time every word, and add each segment's words
+                                   (text, start, end, score) to --output json
       --temperature <TEMPERATURE>  Temperature for sampling [default: 0.0]
   -v, --verbose                    Verbose output
   -h, --help                       Print help

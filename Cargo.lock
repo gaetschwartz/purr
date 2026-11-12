@@ -5571,6 +5571,7 @@ dependencies = [
  "purr-core",
  "purr-delayload",
  "rstest",
+ "serde",
  "serde_json",
  "shadow-rs",
  "strum",
