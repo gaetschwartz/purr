@@ -292,7 +292,7 @@ async fn prompt_for_model_download(
     }
     let model = model.unwrap_or_else(|| model_manager.registry().default_model());
     println!("  • {}", model.description.green());
-    println!("  • Size: {}", HumanBytes(model.size_bytes).yellow());
+    println!("  • Size: {}", HumanBytes(model.file.size_bytes).yellow());
     println!(
         "  • Download time: {}",
         HumanDuration(model.estimated_download_time(64u32 * ByteSpeed::MIBPS)).yellow()

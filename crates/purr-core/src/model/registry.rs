@@ -4,7 +4,8 @@ use crate::error::{ManifestError, UnknownModelError};
 use crate::math::ByteSpeed;
 use crate::model::attributes::{ModelFamily, ModelFeature, ModelLanguage, Quantization};
 use crate::model::digest::Sha256Digest;
-use crate::model::manifest::{Manifest, ManifestModel, SUPPORTED_SCHEMA, Source};
+use crate::model::manifest::{Manifest, ManifestModel, ManifestVad, SUPPORTED_SCHEMA, Source};
+use crate::model::pinned::PinnedFile;
 use std::collections::{BTreeMap, HashSet};
 use std::sync::{Arc, LazyLock};
 use std::time::Duration;
@@ -28,15 +29,14 @@ pub struct ModelSpec {
     pub language: ModelLanguage,
     pub quantization: Quantization,
     pub features: Vec<ModelFeature>,
-    pub size_bytes: u64,
-    pub sha256: Sha256Digest,
+    pub file: PinnedFile,
     pub description: String,
 }
 
 impl ModelSpec {
     #[must_use]
-    pub fn url(&self) -> String {
-        self.source.file_url(&self.filename)
+    pub fn url(&self) -> &str {
+        &self.file.url
     }
 
     #[must_use]
@@ -46,8 +46,17 @@ impl ModelSpec {
 
     #[must_use]
     pub fn estimated_download_time(&self, speed: ByteSpeed) -> Duration {
-        self.size_bytes as usize / speed
+        self.file.size_bytes as usize / speed
     }
+}
+
+/// The voice activity model that rides along with the Whisper models; it is not one of them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VadSpec {
+    pub id: String,
+    pub source: Arc<Source>,
+    pub filename: String,
+    pub file: PinnedFile,
 }
 
 /// Models of one family, in manifest order.
@@ -62,6 +71,7 @@ pub struct Registry {
     models: Vec<Arc<ModelSpec>>,
     preferred: Vec<Arc<ModelSpec>>,
     default_model: Arc<ModelSpec>,
+    vad: VadSpec,
 }
 
 impl Registry {
@@ -114,6 +124,16 @@ impl Registry {
             models.push(Arc::new(resolve(entry, &sources)?));
         }
 
+        let vad = resolve_vad(manifest.vad, &sources)?;
+        if !model_ids.insert(vad.id.clone()) {
+            return Err(ManifestError::DuplicateModelId { id: vad.id });
+        }
+        if !filenames.insert(vad.filename.clone()) {
+            return Err(ManifestError::DuplicateFilename {
+                filename: vad.filename,
+            });
+        }
+
         let mut preferred = Vec::with_capacity(manifest.preferred.len());
         for id in manifest.preferred {
             let spec = models
@@ -131,6 +151,7 @@ impl Registry {
             models,
             preferred,
             default_model,
+            vad,
         })
     }
 
@@ -153,6 +174,12 @@ impl Registry {
             .find(|model| model.id == id)
             .map(Arc::clone)
             .ok_or_else(|| UnknownModelError::new(id))
+    }
+
+    /// The voice activity model that goes with the Whisper models.
+    #[must_use]
+    pub fn vad(&self) -> &VadSpec {
+        &self.vad
     }
 
     /// Recommended model for users who have not chosen one.
@@ -180,21 +207,50 @@ impl Registry {
     }
 }
 
-fn resolve(entry: ManifestModel, sources: &[Arc<Source>]) -> Result<ModelSpec, ManifestError> {
+fn pin(
+    id: &str,
+    source_id: &str,
+    filename: &str,
+    size_bytes: u64,
+    sha256: Sha256Digest,
+    sources: &[Arc<Source>],
+) -> Result<(Arc<Source>, PinnedFile), ManifestError> {
     let source = sources
         .iter()
-        .find(|source| source.id == entry.source)
+        .find(|source| source.id == source_id)
         .map(Arc::clone)
         .ok_or_else(|| ManifestError::UnknownSource {
-            model_id: entry.id.clone(),
-            source_id: entry.source.clone(),
+            model_id: id.to_owned(),
+            source_id: source_id.to_owned(),
         })?;
-    if entry.size_bytes == 0 {
-        return Err(ManifestError::ZeroSize { model_id: entry.id });
+    if size_bytes == 0 {
+        return Err(ManifestError::ZeroSize {
+            model_id: id.to_owned(),
+        });
     }
-    if entry.sha256.is_zero() {
-        return Err(ManifestError::MissingDigest { model_id: entry.id });
+    if sha256.is_zero() {
+        return Err(ManifestError::MissingDigest {
+            model_id: id.to_owned(),
+        });
     }
+    let file = PinnedFile {
+        name: id.to_owned(),
+        url: source.file_url(filename),
+        size_bytes,
+        sha256,
+    };
+    Ok((source, file))
+}
+
+fn resolve(entry: ManifestModel, sources: &[Arc<Source>]) -> Result<ModelSpec, ManifestError> {
+    let (source, file) = pin(
+        &entry.id,
+        &entry.source,
+        &entry.filename,
+        entry.size_bytes,
+        entry.sha256,
+        sources,
+    )?;
     Ok(ModelSpec {
         id: entry.id,
         source,
@@ -203,8 +259,24 @@ fn resolve(entry: ManifestModel, sources: &[Arc<Source>]) -> Result<ModelSpec, M
         language: entry.language,
         quantization: entry.quantization,
         features: entry.features,
-        size_bytes: entry.size_bytes,
-        sha256: entry.sha256,
+        file,
         description: entry.description,
+    })
+}
+
+fn resolve_vad(entry: ManifestVad, sources: &[Arc<Source>]) -> Result<VadSpec, ManifestError> {
+    let (source, file) = pin(
+        &entry.id,
+        &entry.source,
+        &entry.filename,
+        entry.size_bytes,
+        entry.sha256,
+        sources,
+    )?;
+    Ok(VadSpec {
+        id: entry.id,
+        source,
+        filename: entry.filename,
+        file,
     })
 }

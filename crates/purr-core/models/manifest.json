@@ -1,5 +1,5 @@
 {
-  "schema": 1,
+  "schema": 2,
   "preferred": [
     "base",
     "base.en",
@@ -18,6 +18,11 @@
       "id": "tinydiarize",
       "repo": "akashmjn/tinydiarize-whisper.cpp",
       "revision": "d44ba793fc67e509623a88a409723311fa677744"
+    },
+    {
+      "id": "whisper-vad",
+      "repo": "ggml-org/whisper-vad",
+      "revision": "9ffd54a1e1ee413ddf265af9913beaf518d1639b"
     }
   ],
   "models": [
@@ -431,5 +436,12 @@
       "sha256": "317eb69c11673c9de1e1f0d459b253999804ec71ac4c23c17ecf5fbe24e259a1",
       "description": "Large v3 Turbo multilingual model, Q8_0 quantized for a smaller download"
     }
-  ]
+  ],
+  "vad": {
+    "id": "silero-v6.2.0",
+    "source": "whisper-vad",
+    "filename": "ggml-silero-v6.2.0.bin",
+    "size_bytes": 885098,
+    "sha256": "2aa269b785eeb53a82983a20501ddf7c1d9c48e33ab63a41391ac6c9f7fb6987"
+  }
 }

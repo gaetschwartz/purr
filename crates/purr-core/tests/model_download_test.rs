@@ -8,6 +8,7 @@ use purr_common::hugging_face_token::HuggingFaceToken;
 use purr_core::WhisperError;
 use purr_core::error::{ConfigurationError, ModelIntegrityError};
 use purr_core::model::download::download_verified;
+use purr_core::model::pinned::PinnedFile;
 use purr_core::model::registry::ModelSpec;
 use std::error::Error;
 use std::path::PathBuf;
@@ -20,6 +21,13 @@ use common::{digest_of, fixture_bytes, fixture_registry};
 
 fn fixture_spec(bytes: &[u8]) -> Result<ModelSpec, Box<dyn Error>> {
     Ok(fixture_registry(bytes)?.get("fixture")?.clone())
+}
+
+fn served(spec: &ModelSpec, url: String) -> PinnedFile {
+    PinnedFile {
+        url,
+        ..spec.file.clone()
+    }
 }
 
 fn serve(content: Vec<u8>) -> TestServer {
@@ -74,8 +82,7 @@ async fn verified_download_publishes_the_file_and_reports_progress() -> Result<(
 
     let mut reports = Vec::new();
     download_verified(
-        &spec,
-        &url(&server, "/ok")?,
+        &served(&spec, url(&server, "/ok")?),
         None,
         &destination.path,
         |downloaded, total| reports.push((downloaded, total)),
@@ -104,8 +111,7 @@ async fn checksum_mismatch_is_rejected_and_cleaned_up() -> Result<(), Box<dyn Er
     let destination = Destination::new()?;
 
     let result = download_verified(
-        &spec,
-        &url(&server, "/tampered")?,
+        &served(&spec, url(&server, "/tampered")?),
         None,
         &destination.path,
         |_, _| {},
@@ -122,7 +128,7 @@ async fn checksum_mismatch_is_rejected_and_cleaned_up() -> Result<(), Box<dyn Er
                 }),
         }) => {
             assert_eq!(model_id, "fixture");
-            assert_eq!(expected, spec.sha256);
+            assert_eq!(expected, spec.file.sha256);
             assert_eq!(actual, digest_of(&tampered));
         }
         other => return Err(format!("expected a checksum mismatch, got {other:?}").into()),
@@ -140,8 +146,7 @@ async fn truncated_body_is_rejected_and_cleaned_up() -> Result<(), Box<dyn Error
     let destination = Destination::new()?;
 
     let result = download_verified(
-        &spec,
-        &url(&server, "/short")?,
+        &served(&spec, url(&server, "/short")?),
         None,
         &destination.path,
         |_, _| {},
@@ -176,8 +181,7 @@ async fn oversized_body_is_aborted_and_cleaned_up() -> Result<(), Box<dyn Error>
     let destination = Destination::new()?;
 
     let result = download_verified(
-        &spec,
-        &url(&server, "/long")?,
+        &served(&spec, url(&server, "/long")?),
         None,
         &destination.path,
         |_, _| {},
@@ -211,8 +215,7 @@ async fn http_error_status_leaves_no_files() -> Result<(), Box<dyn Error>> {
     let destination = Destination::new()?;
 
     let result = download_verified(
-        &spec,
-        &url(&server, "/missing")?,
+        &served(&spec, url(&server, "/missing")?),
         None,
         &destination.path,
         |_, _| {},
@@ -256,8 +259,7 @@ async fn the_token_is_not_sent_to_a_host_other_than_hugging_face() -> Result<(),
     let token = HuggingFaceToken::new("hf_dummy");
 
     download_verified(
-        &spec,
-        &url(&server, "/ok")?,
+        &served(&spec, url(&server, "/ok")?),
         token.as_ref(),
         &destination.path,
         |_, _| {},

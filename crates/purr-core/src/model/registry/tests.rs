@@ -4,11 +4,12 @@ use std::str::FromStr;
 
 const DIGEST_A: &str = "be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21";
 const DIGEST_B: &str = "a03779c86df3323075f5e796cb2ce5029f00ec8869eee3fdfb897afe36c6d002";
+const DIGEST_C: &str = "2aa269b785eeb53a82983a20501ddf7c1d9c48e33ab63a41391ac6c9f7fb6987";
 const REVISION: &str = "5359861c739e955e79d9a303bcbc70fb988958b1";
 
 fn manifest_json(edit: impl FnOnce(&mut serde_json::Value)) -> String {
     let mut value = serde_json::json!({
-        "schema": 1,
+        "schema": 2,
         "preferred": ["alpha", "beta.en-tdrz"],
         "sources": [
             {"id": "main", "repo": "owner/repo", "revision": REVISION},
@@ -28,6 +29,10 @@ fn manifest_json(edit: impl FnOnce(&mut serde_json::Value)) -> String {
                 "description": "Beta"
             },
         ],
+        "vad": {
+            "id": "gamma-vad", "source": "extra", "filename": "ggml-gamma-vad.bin",
+            "size_bytes": 30, "sha256": DIGEST_C
+        },
     });
     edit(&mut value);
     value.to_string()
@@ -41,6 +46,7 @@ fn registry_with(edit: impl FnOnce(&mut serde_json::Value)) -> Result<Registry, 
 fn embedded_manifest_parses() -> Result<(), ManifestError> {
     let registry = Registry::embedded()?;
     assert_eq!(registry.models().len(), 34);
+    assert_eq!(registry.vad().id, "silero-v6.2.0");
     assert_eq!(registry.default_model().id, "base");
     Ok(())
 }
@@ -57,8 +63,8 @@ fn embedded_manifest_entries_are_complete() -> Result<(), ManifestError> {
             "duplicate filename {}",
             model.filename
         );
-        assert!(model.size_bytes > 0, "{} has no size", model.id);
-        let hex = model.sha256.to_string();
+        assert!(model.file.size_bytes > 0, "{} has no size", model.id);
+        let hex = model.file.sha256.to_string();
         assert_eq!(hex.len(), 64, "{} digest length", model.id);
         assert!(
             hex.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')),
@@ -66,11 +72,70 @@ fn embedded_manifest_entries_are_complete() -> Result<(), ManifestError> {
             model.id
         );
         assert!(
-            !model.sha256.is_zero(),
+            !model.file.sha256.is_zero(),
             "{} has a placeholder digest",
             model.id
         );
     }
+    Ok(())
+}
+
+#[test]
+fn embedded_voice_activity_model_is_pinned_to_the_published_file() -> Result<(), ManifestError> {
+    let registry = Registry::embedded()?;
+    let vad = registry.vad();
+    assert_eq!(vad.filename, "ggml-silero-v6.2.0.bin");
+    assert_eq!(vad.source.repo, "ggml-org/whisper-vad");
+    assert_eq!(
+        vad.source.revision,
+        "9ffd54a1e1ee413ddf265af9913beaf518d1639b"
+    );
+    assert_eq!(vad.file.size_bytes, 885_098);
+    assert_eq!(vad.file.sha256.to_string(), DIGEST_C);
+    assert_eq!(
+        vad.file.url,
+        "https://huggingface.co/ggml-org/whisper-vad/resolve/9ffd54a1e1ee413ddf265af9913beaf518d1639b/ggml-silero-v6.2.0.bin"
+    );
+    Ok(())
+}
+
+#[test]
+fn embedded_voice_activity_model_is_not_a_whisper_model() -> Result<(), ManifestError> {
+    let registry = Registry::embedded()?;
+    let vad = registry.vad();
+    assert!(registry.models().iter().all(|model| model.id != vad.id));
+    assert!(
+        registry
+            .models()
+            .iter()
+            .all(|model| model.filename != vad.filename)
+    );
+    assert!(
+        registry
+            .groups()
+            .iter()
+            .all(|group| group.models.iter().all(|model| model.id != vad.id))
+    );
+    assert_eq!(
+        registry.get(&vad.id).err().map(|e| e.model_name),
+        Some(vad.id.clone())
+    );
+    Ok(())
+}
+
+#[test]
+fn voice_activity_model_resolves_its_source_and_url() -> Result<(), ManifestError> {
+    let registry = registry_with(|_| {})?;
+    let vad = registry.vad();
+    assert_eq!(vad.id, "gamma-vad");
+    assert_eq!(vad.source.repo, "other/repo");
+    assert_eq!(vad.file.name, "gamma-vad");
+    assert_eq!(vad.file.size_bytes, 30);
+    assert_eq!(
+        vad.file.url,
+        format!("https://huggingface.co/other/repo/resolve/{REVISION}/ggml-gamma-vad.bin")
+    );
+    assert_eq!(registry.models().len(), 2);
     Ok(())
 }
 
@@ -149,11 +214,11 @@ fn groups_partition_models_by_family_in_ascending_order() -> Result<(), Manifest
 
 #[test]
 fn rejects_unsupported_schema() {
-    let result = registry_with(|v| v["schema"] = 2.into());
+    let result = registry_with(|v| v["schema"] = 1.into());
     assert_eq!(
         result.err(),
         Some(ManifestError::UnsupportedSchema {
-            found: 2,
+            found: 1,
             supported: SUPPORTED_SCHEMA
         })
     );
@@ -237,6 +302,79 @@ fn rejects_placeholder_digest() {
             model_id: "alpha".to_owned()
         })
     );
+}
+
+#[test]
+fn rejects_voice_activity_model_from_unknown_source() {
+    let result = registry_with(|v| v["vad"]["source"] = "nowhere".into());
+    assert_eq!(
+        result.err(),
+        Some(ManifestError::UnknownSource {
+            model_id: "gamma-vad".to_owned(),
+            source_id: "nowhere".to_owned()
+        })
+    );
+}
+
+#[test]
+fn rejects_voice_activity_model_without_size_or_digest() {
+    let no_size = registry_with(|v| v["vad"]["size_bytes"] = 0.into());
+    assert_eq!(
+        no_size.err(),
+        Some(ManifestError::ZeroSize {
+            model_id: "gamma-vad".to_owned()
+        })
+    );
+    let zero = "0".repeat(64);
+    let no_digest = registry_with(|v| v["vad"]["sha256"] = zero.into());
+    assert_eq!(
+        no_digest.err(),
+        Some(ManifestError::MissingDigest {
+            model_id: "gamma-vad".to_owned()
+        })
+    );
+}
+
+#[test]
+fn rejects_voice_activity_model_that_collides_with_a_model() {
+    let same_id = registry_with(|v| v["vad"]["id"] = "alpha".into());
+    assert_eq!(
+        same_id.err(),
+        Some(ManifestError::DuplicateModelId {
+            id: "alpha".to_owned()
+        })
+    );
+    let same_file = registry_with(|v| v["vad"]["filename"] = "ggml-alpha.bin".into());
+    assert_eq!(
+        same_file.err(),
+        Some(ManifestError::DuplicateFilename {
+            filename: "ggml-alpha.bin".to_owned()
+        })
+    );
+}
+
+#[test]
+fn rejects_manifest_without_voice_activity_model() {
+    let result = registry_with(|v| {
+        if let Some(object) = v.as_object_mut() {
+            object.remove("vad");
+        }
+    });
+    assert!(matches!(result, Err(ManifestError::Parse { .. })));
+}
+
+#[test]
+fn rejects_malformed_voice_activity_model() {
+    let short = registry_with(|v| v["vad"]["sha256"] = "abcd".into());
+    assert!(matches!(short, Err(ManifestError::Parse { .. })));
+    let extra = registry_with(|v| v["vad"]["family"] = "tiny".into());
+    assert!(matches!(extra, Err(ManifestError::Parse { .. })));
+    let no_file = registry_with(|v| {
+        if let Some(vad) = v["vad"].as_object_mut() {
+            vad.remove("filename");
+        }
+    });
+    assert!(matches!(no_file, Err(ManifestError::Parse { .. })));
 }
 
 #[test]

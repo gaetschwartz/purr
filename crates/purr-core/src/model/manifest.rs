@@ -5,7 +5,7 @@ use crate::model::attributes::{ModelFamily, ModelFeature, ModelLanguage, Quantiz
 use crate::model::digest::Sha256Digest;
 use serde::{Deserialize, Serialize};
 
-pub const SUPPORTED_SCHEMA: u32 = 1;
+pub const SUPPORTED_SCHEMA: u32 = 2;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -15,6 +15,7 @@ pub struct Manifest {
     pub preferred: Vec<String>,
     pub sources: Vec<Source>,
     pub models: Vec<ManifestModel>,
+    pub vad: ManifestVad,
 }
 
 /// A Hugging Face repository pinned to a commit.
@@ -39,6 +40,17 @@ pub struct ManifestModel {
     pub size_bytes: u64,
     pub sha256: Sha256Digest,
     pub description: String,
+}
+
+/// The voice activity model that rides along with the Whisper models.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ManifestVad {
+    pub id: String,
+    pub source: String,
+    pub filename: String,
+    pub size_bytes: u64,
+    pub sha256: Sha256Digest,
 }
 
 impl Source {

@@ -61,7 +61,7 @@ async fn download(manager: &ModelManager, spec: &ModelSpec, force: bool) -> miet
         "Info:".blue().bold(),
         spec.id,
         spec.description,
-        HumanBytes(spec.size_bytes)
+        HumanBytes(spec.file.size_bytes)
     );
 
     let bar_style = ProgressStyle::with_template(DOWNLOAD_BAR_TEMPLATE)
@@ -129,7 +129,7 @@ async fn list_downloaded(manager: &ModelManager, verbosity: Verbosity) -> miette
                 "  {} - {} ({})",
                 spec.id.green(),
                 spec.description.dimmed(),
-                HumanBytes(spec.size_bytes).yellow()
+                HumanBytes(spec.file.size_bytes).yellow()
             ),
             ModelFileStatus::SizeMismatch { expected, actual } => println!(
                 "  {} - {} (has {}, expected {}; download it again)",
@@ -192,7 +192,7 @@ async fn list_available(manager: &ModelManager) -> miette::Result<()> {
                 format!("{:<id_width$}", spec.id).cyan(),
                 spec.language.to_string(),
                 spec.quantization.to_string(),
-                HumanBytes(spec.size_bytes).to_string().yellow(),
+                HumanBytes(spec.file.size_bytes).to_string().yellow(),
             );
             if !notes.is_empty() {
                 write!(line, "  {}", notes.join(", ").dimmed()).into_diagnostic()?;
@@ -259,10 +259,10 @@ async fn info(manager: &ModelManager, spec: &ModelSpec) -> miette::Result<()> {
     println!("Filename: {}", spec.filename.yellow());
     println!(
         "Size: {} ({} bytes)",
-        HumanBytes(spec.size_bytes).to_string().yellow(),
-        spec.size_bytes
+        HumanBytes(spec.file.size_bytes).to_string().yellow(),
+        spec.file.size_bytes
     );
-    println!("SHA-256: {}", spec.sha256);
+    println!("SHA-256: {}", spec.file.sha256);
     println!("Source: {} @ {}", spec.source.repo, spec.source.revision);
     println!("URL: {}", spec.url());
 
@@ -312,7 +312,7 @@ async fn verify(manager: &ModelManager, model: Option<&str>) -> miette::Result<(
         spinner.set_message(format!(
             "Verifying {} ({})",
             spec.id,
-            HumanBytes(spec.size_bytes)
+            HumanBytes(spec.file.size_bytes)
         ));
         spinner.enable_steady_tick(std::time::Duration::from_millis(100));
         let integrity = manager.verify_model(spec).await;

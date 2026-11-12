@@ -5,8 +5,14 @@ use std::sync::Arc;
 
 const REVISION: &str = "5359861c739e955e79d9a303bcbc70fb988958b1";
 
+pub const VAD_FILENAME: &str = "ggml-silero-fixture.bin";
+
 pub fn fixture_bytes() -> Vec<u8> {
     (0..300_000u32).map(|i| (i % 251) as u8).collect()
+}
+
+pub fn vad_fixture_bytes() -> Vec<u8> {
+    (0..50_000u32).map(|i| (i % 241) as u8).collect()
 }
 
 pub fn digest_of(bytes: &[u8]) -> Sha256Digest {
@@ -16,8 +22,9 @@ pub fn digest_of(bytes: &[u8]) -> Sha256Digest {
 }
 
 pub fn fixture_registry(bytes: &[u8]) -> Result<Arc<Registry>, Box<dyn Error>> {
+    let vad = vad_fixture_bytes();
     let json = serde_json::json!({
-        "schema": 1,
+        "schema": 2,
         "preferred": ["fixture"],
         "sources": [{"id": "main", "repo": "owner/repo", "revision": REVISION}],
         "models": [{
@@ -26,6 +33,10 @@ pub fn fixture_registry(bytes: &[u8]) -> Result<Arc<Registry>, Box<dyn Error>> {
             "features": [], "size_bytes": bytes.len(), "sha256": digest_of(bytes).to_string(),
             "description": "Fixture"
         }],
+        "vad": {
+            "id": "vad-fixture", "source": "main", "filename": VAD_FILENAME,
+            "size_bytes": vad.len(), "sha256": digest_of(&vad).to_string()
+        },
     });
     Ok(Arc::new(Registry::from_json(&json.to_string())?))
 }

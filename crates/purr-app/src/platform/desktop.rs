@@ -161,7 +161,7 @@ impl Platform for DesktopPlatformImpl {
         Ok(transcription_stream(
             audio_path,
             config,
-            model.size_bytes,
+            model.file.size_bytes,
             Arc::clone(&self.last_run),
         ))
     }
@@ -789,7 +789,7 @@ fn model_info(manager: &ModelManager, model: &ModelSpec, is_installed: bool) -> 
         model.id.clone(),
         model.id.clone(),
         model.description.clone(),
-        model.size_bytes,
+        model.file.size_bytes,
         is_installed,
         model_metadata(model),
     );
@@ -810,11 +810,11 @@ fn model_metadata(model: &ModelSpec) -> ModelMetadata {
         language_support.to_owned(),
         "v1".to_owned(),
     )
-    .with_download_url(model.url())
+    .with_download_url(model.url().to_owned())
     .with_quantization(model.quantization.to_string());
     metadata
         .platform_specific
-        .insert("sha256".to_owned(), model.sha256.to_string());
+        .insert("sha256".to_owned(), model.file.sha256.to_string());
     metadata
         .platform_specific
         .insert("family".to_owned(), model.family.to_string());

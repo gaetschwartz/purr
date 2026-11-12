@@ -1,4 +1,5 @@
-//! Refreshes `size_bytes` and `sha256` in `models/manifest.json` from the Hugging Face tree API.
+//! Refreshes `size_bytes` and `sha256` of the models and the voice activity model in
+//! `models/manifest.json` from the Hugging Face tree API.
 //!
 //! Usage: `cargo run -p purr-core --example update_manifest -- [--bump] [MANIFEST_PATH]`
 //!
@@ -115,6 +116,39 @@ async fn fetch_tree(
         .collect())
 }
 
+/// Sets `size_bytes` and `sha256` from the tree entry of `filename`; true when either changed.
+fn refresh(
+    tree: &HashMap<String, TreeEntry>,
+    source: &Source,
+    id: &str,
+    filename: &str,
+    size_bytes: &mut u64,
+    sha256: &mut Sha256Digest,
+) -> miette::Result<bool> {
+    let entry = tree
+        .get(filename)
+        .ok_or_else(|| miette!("{filename} is not in {}@{}", source.repo, source.revision))?;
+    let lfs = entry
+        .lfs
+        .as_ref()
+        .ok_or_else(|| miette!("{filename} is not an LFS file"))?;
+    if lfs.size != entry.size {
+        return Err(miette!(
+            "{filename}: LFS size {} differs from file size {}",
+            lfs.size,
+            entry.size
+        ));
+    }
+    let digest: Sha256Digest = lfs.oid.parse().into_diagnostic()?;
+    let changed = *size_bytes != lfs.size || *sha256 != digest;
+    if changed {
+        println!("{id}: size {} sha256 {digest}", lfs.size);
+    }
+    *size_bytes = lfs.size;
+    *sha256 = digest;
+    Ok(changed)
+}
+
 #[tokio::main]
 async fn main() -> miette::Result<()> {
     let args = Args::parse()?;
@@ -144,34 +178,28 @@ async fn main() -> miette::Result<()> {
             .iter_mut()
             .filter(|model| model.source == source.id)
         {
-            let entry = tree.get(&model.filename).ok_or_else(|| {
-                miette!(
-                    "{} is not in {}@{}",
-                    model.filename,
-                    source.repo,
-                    source.revision
-                )
-            })?;
-            let lfs = entry
-                .lfs
-                .as_ref()
-                .ok_or_else(|| miette!("{} is not an LFS file", model.filename))?;
-            if lfs.size != entry.size {
-                return Err(miette!(
-                    "{}: LFS size {} differs from file size {}",
-                    model.filename,
-                    lfs.size,
-                    entry.size
-                ));
-            }
-            let digest: Sha256Digest = lfs.oid.parse().into_diagnostic()?;
-            if model.size_bytes != lfs.size || model.sha256 != digest {
-                println!("{}: size {} sha256 {digest}", model.id, lfs.size);
-                changed += 1;
-            }
-            model.size_bytes = lfs.size;
-            model.sha256 = digest;
+            changed += usize::from(refresh(
+                &tree,
+                source,
+                &model.id,
+                &model.filename,
+                &mut model.size_bytes,
+                &mut model.sha256,
+            )?);
             listed.insert(model.filename.clone());
+        }
+
+        let vad = &mut manifest.vad;
+        if vad.source == source.id {
+            changed += usize::from(refresh(
+                &tree,
+                source,
+                &vad.id,
+                &vad.filename,
+                &mut vad.size_bytes,
+                &mut vad.sha256,
+            )?);
+            listed.insert(vad.filename.clone());
         }
 
         let mut unlisted: Vec<&str> = tree
@@ -196,7 +224,7 @@ async fn main() -> miette::Result<()> {
         .into_diagnostic()
         .wrap_err_with(|| format!("writing {}", args.manifest_path.display()))?;
     println!(
-        "{} models changed in {}",
+        "{} pinned files changed in {}",
         changed,
         args.manifest_path.display()
     );

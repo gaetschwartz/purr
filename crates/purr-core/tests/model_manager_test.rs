@@ -1,10 +1,13 @@
-use purr_core::ModelManager;
+use purr_core::error::ConfigurationError;
 use purr_core::model::status::{ModelFileStatus, ModelIntegrity};
+use purr_core::model::vad_or_none;
+use purr_core::{ModelManager, WhisperError};
 use std::error::Error;
+use std::path::PathBuf;
 use tempfile::TempDir;
 
 mod common;
-use common::{digest_of, fixture_bytes, fixture_registry};
+use common::{VAD_FILENAME, digest_of, fixture_bytes, fixture_registry, vad_fixture_bytes};
 
 struct Fixture {
     _dir: TempDir,
@@ -153,4 +156,102 @@ async fn unknown_model_id_is_a_typed_error() -> Result<(), Box<dyn Error>> {
         }) if unknown.model_name == "nonexistent"
     ));
     Ok(())
+}
+
+#[tokio::test]
+async fn absent_voice_activity_model_has_no_path() -> Result<(), Box<dyn Error>> {
+    let fx = fixture()?;
+
+    assert_eq!(fx.manager.vad_model_path().await?, None);
+    assert_eq!(
+        fx.manager.get_vad_path(),
+        fx.manager.models_dir().join(VAD_FILENAME)
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn voice_activity_model_has_a_path_only_when_it_verifies() -> Result<(), Box<dyn Error>> {
+    let fx = fixture()?;
+    let path = fx.manager.get_vad_path();
+    let content = vad_fixture_bytes();
+
+    std::fs::write(&path, &content[..content.len() - 1])?;
+    assert_eq!(fx.manager.vad_model_path().await?, None);
+
+    let mut corrupt = content.clone();
+    if let Some(byte) = corrupt.last_mut() {
+        *byte ^= 0xFF;
+    }
+    std::fs::write(&path, &corrupt)?;
+    assert_eq!(fx.manager.vad_model_path().await?, None);
+
+    std::fs::write(&path, &content)?;
+    assert_eq!(fx.manager.vad_model_path().await?, Some(path.clone()));
+    assert_eq!(fx.manager.ensure_vad_model(None).await?, path);
+    Ok(())
+}
+
+#[tokio::test]
+async fn the_voice_activity_model_is_not_one_of_the_models() -> Result<(), Box<dyn Error>> {
+    let fx = fixture()?;
+    std::fs::write(fx.manager.get_vad_path(), vad_fixture_bytes())?;
+
+    assert_eq!(
+        fx.manager.vad_model_path().await?,
+        Some(fx.manager.get_vad_path())
+    );
+    assert_eq!(downloaded_ids(&fx.manager).await?, Vec::<String>::new());
+    let local = fx.manager.local_models().await?;
+    assert_eq!(
+        local
+            .iter()
+            .map(|(model, _)| model.id.as_str())
+            .collect::<Vec<_>>(),
+        Vec::<&str>::new()
+    );
+    assert_eq!(fx.manager.find_first_available_model().await?, None);
+    let listed: Vec<&str> = fx
+        .manager
+        .registry()
+        .models()
+        .iter()
+        .map(|model| model.id.as_str())
+        .collect();
+    assert_eq!(listed, ["fixture"]);
+    let grouped: Vec<&str> = fx
+        .manager
+        .registry()
+        .groups()
+        .iter()
+        .flat_map(|group| group.models.iter().map(|model| model.id.as_str()))
+        .collect();
+    assert_eq!(grouped, ["fixture"]);
+    Ok(())
+}
+
+#[tokio::test]
+async fn deleting_a_model_leaves_the_voice_activity_model() -> Result<(), Box<dyn Error>> {
+    let fx = fixture()?;
+    let model = fx.manager.model("fixture")?;
+    std::fs::write(fx.manager.get_model_path(model), &fx.content)?;
+    std::fs::write(fx.manager.get_vad_path(), vad_fixture_bytes())?;
+
+    fx.manager.delete_model(model).await?;
+
+    assert_eq!(
+        fx.manager.vad_model_path().await?,
+        Some(fx.manager.get_vad_path())
+    );
+    Ok(())
+}
+
+#[test]
+fn a_voice_activity_failure_is_not_a_transcription_failure() {
+    let path = PathBuf::from("ggml-silero.bin");
+    let failure = WhisperError::from(ConfigurationError::NoModelFound);
+
+    assert_eq!(vad_or_none(Ok(Some(path.clone()))), Some(path));
+    assert_eq!(vad_or_none(Ok(None)), None);
+    assert_eq!(vad_or_none(Err(failure)), None);
 }

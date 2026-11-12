@@ -4,11 +4,13 @@ pub mod attributes;
 pub mod digest;
 pub mod download;
 pub mod manifest;
+pub mod pinned;
 pub mod registry;
 pub mod status;
 
 use crate::error::{ConfigurationError, Result, WhisperError};
 use crate::model::digest::Sha256Hasher;
+use crate::model::pinned::PinnedFile;
 use crate::model::registry::{ModelSpec, Registry};
 use crate::model::status::{ModelFileStatus, ModelIntegrity};
 use directories::ProjectDirs;
@@ -17,7 +19,7 @@ use std::io::{self, BufReader};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::fs;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 const HASH_BUFFER_BYTES: usize = 1 << 20;
 
@@ -83,15 +85,7 @@ impl ModelManager {
 
     /// Compare the model file on disk against the manifest size
     pub async fn file_status(&self, model: &ModelSpec) -> Result<ModelFileStatus> {
-        match fs::metadata(self.get_model_path(model)).await {
-            Ok(metadata) if metadata.len() == model.size_bytes => Ok(ModelFileStatus::Present),
-            Ok(metadata) => Ok(ModelFileStatus::SizeMismatch {
-                expected: model.size_bytes,
-                actual: metadata.len(),
-            }),
-            Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(ModelFileStatus::Missing),
-            Err(err) => Err(err.into()),
-        }
+        status_of(&self.get_model_path(model), &model.file).await
     }
 
     /// Check if a model is downloaded and has the size recorded in the manifest
@@ -104,23 +98,39 @@ impl ModelManager {
 
     /// Hash the model file on disk and compare it against the manifest
     pub async fn verify_model(&self, model: &ModelSpec) -> Result<ModelIntegrity> {
-        match self.file_status(model).await? {
-            ModelFileStatus::Missing => Ok(ModelIntegrity::Missing),
-            ModelFileStatus::SizeMismatch { expected, actual } => {
-                Ok(ModelIntegrity::SizeMismatch { expected, actual })
-            }
-            ModelFileStatus::Present => {
-                let actual = hash_file(self.get_model_path(model)).await?;
-                Ok(if actual == model.sha256 {
-                    ModelIntegrity::Verified
-                } else {
-                    ModelIntegrity::ChecksumMismatch {
-                        expected: model.sha256,
-                        actual,
-                    }
-                })
-            }
+        integrity_of(&self.get_model_path(model), &model.file).await
+    }
+
+    /// Where the voice activity model lives, whether or not it is there yet
+    #[must_use]
+    pub fn get_vad_path(&self) -> PathBuf {
+        self.models_dir.join(&self.registry.vad().filename)
+    }
+
+    /// The voice activity model file, only when it is on disk and matches the manifest
+    pub async fn vad_model_path(&self) -> Result<Option<PathBuf>> {
+        let path = self.get_vad_path();
+        Ok(
+            match integrity_of(&path, &self.registry.vad().file).await? {
+                ModelIntegrity::Verified => Some(path),
+                ModelIntegrity::Missing
+                | ModelIntegrity::SizeMismatch { .. }
+                | ModelIntegrity::ChecksumMismatch { .. } => None,
+            },
+        )
+    }
+
+    /// Make sure the voice activity model is on disk and verified, downloading it if it is not
+    pub async fn ensure_vad_model(&self, token: Option<&HuggingFaceToken>) -> Result<PathBuf> {
+        if let Some(path) = self.vad_model_path().await? {
+            return Ok(path);
         }
+        self.ensure_models_dir().await?;
+        let path = self.get_vad_path();
+        let vad = self.registry.vad();
+        debug!("Downloading voice activity model {} to {:?}", vad.id, path);
+        download::download_verified(&vad.file, token, &path, |_, _| {}).await?;
+        Ok(path)
     }
 
     /// Find the first available model (for auto-selection)
@@ -162,8 +172,7 @@ impl ModelManager {
         let model_path = self.get_model_path(model);
         debug!("Downloading model {} to {:?}", model.id, model_path);
 
-        download::download_verified(model, &model.url(), token, &model_path, progress_callback)
-            .await?;
+        download::download_verified(&model.file, token, &model_path, progress_callback).await?;
 
         debug!(
             "Successfully downloaded model {} to {:?}",
@@ -238,6 +247,52 @@ impl ModelManager {
         }
 
         Err(WhisperError::from(ConfigurationError::NoModelFound))
+    }
+}
+
+/// The voice activity model path, or `None` after logging why there is none.
+///
+/// The model only sharpens a transcription, so a failure to find or fetch it never fails one.
+#[must_use]
+pub fn vad_or_none(result: Result<Option<PathBuf>>) -> Option<PathBuf> {
+    match result {
+        Ok(path) => path,
+        Err(error) => {
+            warn!("Continuing without the voice activity model: {error}");
+            None
+        }
+    }
+}
+
+async fn status_of(path: &Path, file: &PinnedFile) -> Result<ModelFileStatus> {
+    match fs::metadata(path).await {
+        Ok(metadata) if metadata.len() == file.size_bytes => Ok(ModelFileStatus::Present),
+        Ok(metadata) => Ok(ModelFileStatus::SizeMismatch {
+            expected: file.size_bytes,
+            actual: metadata.len(),
+        }),
+        Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(ModelFileStatus::Missing),
+        Err(err) => Err(err.into()),
+    }
+}
+
+async fn integrity_of(path: &Path, file: &PinnedFile) -> Result<ModelIntegrity> {
+    match status_of(path, file).await? {
+        ModelFileStatus::Missing => Ok(ModelIntegrity::Missing),
+        ModelFileStatus::SizeMismatch { expected, actual } => {
+            Ok(ModelIntegrity::SizeMismatch { expected, actual })
+        }
+        ModelFileStatus::Present => {
+            let actual = hash_file(path.to_path_buf()).await?;
+            Ok(if actual == file.sha256 {
+                ModelIntegrity::Verified
+            } else {
+                ModelIntegrity::ChecksumMismatch {
+                    expected: file.sha256,
+                    actual,
+                }
+            })
+        }
     }
 }
 
