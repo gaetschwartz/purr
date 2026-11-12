@@ -20,7 +20,7 @@ use crate::{
         live_rows::{Row, rows},
         playback::segment_at,
         reading::{SEGMENTS_PER_PARAGRAPH, paragraphs},
-        row_text::word_spans,
+        row_text::{needed_words, word_spans},
         search::{self, Match, find_all},
         timing,
         unsure::unsure_words,
@@ -249,7 +249,11 @@ pub fn TranscriptCard(
                                                 MarkedText {
                                                     key: "{index}",
                                                     text: segment.text.trim().to_owned(),
-                                                    words: word_spans(&segment.text, &segment.words),
+                                                    words: needed_words(
+                                                        word_spans(&segment.text, &segment.words),
+                                                        &unsure_of(index),
+                                                        false,
+                                                    ),
                                                     unsure: unsure_of(index),
                                                     matches: ranges_of(&matches, index),
                                                     current: has_query.then_some(active),

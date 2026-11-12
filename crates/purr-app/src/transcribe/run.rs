@@ -192,8 +192,8 @@ impl Run {
 
     /// The seconds of `audio_seconds` transcribed so far, for the progress fill and the time left.
     ///
-    /// The platform's progress frames lead; the end of the latest segment stands in until the
-    /// platform sends one, as the browser never does.
+    /// The platform's progress frames lead; the end of the latest segment stands in until one
+    /// arrives.
     #[must_use]
     pub fn progress_seconds(&self, audio_seconds: f64) -> f64 {
         if let RunOutcome::Completed(_) = self.outcome {

@@ -31,24 +31,28 @@ pub fn MarkedText(
                     (false, true) => Some("unsure"),
                     (false, false) => None,
                 };
-                rsx! {
-                    span {
-                        key: "{position}",
-                        class,
-                        onclick: move |_| {
-                            if let Some((player, start)) = target {
-                                player.play_from(start);
-                            }
-                        },
-                        if let Some(index) = piece.found {
-                            mark { class: if current == Some(index) { "cur" }, "{piece.text}" }
-                        } else {
-                            "{piece.text}"
-                        }
-                        if label {
-                            span { class: "sr", " (unsure)" }
-                        }
+                let inner = rsx! {
+                    if let Some(index) = piece.found {
+                        mark { class: if current == Some(index) { "cur" }, "{piece.text}" }
+                    } else {
+                        "{piece.text}"
                     }
+                    if label {
+                        span { class: "sr", " (unsure)" }
+                    }
+                };
+                match target {
+                    Some((player, start)) => rsx! {
+                        span {
+                            key: "{position}",
+                            class,
+                            onclick: move |_| player.play_from(start),
+                            {inner}
+                        }
+                    },
+                    None => rsx! {
+                        span { key: "{position}", class, {inner} }
+                    },
                 }
             }
         }

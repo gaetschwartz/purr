@@ -43,6 +43,19 @@ pub fn word_spans(text: &str, words: &[Word]) -> Vec<WordSpan> {
     spans
 }
 
+/// The words a row must cut its text at: all of them to play from a word, else only the unsure ones.
+#[must_use]
+pub fn needed_words(spans: Vec<WordSpan>, unsure: &[usize], seeking: bool) -> Vec<WordSpan> {
+    if seeking {
+        spans
+    } else {
+        spans
+            .into_iter()
+            .filter(|span| unsure.contains(&span.index))
+            .collect()
+    }
+}
+
 /// What a piece belongs to when it lies inside a word.
 #[derive(Debug, Clone, PartialEq)]
 pub struct WordInfo {
@@ -190,6 +203,23 @@ mod tests {
             spans.iter().map(|span| span.index).collect::<Vec<_>>(),
             vec![0]
         );
+    }
+
+    #[test]
+    fn a_row_keeps_every_word_to_play_from_one_and_otherwise_only_the_unsure_ones() {
+        let spans = word_spans(
+            "abc def ghi",
+            &[word(0, 3, None), word(4, 7, None), word(8, 11, None)],
+        );
+        assert_eq!(needed_words(spans.clone(), &[1], true), spans);
+        assert_eq!(
+            needed_words(spans.clone(), &[1], false)
+                .iter()
+                .map(|span| span.index)
+                .collect::<Vec<_>>(),
+            vec![1]
+        );
+        assert_eq!(needed_words(spans, &[], false), Vec::<WordSpan>::new());
     }
 
     #[test]

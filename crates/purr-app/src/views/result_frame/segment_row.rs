@@ -1,7 +1,10 @@
 use super::marked_text::MarkedText;
 use crate::{
     components::audio_player::PlayerHandle,
-    transcribe::{row_text::word_spans, timing},
+    transcribe::{
+        row_text::{needed_words, word_spans},
+        timing,
+    },
 };
 use dioxus::prelude::*;
 use purr_common::platform::TranscriptSegment;
@@ -24,8 +27,9 @@ pub fn SegmentRow(
 ) -> Element {
     let start = segment.start_time;
     let clock = timing::clock(start);
-    let words = word_spans(&segment.text, &segment.words);
-    let by_word = word_seek && words.iter().any(|word| word.start.is_some());
+    let spans = word_spans(&segment.text, &segment.words);
+    let by_word = word_seek && player.is_some() && spans.iter().any(|word| word.start.is_some());
+    let words = needed_words(spans, &unsure, by_word);
     let line = |seek: Option<PlayerHandle>| {
         rsx! {
             span { class: if seek.is_some() { "tx words" } else { "tx" }, dir: "auto",
