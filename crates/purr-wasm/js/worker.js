@@ -5,6 +5,9 @@ import { emit, emitFailure, FailureKind, WorkerFailure } from "./events.js";
 import { probeGpu } from "./gpu.js";
 import { asProviderFailure, configureRuntime, loadTranscriber, Provider } from "./model_loader.js";
 import { transcribe } from "./transcriber.js";
+import { keepWebGpuPolled } from "./webgpu_polling.js";
+
+keepWebGpuPolled();
 
 let queue = Promise.resolve();
 
