@@ -6,17 +6,21 @@ and how a package should provide it.
 
 ## What the Windows binaries import
 
-Audited with `dumpbin /dependents` on the release `purr.exe` (`cuda,vulkan`):
+What `dumpbin /dependents` reports for the release `purr.exe` (`cuda,vulkan`), as enforced by
+`scripts/check-windows-imports.ps1`:
 
-- Hard imports: Windows system DLLs and the Visual C++ runtime (`MSVCP140.dll`,
-  `VCRUNTIME140.dll`, `VCRUNTIME140_1.dll`). The latter three come from the Microsoft Visual C++
-  Redistributable, which neither the zip nor the installer ships.
+- Hard imports: Windows system DLLs only, including the Universal CRT api-set DLLs of Windows 10
+  and 11. The C and C++ runtime is linked statically (`crt-static` in `.cargo/config.toml`, the
+  `x64-windows-static` vcpkg triplet for FFmpeg, `CMAKE_MSVC_RUNTIME_LIBRARY` for ggml), so the
+  Visual C++ Redistributable (`VCRUNTIME140*.dll`, `MSVCP140*.dll`) is not needed. The cuBLAS
+  libraries only import `KERNEL32.dll`.
 - Delay-loaded: `cublas64_13.dll` and `vulkan-1.dll`. `cublasLt64_13.dll` is pulled in by cuBLAS.
 - Not imported: `nvcuda.dll` (the static CUDA runtime opens the driver itself on first use) and
   `cudart64_13.dll` (linked statically).
 
 `scripts/check-windows-imports.ps1` keeps the hard-import list free of the NVIDIA and Vulkan
-libraries and `scripts/check-windows-sys.ps1` runs `purr sys` without them.
+libraries and of the Visual C++ runtime, and `scripts/check-windows-sys.ps1` runs `purr sys`
+without them.
 
 ## Search order
 
@@ -54,8 +58,8 @@ leave those DLLs out and the pack is the only place they ship.
 ## What packages should do
 
 - NSIS installer: unpack the pack into `$LOCALAPPDATA\purr\runtime` (an optional component or a
-  download step), and install the Visual C++ Redistributable or require it.
+  download step).
 - Scoop: a `purr-cuda-runtime` package that extracts the pack into `$persist_dir\runtime`, and a
-  `env_set` of `PURR_RUNTIME_DIR` to that folder; `purr` depends on `vcredist2022`.
+  `env_set` of `PURR_RUNTIME_DIR` to that folder.
 - Homebrew and macOS: nothing, Metal is part of the system.
 - Debian package: keeps shipping the CUDA runtime under `/usr/lib/purr-desktop`.
