@@ -19,6 +19,7 @@ use purr_common::accel::AccelPolicy;
 use purr_common::accel::SystemReport;
 use purr_common::adapter_name::{AdapterStrings, adapter_name};
 use purr_common::audio_overview::{AudioOverview, peaks};
+use purr_common::browser_engine::{CpuReason, EnginePlan};
 use purr_common::history::{
     entry::{HistoryEntry, HistoryId, HistoryRecord},
     listing::{HistoryListing, Saved},
@@ -260,12 +261,19 @@ async fn run_transcription(
             send_status(&tx, status);
         }
     };
-    let mut choice = tokio::select! {
+    let choice = tokio::select! {
         () = tx.closed() => {
             tracing::info!("Transcription stream dropped while choosing the engine; cancelling");
             return;
         }
         choice = engine_choice::choose(&worker, &spec, policy, CheckMode::Run, hugging_face_token.as_ref(), &mut forward) => choice,
+    };
+    let mut choice = match choice {
+        Ok(choice) => choice,
+        Err(reason) => {
+            send_status(&tx, cannot_run(reason));
+            return;
+        }
     };
     let samples = decoded.samples;
     loop {
@@ -316,6 +324,7 @@ async fn run_transcription(
                         if *kind == FailureKind::WebGpuFailed {
                             choice.remember_gpu_failure();
                         }
+                        worker.release_idle();
                         break cpu;
                     }
                     if let Some(status) = mapper.map(event) && !send_status(&tx, status) {
@@ -325,6 +334,15 @@ async fn run_transcription(
             }
         };
         choice = fallback;
+    }
+}
+
+/// The failure of a run whose model only runs on WebGPU when the CPU would have to take it.
+fn cannot_run(reason: CpuReason) -> TranscriptionStatus {
+    TranscriptionStatus::InitFailed {
+        component: "WebGPU".to_owned(),
+        reason: reason.gpu_only_refusal().to_owned(),
+        error_details: Some("Choose a smaller model; it can run on the CPU.".to_owned()),
     }
 }
 
@@ -408,9 +426,25 @@ async fn run_preload(
     };
 
     let mut ignore = |_: WorkerEvent| {};
-    let mut choice = tokio::select! {
+    let chosen = tokio::select! {
         () = tx.closed() => return,
         choice = engine_choice::choose(&worker, &spec, AccelPolicy::Auto, CheckMode::Skip, hugging_face_token.as_ref(), &mut ignore) => choice,
+    };
+    let mut choice = match chosen {
+        Ok(choice) => choice,
+        Err(reason) => {
+            if tx
+                .send(Ok(fail(
+                    "download",
+                    reason.gpu_only_refusal().to_owned(),
+                    ModelFailureKind::Other,
+                )))
+                .is_err()
+            {
+                tracing::warn!("Preload of {model_id} failed after its listener left");
+            }
+            return;
+        }
     };
     let mut events = match worker.submit(
         load_request(&worker, &spec, &choice, hugging_face_token.as_ref()),
@@ -440,6 +474,7 @@ async fn run_preload(
                 {
                     tracing::warn!("WebGPU could not load {model_id}, loading it for the CPU: {message}");
                     choice = cpu;
+                    worker.release_idle();
                     match worker.submit(load_request(&worker, &spec, &choice, hugging_face_token.as_ref()), None) {
                         Ok(retry) => {
                             events = retry;
@@ -746,6 +781,15 @@ impl Platform for WasmPlatformImpl {
 
     async fn system_report(&self) -> Result<SystemReport, PlatformError> {
         Err(PlatformError::unsupported("a system report in the browser"))
+    }
+
+    async fn plan_browser_engine(
+        &self,
+        model_id: &str,
+        accel: AccelPolicy,
+    ) -> Result<EnginePlan, PlatformError> {
+        let spec = self.model_manager.model(model_id)?.clone();
+        Ok(engine_choice::preview(&self.worker, &spec, accel).await)
     }
 
     async fn load_settings(&self) -> Result<Settings, PlatformError> {

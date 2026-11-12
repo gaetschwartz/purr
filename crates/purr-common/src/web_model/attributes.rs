@@ -119,6 +119,22 @@ impl OnnxDtype {
         }
     }
 
+    /// Whether the WebAssembly CPU runtime can load this dtype. Half-precision weights are widened
+    /// to 32 bits there, which does not fit WebAssembly memory for the large encoders that use them.
+    #[must_use]
+    pub const fn runs_on_cpu(self) -> bool {
+        match self {
+            Self::Fp16 => false,
+            Self::Fp32
+            | Self::Q8
+            | Self::Int8
+            | Self::Uint8
+            | Self::Q4
+            | Self::Bnb4
+            | Self::Q4F16 => true,
+        }
+    }
+
     /// Whether running this dtype on WebGPU needs the `shader-f16` adapter feature.
     #[must_use]
     pub const fn requires_shader_f16(self) -> bool {

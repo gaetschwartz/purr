@@ -25,6 +25,10 @@ pub fn model_info(spec: &WebModelSpec, is_installed: bool) -> ModelInfo {
         spec.requires_shader_f16().to_string(),
     )
     .with_platform_attribute(
+        model_flag::WEBGPU_ONLY.to_owned(),
+        (!spec.runs_on_cpu()).to_string(),
+    )
+    .with_platform_attribute(
         model_flag::ENGLISH_ONLY.to_owned(),
         spec.english_only().to_string(),
     )

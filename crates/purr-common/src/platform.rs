@@ -17,7 +17,7 @@ use std::{
 use crate::{
     accel::{AccelPolicy, LastRun, SystemReport},
     audio_overview::AudioOverview,
-    browser_engine::BrowserEngine,
+    browser_engine::{BrowserEngine, EnginePlan},
     history::{
         entry::{HistoryEntry, HistoryId, HistoryRecord},
         listing::{HistoryListing, Saved},
@@ -600,6 +600,8 @@ impl ModelInfo {
 pub mod model_flag {
     /// The model needs the WebGPU `shader-f16` feature.
     pub const REQUIRES_SHADER_F16: &str = "requires_shader_f16";
+    /// The browser can only run the model on WebGPU, not on the CPU.
+    pub const WEBGPU_ONLY: &str = "webgpu_only";
     /// The model only transcribes English.
     pub const ENGLISH_ONLY: &str = "english_only";
     /// The model marks where the speaker changes.
@@ -1066,6 +1068,18 @@ pub trait Platform: Send + Sync + 'static {
     fn system_report(
         &self,
     ) -> impl std::future::Future<Output = Result<SystemReport, PlatformError>> + Send;
+
+    /// Where the next run of `model_id` under `accel` would go, from the browser's adapter and
+    /// the stored GPU check, without running the check
+    ///
+    /// # Platform Differences
+    /// - **Desktop**: Unsupported; see [`Self::system_report`]
+    /// - **Web**: Looks for the WebGPU adapter in the transcription worker
+    fn plan_browser_engine(
+        &self,
+        model_id: &str,
+        accel: AccelPolicy,
+    ) -> impl std::future::Future<Output = Result<EnginePlan, PlatformError>> + Send;
 
     // ========================================
     // Settings Persistence Operations

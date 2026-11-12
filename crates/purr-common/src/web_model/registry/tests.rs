@@ -486,6 +486,19 @@ fn only_the_embedded_turbo_models_require_shader_f16() -> Result<(), WebManifest
 }
 
 #[test]
+fn only_the_embedded_half_precision_turbo_cannot_run_on_the_cpu() -> Result<(), WebManifestError> {
+    let registry = WebModelRegistry::embedded()?;
+    let gpu_only: Vec<&str> = registry
+        .models()
+        .iter()
+        .filter(|model| !model.runs_on_cpu())
+        .map(|model| model.id.as_str())
+        .collect();
+    assert_eq!(gpu_only, ["large-v3-turbo"]);
+    Ok(())
+}
+
+#[test]
 fn embedded_quantized_variants_are_smaller_than_the_default_of_their_family()
 -> Result<(), WebManifestError> {
     let registry = WebModelRegistry::embedded()?;

@@ -76,6 +76,11 @@ impl WebModelSpec {
         self.encoder_dtype.requires_shader_f16() || self.decoder_dtype.requires_shader_f16()
     }
 
+    #[must_use]
+    pub const fn runs_on_cpu(&self) -> bool {
+        self.encoder_dtype.runs_on_cpu() && self.decoder_dtype.runs_on_cpu()
+    }
+
     /// Files of this model that none of the `kept` models loads, so evicting them leaves every
     /// kept model whole.
     #[must_use]

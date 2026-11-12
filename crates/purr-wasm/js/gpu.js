@@ -33,7 +33,7 @@ export async function probeGpu() {
         runtime: env.backends.onnx.versions ?? null,
         transformers: env.version,
     });
-    return { fingerprint };
+    return { fingerprint, shader_f16: adapter.features.has("shader-f16") };
 }
 
 export async function requireWebGpu(model) {

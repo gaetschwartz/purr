@@ -433,7 +433,7 @@ mod tests {
         let probed = parse(&json!({
             "type": "GpuProbed",
             "request_id": 4,
-            "probe": {"fingerprint": "{\"vendor\":\"\"}"},
+            "probe": {"fingerprint": "{\"vendor\":\"\"}", "shader_f16": true},
         }))?;
         assert_eq!(
             probed,
@@ -441,6 +441,7 @@ mod tests {
                 request_id: RequestId::new(4),
                 probe: Some(GpuProbe {
                     fingerprint: "{\"vendor\":\"\"}".to_owned(),
+                    shader_f16: true,
                 }),
             }
         );

@@ -1,12 +1,12 @@
 //! Picks the execution provider for a model in this browser, running the GPU check when no
 //! recent verdict covers the adapter, browser, runtime and model.
 
-use crate::gpu_check::{self, CanaryVerdict, CheckRecord, GpuProbe, Plan, Signature};
+use crate::gpu_check::{self, CanaryVerdict, CheckRecord, GpuProbe, ModelNeeds, Signature};
 use crate::protocol::{FailureKind, Provider, WorkerEvent, WorkerModel, WorkerRequest};
 use crate::worker_client::WorkerClient;
 use futures::StreamExt as _;
-use purr_common::accel::AccelPolicy;
-use purr_common::browser_engine::{BrowserEngine, CpuReason};
+use purr_common::accel::{AccelBackend, AccelPolicy};
+use purr_common::browser_engine::{BrowserEngine, CpuReason, EnginePlan};
 use purr_common::hugging_face_token::HuggingFaceToken;
 use purr_common::web_model::registry::WebModelSpec;
 use std::collections::HashMap;
@@ -59,9 +59,9 @@ impl Choice {
 pub const fn gpu_failure_reason(kind: FailureKind) -> Option<CpuReason> {
     match kind {
         FailureKind::WebGpuUnavailable => Some(CpuReason::NoWebGpu),
+        FailureKind::ShaderF16Unavailable => Some(CpuReason::NoShaderF16),
         FailureKind::WebGpuFailed => Some(CpuReason::WebGpuFailed),
-        FailureKind::ShaderF16Unavailable
-        | FailureKind::ModelLoad
+        FailureKind::ModelLoad
         | FailureKind::Inference
         | FailureKind::Protocol
         | FailureKind::WorkerCrashed
@@ -218,27 +218,36 @@ const fn cpu(reason: CpuReason) -> Choice {
     }
 }
 
-/// Where `spec` runs under `policy`. With [`CheckMode::Run`] a missing or stale verdict is
-/// settled by transcribing the check recording, downloading the model with `hugging_face_token`;
-/// the download and load events go to `on_event`.
-pub async fn choose(
+fn needs(spec: &WebModelSpec) -> ModelNeeds<'_> {
+    ModelNeeds {
+        id: &spec.id,
+        shader_f16: spec.requires_shader_f16(),
+        runs_on_cpu: spec.runs_on_cpu(),
+    }
+}
+
+/// The plan for `spec` under `policy`, and the signature its GPU verdict is kept under.
+async fn plan(
     worker: &WorkerClient,
     spec: &WebModelSpec,
     policy: AccelPolicy,
-    mode: CheckMode,
-    hugging_face_token: Option<&HuggingFaceToken>,
-    on_event: &mut impl FnMut(WorkerEvent),
-) -> Choice {
+) -> (EnginePlan, Option<Signature>) {
     let probe = match policy {
         AccelPolicy::Forced {
-            backend: purr_common::accel::AccelBackend::Cpu,
+            backend: AccelBackend::Cpu,
             ..
         } => None,
         AccelPolicy::Auto | AccelPolicy::Forced { .. } => match probe(worker).await {
             Ok(probe) => probe,
             Err(error) => {
                 tracing::warn!("Could not look for a WebGPU adapter: {error}");
-                return cpu(CpuReason::WebGpuFailed);
+                let reason = CpuReason::WebGpuFailed;
+                let planned = if spec.runs_on_cpu() {
+                    EnginePlan::Cpu(reason)
+                } else {
+                    EnginePlan::CannotRun(reason)
+                };
+                return (planned, None);
             }
         },
     };
@@ -247,33 +256,66 @@ pub async fn choose(
     let planned = gpu_check::plan(
         policy,
         probe.as_ref(),
-        &spec.id,
-        spec.requires_shader_f16(),
+        needs(spec),
         record.as_ref(),
         js_sys::Date::now(),
     );
+    (planned, signature)
+}
+
+/// Where the next run of `spec` under `policy` goes, without running the GPU check.
+pub async fn preview(
+    worker: &WorkerClient,
+    spec: &WebModelSpec,
+    policy: AccelPolicy,
+) -> EnginePlan {
+    plan(worker, spec, policy).await.0
+}
+
+/// Where `spec` runs under `policy`, or why it cannot run in this browser. With
+/// [`CheckMode::Run`] a missing or stale verdict is settled by transcribing the check recording,
+/// downloading the model with `hugging_face_token`; the download and load events go to `on_event`.
+pub async fn choose(
+    worker: &WorkerClient,
+    spec: &WebModelSpec,
+    policy: AccelPolicy,
+    mode: CheckMode,
+    hugging_face_token: Option<&HuggingFaceToken>,
+    on_event: &mut impl FnMut(WorkerEvent),
+) -> Result<Choice, CpuReason> {
+    let (planned, signature) = plan(worker, spec, policy).await;
     let gpu = Choice {
         engine: BrowserEngine::WebGpu,
         signature: signature.clone(),
-        cpu_can_run: !spec.requires_shader_f16(),
+        cpu_can_run: spec.runs_on_cpu(),
+    };
+    let after_check = |reason: CpuReason| {
+        worker.release_idle();
+        if spec.runs_on_cpu() {
+            Ok(cpu(reason))
+        } else {
+            Err(reason)
+        }
     };
     match (planned, mode, signature) {
-        (Plan::Cpu(reason), _, _) => cpu(reason),
-        (Plan::Gpu { check: false }, _, _) | (Plan::Gpu { check: true }, CheckMode::Skip, _) => gpu,
-        (Plan::Gpu { check: true }, CheckMode::Run, None) => cpu(CpuReason::NoWebGpu),
-        (Plan::Gpu { check: true }, CheckMode::Run, Some(signature)) => {
+        (EnginePlan::Cpu(reason), _, _) => Ok(cpu(reason)),
+        (EnginePlan::CannotRun(reason), _, _) => Err(reason),
+        (EnginePlan::WebGpu, _, _)
+        | (EnginePlan::WebGpuAfterCheck, CheckMode::Skip, _)
+        | (EnginePlan::WebGpuAfterCheck, CheckMode::Run, None) => Ok(gpu),
+        (EnginePlan::WebGpuAfterCheck, CheckMode::Run, Some(signature)) => {
             match check(worker, spec, hugging_face_token, on_event).await {
                 Ok(verdict) => {
                     remember(&signature, verdict);
                     match verdict {
-                        CanaryVerdict::Correct => gpu,
-                        CanaryVerdict::Wrong => cpu(CpuReason::WrongOutput),
-                        CanaryVerdict::Failed => cpu(CpuReason::WebGpuFailed),
+                        CanaryVerdict::Correct => Ok(gpu),
+                        CanaryVerdict::Wrong => after_check(CpuReason::WrongOutput),
+                        CanaryVerdict::Failed => after_check(CpuReason::WebGpuFailed),
                     }
                 }
                 Err(reason) => {
                     tracing::warn!("The GPU check of {} did not finish: {reason}", spec.id);
-                    cpu(CpuReason::WebGpuFailed)
+                    after_check(CpuReason::WebGpuFailed)
                 }
             }
         }

@@ -367,12 +367,18 @@ impl Router {
     }
 
     fn cancel(&mut self, id: RequestId) {
-        if self.pending.remove(&id).is_some() {
-            tracing::info!("Cancelling request {id:?} by restarting the worker");
-            self.restart(
-                FailureKind::WorkerRestarted,
-                "The transcription worker was restarted to cancel another request",
-            );
+        let Some(pending) = self.pending.remove(&id) else {
+            return;
+        };
+        match pending.kind {
+            RequestKind::ProbeGpu => {}
+            RequestKind::LoadModel | RequestKind::CheckGpu | RequestKind::Transcribe => {
+                tracing::info!("Cancelling request {id:?} by restarting the worker");
+                self.restart(
+                    FailureKind::WorkerRestarted,
+                    "The transcription worker was restarted to cancel another request",
+                );
+            }
         }
     }
 
