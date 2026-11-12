@@ -30,8 +30,6 @@ pub enum Blocker {
     UndecodableFile,
     ModelsLoading,
     NoModel,
-    /// The browser offers no WebGPU, which every browser model needs.
-    NoWebGpu,
     CannotRun(UnavailableReason),
     /// The model's files are being checked.
     Checking,
@@ -65,7 +63,6 @@ pub const fn blocked_text(blocker: &Blocker) -> &'static str {
         Blocker::UndecodableFile => "This file can't be decoded.",
         Blocker::ModelsLoading => "The model list is still loading.",
         Blocker::NoModel => "No model is available.",
-        Blocker::NoWebGpu => "This browser has no WebGPU.",
         Blocker::CannotRun(reason) => copy::unavailable(*reason).1,
         Blocker::Checking => "The model's files are being checked.",
         Blocker::OtherDownload => "Wait for the other model download to finish.",
@@ -93,18 +90,8 @@ pub const fn prepare(state: &ModelState, other_download: bool) -> Result<Prepara
 }
 
 /// Decides what the Transcribe button does.
-///
-/// `no_webgpu` is true only in a browser that was found to lack WebGPU.
 #[must_use]
-pub fn plan_start(
-    file: FileReadiness,
-    model: &ModelChoice,
-    no_webgpu: bool,
-    other_download: bool,
-) -> StartPlan {
-    if no_webgpu {
-        return StartPlan::Blocked(Blocker::NoWebGpu);
-    }
+pub fn plan_start(file: FileReadiness, model: &ModelChoice, other_download: bool) -> StartPlan {
     let preparation = match model {
         ModelChoice::Loading => Err(Blocker::ModelsLoading),
         ModelChoice::Missing => Err(Blocker::NoModel),
@@ -129,7 +116,7 @@ mod tests {
     }
 
     fn usable(model: &ModelChoice) -> StartPlan {
-        plan_start(FileReadiness::Usable, model, false, false)
+        plan_start(FileReadiness::Usable, model, false)
     }
 
     #[test]
@@ -182,16 +169,11 @@ mod tests {
     fn another_download_blocks_only_models_that_need_one() {
         let model = chosen(ModelState::NotDownloaded);
         assert_eq!(
-            plan_start(FileReadiness::Usable, &model, false, true),
+            plan_start(FileReadiness::Usable, &model, true),
             StartPlan::Blocked(Blocker::OtherDownload)
         );
         assert_eq!(
-            plan_start(
-                FileReadiness::Usable,
-                &chosen(ModelState::Downloaded),
-                false,
-                true
-            ),
+            plan_start(FileReadiness::Usable, &chosen(ModelState::Downloaded), true),
             StartPlan::Start(Preparation::None)
         );
     }
@@ -213,27 +195,14 @@ mod tests {
     }
 
     #[test]
-    fn a_browser_without_webgpu_blocks_everything() {
-        assert_eq!(
-            plan_start(
-                FileReadiness::Usable,
-                &chosen(ModelState::Downloaded),
-                true,
-                false
-            ),
-            StartPlan::Blocked(Blocker::NoWebGpu)
-        );
-    }
-
-    #[test]
     fn the_file_must_be_there_and_decodable() {
         let model = chosen(ModelState::NotDownloaded);
         assert_eq!(
-            plan_start(FileReadiness::Missing, &model, false, false),
+            plan_start(FileReadiness::Missing, &model, false),
             StartPlan::Blocked(Blocker::NoFile)
         );
         assert_eq!(
-            plan_start(FileReadiness::Undecodable, &model, false, false),
+            plan_start(FileReadiness::Undecodable, &model, false),
             StartPlan::Blocked(Blocker::UndecodableFile)
         );
     }
@@ -241,11 +210,11 @@ mod tests {
     #[test]
     fn a_model_problem_is_reported_before_a_missing_file() {
         assert_eq!(
-            plan_start(FileReadiness::Missing, &ModelChoice::Loading, false, false),
+            plan_start(FileReadiness::Missing, &ModelChoice::Loading, false),
             StartPlan::Blocked(Blocker::ModelsLoading)
         );
         assert_eq!(
-            plan_start(FileReadiness::Missing, &ModelChoice::Missing, false, false),
+            plan_start(FileReadiness::Missing, &ModelChoice::Missing, false),
             StartPlan::Blocked(Blocker::NoModel)
         );
     }

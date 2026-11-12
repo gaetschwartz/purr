@@ -11,7 +11,7 @@ use crate::{
     model_catalog::state::ModelState,
     platform::IS_WEB,
     transcribe::{
-        engine_label::EngineLabel,
+        engine_label::{EngineLabel, planned_browser_engine},
         language_choice::LanguageChoice,
         run::{ModelLoad, Stage},
         session::{RunRecord, use_transcribe_session},
@@ -48,7 +48,11 @@ pub fn Running(record: RunRecord) -> Element {
     let speed = run.live_speed(now());
     let segments = run.transcript.segments();
     let engine = if IS_WEB {
-        EngineLabel::browser(&models.gpu.read())
+        let gpu = models.gpu.read();
+        let engine = run.browser_engine.unwrap_or_else(|| {
+            planned_browser_engine(record.accel, &gpu, session.browser_engine())
+        });
+        EngineLabel::browser(engine, &gpu)
     } else {
         match &run.engine {
             Some(ran) => EngineLabel::ran(ran, &probe.read()),

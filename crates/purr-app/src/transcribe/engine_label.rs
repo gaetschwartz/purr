@@ -4,6 +4,7 @@ use super::engine::RunMemory;
 use crate::hooks::{use_models::GpuSupport, use_system_probe::SystemProbe};
 use purr_common::{
     accel::{AccelBackend, AccelPolicy, BackendReport, BackendStatus, LastRun, SystemReport},
+    browser_engine::{BrowserEngine, CpuReason},
     platform::{DeviceInfo, DeviceType},
 };
 use std::fmt;
@@ -177,16 +178,44 @@ impl EngineLabel {
         )
     }
 
-    /// The browser's WebGPU adapter.
+    /// What a browser run used: the WebGPU adapter, or the CPU.
     #[must_use]
-    pub fn browser(gpu: &GpuSupport) -> Self {
-        Self {
-            backend: BackendLabel::WebGpu,
-            hardware: match gpu {
-                GpuSupport::Available { name, .. } => name.clone(),
-                GpuSupport::Checking | GpuSupport::Unavailable => None,
+    pub fn browser(engine: BrowserEngine, gpu: &GpuSupport) -> Self {
+        match engine {
+            BrowserEngine::WebGpu => Self {
+                backend: BackendLabel::WebGpu,
+                hardware: match gpu {
+                    GpuSupport::Available { name, .. } => name.clone(),
+                    GpuSupport::Checking | GpuSupport::Unavailable => None,
+                },
+            },
+            BrowserEngine::Cpu(_) => Self {
+                backend: BackendLabel::Accel(AccelBackend::Cpu),
+                hardware: None,
             },
         }
+    }
+}
+
+/// Where the next browser run is expected to go: the CPU when the settings ask for it, when the
+/// browser has no WebGPU, or when the last run found this browser's GPU unusable.
+#[must_use]
+pub fn planned_browser_engine(
+    policy: AccelPolicy,
+    gpu: &GpuSupport,
+    last: Option<BrowserEngine>,
+) -> BrowserEngine {
+    if policy == AccelPolicy::CPU_ONLY {
+        return BrowserEngine::Cpu(CpuReason::Chosen);
+    }
+    if *gpu == GpuSupport::Unavailable {
+        return BrowserEngine::Cpu(CpuReason::NoWebGpu);
+    }
+    match last {
+        Some(BrowserEngine::Cpu(reason)) if reason.concerns_the_browser() => {
+            BrowserEngine::Cpu(reason)
+        }
+        Some(BrowserEngine::Cpu(_) | BrowserEngine::WebGpu) | None => BrowserEngine::WebGpu,
     }
 }
 
@@ -422,14 +451,17 @@ mod tests {
         );
     }
 
-    #[test]
-    fn the_browser_shows_webgpu_and_whatever_the_adapter_reports() {
-        let adapter = |name: Option<&str>| GpuSupport::Available {
+    fn adapter(name: Option<&str>) -> GpuSupport {
+        GpuSupport::Available {
             name: name.map(str::to_owned),
             shader_f16: true,
-        };
+        }
+    }
+
+    #[test]
+    fn the_browser_shows_webgpu_and_whatever_the_adapter_reports() {
         assert_eq!(
-            EngineLabel::browser(&adapter(Some("NVIDIA (Ampere)"))),
+            EngineLabel::browser(BrowserEngine::WebGpu, &adapter(Some("NVIDIA (Ampere)"))),
             EngineLabel {
                 backend: BackendLabel::WebGpu,
                 hardware: Some("NVIDIA (Ampere)".to_owned())
@@ -437,13 +469,64 @@ mod tests {
         );
         for gpu in [adapter(None), GpuSupport::Checking, GpuSupport::Unavailable] {
             assert_eq!(
-                EngineLabel::browser(&gpu),
+                EngineLabel::browser(BrowserEngine::WebGpu, &gpu),
                 EngineLabel {
                     backend: BackendLabel::WebGpu,
                     hardware: None
                 }
             );
         }
+    }
+
+    #[test]
+    fn a_browser_run_on_the_cpu_says_cpu_and_nothing_else() {
+        assert_eq!(
+            EngineLabel::browser(
+                BrowserEngine::Cpu(CpuReason::WrongOutput),
+                &adapter(Some("NVIDIA (Ampere)"))
+            ),
+            EngineLabel {
+                backend: BackendLabel::Accel(AccelBackend::Cpu),
+                hardware: None
+            }
+        );
+    }
+
+    #[test]
+    fn the_next_browser_run_goes_to_the_cpu_when_asked_or_when_the_gpu_cannot_be_used() {
+        let gpu = adapter(None);
+        assert_eq!(
+            planned_browser_engine(AccelPolicy::CPU_ONLY, &gpu, None),
+            BrowserEngine::Cpu(CpuReason::Chosen)
+        );
+        assert_eq!(
+            planned_browser_engine(AccelPolicy::Auto, &GpuSupport::Unavailable, None),
+            BrowserEngine::Cpu(CpuReason::NoWebGpu)
+        );
+        assert_eq!(
+            planned_browser_engine(
+                AccelPolicy::Auto,
+                &gpu,
+                Some(BrowserEngine::Cpu(CpuReason::WrongOutput))
+            ),
+            BrowserEngine::Cpu(CpuReason::WrongOutput)
+        );
+        assert_eq!(
+            planned_browser_engine(AccelPolicy::Auto, &gpu, None),
+            BrowserEngine::WebGpu
+        );
+    }
+
+    #[test]
+    fn a_cpu_run_the_settings_asked_for_does_not_stick() {
+        assert_eq!(
+            planned_browser_engine(
+                AccelPolicy::Auto,
+                &adapter(None),
+                Some(BrowserEngine::Cpu(CpuReason::Chosen))
+            ),
+            BrowserEngine::WebGpu
+        );
     }
 
     #[test]

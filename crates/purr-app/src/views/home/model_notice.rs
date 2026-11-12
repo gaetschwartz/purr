@@ -6,7 +6,7 @@ use crate::{
         progress_bar::{Progress, ProgressBar},
         spinner::Spinner,
     },
-    hooks::use_models::{GpuSupport, use_models},
+    hooks::use_models::use_models,
     model_catalog::{
         copy,
         format::{rate_and_eta, transferred},
@@ -22,7 +22,6 @@ use purr_common::settings::ModelSettings;
 #[component]
 pub fn ModelNotice(selection: Option<Selection>, saved: String, plan: StartPlan) -> Element {
     let models = use_models();
-    let mut rechecked = use_signal(|| false);
 
     if let Some(Err(error)) = models.rows() {
         return rsx! {
@@ -42,34 +41,6 @@ pub fn ModelNotice(selection: Option<Selection>, saved: String, plan: StartPlan)
             }
         };
     }
-    if plan == StartPlan::Blocked(Blocker::NoWebGpu) {
-        let still_missing = rechecked() && *models.gpu.read() == GpuSupport::Unavailable;
-        return rsx! {
-            Banner {
-                tone: BannerTone::Warn,
-                title: "This browser has no WebGPU",
-                role: "alert",
-                id: "no-webgpu",
-                actions: rsx! {
-                    Button {
-                        size: ButtonSize::Small,
-                        icon: IconName::Retry,
-                        id: "recheck-webgpu",
-                        onclick: move |_| {
-                            rechecked.set(true);
-                            models.recheck_gpu();
-                        },
-                        "Check again"
-                    }
-                },
-                "Purr needs it to transcribe. Use a current Chrome or Edge, or turn on hardware acceleration."
-                if still_missing {
-                    " Still not available."
-                }
-            }
-        };
-    }
-
     let Some(selection) = selection else {
         return rsx! {};
     };

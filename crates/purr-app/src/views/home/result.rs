@@ -50,7 +50,10 @@ pub fn ResultView(record: RunRecord, completion: Completion) -> Element {
         (LanguageChoice::Spoken(_), _) => record.language.label(),
     };
     let engine = if IS_WEB {
-        Some(EngineLabel::browser(&models.gpu.read()))
+        record
+            .run
+            .browser_engine
+            .map(|engine| EngineLabel::browser(engine, &models.gpu.read()))
     } else {
         record
             .run

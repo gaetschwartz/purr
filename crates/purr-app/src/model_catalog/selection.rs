@@ -70,7 +70,7 @@ mod tests {
     #[test]
     fn the_saved_model_wins_even_when_it_is_not_downloaded() {
         assert_eq!(
-            resolve(&catalog(), "tiny", Device::Browser),
+            resolve(&catalog(), "tiny", Device::Browser { webgpu: true }),
             Selection::Saved(row("tiny", "tiny", 75))
         );
     }
@@ -78,13 +78,16 @@ mod tests {
     #[test]
     fn an_unknown_saved_id_falls_back_to_the_suggestion() {
         assert_eq!(
-            resolve(&catalog(), "gone", Device::Browser),
+            resolve(&catalog(), "gone", Device::Browser { webgpu: true }),
             Selection::Substitute(row("base", "base", 142))
         );
     }
 
     #[test]
     fn an_empty_catalog_has_no_selection() {
-        assert_eq!(resolve(&[], "base", Device::Browser), Selection::Missing);
+        assert_eq!(
+            resolve(&[], "base", Device::Browser { webgpu: true }),
+            Selection::Missing
+        );
     }
 }

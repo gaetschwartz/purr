@@ -70,15 +70,9 @@ pub struct ModelsHandle {
     pub(super) toasts: Toasts,
     pub(super) settings: SettingsStore,
     refresh: Signal<u32>,
-    gpu_check: Signal<u32>,
 }
 
 impl ModelsHandle {
-    /// Looks for the graphics card again; [`Self::gpu`] changes when the answer differs.
-    pub fn recheck_gpu(mut self) {
-        self.gpu_check += 1;
-    }
-
     /// Reloads the model list, for example after a download finished.
     pub fn refresh(mut self) {
         self.refresh += 1;
@@ -121,7 +115,9 @@ impl ModelsHandle {
     #[must_use]
     pub fn selection(&self, saved: &str) -> Option<Selection> {
         let device = if IS_WEB {
-            Device::Browser
+            Device::Browser {
+                webgpu: *self.gpu.read() != GpuSupport::Unavailable,
+            }
         } else {
             Device::Desktop {
                 gpu: self.gpu.read().found(),
@@ -313,7 +309,6 @@ struct Sources {
     gpu: Signal<GpuSupport>,
     online: Signal<bool>,
     refresh: Signal<u32>,
-    gpu_check: Signal<u32>,
     handle: ModelsHandle,
 }
 
@@ -322,7 +317,6 @@ fn create_sources(toasts: Toasts, settings: SettingsStore) -> Sources {
     let gpu = Signal::new(GpuSupport::Checking);
     let online = Signal::new(true);
     let refresh = Signal::new(0u32);
-    let gpu_check = Signal::new(0u32);
     let handle = ModelsHandle {
         models: models.into(),
         gpu: gpu.into(),
@@ -332,14 +326,12 @@ fn create_sources(toasts: Toasts, settings: SettingsStore) -> Sources {
         toasts,
         settings,
         refresh,
-        gpu_check,
     };
     Sources {
         models,
         gpu,
         online,
         refresh,
-        gpu_check,
         handle,
     }
 }
@@ -354,14 +346,12 @@ pub fn use_models_provider() -> ModelsHandle {
         mut gpu,
         mut online,
         refresh,
-        gpu_check,
         handle,
     } = use_hook(|| {
         Runtime::current().in_scope(ScopeId::ROOT, || create_sources(toasts, settings))
     });
 
     use_resource(move || async move {
-        gpu_check();
         let platform = platform::get_platform();
         let support = match platform.list_available_devices().await {
             Ok(devices) => devices

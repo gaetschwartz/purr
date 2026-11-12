@@ -35,7 +35,7 @@ fn gpu_notice(
         GpuSupport::Unavailable => Some((
             BannerTone::Warn,
             "This browser has no WebGPU",
-            "Models can be downloaded, but none can run here.",
+            "Models run on the CPU, which is slower. Those that need WebGPU are greyed out.",
         )),
         GpuSupport::Available { shader_f16, .. } => (!shader_f16).then_some((
             BannerTone::Info,

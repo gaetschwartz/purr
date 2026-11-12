@@ -8,11 +8,21 @@ use crate::{
     views::settings::{jump::open_section, sections::SettingsSection},
 };
 use dioxus::prelude::*;
+use purr_common::browser_engine::BrowserEngine;
 
 /// Says, without blocking the run, that it used other hardware than the one asked for.
 #[component]
 pub fn EngineNotice(record: RunRecord) -> Element {
     let navigator = use_navigator();
+    if let Some(BrowserEngine::Cpu(reason)) = record.run.browser_engine {
+        return rsx! {
+            if let Some(notice) = reason.notice() {
+                p { class: "foot", role: "status", id: "engine-notice", style: "margin:0",
+                    "{notice}"
+                }
+            }
+        };
+    }
     let Some(notice) = record
         .run
         .engine

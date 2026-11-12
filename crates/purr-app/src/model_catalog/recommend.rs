@@ -8,8 +8,13 @@ use super::{
 /// What the device running Purr can do, for picking a model when none usable is saved.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Device {
-    Desktop { gpu: bool },
-    Browser,
+    Desktop {
+        gpu: bool,
+    },
+    /// A browser; without WebGPU the models run on the CPU.
+    Browser {
+        webgpu: bool,
+    },
 }
 
 impl Device {
@@ -17,18 +22,22 @@ impl Device {
     const fn groups(self) -> &'static [ModelGroup] {
         match self {
             Self::Desktop { gpu: true } => &[ModelGroup::Turbo, ModelGroup::Base, ModelGroup::Tiny],
-            Self::Desktop { gpu: false } | Self::Browser => &[ModelGroup::Base, ModelGroup::Tiny],
+            Self::Desktop { gpu: false } | Self::Browser { webgpu: true } => {
+                &[ModelGroup::Base, ModelGroup::Tiny]
+            }
+            Self::Browser { webgpu: false } => &[ModelGroup::Tiny, ModelGroup::Base],
         }
     }
 }
 
 impl Device {
     /// Whether a quantized model of the catalog is a fair suggestion here. Browser quantization
-    /// only shrinks the download; on WebGPU it runs slower than the unquantized weights.
+    /// only shrinks the download; it runs no faster than the unquantized weights on WebGPU or on
+    /// the CPU.
     const fn suggests_quantized(self) -> bool {
         match self {
             Self::Desktop { .. } => true,
-            Self::Browser => false,
+            Self::Browser { .. } => false,
         }
     }
 }
@@ -143,7 +152,7 @@ mod tests {
             row("large-v3-turbo", "large-v3-turbo", 900, false),
         ];
         assert_eq!(
-            id(recommend(&catalog, Device::Browser)),
+            id(recommend(&catalog, Device::Browser { webgpu: true })),
             Some("base".to_owned())
         );
         for entry in &mut catalog {
@@ -155,7 +164,7 @@ mod tests {
             }
         }
         assert_eq!(
-            id(recommend(&catalog, Device::Browser)),
+            id(recommend(&catalog, Device::Browser { webgpu: true })),
             Some("tiny".to_owned())
         );
     }
@@ -168,7 +177,7 @@ mod tests {
             row_with_quantization("base-q4", "base", 145, false, Some("q4/q4")),
         ];
         assert_eq!(
-            id(recommend(&catalog, Device::Browser)),
+            id(recommend(&catalog, Device::Browser { webgpu: true })),
             Some("base".to_owned())
         );
         assert_eq!(
@@ -178,7 +187,21 @@ mod tests {
     }
 
     #[test]
+    fn a_browser_without_webgpu_gets_the_smallest_multilingual_model() {
+        let catalog = vec![
+            row_with_quantization("tiny", "tiny", 122, false, Some("fp32/q4")),
+            row_with_quantization("tiny.en", "tiny.en", 122, true, Some("fp32/q4")),
+            row_with_quantization("base", "base", 209, false, Some("fp32/q4")),
+            row_with_quantization("base-q4", "base", 145, false, Some("q4/q4")),
+        ];
+        assert_eq!(
+            id(recommend(&catalog, Device::Browser { webgpu: false })),
+            Some("tiny".to_owned())
+        );
+    }
+
+    #[test]
     fn an_empty_catalog_recommends_nothing() {
-        assert_eq!(recommend(&[], Device::Browser), None);
+        assert_eq!(recommend(&[], Device::Browser { webgpu: true }), None);
     }
 }

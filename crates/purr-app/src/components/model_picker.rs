@@ -6,16 +6,18 @@ use super::{
 };
 use crate::{
     components::toast::use_toasts,
-    hooks::use_models::use_models,
+    hooks::use_models::{GpuSupport, use_models},
     main_app::Route,
     model_catalog::{
         copy, entry::ModelEntry, family::ModelGroup, format::percent, listing::ModelRow,
         state::ModelState,
     },
+    platform::IS_WEB,
     settings_store::use_settings,
     utils::byte_size::ByteSize,
 };
 use dioxus::prelude::*;
+use purr_common::accel::AccelPolicy;
 
 /// Language and precision, such as "Multilingual · Q5".
 fn variant(entry: &ModelEntry) -> String {
@@ -149,8 +151,18 @@ pub fn ModelPicker(
         }
     };
 
+    let on_cpu = IS_WEB
+        && (*models.gpu.read() == GpuSupport::Unavailable
+            || settings.with(|settings| settings.performance.accel_policy())
+                == AccelPolicy::CPU_ONLY);
+
     rsx! {
         Popover { anchor, label: "Choose a model", on_close,
+            if on_cpu {
+                p { class: "foot", role: "note", style: "padding:8px 12px;margin:0",
+                    "Models run on the CPU here. Smaller ones are faster."
+                }
+            }
             {body}
             hr {}
             div { class: "plist", role: "menu", aria_label: "Models",
