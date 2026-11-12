@@ -627,6 +627,58 @@ async fn test_whisper_error_handling_empty_audio() {
 // Regression Tests
 // ============================================================================
 
+/// How often the most repeated run of `n` words occurs in `text`, ignoring case and punctuation.
+fn most_repeated_run(text: &str, n: usize) -> usize {
+    let words: Vec<String> = text
+        .split_whitespace()
+        .map(|word| {
+            word.chars()
+                .filter(|c| c.is_alphanumeric())
+                .flat_map(char::to_lowercase)
+                .collect::<String>()
+        })
+        .filter(|word| !word.is_empty())
+        .collect();
+    let mut counts = std::collections::HashMap::new();
+    for run in words.windows(n) {
+        *counts.entry(run).or_insert(0usize) += 1;
+    }
+    counts.into_values().max().unwrap_or(0)
+}
+
+#[tokio::test]
+async fn test_streaming_does_not_loop_on_fast_speech() {
+    let Ok(model_manager) = ModelManager::new() else {
+        println!("⏭ Skipping test - no model directory");
+        return;
+    };
+    let model_path = model_manager.models_dir().join("ggml-base.bin");
+    if !model_path.exists() {
+        println!("⏭ Skipping test - ggml-base.bin not available");
+        return;
+    }
+
+    let mut config = TranscriptionConfig::new()
+        .with_gpu(false)
+        .with_language("en")
+        .with_beam_size(1);
+    config.model_path = Some(model_path);
+
+    let sample = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../samples/mm1.wav");
+    let mut stream = transcribe_file_stream(&sample, config).await.unwrap();
+    let mut text = String::new();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.unwrap();
+        text.push_str(&chunk.text);
+        text.push(' ');
+    }
+
+    assert!(
+        most_repeated_run(&text, 6) <= 2,
+        "a run of six words repeats: {text}"
+    );
+}
+
 #[tokio::test]
 async fn test_regression_consistent_results() {
     if !whisper_fixtures::is_model_available().await {
