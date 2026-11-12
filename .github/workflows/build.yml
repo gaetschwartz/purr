@@ -108,7 +108,7 @@ jobs:
         env:
           RUSTFLAGS: -C link-arg=-Wl,-rpath,$ORIGIN/lib --cfg=web_sys_unstable_apis
         run: |
-          dx bundle -p purr-app --release --linux --package-types appimage deb \
+          dx bundle -p purr-app --release --linux --package-types appimage --package-types deb \
             --out-dir dist-linux \
             --features static-ffmpeg${{ matrix.backend != 'none' && format(',{0}', matrix.backend) || '' }}
       - name: Build Dioxus web
@@ -202,7 +202,7 @@ jobs:
         run: |
           export CFLAGS="-march=armv8.2-a+crypto+noi8mm"
           export CXXFLAGS="-march=armv8.2-a+crypto+noi8mm"
-          dx bundle -p purr-app --release --macos --package-types macos dmg \
+          dx bundle -p purr-app --release --macos \
             --out-dir dist-macos \
             --features static-ffmpeg${{ matrix.backend != 'none' && format(',{0}', matrix.backend) || '' }}
       - name: Prepare CLI artifact
@@ -317,7 +317,8 @@ jobs:
       - name: Build desktop app${{ matrix.backend != 'none' && format(' - {0}', matrix.backend) || '' }}
         if: matrix.is_release == true
         run: |
-          dx bundle --verbose -p purr-app --release --windows --package-types nsis --out-dir dist-windows --features static-ffmpeg${{ matrix.backend != 'none' && format(',{0}', matrix.backend) || '' }}
+          Get-PSDrive -PSProvider FileSystem | Format-Table Name, @{n='FreeGB';e={[int]($_.Free/1GB)}}
+          dx bundle --verbose --trace -p purr-app --release --windows --package-types nsis --out-dir dist-windows --features static-ffmpeg${{ matrix.backend != 'none' && format(',{0}', matrix.backend) || '' }}
       - name: Prepare CLI artifact
         run: |
           New-Item -ItemType Directory -Force -Path artifacts\cli
