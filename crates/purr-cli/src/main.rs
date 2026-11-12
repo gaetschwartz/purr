@@ -10,6 +10,7 @@ use indicatif::{HumanBytes, HumanDuration};
 use miette::IntoDiagnostic as _;
 use owo_colors::OwoColorize as _;
 use purr_core::model::registry::ModelSpec;
+use purr_core::model::vad_or_none;
 use purr_core::{
     ModelManager, StreamingTranscription, TranscriptionConfig, accel::backend::AccelBackend,
     dev::FeatureStatus, install_logging_hooks, is_file_path, is_valid_url, list_devices,
@@ -322,6 +323,7 @@ async fn prompt_for_model_download(
 
         match model_manager.download_model(model, None).await {
             Ok(model_path) => {
+                models::ensure_vad(model_manager).await;
                 println!(
                     "{} Model downloaded successfully to: {}",
                     "Success:".green().bold(),
@@ -491,6 +493,11 @@ async fn setup_config(cli: &Cli) -> miette::Result<TranscriptionConfig> {
     config = setup_model_config(cli, config).await?;
 
     config = config.with_cli_options(cli);
+
+    if config.vad_model_path.is_none() {
+        let installed = ModelManager::new()?.vad_model_path().await;
+        config = config.with_vad_model(vad_or_none(installed));
+    }
 
     Ok(config)
 }

@@ -8,7 +8,9 @@ use owo_colors::OwoColorize as _;
 use purr_core::ModelManager;
 use purr_core::model::registry::ModelSpec;
 use purr_core::model::status::{ModelFileStatus, ModelIntegrity};
+use purr_core::model::vad_or_none;
 use std::fmt::Write as _;
+use tracing::debug;
 
 const DOWNLOAD_BAR_TEMPLATE: &str = "{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({bytes_per_sec}, {eta})";
 const DOWNLOAD_SPINNER_TEMPLATE: &str =
@@ -25,7 +27,9 @@ pub async fn handle_model_command(
     match command {
         ModelCommands::Download { model, force } => {
             let spec = model_manager.model(&model)?;
-            download(&model_manager, spec, force).await
+            download(&model_manager, spec, force).await?;
+            ensure_vad(&model_manager).await;
+            Ok(())
         }
         ModelCommands::List { available } => {
             if available {
@@ -43,6 +47,14 @@ pub async fn handle_model_command(
             info(&model_manager, spec).await
         }
         ModelCommands::Verify { model } => verify(&model_manager, model.as_deref()).await,
+    }
+}
+
+/// Fetches the voice activity model that goes with the Whisper models; a failure is only logged.
+pub async fn ensure_vad(manager: &ModelManager) {
+    let fetched = manager.ensure_vad_model(None).await.map(Some);
+    if let Some(path) = vad_or_none(fetched) {
+        debug!("The voice activity model is at {}", path.display());
     }
 }
 

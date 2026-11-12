@@ -107,12 +107,13 @@ pub struct Cli {
     pub sample_rate: u32,
 
     /// Seconds of new audio to gather before looking for a pause to decode up to while streaming
-    /// (only with --vad-model)
+    /// (only with a voice activity model)
     #[arg(long, default_value = "4.0")]
     pub chunk_size: f32,
 
     /// Silero voice activity model (ggml-silero-*.bin from whisper.cpp): streaming decodes up to
-    /// pauses in speech and skips audio without speech
+    /// pauses in speech and skips audio without speech. Defaults to the one fetched alongside
+    /// downloaded models, when present
     #[arg(long, value_name = "PATH")]
     pub vad_model: Option<PathBuf>,
 
