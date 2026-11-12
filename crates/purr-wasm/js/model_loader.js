@@ -25,6 +25,15 @@ const DEVICES = Object.freeze({
     [Provider.Cpu]: "wasm",
 });
 
+function sessionOptions(provider) {
+    const options = { logSeverityLevel: 3 };
+    if (provider === Provider.WebGpu) {
+        // NCHW compiles one light convolution shader where the default NHWC compiles two heavy ones
+        options.executionProviders = [{ name: "webgpu", preferredLayout: "NCHW" }];
+    }
+    return options;
+}
+
 function modelKey(model, provider) {
     return `${model.repo}@${model.revision}:${model.encoder_dtype}/${model.decoder_dtype}:${provider}`;
 }
@@ -109,7 +118,7 @@ export async function loadTranscriber(model, provider, requestId) {
                     decoder_model_merged: model.decoder_dtype,
                 },
                 device,
-                session_options: { logSeverityLevel: 3 },
+                session_options: sessionOptions(provider),
                 progress_callback: progressReporter(requestId),
             }),
         };
