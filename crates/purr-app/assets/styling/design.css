@@ -203,7 +203,6 @@ h1[tabindex="-1"]:focus{outline:none}
 .topbar{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap}
 .topbar .titles{flex:1;min-width:0}
 h1.lt{font-family:var(--font-display);font-size:30px;line-height:36px;font-weight:700;letter-spacing:-.025em;margin:0;text-wrap:balance}
-h1.lt.file{overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden}
 .sub{color:var(--fg-2);font-size:14px;margin:4px 0 0}
 h2.t2{font-family:var(--font-display);font-size:20px;line-height:26px;font-weight:650;letter-spacing:-.015em;margin:0}
 .t3{font-size:16px;line-height:22px;font-weight:600;margin:0;letter-spacing:-.01em}
@@ -473,8 +472,8 @@ details>.preview{margin:8px 0 0;font-family:var(--font)}
   .switch[aria-checked="true"]::after{background:HighlightText}
   .bar{forced-color-adjust:none;background:Canvas;border:1px solid CanvasText}
   .bar>i{background:Highlight}
-  .wave i,.dots i{forced-color-adjust:none;background:GrayText}
-  .wave i.p,.dots i.on{background:Highlight}
+  .dots i{forced-color-adjust:none;background:GrayText}
+  .dots i.on{background:Highlight}
   mark{forced-color-adjust:none;background:Mark;color:MarkText}
   mark.cur{background:Highlight;color:HighlightText}
   .seg-row.playing,.opt.kb,.opt:hover{outline:2px solid Highlight;outline-offset:-2px}

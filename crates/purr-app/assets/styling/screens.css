@@ -43,20 +43,9 @@
 .file-problem{margin:6px 0 0;font-size:13px;line-height:1.45;color:var(--danger)}
 ol.stages,ol.live{list-style:none;margin:0;padding:0}
 .ellipsis{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.player .wave{gap:min(2px,.45%)} .player .wave i{min-width:0}
 .wave:focus-visible{outline:2.5px solid var(--accent-text);outline-offset:4px;border-radius:6px}
 
 /* ---------- Transcribing ---------- */
-.stages{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:4px 0 2px}
-.stg{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:14px;background:var(--fill-hover);font-size:13.5px;color:var(--fg-3);min-width:0}
-.stg b{display:block;font-weight:600;color:inherit;font-size:13.5px}
-.stg .ss{display:block;font-size:12px;color:var(--fg-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.stg .dot{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;flex:none;background:var(--fill-2);color:var(--fg-3)}
-.stg.done{color:var(--fg)} .stg.done .dot{background:var(--success);color:#fff}
-.stg.active{color:var(--fg);background:var(--accent-soft)} .stg.active .dot{background:transparent}
-.stats{display:flex;gap:28px;flex-wrap:wrap}
-.stat .k{font-size:12px;color:var(--fg-3);font-weight:500}
-.stat .v{font-size:20px;font-weight:650;letter-spacing:-.01em;font-variant-numeric:tabular-nums}
 .live{display:flex;flex-direction:column;gap:2px}
 .seg-row{display:grid;grid-template-columns:64px minmax(0,1fr);gap:12px;padding:8px 10px;border-radius:12px;text-align:left;width:100%;transition:background .2s}
 .seg-row .ts{font-size:13px;color:var(--fg-3);font-variant-numeric:tabular-nums;padding-top:2px;font-weight:500}
@@ -75,22 +64,81 @@ mark.cur{background:var(--accent);color:#fff}
 .para{font-size:16px;line-height:1.7;max-width:68ch;padding:4px 10px}
 .para p{margin:0 0 14px}
 
-/* ---------- Result ---------- */
-.metas{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13px;color:var(--fg-2)}
-.metas span{display:inline-flex;align-items:center;gap:6px}
-.metas svg{width:15px;height:15px;color:var(--fg-3)}
-.player{display:flex;align-items:center;gap:14px;padding:12px 16px 12px 12px;border-radius:999px}
-.play{width:44px;height:44px;border-radius:50%;background:var(--accent);color:#fff;display:grid;place-items:center;flex:none;transition:transform .35s var(--ease-spring)}
-.play:active{transform:scale(.92)}
-.play svg{fill:currentColor;stroke:none}
-.wave{flex:1;height:40px;display:flex;align-items:center;gap:2px;min-width:0;cursor:pointer;position:relative}
-.wave i{flex:1;min-width:1px;border-radius:2px;background:var(--fill-2);transition:background .2s}
-.wave i.p{background:var(--accent-text)}
-.ptime{font-size:13px;color:var(--fg-2);font-variant-numeric:tabular-nums;white-space:nowrap}
+/* ---------- Run view ---------- */
 .tools{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:12px 12px 10px;border-bottom:1px solid var(--separator)}
 .tools .field{flex:1;min-width:180px;max-width:320px}
 .tools .spacer{flex:1}
 .searchnav{display:flex;align-items:center;gap:2px;font-size:12.5px;color:var(--fg-3);white-space:nowrap}
+.content.runview{gap:12px;padding-top:20px}
+.btn.tonal{background:linear-gradient(var(--accent-soft),var(--accent-soft)),var(--under);color:var(--link)}
+.btn.tonal:hover{background:linear-gradient(var(--accent-soft-2),var(--accent-soft-2)),var(--under)}
+
+/* the audio card: button, wave and time on line 1; file name and run status on line 2 */
+.player{display:grid;grid-template-columns:44px minmax(0,1fr) auto;grid-template-rows:auto auto;column-gap:14px;align-items:center;border-radius:28px;padding:10px 18px 8px 12px}
+.player.silent{display:flex;flex-direction:column;align-items:stretch;gap:2px;padding:12px 18px}
+.play{grid-row:1/3;position:relative;width:44px;height:44px;border-radius:50%;background:var(--accent);color:#fff;display:grid;place-items:center;flex:none;transition:background .24s var(--ease-out),color .24s var(--ease-out),transform .35s var(--ease-spring)}
+.play:active{transform:scale(.92)}
+.play .g{position:absolute;inset:0;display:grid;place-items:center;transition:opacity .16s ease}
+.play svg{fill:currentColor;stroke:none}
+.play .stop-g,.play.stop .play-g{opacity:0}
+.play.stop{background:var(--fill-2);color:var(--fg)}
+.play.stop .stop-g{opacity:1}
+.ptime{grid-column:3;min-width:86px;text-align:right;font-size:13px;color:var(--fg-2);font-variant-numeric:tabular-nums;white-space:nowrap}
+.pfile{grid-column:2/4;display:flex;align-items:center;gap:12px;min-width:0;min-height:20px;font-size:12.5px;color:var(--fg-2);line-height:18px}
+.fname{display:flex;min-width:0;white-space:pre}
+.fname .hd{overflow:hidden;text-overflow:ellipsis;min-width:0;flex:0 1 auto}
+.fname .tl{flex:none}
+.pstat{margin-left:auto;flex:none;max-width:60%;display:grid;justify-items:end}
+.run-st{display:flex;align-items:center;gap:6px;font-weight:500;white-space:nowrap;min-width:0;font-variant-numeric:tabular-nums;transition:opacity .2s var(--ease-out)}
+.run-st[data-off]{opacity:0;visibility:hidden;transition:opacity .16s ease,visibility 0s .16s}
+.run-st .spinner{width:10px;height:10px;border-width:1.5px}
+.run-st svg{width:14px;height:14px;color:var(--danger)}
+
+/* the wave: bars, the transcribed fill clipped at --done, the played fill clipped at --played */
+.gwave{grid-column:2;flex:1;height:40px;position:relative;min-width:0;cursor:default}
+.gwave[role="slider"]{cursor:pointer}
+.gwave .layer-bars,.gwave .layer-fill{position:absolute;inset:0;display:flex;align-items:center;gap:min(2px,.45%);pointer-events:none}
+.gwave i{flex:1;min-width:0;border-radius:2px}
+.gwave .layer-bars i{background:var(--fill-2)}
+.gwave .layer-fill i{background:var(--accent-text)}
+.gwave .tx{clip-path:inset(0 calc(100% - var(--done,0%)) 0 0);transition:opacity .3s var(--ease-out)}
+.gwave .pl{clip-path:inset(0 calc(100% - var(--played,0%)) 0 0);opacity:0;transition:opacity .3s var(--ease-out)}
+.gwave .edge{position:absolute;top:2px;bottom:2px;left:var(--done,0%);width:2px;margin-left:-1px;border-radius:2px;background:var(--accent-text);transition:opacity .2s}
+.runview.waiting .gwave .edge,.runview.detecting .gwave .edge{opacity:0}
+.runview.waiting .gwave .layer-bars{opacity:.6}
+.runview.detecting .gwave .layer-bars{animation:pending 2.4s ease-in-out infinite}
+@keyframes pending{50%{opacity:.35}}
+.runview.done .gwave .tx,.runview.done .gwave .edge{opacity:0}
+.runview.done .gwave .pl{opacity:1}
+.runview.stopped .gwave .tx i,.runview.stopped .gwave .edge{background:var(--fg-3)}
+
+/* the transcript card: Copy is the one tinted control; Export waits in its place during a run */
+.tcard .tools{padding:8px 8px 8px 12px;gap:8px}
+.tcard .tbody{padding:4px 6px 8px}
+.tcard .live{gap:0}
+.tcard .seg-row{padding:4px 8px;gap:10px;grid-template-columns:52px minmax(0,1fr)}
+.tcard .seg-row .tx{font-size:15px;line-height:1.5}
+.tcard .seg-row .ts{padding-top:1px}
+.tcard .no-ts .seg-row{grid-template-columns:minmax(0,1fr)}
+.tcard .para{font-size:15.5px;line-height:1.6;padding:2px 8px}
+.tcard .para p{margin:0 0 10px}
+.tacts{display:flex;align-items:center;gap:6px}
+.tacts .btn{height:34px;padding:0 12px;font-size:13px;gap:6px}
+.tacts .btn[aria-haspopup="menu"]{padding-right:8px}
+.tacts .chev{width:14px;height:14px;margin-left:-2px;color:var(--fg-3)}
+.export-slot{display:flex;transition:opacity .2s var(--ease-out) .08s}
+.export-slot[data-off]{opacity:0;visibility:hidden;transition:opacity .16s ease,visibility 0s .16s}
+.tools .icon-btn{flex:none}
+.icon-btn[aria-expanded="true"]{background:var(--fill-2);color:var(--fg)}
+
+/* the More menu: facts and rare actions above the view options */
+.more .prow{display:flex;align-items:center;gap:12px;min-height:44px;padding:4px 10px}
+.more .prow .t{flex:1;min-width:0;font-size:14px}
+.more .prow .t small{display:block;font-size:12px;color:var(--fg-3);line-height:1.35}
+.more .prow .btn.sm{flex:none}
+.more .prow.acts{gap:4px;padding-left:2px;min-height:36px}
+.more .prow.acts .btn.danger{background:none}
+.more .prow.acts .btn.danger:hover{background:linear-gradient(var(--danger-soft),var(--danger-soft)),var(--under)}
 
 /* ---------- Models ---------- */
 .filters{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
@@ -161,7 +209,6 @@ mark.cur{background:var(--accent);color:#fff}
   .log{grid-template-columns:90px 70px minmax(0,1fr)} .log .tg{display:none}
 }
 @container app (max-width:720px){
-  h1.lt.file{font-size:22px;line-height:28px}
   .drop{min-height:240px;padding:28px 18px}
   .runbar{border-radius:22px;flex-direction:column;align-items:stretch}
   .runbar .pill,.runbar .engine-chip{width:100%}
@@ -170,19 +217,35 @@ mark.cur{background:var(--accent);color:#fff}
   .runbar .btn{width:100%;height:44px}
   .filecard .replace{display:none}
   .filecard .name{white-space:normal;overflow-wrap:anywhere}
-  .stages{grid-template-columns:1fr}
-  .stats{gap:18px}
   .recent{grid-template-columns:minmax(0,1fr)} .recent button:nth-child(n+3){display:none}
   .mrow{grid-template-columns:minmax(0,1fr)}
   .mrow .side{justify-content:space-between}
   .mrow .size{text-align:left}
-  .player{border-radius:22px}
   .tools .field{max-width:none;flex-basis:100%}
   .tools .spacer{display:none}
+  .content.runview{gap:10px;padding-top:52px}
+  .player{border-radius:22px;padding:10px 12px 8px 10px;column-gap:10px}
+  .ptime{min-width:0;font-size:12px}
+  .pstat{max-width:58%}
+  .tcard .tools{flex-wrap:nowrap}
+  .tcard .tools .field{min-width:0;flex:1 1 0}
+  .tcard .seg-row{min-height:44px;padding:6px;grid-template-columns:44px minmax(0,1fr);gap:8px}
+  .tacts{gap:4px}
+  .tacts .btn[aria-haspopup="menu"]{width:36px;padding:0}
+  .tacts .chev{display:none}
+  .tacts .lbl{position:absolute!important;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+  .more .prow{min-height:48px}
   .seg-row{grid-template-columns:52px minmax(0,1fr);gap:8px;padding:8px 6px}
   .sys .dev{grid-template-columns:minmax(0,1fr) auto}
   .sys .be{grid-column:1/-1;margin-bottom:-6px}
   .loglist{max-height:none}
   .log{grid-template-columns:98px minmax(0,1fr);gap:4px 10px;padding:8px 14px} .log .lv{grid-row:1;grid-column:2} .log .m{grid-column:1/-1}
   .filecard{padding:14px;gap:12px}
+}
+@media (prefers-reduced-motion:reduce){.runview.detecting .gwave .layer-bars{animation:none!important}}
+@media (forced-colors:active){
+  .gwave .layer-bars i{forced-color-adjust:none;background:GrayText}
+  .gwave .layer-fill i{forced-color-adjust:none;background:Highlight}
+  .gwave .edge{forced-color-adjust:none;background:CanvasText}
+  .play.stop{border:1px solid ButtonText}
 }
