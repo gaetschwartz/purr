@@ -59,7 +59,7 @@ mod whisper_fixtures {
     }
 
     /// Helper to create minimal WAV file bytes
-    fn create_wav_bytes(
+    pub fn create_wav_bytes(
         samples: Vec<i16>,
         sample_rate: u32,
     ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
@@ -677,6 +677,108 @@ async fn test_streaming_does_not_loop_on_fast_speech() {
         most_repeated_run(&text, 6) <= 2,
         "a run of six words repeats: {text}"
     );
+}
+
+/// How often the run of words `phrase` occurs in `text`, ignoring case and punctuation.
+fn count_run(text: &str, phrase: &str) -> usize {
+    let words = |text: &str| -> Vec<String> {
+        text.split_whitespace()
+            .map(|word| {
+                word.chars()
+                    .filter(|c| c.is_alphanumeric())
+                    .flat_map(char::to_lowercase)
+                    .collect::<String>()
+            })
+            .filter(|word| !word.is_empty())
+            .collect()
+    };
+    let (text, phrase) = (words(text), words(phrase));
+    text.windows(phrase.len())
+        .filter(|run| *run == phrase.as_slice())
+        .count()
+}
+
+/// The sample spoken twice, two seconds apart, as a WAV file.
+async fn spoken_twice(sample: &str) -> NamedTempFile {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../samples")
+        .join(sample);
+    let audio = AudioProcessor::load_audio(&path).await.unwrap();
+    let speech: Vec<i16> = audio
+        .samples
+        .iter()
+        .map(|s| (s.clamp(-1.0, 1.0) * f32::from(i16::MAX)) as i16)
+        .collect();
+    let silence = vec![0i16; audio.sample_rate as usize * 2];
+    let samples = [speech.as_slice(), &silence, &speech].concat();
+    let file = NamedTempFile::with_suffix(".wav").unwrap();
+    fs::write(
+        file.path(),
+        whisper_fixtures::create_wav_bytes(samples, audio.sample_rate).unwrap(),
+    )
+    .await
+    .unwrap();
+    file
+}
+
+async fn stream_text(audio: &std::path::Path, config: TranscriptionConfig) -> String {
+    let mut stream = transcribe_file_stream(audio, config).await.unwrap();
+    let mut chunks = Vec::new();
+    while let Some(chunk) = stream.next().await {
+        chunks.push(chunk.unwrap());
+    }
+    assert!(validation::validate_streaming_chunks(&chunks));
+    assert!(chunks.windows(2).all(|w| w[0].end <= w[1].start + 0.01));
+    let stats = chunks.last().unwrap().final_stats.clone().unwrap();
+    assert_eq!(
+        stats.segment_count,
+        chunks.iter().filter(|c| !c.text.is_empty()).count()
+    );
+    chunks
+        .iter()
+        .map(|c| c.text.as_str())
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// The voice activity model the streaming tests use: `PURR_VAD_MODEL`, or the default file in
+/// the models directory
+fn vad_model(model_manager: &ModelManager) -> Option<PathBuf> {
+    std::env::var_os("PURR_VAD_MODEL")
+        .map(PathBuf::from)
+        .or_else(|| Some(model_manager.models_dir().join("ggml-silero-v6.2.0.bin")))
+        .filter(|path| path.exists())
+}
+
+#[tokio::test]
+async fn test_streaming_keeps_a_sentence_spoken_twice() {
+    let Ok(model_manager) = ModelManager::new() else {
+        println!("⏭ Skipping test - no model directory");
+        return;
+    };
+    let model_path = model_manager.models_dir().join("ggml-base.bin");
+    if !model_path.exists() {
+        println!("⏭ Skipping test - ggml-base.bin not available");
+        return;
+    }
+    let audio = spoken_twice("jfk.wav").await;
+
+    let mut config = TranscriptionConfig::new().with_gpu(false).with_beam_size(1);
+    config.model_path = Some(model_path);
+    let mut configs = vec![config.clone()];
+    match vad_model(&model_manager) {
+        Some(vad) => configs.push(config.with_vad_model(Some(vad))),
+        None => println!("⏭ Skipping the voice activity variant - no Silero model"),
+    }
+
+    for config in configs {
+        let text = stream_text(audio.path(), config).await;
+        assert_eq!(
+            count_run(&text, "ask what you can do for your country"),
+            2,
+            "{text}"
+        );
+    }
 }
 
 #[tokio::test]
