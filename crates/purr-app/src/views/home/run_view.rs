@@ -62,7 +62,7 @@ fn language_text(record: &RunRecord) -> String {
 
 /// The heading of the error banner.
 fn failure_heading(record: &RunRecord, duration: Option<f64>) -> String {
-    let reached = record.run.transcribed_seconds();
+    let reached = record.run.progress_seconds(duration.unwrap_or(0.0));
     match (record.run.stage, duration) {
         (Stage::Transcribing, Some(total)) if reached > 0.0 => format!(
             "Purr stopped at {} of {}",
@@ -86,10 +86,7 @@ fn audio_length(record: &RunRecord, overview: &OverviewState) -> Option<f64> {
 
 /// What the fill follows for `record`, with `duration` seconds of audio.
 fn glide_input(record: &RunRecord, duration: f64) -> GlideInput {
-    let target = record
-        .run
-        .fraction(duration)
-        .map_or(0.0, |share| share * duration);
+    let target = record.run.progress_seconds(duration);
     let phase = match (&record.run.outcome, record.run.stage) {
         (RunOutcome::Running, Stage::LoadingModel | Stage::DetectingLanguage) => {
             GlidePhase::Waiting

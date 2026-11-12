@@ -190,14 +190,26 @@ impl Run {
             .fold(0.0, f64::max)
     }
 
-    /// The share of `audio_seconds` transcribed so far.
+    /// The seconds of `audio_seconds` transcribed so far, for the progress fill and the time left.
+    ///
+    /// The platform's progress frames lead; the end of the latest segment stands in until the
+    /// platform sends one, as the browser never does.
     #[must_use]
-    pub fn fraction(&self, audio_seconds: f64) -> Option<f64> {
+    pub fn progress_seconds(&self, audio_seconds: f64) -> f64 {
         if let RunOutcome::Completed(_) = self.outcome {
-            return Some(1.0);
+            return audio_seconds.max(0.0);
         }
-        (audio_seconds > 0.0 && self.stage == Stage::Transcribing)
-            .then(|| (self.transcribed_seconds() / audio_seconds).clamp(0.0, 1.0))
+        if self.stage != Stage::Transcribing {
+            return 0.0;
+        }
+        let reached = self
+            .progress
+            .map_or_else(|| self.transcribed_seconds(), |frame| frame.transcribed_to);
+        if audio_seconds > 0.0 {
+            reached.clamp(0.0, audio_seconds)
+        } else {
+            reached.max(0.0)
+        }
     }
 
     /// Seconds of audio per second of decoding since speech decoding began.
@@ -302,7 +314,7 @@ mod tests {
         let mut run = Run::new(false, 0.0);
         run.apply(&TranscriptionStatus::Transcribing, 1_000.0);
         run.apply(&segment(0, 8.0), 3_000.0);
-        assert_eq!(run.fraction(40.0), Some(0.2));
+        assert_eq!(run.progress_seconds(40.0), 8.0);
         assert_eq!(run.live_speed(5_000.0), Some(2.0));
         assert_eq!(run.elapsed_seconds(5_000.0), 5.0);
     }
@@ -319,7 +331,7 @@ mod tests {
         run.apply(&TranscriptionStatus::Progress(frame), 2.0);
         assert_eq!(run.progress, Some(frame));
         assert_eq!(run.stage, Stage::DetectingLanguage);
-        assert_eq!(run.fraction(60.0), None);
+        assert_eq!(run.progress_seconds(60.0), 0.0);
     }
 
     #[test]
@@ -342,7 +354,43 @@ mod tests {
                 word_count: 12
             })
         );
-        assert_eq!(run.fraction(20.0), Some(1.0));
+        assert_eq!(run.progress_seconds(20.0), 20.0);
+    }
+
+    fn frame(transcribed_to: f64) -> TranscriptionStatus {
+        TranscriptionStatus::Progress(ProgressFrame {
+            transcribed_to,
+            decoding: None,
+            phase: purr_common::progress::ProgressPhase::Transcribing,
+        })
+    }
+
+    #[test]
+    fn progress_frames_lead_the_segments_once_one_has_arrived() {
+        let mut run = Run::new(false, 0.0);
+        run.apply(&TranscriptionStatus::Transcribing, 1.0);
+        run.apply(&segment(0, 8.0), 2.0);
+        assert_eq!(run.progress_seconds(40.0), 8.0);
+        run.apply(&frame(12.0), 3.0);
+        assert_eq!(run.progress_seconds(40.0), 12.0);
+        run.apply(&frame(6.0), 4.0);
+        assert_eq!(run.progress_seconds(40.0), 6.0);
+    }
+
+    #[test]
+    fn progress_never_passes_the_audio_and_waits_for_transcribing() {
+        let mut run = Run::new(true, 0.0);
+        run.apply(&frame(9.0), 1.0);
+        assert_eq!(run.progress_seconds(40.0), 0.0);
+        run.apply(
+            &TranscriptionStatus::LanguageDetected {
+                language: "fr".to_owned(),
+            },
+            2.0,
+        );
+        run.apply(&frame(45.0), 3.0);
+        assert_eq!(run.progress_seconds(40.0), 40.0);
+        assert_eq!(run.progress_seconds(0.0), 45.0);
     }
 
     #[test]
