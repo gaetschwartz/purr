@@ -13,6 +13,7 @@ use std::{
     pin::Pin,
     sync::Arc,
     task::{Context, Poll},
+    time::Instant,
 };
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::UnboundedReceiverStream;
@@ -45,6 +46,8 @@ struct StreamingState {
     context_size: usize,
     /// Drops the words a chunk repeats from the overlapping end of the previous one
     overlap: OverlapTrimmer,
+    /// When the stream started processing
+    started: Instant,
 }
 
 impl WhisperTranscriber for StreamWhisperTranscriber {
@@ -109,6 +112,7 @@ impl StreamingState {
             chunk_size,
             context_size,
             overlap: OverlapTrimmer::default(),
+            started: Instant::now(),
         }
     }
 
@@ -156,7 +160,6 @@ impl StreamWhisperTranscriber {
         mut input: AudioStream,
         tx: mpsc::UnboundedSender<crate::Result<StreamingChunk>>,
     ) -> crate::Result<()> {
-        let processing_start = std::time::Instant::now();
         let mut streaming_state = StreamingState::new(state, &config);
         let mut is_stream_complete = false;
 
@@ -251,7 +254,7 @@ impl StreamWhisperTranscriber {
 
         // Send final statistics if we completed successfully
         if is_stream_complete {
-            let final_processing_time = processing_start.elapsed().as_secs_f64();
+            let final_processing_time = streaming_state.started.elapsed().as_secs_f64();
             debug!(
                 "Stream processing completed. Total duration: {:.2}s, processing time: {:.2}s",
                 streaming_state.total_duration, final_processing_time
@@ -360,19 +363,10 @@ impl StreamWhisperTranscriber {
 
                 // Prepare final stats for the last chunk
                 let final_stats = is_final_chunk.then(|| {
-                    let total_processing_time = std::time::Instant::now()
-                        .duration_since(
-                            std::time::Instant::now()
-                                .checked_sub(std::time::Duration::from_secs_f32(
-                                    streaming_state.total_duration,
-                                ))
-                                .unwrap(),
-                        )
-                        .as_secs_f64();
                     let word_count = chunk_text.split_whitespace().count();
 
                     TranscriptionStats {
-                        processing_time: total_processing_time,
+                        processing_time: streaming_state.started.elapsed().as_secs_f64(),
                         audio_duration: streaming_state.total_duration,
                         segment_count: num_segments as usize,
                         word_count,
