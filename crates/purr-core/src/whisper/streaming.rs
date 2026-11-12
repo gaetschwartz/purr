@@ -3,7 +3,8 @@ use crate::{
     accel::report::AccelReport,
     error::TranscriptionError,
     whisper::{
-        StreamingChunk, TranscriptionResult, TranscriptionStats, WhisperTranscriber,
+        StreamEvent, StreamProgress, StreamingChunk, TranscriptionResult, TranscriptionStats,
+        WhisperTranscriber,
         commit::{Span, WindowKind, commit},
         language::{LanguageCode, StreamLanguage},
         loader::{SpecialTokens, load_model},
@@ -12,7 +13,10 @@ use crate::{
     },
 };
 use futures::{FutureExt, Stream, StreamExt};
-use purr_common::word::Word;
+use purr_common::{
+    progress::{ProgressFrame, ProgressPhase},
+    word::Word,
+};
 use std::{
     ops::ControlFlow,
     pin::Pin,
@@ -68,9 +72,12 @@ struct Decoded {
     words: Vec<Word>,
 }
 
+type Events = mpsc::UnboundedSender<crate::Result<StreamEvent>>;
+
 /// One streaming transcription: the audio not yet committed, and what the stream has settled.
 struct Session {
     config: Arc<TranscriptionConfig>,
+    out: Events,
     windows: Windows,
     state: WhisperState,
     tokens: SpecialTokens,
@@ -82,6 +89,8 @@ struct Session {
     /// How much of `pending` a window has already looked at
     seen: usize,
     received: usize,
+    /// Whether the source has delivered all its audio
+    ended: bool,
     language: StreamLanguage,
     chunk_index: usize,
     segment_count: usize,
@@ -140,6 +149,7 @@ impl Session {
         state: WhisperState,
         tokens: SpecialTokens,
         config: Arc<TranscriptionConfig>,
+        out: Events,
     ) -> crate::Result<Self> {
         let threads = match config.num_threads {
             Some(threads) => threads,
@@ -163,6 +173,7 @@ impl Session {
         Ok(Self {
             windows: Windows::new(&config),
             config,
+            out,
             state,
             tokens,
             speech,
@@ -171,6 +182,7 @@ impl Session {
             origin: 0,
             seen: 0,
             received: 0,
+            ended: false,
             language,
             chunk_index: 0,
             segment_count: 0,
@@ -204,6 +216,31 @@ impl Session {
 
     fn sample_rate(&self) -> f64 {
         f64::from(self.config.sample_rate)
+    }
+
+    /// Where the stream stands, while it decodes the samples `decoding` of the source.
+    fn progress(&self, decoding: Option<(usize, usize)>) -> StreamEvent {
+        let sr = self.sample_rate();
+        StreamEvent::Progress(StreamProgress {
+            frame: ProgressFrame {
+                transcribed_to: self.origin.min(self.received) as f64 / sr,
+                decoding: decoding.map(|(start, end)| (start as f64 / sr, end as f64 / sr)),
+                phase: match self.language {
+                    StreamLanguage::Detecting => ProgressPhase::DetectingLanguage,
+                    StreamLanguage::Chosen(_) | StreamLanguage::Locked(_) => {
+                        ProgressPhase::Transcribing
+                    }
+                },
+            },
+            received: self.received as f64 / sr,
+            source_ended: self.ended,
+        })
+    }
+
+    fn send(&self, event: StreamEvent) {
+        if self.out.send(Ok(event)).is_err() {
+            debug!("Receiver dropped, event not delivered");
+        }
     }
 
     fn detect_language(&mut self, window: &[f32]) -> crate::Result<(LanguageCode, f32)> {
@@ -268,7 +305,7 @@ impl Session {
         self.seen = self.seen.saturating_sub(n);
     }
 
-    fn process(&mut self, kind: WindowKind) -> crate::Result<Vec<StreamingChunk>> {
+    fn process(&mut self, kind: WindowKind) -> crate::Result<Vec<StreamEvent>> {
         let mut kind = kind;
         let mut len = match kind {
             WindowKind::Full => self.windows.max,
@@ -299,6 +336,7 @@ impl Session {
         }
 
         let (mut decoded, language) = if spoke {
+            self.send(self.progress(Some((self.origin, self.origin + len))));
             let (language, probability) = match self.language {
                 StreamLanguage::Chosen(code) | StreamLanguage::Locked(code) => (code, 1.0),
                 StreamLanguage::Detecting => self.detect_language(&window)?,
@@ -384,7 +422,9 @@ impl Session {
                 });
             }
         }
-        Ok(chunks)
+        let mut events: Vec<StreamEvent> = chunks.into_iter().map(StreamEvent::Chunk).collect();
+        events.push(self.progress(None));
+        Ok(events)
     }
 }
 
@@ -394,9 +434,9 @@ impl StreamWhisperTranscriber {
         tokens: SpecialTokens,
         config: Arc<TranscriptionConfig>,
         mut input: AudioStream,
-        tx: mpsc::UnboundedSender<crate::Result<StreamingChunk>>,
+        tx: Events,
     ) -> crate::Result<()> {
-        let mut session = Session::new(state, tokens, config)?;
+        let mut session = Session::new(state, tokens, config, tx.clone())?;
         let mut complete = false;
 
         let receive = |item: Option<crate::Result<crate::AudioChunk>>,
@@ -404,6 +444,7 @@ impl StreamWhisperTranscriber {
                        complete: &mut bool| match item {
             Some(Ok(chunk)) => {
                 *complete |= chunk.is_final;
+                session.ended = *complete;
                 session.push(&chunk.samples);
                 ControlFlow::Continue(())
             }
@@ -416,6 +457,7 @@ impl StreamWhisperTranscriber {
             }
             None => {
                 *complete = true;
+                session.ended = true;
                 ControlFlow::Continue(())
             }
         };
@@ -436,8 +478,8 @@ impl StreamWhisperTranscriber {
             }
 
             while let Some(kind) = session.next_window(complete) {
-                let chunks = match session.process(kind) {
-                    Ok(chunks) => chunks,
+                let events = match session.process(kind) {
+                    Ok(events) => events,
                     Err(e) => {
                         warn!("Failed to process audio window: {}", e);
                         if tx.send(Err(e)).is_err() {
@@ -446,8 +488,8 @@ impl StreamWhisperTranscriber {
                         return Ok(());
                     }
                 };
-                for chunk in chunks {
-                    if tx.send(Ok(chunk)).is_err() {
+                for event in events {
+                    if tx.send(Ok(event)).is_err() {
                         debug!("Receiver dropped, stopping stream processing");
                         return Ok(());
                     }
@@ -463,7 +505,7 @@ impl StreamWhisperTranscriber {
 }
 
 pub struct StreamingTranscription {
-    stream: Pin<Box<dyn Stream<Item = Result<StreamingChunk, crate::WhisperError>> + Send>>,
+    stream: Pin<Box<dyn Stream<Item = Result<StreamEvent, crate::WhisperError>> + Send>>,
     accel: AccelReport,
 }
 
@@ -476,7 +518,7 @@ impl StreamingTranscription {
 }
 
 impl Stream for StreamingTranscription {
-    type Item = Result<StreamingChunk, crate::WhisperError>;
+    type Item = Result<StreamEvent, crate::WhisperError>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         self.stream.as_mut().poll_next(cx)

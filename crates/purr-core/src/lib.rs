@@ -28,7 +28,7 @@ use tracing::debug;
 pub use url::{HttpStreamer, UrlContentInfo, UrlStreamConfig, is_file_path, is_valid_url};
 pub use whisper::logging::install_logging_hooks;
 pub use whisper::streaming::StreamingTranscription;
-pub use whisper::{StreamingChunk, SyncTranscriptionResult};
+pub use whisper::{StreamEvent, StreamingChunk, SyncTranscriptionResult};
 /// High-level transcription function
 pub async fn transcribe_file_sync<P: AsRef<std::path::Path>>(
     audio_path: P,

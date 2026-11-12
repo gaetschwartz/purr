@@ -23,6 +23,7 @@ use crate::{
         listing::{HistoryListing, Saved},
     },
     hugging_face_token::HuggingFaceToken,
+    progress::ProgressFrame,
     settings::Settings,
     word::Word,
 };
@@ -456,6 +457,8 @@ pub enum TranscriptionStatus {
     },
     /// Authoritative segment list that replaces everything reported through `InProgress`
     Segments { segments: Vec<TranscriptSegment> },
+    /// How far the engine has come in the audio, apart from the text it produced
+    Progress(ProgressFrame),
     /// Final result
     Completed {
         processing_time: f64,

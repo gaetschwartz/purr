@@ -41,6 +41,7 @@ impl Transcript {
             | TranscriptionStatus::Transcribing
             | TranscriptionStatus::Engine { .. }
             | TranscriptionStatus::LanguageDetected { .. }
+            | TranscriptionStatus::Progress(_)
             | TranscriptionStatus::Completed { .. }
             | TranscriptionStatus::Error { .. }
             | TranscriptionStatus::InitFailed { .. } => {}

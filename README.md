@@ -126,6 +126,9 @@ cargo test -p purr-cli
 # its least certain token, 0 to 1)
 ./target/release/purr-cli audio.wav --output json --word-timestamps
 
+# Show how far the transcription has come on stderr (2:51 / 7:30)
+./target/release/purr-cli audio.wav --progress
+
 # Disable GPU acceleration (same as --accel cpu)
 ./target/release/purr-cli audio.wav --no-gpu
 
@@ -179,6 +182,7 @@ Options:
       --timestamps                 Include timestamps in output (text format only)
       --word-timestamps            Time every word, and add each segment's words
                                    (text, start, end, score) to --output json
+      --progress                   Show position / duration on stderr while streaming
       --temperature <TEMPERATURE>  Temperature for sampling [default: 0.0]
   -v, --verbose                    Verbose output
   -h, --help                       Print help

@@ -8,7 +8,7 @@ pub mod streaming;
 pub mod sync;
 pub mod words;
 
-use purr_common::word::Word;
+use purr_common::{progress::ProgressFrame, word::Word};
 use serde::{Deserialize, Serialize};
 use std::future::Future;
 
@@ -118,6 +118,36 @@ pub struct StreamingChunk {
 
     /// The words of `text`, timed on the source timeline when word timestamps were asked for
     pub words: Vec<Word>,
+}
+
+/// What a streaming transcription reports, in order.
+#[derive(Debug, Clone)]
+pub enum StreamEvent {
+    /// Text the stream will not change any more
+    Chunk(StreamingChunk),
+    /// How far the stream has come, sent before and after each decoded window
+    Progress(StreamProgress),
+}
+
+impl StreamEvent {
+    /// The chunk this event carries, if it is one.
+    #[must_use]
+    pub fn into_chunk(self) -> Option<StreamingChunk> {
+        match self {
+            Self::Chunk(chunk) => Some(chunk),
+            Self::Progress(_) => None,
+        }
+    }
+}
+
+/// Progress of a stream, with what it knows of its source.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct StreamProgress {
+    pub frame: ProgressFrame,
+    /// Seconds of audio received from the source so far
+    pub received: f64,
+    /// Whether the source has delivered all its audio, which makes `received` its duration
+    pub source_ended: bool,
 }
 
 pub trait WhisperTranscriber {

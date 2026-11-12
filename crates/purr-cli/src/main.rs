@@ -3,6 +3,7 @@ mod cli;
 mod fmt;
 mod json;
 mod models;
+mod progress;
 
 use crate::fmt::{MyFormatter, Verbosity, VerbosityLevel};
 use clap::Parser as _;
@@ -13,7 +14,7 @@ use owo_colors::OwoColorize as _;
 use purr_core::model::registry::ModelSpec;
 use purr_core::model::vad_or_none;
 use purr_core::{
-    ModelManager, StreamingTranscription, TranscriptionConfig, accel::backend::AccelBackend,
+    ModelManager, StreamEvent, StreamingTranscription, TranscriptionConfig, accel::backend::AccelBackend,
     dev::FeatureStatus, install_logging_hooks, is_file_path, is_valid_url, list_devices,
     transcribe_file_stream, transcribe_file_sync, transcribe_url_stream, transcribe_url_sync,
 };
@@ -181,8 +182,18 @@ async fn handle_streaming_output(
 
     use futures::StreamExt;
 
-    while let Some(chunk_result) = stream.next().await {
-        let chunk = chunk_result?;
+    let mut progress_shown = false;
+    while let Some(event) = stream.next().await {
+        let chunk = match event? {
+            StreamEvent::Progress(progress) => {
+                if cli.progress {
+                    eprint!("\r{}", progress::line(&progress));
+                    progress_shown = true;
+                }
+                continue;
+            }
+            StreamEvent::Chunk(chunk) => chunk,
+        };
         all_chunks.push(chunk.clone());
 
         if !chunk.text.is_empty() || matches!(cli.output, OutputFormat::Json) {
@@ -245,6 +256,10 @@ async fn handle_streaming_output(
                 eprintln!("Words per minute: {:.1}", stats.words_per_minute());
             }
         }
+    }
+
+    if progress_shown {
+        eprintln!();
     }
 
     // Write to file if specified

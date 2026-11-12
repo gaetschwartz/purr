@@ -579,7 +579,12 @@ impl DesktopRun {
                 }
             }
             Phase::Decode(mut stream) => match stream.next().await {
-                Some(Ok(chunk)) => {
+                Some(Ok(purr_core::StreamEvent::Progress(progress))) => {
+                    self.pending
+                        .push_back(Ok(TranscriptionStatus::Progress(progress.frame)));
+                    self.phase = Phase::Decode(stream);
+                }
+                Some(Ok(purr_core::StreamEvent::Chunk(chunk))) => {
                     if !self.language_reported
                         && let Some(language) = chunk.language.clone()
                     {

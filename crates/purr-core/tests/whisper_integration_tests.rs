@@ -3,9 +3,9 @@
 //! These tests require a Whisper model to be available and test the full
 //! audio-to-transcription pipeline including both sync and streaming modes.
 
-use futures::StreamExt;
+use futures::{Stream, StreamExt};
 use purr_core::{
-    ModelManager,
+    ModelManager, StreamEvent, StreamingChunk, StreamingTranscription,
     audio::{AudioData, AudioProcessor},
     config::TranscriptionConfig,
     transcribe_file_stream, transcribe_file_sync,
@@ -18,6 +18,15 @@ use rstest::rstest;
 use std::path::PathBuf;
 use tempfile::NamedTempFile;
 use tokio::fs;
+
+/// The chunks of a stream, without its progress events.
+fn chunks_of(
+    stream: StreamingTranscription,
+) -> impl Stream<Item = purr_core::Result<StreamingChunk>> + Unpin {
+    stream
+        .filter_map(|event| std::future::ready(event.map(StreamEvent::into_chunk).transpose()))
+        .boxed()
+}
 
 /// Test fixtures for Whisper integration testing
 mod whisper_fixtures {
@@ -289,7 +298,7 @@ async fn test_streaming_whisper_with_audio_stream() {
     let result = transcriber.transcribe(audio_stream).await;
     assert!(result.is_ok(), "Streaming transcription should succeed");
 
-    let mut streaming_result = result.unwrap();
+    let mut streaming_result = chunks_of(result.unwrap());
     let mut chunks = Vec::new();
     let mut final_stats = None;
 
@@ -342,7 +351,7 @@ async fn test_streaming_transcription_high_level_api() {
     let result = transcribe_file_stream(temp_audio.path(), config).await;
     assert!(result.is_ok(), "High-level streaming API should work");
 
-    let mut streaming_result = result.unwrap();
+    let mut streaming_result = chunks_of(result.unwrap());
     let mut chunk_count = 0;
     let mut received_final = false;
 
@@ -534,7 +543,7 @@ async fn test_transcription_performance_streaming() {
     let result = transcribe_file_stream(temp_audio.path(), config).await;
     assert!(result.is_ok(), "Streaming performance test should succeed");
 
-    let mut streaming_result = result.unwrap();
+    let mut streaming_result = chunks_of(result.unwrap());
     let mut first_chunk_time = None;
     let mut _last_chunk_time = None;
 
@@ -665,7 +674,7 @@ async fn test_streaming_does_not_loop_on_fast_speech() {
     config.model_path = Some(model_path);
 
     let sample = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../samples/mm1.wav");
-    let mut stream = transcribe_file_stream(&sample, config).await.unwrap();
+    let mut stream = chunks_of(transcribe_file_stream(&sample, config).await.unwrap());
     let mut text = String::new();
     while let Some(chunk) = stream.next().await {
         let chunk = chunk.unwrap();
@@ -726,7 +735,7 @@ async fn stream_chunks(
     audio: &std::path::Path,
     config: TranscriptionConfig,
 ) -> TestResult<Vec<purr_core::StreamingChunk>> {
-    let mut stream = transcribe_file_stream(audio, config).await?;
+    let mut stream = chunks_of(transcribe_file_stream(audio, config).await?);
     let mut chunks = Vec::new();
     while let Some(chunk) = stream.next().await {
         chunks.push(chunk?);
@@ -788,6 +797,47 @@ async fn test_streaming_keeps_a_sentence_spoken_twice() {
             "{text}"
         );
     }
+}
+
+#[tokio::test]
+async fn test_streaming_progress_follows_the_audio_consumed() {
+    let Ok(model_manager) = ModelManager::new() else {
+        println!("⏭ Skipping test - no model directory");
+        return;
+    };
+    let model_path = model_manager.models_dir().join("ggml-base.bin");
+    if !model_path.exists() {
+        println!("⏭ Skipping test - ggml-base.bin not available");
+        return;
+    }
+    let audio = spoken_twice("jfk.wav").await.unwrap();
+    let mut config = TranscriptionConfig::new().with_gpu(false).with_beam_size(1);
+    config.model_path = Some(model_path);
+
+    let mut stream = transcribe_file_stream(audio.path(), config).await.unwrap();
+    let mut frames = Vec::new();
+    while let Some(event) = stream.next().await {
+        if let StreamEvent::Progress(progress) = event.unwrap() {
+            frames.push(progress);
+        }
+    }
+
+    let done: Vec<f64> = frames.iter().map(|p| p.frame.transcribed_to).collect();
+    assert!(done.windows(2).all(|pair| pair[0] <= pair[1]), "{done:?}");
+    assert!(frames.iter().all(|p| p.frame.transcribed_to <= p.received));
+    for decoding in frames
+        .iter()
+        .filter_map(|p| p.frame.decoding.map(|d| (p, d)))
+    {
+        let (progress, (start, end)) = decoding;
+        assert_eq!(start, progress.frame.transcribed_to);
+        assert!(end > start && end <= progress.received);
+    }
+    let last = frames.last().unwrap();
+    assert!(last.source_ended);
+    assert_eq!(last.frame.decoding, None);
+    assert_eq!(last.frame.transcribed_to, last.received);
+    assert!((last.received - 24.0).abs() < 0.1, "{}", last.received);
 }
 
 #[tokio::test]

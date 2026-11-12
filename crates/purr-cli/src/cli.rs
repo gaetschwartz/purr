@@ -90,6 +90,11 @@ pub struct Cli {
     #[arg(long)]
     pub word_timestamps: bool,
 
+    /// While streaming, show on stderr how far the transcription has come, as position /
+    /// duration (`2:51 / 7:30`); the duration shows once the whole audio has been read
+    #[arg(long)]
+    pub progress: bool,
+
     /// Stream transcription results in real-time
     #[arg(short = 'S', long)]
     pub no_stream: bool,

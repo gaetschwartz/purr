@@ -1,7 +1,10 @@
 //! One transcription run, folded from the platform's status updates.
 
 use super::transcript::Transcript;
-use purr_common::{accel::LastRun, browser_engine::BrowserEngine, platform::TranscriptionStatus};
+use purr_common::{
+    accel::LastRun, browser_engine::BrowserEngine, platform::TranscriptionStatus,
+    progress::ProgressFrame,
+};
 
 /// The step a running transcription is in, in the order they happen.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -63,6 +66,8 @@ pub struct Run {
     pub transcript: Transcript,
     /// The Whisper code the platform recognised, when it was asked to detect the language.
     pub detected_language: Option<String>,
+    /// The latest progress the platform reported, apart from the transcript.
+    pub progress: Option<ProgressFrame>,
     pub outcome: RunOutcome,
     detect_language: bool,
     started_ms: f64,
@@ -80,6 +85,7 @@ impl Run {
             browser_engine: None,
             transcript: Transcript::default(),
             detected_language: None,
+            progress: None,
             outcome: RunOutcome::Running,
             detect_language,
             started_ms: now_ms,
@@ -120,6 +126,7 @@ impl Run {
                 self.transcribing_since_ms.get_or_insert(now_ms);
                 self.advance(Stage::Transcribing);
             }
+            TranscriptionStatus::Progress(frame) => self.progress = Some(*frame),
             TranscriptionStatus::InProgress { .. } | TranscriptionStatus::Segments { .. } => {
                 self.transcribing_since_ms.get_or_insert(now_ms);
                 self.advance(Stage::Transcribing);
@@ -293,6 +300,21 @@ mod tests {
         assert_eq!(run.fraction(40.0), Some(0.2));
         assert_eq!(run.live_speed(5_000.0), Some(2.0));
         assert_eq!(run.elapsed_seconds(5_000.0), 5.0);
+    }
+
+    #[test]
+    fn progress_is_kept_without_moving_the_stage_or_the_fraction() {
+        let mut run = Run::new(true, 0.0);
+        run.apply(&TranscriptionStatus::Transcribing, 1.0);
+        let frame = ProgressFrame {
+            transcribed_to: 29.5,
+            decoding: Some((29.5, 59.5)),
+            phase: purr_common::progress::ProgressPhase::DetectingLanguage,
+        };
+        run.apply(&TranscriptionStatus::Progress(frame), 2.0);
+        assert_eq!(run.progress, Some(frame));
+        assert_eq!(run.stage, Stage::DetectingLanguage);
+        assert_eq!(run.fraction(60.0), None);
     }
 
     #[test]
