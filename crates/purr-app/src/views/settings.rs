@@ -17,9 +17,7 @@ mod transcription;
 
 use crate::{
     components::{
-        banner::{Banner, BannerTone},
         dialog::{Dialog, DialogTone},
-        icon::IconName,
         page::Page,
         toast::{Toast, ToastKind, use_toasts},
     },
@@ -57,19 +55,10 @@ pub fn Settings() -> Element {
     rsx! {
         Page {
             title: "Settings",
-            subtitle: "Changes save automatically.",
             actions: rsx! {
                 SavedTick {}
             },
             SectionNav {}
-            if IS_WEB {
-                Banner {
-                    tone: BannerTone::Info,
-                    icon: IconName::Window,
-                    title: "You're using Purr in the browser",
-                    "The browser manages audio decoding and the GPU, so the performance and decoding settings live only in the desktop app."
-                }
-            }
             div { class: "settings",
                 AppearanceSection {}
                 TranscriptionSection {}
@@ -87,7 +76,7 @@ pub fn Settings() -> Element {
                 tone: DialogTone::Destructive,
                 on_confirm: reset_settings,
                 on_cancel: move |()| reset_open.set(false),
-                "Theme, language, model choice, export format, performance and logging go back to their defaults. Downloaded models and your history stay."
+                "Models and history are kept."
             }
         }
     }

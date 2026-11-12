@@ -75,13 +75,6 @@ impl ModelFamily {
     }
 }
 
-/// Speed and accuracy on a scale of one to five dots.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Ratings {
-    pub speed: u8,
-    pub accuracy: u8,
-}
-
 /// A section of the model list: related families shown together.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ModelGroup {
@@ -134,38 +127,6 @@ impl ModelGroup {
             Self::Other => "Models this version of Purr has no description for.",
         }
     }
-
-    /// The speed and accuracy dots; `None` when the size class is unknown.
-    #[must_use]
-    pub const fn ratings(self) -> Option<Ratings> {
-        match self {
-            Self::Tiny => Some(Ratings {
-                speed: 5,
-                accuracy: 1,
-            }),
-            Self::Base => Some(Ratings {
-                speed: 4,
-                accuracy: 2,
-            }),
-            Self::Small => Some(Ratings {
-                speed: 3,
-                accuracy: 3,
-            }),
-            Self::Medium => Some(Ratings {
-                speed: 2,
-                accuracy: 4,
-            }),
-            Self::Large => Some(Ratings {
-                speed: 1,
-                accuracy: 5,
-            }),
-            Self::Turbo => Some(Ratings {
-                speed: 4,
-                accuracy: 5,
-            }),
-            Self::Other => None,
-        }
-    }
 }
 
 #[cfg(test)]
@@ -194,17 +155,6 @@ mod tests {
         assert_eq!(ModelFamily::LargeV2.group(), ModelGroup::Large);
         assert_eq!(ModelFamily::LargeV3.group(), ModelGroup::Large);
         assert_eq!(ModelFamily::LargeV3Turbo.group(), ModelGroup::Turbo);
-    }
-
-    #[test]
-    fn every_known_group_has_ratings_and_other_does_not() {
-        for group in ModelGroup::ORDER {
-            assert_eq!(
-                group.ratings().is_some(),
-                group != ModelGroup::Other,
-                "{group:?}"
-            );
-        }
     }
 
     #[test]

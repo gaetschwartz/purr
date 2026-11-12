@@ -66,14 +66,10 @@ pub fn ResultView(record: RunRecord, completion: Completion) -> Element {
     let keeping = match session.save_state() {
         SaveState::Idle => rsx! {},
         SaveState::Saving => rsx! {
-            span {
-                Icon { name: IconName::Lock }
-                "Saving to History…"
-            }
+            span { "Saving to History…" }
         },
         SaveState::Saved(id) => rsx! {
             span {
-                Icon { name: IconName::Lock }
                 Link { to: Route::HistoryItem { id }, "Saved to History" }
             }
         },

@@ -2,37 +2,6 @@ use super::icon::{Icon, IconName, IconSize};
 use crate::{main_app::Route, utils::dom_id::use_dom_id};
 use dioxus::prelude::*;
 
-/// Background of the small icon tile at the start of an [`Item`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum TileColor {
-    #[default]
-    Indigo,
-    Blue,
-    Teal,
-    Orange,
-    Green,
-    Gray,
-    Pink,
-    Purple,
-    Red,
-}
-
-impl TileColor {
-    const fn class(self) -> &'static str {
-        match self {
-            Self::Indigo => "ic indigo",
-            Self::Blue => "ic blue",
-            Self::Teal => "ic teal",
-            Self::Orange => "ic orange",
-            Self::Green => "ic green",
-            Self::Gray => "ic gray",
-            Self::Pink => "ic pink",
-            Self::Purple => "ic purple",
-            Self::Red => "ic red",
-        }
-    }
-}
-
 /// An inset grouped list on glass, with an optional caps header and a footnote.
 #[component]
 pub fn Group(
@@ -64,17 +33,15 @@ pub enum ItemAction {
     Press(EventHandler<MouseEvent>),
 }
 
-/// A row of a [`Group`]: icon tile, title, subtitle and a trailing value or control.
+/// A row of a [`Group`]: title, subtitle and a trailing value or control.
 ///
 /// With an `action` the whole row is a link or a button and shows a chevron; `control` holds a
 /// switch, select or stepper (name it with the same words as the title); `children` render under
-/// the row, indented past the tile, for wide controls such as a slider.
+/// the row, for wide controls such as a slider.
 #[component]
 pub fn Item(
     #[props(into)] title: String,
     #[props(into)] subtitle: Option<String>,
-    icon: Option<IconName>,
-    #[props(default)] tile: TileColor,
     #[props(into)] value: Option<String>,
     control: Option<Element>,
     action: Option<ItemAction>,
@@ -96,11 +63,6 @@ pub fn Item(
     }
     let chevron = action.is_some();
     let head = rsx! {
-        if let Some(name) = icon {
-            span { class: tile.class(),
-                Icon { name }
-            }
-        }
         span { class: "txt",
             b { "{title}" }
             if let Some(subtitle) = &subtitle {

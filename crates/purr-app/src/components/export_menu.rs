@@ -5,13 +5,10 @@ use super::{
     popover::{Popover, PopoverOption},
     segmented::{Segment, Segmented},
     sheet::Sheet,
-    toast::{Toasts, use_toasts},
+    toast::{Toast, ToastKind, Toasts, use_toasts},
 };
 use crate::{
-    platform::{
-        IS_WEB,
-        export::{SaveOutcome, TextFile, copy_to_clipboard, save_text_file},
-    },
+    platform::export::{SaveOutcome, TextFile, copy_to_clipboard, save_text_file},
     settings_store::use_settings,
     shortcuts::{Key, KeyChord, Shortcut, use_shortcut},
     transcribe::export_format::{ExportDocument, export_file_name, render},
@@ -66,12 +63,7 @@ fn save(source: &ExportSource, format: ExportFormat, toasts: Toasts) {
         };
         match saved {
             Ok(SaveOutcome::Saved) => {
-                let detail = if IS_WEB {
-                    "Your browser put it in your downloads."
-                } else {
-                    "The file is where you chose to save it."
-                };
-                toasts.success(format!("Saved {file_name}"), detail);
+                toasts.show(Toast::new(ToastKind::Success, format!("Saved {file_name}")));
             }
             Ok(SaveOutcome::Cancelled) => {}
             Err(error) => {

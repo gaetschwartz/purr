@@ -4,8 +4,7 @@ use super::{
 };
 use crate::{
     components::{
-        group::{Group, Item, TileColor},
-        icon::IconName,
+        group::{Group, Item},
         select::{Select, SelectOption},
         stepper::Stepper,
         switch::Switch,
@@ -50,20 +49,13 @@ pub fn PerformanceSection() -> Element {
         .unwrap_or(THREAD_LIMIT_WITHOUT_PROBE)
         .max(1);
     let automatic = backend == AccelSelection::Auto;
-    let fallback_hint = if automatic {
-        "Automatic always moves on to the next best backend."
-    } else {
-        "Use the next best backend instead of stopping."
-    };
+    let fallback_hint = automatic.then_some("Always on with Automatic.");
 
     rsx! {
         div { class: "sect", id: SettingsSection::Performance.anchor(),
             Group { header: SettingsSection::Performance.label(),
                 Item {
-                    icon: IconName::Bolt,
-                    tile: TileColor::Orange,
                     title: "GPU acceleration",
-                    subtitle: "Much faster on a supported graphics card. Off runs on the processor only.",
                     control: rsx! {
                         Switch {
                             label: "GPU acceleration",
@@ -73,10 +65,7 @@ pub fn PerformanceSection() -> Element {
                     },
                 }
                 Item {
-                    icon: IconName::Cpu,
-                    tile: TileColor::Indigo,
                     title: "Backend",
-                    subtitle: "Automatic picks the fastest one that works.",
                     control: rsx! {
                         Select {
                             label: "Acceleration backend",
@@ -88,10 +77,8 @@ pub fn PerformanceSection() -> Element {
                     },
                 }
                 Item {
-                    icon: IconName::Retry,
-                    tile: TileColor::Green,
                     title: "Fall back if unavailable",
-                    subtitle: fallback_hint,
+                    subtitle: fallback_hint.map(str::to_owned),
                     control: rsx! {
                         Switch {
                             label: "Fall back to the next best backend if unavailable",
@@ -105,10 +92,8 @@ pub fn PerformanceSection() -> Element {
             SystemPanel { system }
             Group {
                 Item {
-                    icon: IconName::Cpu,
-                    tile: TileColor::Gray,
                     title: "CPU threads",
-                    subtitle: "Automatic lets Whisper choose, up to 4 threads. More threads help most when Purr runs on the processor.",
+                    subtitle: "Auto uses up to 4.",
                     control: rsx! {
                         Stepper {
                             label: "CPU threads",

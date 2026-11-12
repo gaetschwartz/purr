@@ -84,7 +84,6 @@ pub fn RenameDialog(id: HistoryId, title: String, on_close: EventHandler<()>) ->
                 }
             }
             p { class: "foot", id: "rename-help",
-                "Only the name in Purr changes. The audio file keeps its name."
             }
         }
     }

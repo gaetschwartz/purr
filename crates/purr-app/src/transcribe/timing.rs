@@ -39,17 +39,6 @@ pub fn speed_text(speed: f64) -> String {
     format!("{speed:.1}×")
 }
 
-/// The explanation of a speed: about how long a minute of audio takes.
-#[must_use]
-pub fn speed_explained(speed: f64) -> String {
-    let per_minute = (60.0 / speed).round().max(1.0) as u64;
-    let unit = if per_minute == 1 { "second" } else { "seconds" };
-    format!(
-        "Speed is relative to real time: {} means a minute of audio takes about {per_minute} {unit}.",
-        speed_text(speed)
-    )
-}
-
 /// Seconds left at `speed` for the audio not transcribed yet.
 #[must_use]
 pub fn seconds_left(audio_seconds: f64, done_seconds: f64, speed: f64) -> Option<f64> {
@@ -80,18 +69,6 @@ mod tests {
         assert_eq!(speed(112.0, 24.0).map(speed_text), Some("4.7×".to_owned()));
         assert_eq!(speed(0.0, 3.0), None);
         assert_eq!(speed(10.0, 0.0), None);
-    }
-
-    #[test]
-    fn the_explanation_rounds_to_whole_seconds() {
-        assert_eq!(
-            speed_explained(4.6),
-            "Speed is relative to real time: 4.6× means a minute of audio takes about 13 seconds."
-        );
-        assert_eq!(
-            speed_explained(90.0),
-            "Speed is relative to real time: 90.0× means a minute of audio takes about 1 second."
-        );
     }
 
     #[test]

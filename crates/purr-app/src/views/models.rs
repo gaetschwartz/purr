@@ -8,18 +8,14 @@ use crate::{
         model_filters::ModelFilters,
         model_row::ModelListRow,
         model_section::ModelSection,
-        model_stats::{Headline, ModelStats},
         page::Page,
         spinner::Spinner,
     },
     hooks::use_models::{GpuSupport, ModelsHandle, use_models},
     model_catalog::{
-        entry::Precision,
         family::ModelGroup,
-        format,
-        listing::{Listing, ModelQuery, ModelRow, active_download, build_listing, summarize},
+        listing::{Listing, ModelQuery, ModelRow, build_listing, summarize},
     },
-    platform::IS_WEB,
     settings_store::use_settings,
     utils::byte_size::ByteSize,
 };
@@ -38,33 +34,15 @@ fn gpu_notice(
         GpuSupport::Checking => None,
         GpuSupport::Unavailable => Some((
             BannerTone::Warn,
-            "WebGPU isn't available in this browser",
-            "Purr runs browser models on your graphics card through WebGPU. You can download models, but none can run until you use a browser that offers it, such as a current Chrome or Edge.",
+            "This browser has no WebGPU",
+            "Models can be downloaded, but none can run here.",
         )),
         GpuSupport::Available { shader_f16, .. } => (!shader_f16).then_some((
             BannerTone::Info,
-            "Some models need a GPU feature this device doesn't offer",
-            "The largest model uses 16-bit floating point on the GPU (WebGPU \"shader-f16\"). Your GPU doesn't expose it here, so pick one of the smaller models instead.",
+            "Some models need shader-f16",
+            "This GPU lacks it, so those models are greyed out.",
         )),
     }
-}
-
-fn headline(rows: &[ModelRow], selected: Option<&str>) -> Headline {
-    if let Some(row) = active_download(rows) {
-        return Headline::Downloading {
-            label: row.entry.label.clone(),
-            percent: row.state.progress().and_then(format::percent),
-        };
-    }
-    let label = selected.map_or_else(
-        || "Not chosen yet".to_owned(),
-        |id| {
-            rows.iter()
-                .find(|row| row.entry.id == id)
-                .map_or_else(|| id.to_owned(), |row| row.entry.label.clone())
-        },
-    );
-    Headline::InUse(label)
 }
 
 #[component]
@@ -72,11 +50,6 @@ fn Catalog(models: ModelsHandle, rows: Vec<ModelRow>, selected: Option<String>) 
     let mut query = use_signal(ModelQuery::default);
     let mut delete_target = use_signal(|| None::<String>);
 
-    let has_q5 = rows
-        .iter()
-        .any(|row| row.entry.precision == Precision::Quantized { bits: 5 });
-    let summary = summarize(&rows);
-    let headline = headline(&rows, selected.as_deref());
     let groups: Vec<ModelGroup> = ModelGroup::ORDER
         .into_iter()
         .filter(|group| rows.iter().any(|row| row.entry.group == *group))
@@ -98,13 +71,12 @@ fn Catalog(models: ModelsHandle, rows: Vec<ModelRow>, selected: Option<String>) 
                 icon: IconName::WifiOff,
                 title: "You're offline",
                 role: "status",
-                "Downloads need a connection. Models you've already downloaded keep working."
+                "Downloads need a connection."
             }
         }
         if let Some((tone, title, body)) = notice {
             Banner { tone, title, "{body}" }
         }
-        ModelStats { summary, headline }
         ModelFilters {
             query: query(),
             groups,
@@ -123,9 +95,7 @@ fn Catalog(models: ModelsHandle, rows: Vec<ModelRow>, selected: Option<String>) 
             }
         }
         if nothing_matches {
-            EmptyState { icon: IconName::Search, title: "No models match",
-                "Try a different filter or search."
-            }
+            EmptyState { icon: IconName::Search, title: "No models match" }
         }
         for section in sections {
             ModelSection {
@@ -142,12 +112,6 @@ fn Catalog(models: ModelsHandle, rows: Vec<ModelRow>, selected: Option<String>) 
                 }
             }
         }
-        p { class: "foot", style: "padding-left:16px",
-            "Models download over HTTPS and are checked against a published checksum."
-            if has_q5 {
-                " Q5 means quantized to 5-bit: about a third of the size, with a small loss in accuracy."
-            }
-        }
         if let Some(target) = delete_target() {
             if let Some(row) = rows.iter().find(|row| row.entry.id == target) {
                 Dialog {
@@ -162,10 +126,7 @@ fn Catalog(models: ModelsHandle, rows: Vec<ModelRow>, selected: Option<String>) 
                             models.remove(&id);
                         }
                     },
-                    "This frees {ByteSize(row.entry.size_bytes)}. You can download it again later."
-                    if in_use(&row.entry.id) {
-                        " It is the model Purr uses for transcription, so choose another one before your next file."
-                    }
+                    "This frees {ByteSize(row.entry.size_bytes)}."
                 }
             }
         }
@@ -177,12 +138,19 @@ fn Catalog(models: ModelsHandle, rows: Vec<ModelRow>, selected: Option<String>) 
 pub fn Models() -> Element {
     let models = use_models();
     let settings = use_settings();
-    let selected_id = use_memo(move || settings.with(|s| s.model.model_name.clone()));
-    let subtitle = if IS_WEB {
-        "Speech models stored in this browser. Larger models are more accurate and slower."
-    } else {
-        "Speech models stored on this device. Larger models are more accurate and slower."
-    };
+    let saved = use_memo(move || settings.with(|s| s.model.model_name.clone()));
+    let selected = models
+        .selection(&saved())
+        .and_then(|selection| selection.row().map(|row| row.entry.id.clone()));
+    let subtitle = models.rows().and_then(Result::ok).map(|rows| {
+        let summary = summarize(&rows);
+        format!(
+            "{} of {} downloaded · {}",
+            summary.installed,
+            summary.total,
+            ByteSize(summary.used_bytes)
+        )
+    });
 
     rsx! {
         Page { title: "Models", subtitle, wide: true,
@@ -196,7 +164,7 @@ pub fn Models() -> Element {
                 Some(Err(error)) => rsx! {
                     Banner {
                         tone: BannerTone::Bad,
-                        title: "Could not list the models",
+                        title: "Couldn't list the models",
                         role: "alert",
                         actions: rsx! {
                             Button {
@@ -210,7 +178,7 @@ pub fn Models() -> Element {
                     }
                 },
                 Some(Ok(rows)) => rsx! {
-                    Catalog { models, rows, selected: Some(selected_id()) }
+                    Catalog { models, rows, selected }
                 },
             }
         }

@@ -124,25 +124,12 @@ pub fn build_listing(rows: Vec<ModelRow>, query: &ModelQuery) -> Listing {
     listing
 }
 
-/// The numbers of the stat cards.
+/// How many models are stored and the space they take.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Summary {
     pub installed: usize,
     pub total: usize,
     pub used_bytes: u64,
-    pub catalog_bytes: u64,
-}
-
-impl Summary {
-    /// Share of the whole catalog that is stored, between 0 and 1.
-    #[must_use]
-    pub fn used_fraction(&self) -> f64 {
-        if self.catalog_bytes == 0 {
-            0.0
-        } else {
-            (self.used_bytes as f64 / self.catalog_bytes as f64).clamp(0.0, 1.0)
-        }
-    }
 }
 
 /// Counts the models stored on this device and the space they take.
@@ -153,15 +140,7 @@ pub fn summarize(rows: &[ModelRow]) -> Summary {
         installed: stored.clone().count(),
         total: rows.len(),
         used_bytes: stored.map(|row| row.entry.size_bytes).sum(),
-        catalog_bytes: rows.iter().map(|row| row.entry.size_bytes).sum(),
     }
-}
-
-/// The download that is running, if any: its row and its progress.
-#[must_use]
-pub fn active_download(rows: &[ModelRow]) -> Option<&ModelRow> {
-    rows.iter()
-        .find(|row| matches!(row.state, ModelState::Downloading(_)))
 }
 
 #[cfg(test)]
@@ -312,16 +291,5 @@ mod tests {
         assert_eq!(summary.installed, 1);
         assert_eq!(summary.total, 6);
         assert_eq!(summary.used_bytes, 100);
-        assert_eq!(summary.catalog_bytes, 600);
-        assert!((summary.used_fraction() - 1.0 / 6.0).abs() < f64::EPSILON);
-    }
-
-    #[test]
-    fn the_active_download_is_found() {
-        let rows = rows();
-        assert_eq!(
-            active_download(&rows).map(|row| row.entry.id.as_str()),
-            Some("small")
-        );
     }
 }

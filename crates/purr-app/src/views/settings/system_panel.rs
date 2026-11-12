@@ -55,7 +55,7 @@ pub fn SystemPanel(system: Resource<Result<SystemReport, String>>) -> Element {
                 Some(Ok(report)) => rsx! {
                     SystemList { label: "Detected backends and devices", rows: rows(&report) }
                     p { class: "group-f",
-                        "Read-only. “Built, unavailable” means this copy of Purr supports the backend but the device or driver doesn't respond."
+                        "“Built, unavailable”: this build supports the backend, but no device or driver responds."
                     }
                     if let Some(note) = last_run_note(report.last_run.as_ref(), requested) {
                         div { style: "margin-top:14px",

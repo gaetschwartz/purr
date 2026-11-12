@@ -1,6 +1,9 @@
 //! Whether Transcribe can start, and what has to happen to the model first.
 
-use crate::model_catalog::state::{ModelState, UnavailableReason};
+use crate::model_catalog::{
+    copy,
+    state::{ModelState, UnavailableReason},
+};
 
 /// The chosen file, as far as starting a run cares.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -63,10 +66,7 @@ pub const fn blocked_text(blocker: &Blocker) -> &'static str {
         Blocker::ModelsLoading => "The model list is still loading.",
         Blocker::NoModel => "No model is available.",
         Blocker::NoWebGpu => "This browser has no WebGPU.",
-        Blocker::CannotRun(UnavailableReason::NeedsShaderF16) => {
-            "This model needs shader-f16, which this GPU lacks."
-        }
-        Blocker::CannotRun(UnavailableReason::NeedsWebGpu) => "This model needs WebGPU.",
+        Blocker::CannotRun(reason) => copy::unavailable(*reason).1,
         Blocker::Checking => "The model's files are being checked.",
         Blocker::OtherDownload => "Wait for the other model download to finish.",
     }

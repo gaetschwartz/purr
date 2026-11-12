@@ -10,13 +10,12 @@ use crate::{
         audio_player::{AudioPlayer, PlayerHandle},
         button::Button,
         export_menu::{ExportMenu, ExportSource, copy_export},
-        icon::{Icon, IconName},
+        icon::IconName,
         page::Page,
         toast::use_toasts,
     },
     shortcuts::{Key, KeyChord, Shortcut, use_shortcut},
     transcribe::timing,
-    utils::primary_key::use_primary_key_label,
 };
 use dioxus::prelude::*;
 use playback_shortcut::PlaybackShortcut;
@@ -64,8 +63,6 @@ pub fn ResultFrame(
     audio: ResultAudio,
 ) -> Element {
     let toasts = use_toasts();
-    let primary_key = use_primary_key_label();
-
     let copy_source = export.clone();
     use_shortcut(
         Shortcut::new(
@@ -95,13 +92,6 @@ pub fn ResultFrame(
         ResultAudio::Player { player, .. } => Some(*player),
         ResultAudio::Unavailable(_) => None,
     };
-    let hint = if player.is_some() {
-        format!(
-            "Click any line to play from there. Space plays or pauses. {primary_key}+F searches, {primary_key}+Shift+C copies everything."
-        )
-    } else {
-        format!("{primary_key}+F searches, {primary_key}+Shift+C copies everything.")
-    };
 
     rsx! {
         Page {
@@ -123,22 +113,10 @@ pub fn ResultFrame(
             },
             {notice}
             div { class: "metas tnum", aria_label: "Details",
-                span {
-                    Icon { name: IconName::Clock }
-                    {timing::clock(details.duration_seconds)}
-                }
-                span {
-                    Icon { name: IconName::Cube }
-                    "{details.model_label}"
-                }
-                span {
-                    Icon { name: IconName::Globe }
-                    "{details.language_text}"
-                }
-                span {
-                    Icon { name: IconName::Bolt }
-                    "Took {timing::took(details.took_seconds)}{speed}{engine}"
-                }
+                span { {timing::clock(details.duration_seconds)} }
+                span { "{details.model_label}" }
+                span { "{details.language_text}" }
+                span { "Took {timing::took(details.took_seconds)}{speed}{engine}" }
                 {keeping}
             }
             match audio {
@@ -146,20 +124,13 @@ pub fn ResultFrame(
                     AudioPlayer { player, duration: Some(details.duration_seconds), peaks }
                 },
                 ResultAudio::Unavailable(note) => rsx! {
-                    p {
-                        class: "foot",
-                        role: "note",
-                        style: "margin:0;display:flex;gap:8px;align-items:flex-start",
-                        Icon { name: IconName::Info }
-                        span { "{note}" }
-                    }
+                    p { class: "foot", role: "note", style: "margin:0", "{note}" }
                 },
             }
             if let Some(player) = player {
                 PlaybackShortcut { player }
             }
             TranscriptCard { segments: Rc::clone(&segments), player }
-            p { class: "foot", style: "text-align:center", "{hint}" }
         }
     }
 }

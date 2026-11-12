@@ -33,7 +33,7 @@ pub fn UnreadableNotice(unreadable: Vec<UnreadableEntry>) -> Element {
                     "Dismiss"
                 }
             },
-            "The rest of your history is fine. Clear all history removes the ones below."
+            "Clear all removes them."
             ul { style: "margin:6px 0 0;padding-left:18px",
                 for entry in unreadable.iter().take(SHOWN) {
                     li { key: "{entry.name}", "{entry.name}: {entry.reason}" }

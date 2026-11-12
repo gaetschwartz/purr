@@ -88,7 +88,6 @@ fn Opening(id: HistoryId) -> Element {
                             "Back to History"
                         }
                     },
-                    "It was deleted, or it was saved in another browser or on another computer."
                 }
             }
         },
@@ -117,15 +116,9 @@ fn Opening(id: HistoryId) -> Element {
 fn audio_note(audio: AudioAvailability) -> &'static str {
     match audio {
         AudioAvailability::Available => "",
-        AudioAvailability::Missing => {
-            "The original audio file was moved or deleted, so there is no player. The transcript is unaffected."
-        }
-        AudioAvailability::NotKept if IS_WEB => {
-            "The browser doesn't keep the audio of a saved transcription, so there is no player. The transcript is unaffected."
-        }
-        AudioAvailability::NotKept => {
-            "Purr didn't record where this audio came from, so there is no player. The transcript is unaffected."
-        }
+        AudioAvailability::Missing => "The original audio file was moved or deleted.",
+        AudioAvailability::NotKept if IS_WEB => "The browser doesn't keep the audio.",
+        AudioAvailability::NotKept => "Where this audio came from wasn't recorded.",
     }
 }
 

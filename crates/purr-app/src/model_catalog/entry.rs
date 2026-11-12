@@ -77,13 +77,12 @@ impl Precision {
         }
     }
 
-    /// The tag text, absent for full precision.
+    /// The tag text, absent for full precision and for the mixed precision every browser model has.
     #[must_use]
     pub fn tag(&self) -> Option<String> {
         match self {
-            Self::Full => None,
+            Self::Full | Self::Mixed => None,
             Self::Quantized { bits } => Some(format!("Quantized Q{bits}")),
-            Self::Mixed => Some("Mixed precision".to_owned()),
             Self::Other(raw) => Some(raw.clone()),
         }
     }
@@ -153,37 +152,29 @@ impl ModelEntry {
         }
     }
 
-    /// One plain sentence on what sets this variant apart.
+    /// One plain sentence on what sets this variant apart, when its tags don't say it already.
     #[must_use]
-    pub fn hint(&self) -> String {
+    pub fn hint(&self) -> Option<String> {
         if let Some(note) = self.family.and_then(ModelFamily::note) {
-            return note.to_owned();
+            return Some(note.to_owned());
         }
         if self.speaker_turns {
-            return "Marks where the speaker changes. English only.".to_owned();
+            return Some("Marks where the speaker changes.".to_owned());
         }
+        let described = Some(self.description.clone()).filter(|text| !text.trim().is_empty());
         if self.family.is_none() {
-            return self.description.clone();
+            return described;
         }
         match (&self.precision, self.language) {
-            (Precision::Other(_), _) => self.description.clone(),
+            (Precision::Other(_), _) => described,
             (Precision::Quantized { bits }, _) => {
                 let size = if *bits >= 8 { "half" } else { "a third" };
-                format!("Quantized: about {size} of the size, slightly less accurate.")
+                Some(format!("About {size} of the size, slightly less accurate."))
             }
-            (Precision::Mixed, Language::Multilingual) => {
-                "Compressed for the browser. All 99 languages.".to_owned()
+            (Precision::Mixed | Precision::Full, Language::EnglishOnly) => {
+                Some("A little more accurate on English speech.".to_owned())
             }
-            (Precision::Mixed, Language::EnglishOnly) => {
-                "Compressed for the browser. English only, a little more accurate on English speech."
-                    .to_owned()
-            }
-            (Precision::Full, Language::EnglishOnly) => {
-                "English only. A little more accurate on English speech.".to_owned()
-            }
-            (Precision::Full, Language::Multilingual) => {
-                "Full precision, all 99 languages.".to_owned()
-            }
+            (Precision::Mixed | Precision::Full, Language::Multilingual) => None,
         }
     }
 
@@ -271,25 +262,33 @@ mod tests {
         let entry = ModelEntry::from_info(&info("mystery", "mystery", "fp16", false));
         assert_eq!(entry.name, "mystery");
         assert_eq!(entry.group, ModelGroup::Other);
-        assert_eq!(entry.hint(), "A model");
+        assert_eq!(entry.hint().as_deref(), Some("A model"));
     }
 
     #[test]
     fn hints_follow_the_variant() {
         let full = ModelEntry::from_info(&info("small", "small", "fp16", false));
-        assert_eq!(full.hint(), "Full precision, all 99 languages.");
+        assert_eq!(full.hint(), None);
+        let english = ModelEntry::from_info(&info("small.en", "small", "fp16", true));
+        assert_eq!(
+            english.hint().as_deref(),
+            Some("A little more accurate on English speech.")
+        );
         let quantized = ModelEntry::from_info(&info("small-q5_1", "small", "q5_1", false));
         assert_eq!(
-            quantized.hint(),
-            "Quantized: about a third of the size, slightly less accurate."
+            quantized.hint().as_deref(),
+            Some("About a third of the size, slightly less accurate.")
         );
         let eight_bit = ModelEntry::from_info(&info("small-q8_0", "small", "q8_0", false));
         assert_eq!(
-            eight_bit.hint(),
-            "Quantized: about half of the size, slightly less accurate."
+            eight_bit.hint().as_deref(),
+            Some("About half of the size, slightly less accurate.")
         );
         let old = ModelEntry::from_info(&info("large-v1", "large-v1", "fp16", false));
-        assert_eq!(old.hint(), "First large model, superseded by v3.");
+        assert_eq!(
+            old.hint().as_deref(),
+            Some("First large model, superseded by v3.")
+        );
     }
 
     #[test]

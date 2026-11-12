@@ -1,8 +1,7 @@
 use super::{changes::report, sections::SettingsSection};
 use crate::{
     components::{
-        group::{Group, Item, TileColor},
-        icon::IconName,
+        group::{Group, Item},
         segmented::{Segment, Segmented},
         switch::Switch,
         toast::use_toasts,
@@ -23,8 +22,6 @@ pub fn AppearanceSection() -> Element {
     rsx! {
         Group { id: SettingsSection::Appearance.anchor(), header: SettingsSection::Appearance.label(),
             Item {
-                icon: IconName::Sun,
-                tile: TileColor::Blue,
                 title: "Theme",
                 stackable: true,
                 control: rsx! {
@@ -32,19 +29,16 @@ pub fn AppearanceSection() -> Element {
                         label: "Theme",
                         value: theme,
                         segments: vec![
-                            Segment::new(Theme::System, "Auto").with_icon(IconName::Auto),
-                            Segment::new(Theme::Light, "Light").with_icon(IconName::Sun),
-                            Segment::new(Theme::Dark, "Dark").with_icon(IconName::Moon),
+                            Segment::new(Theme::System, "Auto"),
+                            Segment::new(Theme::Light, "Light"),
+                            Segment::new(Theme::Dark, "Dark"),
                         ],
                         onchange: move |theme| report(toasts, settings.set_theme(theme)),
                     }
                 },
             }
             Item {
-                icon: IconName::Stack,
-                tile: TileColor::Gray,
                 title: "Reduce transparency",
-                subtitle: "Solid backgrounds instead of glass. Also follows the system setting.",
                 control: rsx! {
                     Switch {
                         label: "Reduce transparency",

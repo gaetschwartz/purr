@@ -3,10 +3,7 @@ use crate::{
         brand_mark::BrandMark,
         icon::{Icon, IconName, IconSize},
     },
-    history::store::use_history,
-    hooks::use_models::use_models,
     main_app::{NavSection, Route},
-    model_catalog::listing::summarize,
     platform::IS_WEB,
     shortcuts::{Key, KeyChord, Shortcut, use_shortcut},
     views::{
@@ -16,6 +13,12 @@ use crate::{
 };
 use dioxus::prelude::*;
 use std::rc::Rc;
+
+const LOCAL_ONLY: &str = if IS_WEB {
+    "Runs in this browser. Nothing is sent to a server."
+} else {
+    "Runs on this computer. Nothing is sent to a server."
+};
 
 struct NavEntry {
     section: NavSection,
@@ -153,16 +156,14 @@ pub fn Shell() -> Element {
                     NavLink { section: NavSection::Settings, current }
                     NavLink { section: NavSection::Logs, current }
                     button {
-                        class: "privacy-pill",
+                        class: "local-only",
                         r#type: "button",
-                        title: "Stays on this device",
+                        title: LOCAL_ONLY,
+                        aria_label: LOCAL_ONLY,
                         aria_haspopup: "dialog",
                         onclick: move |_| about_open.set(true),
                         Icon { name: IconName::Lock, size: IconSize::Small }
-                        span { class: "nav-text",
-                            b { "Stays on this device" }
-                            "Audio and transcripts are never uploaded."
-                        }
+                        span { class: "nav-text", aria_hidden: "true", "Local only" }
                     }
                 }
             }
@@ -175,7 +176,7 @@ pub fn Shell() -> Element {
                     SettingsLoadBanner {}
                     Outlet::<Route> {}
                 }
-                nav { class: "tabbar glass g1", aria_label: "Purr",
+                nav { class: "tabbar glass g1", aria_label: "Sections",
                     for section in [
                         NavSection::Transcribe,
                         NavSection::History,
@@ -199,18 +200,6 @@ pub fn Shell() -> Element {
 
 #[component]
 fn NavLink(section: NavSection, current: Option<NavSection>) -> Element {
-    let history = use_history();
-    let models = use_models();
-    let count = match section {
-        NavSection::History => history
-            .listing()
-            .map_or(0, |listing| listing.summaries.len()),
-        NavSection::Models => models
-            .rows()
-            .and_then(Result::ok)
-            .map_or(0, |rows| summarize(&rows).installed),
-        NavSection::Transcribe | NavSection::Settings | NavSection::Logs => 0,
-    };
     let NavEntry {
         section,
         to,
@@ -226,9 +215,6 @@ fn NavLink(section: NavSection, current: Option<NavSection>) -> Element {
             aria_current: here.then_some("page"),
             Icon { name: icon }
             span { class: "nav-text", "{label}" }
-            if count > 0 {
-                span { class: "count tnum", "{count}" }
-            }
         }
     }
 }

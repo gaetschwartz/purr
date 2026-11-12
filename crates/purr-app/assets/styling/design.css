@@ -189,11 +189,9 @@ h1[tabindex="-1"]:focus{outline:none}
 .nav-item:hover{background:var(--fill-hover)}
 .nav-item[aria-current="page"]{background:var(--accent-soft-2);color:var(--accent-text)}
 .nav-item[aria-current="page"] svg{color:var(--accent-text)}
-.nav-item .count{margin-left:auto;font-size:12px;color:var(--fg-3);font-weight:500}
 .side-foot{margin-top:auto;display:flex;flex-direction:column;gap:2px}
-.privacy-pill{display:flex;gap:10px;align-items:flex-start;padding:10px;border-radius:12px;background:var(--fill-hover);font-size:12px;color:var(--fg-2);line-height:1.4;margin-top:8px;text-align:left;width:100%}
-.privacy-pill svg{color:var(--success);margin-top:1px}
-.privacy-pill b{display:block;color:var(--fg);font-weight:600;font-size:12.5px}
+.local-only{display:flex;gap:10px;align-items:center;height:36px;padding:0 10px;border-radius:10px;font-size:12.5px;color:var(--fg-2);margin-top:6px;width:100%;text-align:left;transition:background .2s}
+.local-only:hover{background:var(--fill-hover)}
 
 .main{position:relative;min-width:0;min-height:0;display:flex;flex-direction:column}
 .scroller{scrollbar-width:thin;flex:1;overflow-y:auto;overflow-x:hidden;min-height:0;scroll-behavior:smooth;overscroll-behavior:contain}
@@ -328,8 +326,6 @@ input[type=range].slider[disabled]{opacity:.45}
 .item{display:flex;align-items:center;gap:14px;min-height:52px;padding:10px 16px;width:100%;text-align:left;color:inherit;text-decoration:none}
 button.item:hover,a.item:hover{background:var(--fill-hover)}
 button.item:focus-visible,a.item:focus-visible{outline-offset:-2.5px;border-radius:0}
-.item .ic{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;flex:none;color:#fff}
-.item .ic svg{width:17px;height:17px;stroke-width:1.9}
 .item .txt{flex:1;min-width:0}
 .item .txt b{font-weight:500;font-size:15px;display:block}
 .item .txt span{display:block;font-size:13px;color:var(--fg-2);margin-top:1px}
@@ -337,10 +333,8 @@ button.item:focus-visible,a.item:focus-visible{outline-offset:-2.5px;border-radi
 .item.danger .txt b{color:var(--danger)}
 .item.col{flex-direction:column;align-items:stretch;gap:10px}
 .item.col .head{display:flex;align-items:center;gap:14px}
-.item.col .body{padding-left:44px}
 .ctl{display:flex;align-items:center;gap:10px;flex:none;max-width:60%}
 .group-f{font-size:12.5px;color:var(--fg-2);margin:8px 16px 0;line-height:1.45}
-.ic.indigo{background:#5856D6}.ic.blue{background:#0A7AFF}.ic.teal{background:#0E9AA7}.ic.orange{background:#E97A10}.ic.green{background:#2AA556}.ic.gray{background:#7C7E8C}.ic.pink{background:#D9416C}.ic.purple{background:#9150D8}.ic.red{background:#E0383E}
 
 /* ---------- Progress and spinner ---------- */
 .bar{height:6px;border-radius:9px;background:var(--fill-2);overflow:hidden}
@@ -431,15 +425,17 @@ details>.preview{margin:8px 0 0;font-family:var(--font)}
   .shell{grid-template-columns:76px minmax(0,1fr)}
   .sidebar{padding:14px 8px 10px;align-items:center}
   .side-brand{padding:4px 0 16px}
-  .side-brand b,.nav-item .nav-text,.nav-item .count,.privacy-pill .nav-text{position:absolute!important;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+  .side-brand b,.nav-item .nav-text,.local-only .nav-text{position:absolute!important;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
   .nav-item{width:44px;height:40px;padding:0;justify-content:center}
-  .privacy-pill{width:44px;height:40px;padding:0;justify-content:center;align-items:center}
-  .privacy-pill svg{margin-top:0}
+  .local-only{width:44px;height:40px;padding:0;justify-content:center}
   .content{padding:24px 24px 40px}
 }
 @container app (max-width:720px){
   .shell{grid-template-columns:minmax(0,1fr)}
-  .sidebar{display:none}
+  .sidebar{position:absolute;z-index:30;top:10px;right:10px;margin:0;padding:0;border-radius:999px}
+  .sidebar>:not(.side-foot),.side-foot>:not(.local-only){display:none}
+  .local-only{width:36px;height:36px;margin:0;border-radius:999px}
+  .topbar{padding-right:40px}
   .content{padding:18px 16px 112px;gap:16px}
   h1.lt{font-size:28px;line-height:34px}
   .topbar .titles{flex-basis:100%}
@@ -448,7 +444,7 @@ details>.preview{margin:8px 0 0;font-family:var(--font)}
   .tabbar a[aria-current="page"]{color:var(--accent-text);background:var(--accent-soft)}
   .item{gap:12px;padding:10px 14px}
   .item.stackable{flex-wrap:wrap}
-  .item.stackable .ctl{max-width:100%;width:100%;padding-left:42px}
+  .item.stackable .ctl{max-width:100%;width:100%}
   .item.stackable .ctl .seg{display:flex;width:100%}
   .item.stackable .ctl .seg button{flex:1;justify-content:center;padding:0 6px}
   .ctl{max-width:62%}

@@ -21,7 +21,7 @@ pub fn failure(failure: &DownloadFailure) -> FailureCopy {
         ModelFailureKind::Network => FailureCopy {
             chip: "Offline",
             title: "Couldn't reach the download server",
-            body: "Check your connection and try again. Models you've already downloaded keep working.".to_owned(),
+            body: "Check your connection and try again.".to_owned(),
             is_connection: true,
         },
         ModelFailureKind::Integrity => FailureCopy {
@@ -63,14 +63,8 @@ pub fn damage(damage: &Damage) -> String {
 #[must_use]
 pub const fn unavailable(reason: UnavailableReason) -> (&'static str, &'static str) {
     match reason {
-        UnavailableReason::NeedsShaderF16 => (
-            "Needs shader-f16",
-            "Needs a GPU feature this device doesn't have (16-bit floats). Use a smaller model instead.",
-        ),
-        UnavailableReason::NeedsWebGpu => (
-            "Needs WebGPU",
-            "Needs WebGPU, which this browser doesn't offer. Use a current Chrome or Edge.",
-        ),
+        UnavailableReason::NeedsShaderF16 => ("Needs shader-f16", "This GPU lacks shader-f16."),
+        UnavailableReason::NeedsWebGpu => ("Needs WebGPU", "This browser has no WebGPU."),
     }
 }
 

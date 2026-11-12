@@ -47,13 +47,11 @@ pub fn LogList(
                         actions: rsx! {
                             Button { onclick: move |_| on_reset_filter.call(()), "Show all entries" }
                         },
-                        "Try a lower level or a different search."
                     }
                 } else {
                     EmptyState {
                         inline: true,
                         title: "No log entries",
-                        "New entries appear here as Purr works."
                     }
                 }
             } else {

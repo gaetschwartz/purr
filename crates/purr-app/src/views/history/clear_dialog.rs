@@ -23,7 +23,7 @@ pub fn ClearDialog(count: usize, unreadable: usize, on_close: EventHandler<()>) 
                 store.clear();
                 on_close.call(());
             },
-            "This deletes {transcriptions(count)}{extra} from this device. The audio files aren't affected. This can't be undone."
+            "This deletes {transcriptions(count)}{extra}. This can't be undone."
         }
     }
 }

@@ -2,7 +2,6 @@ use super::engine_notice::EngineNotice;
 use crate::{
     components::{
         button::Button,
-        chip::{Chip, ChipTone},
         icon::{Icon, IconName, IconSize},
         page::Page,
         progress_bar::{Progress, ProgressBar},
@@ -138,14 +137,9 @@ pub fn Running(record: RunRecord) -> Element {
             },
             EngineNotice { record: record.clone() }
             section { class: "card glass stack", style: "gap:16px", aria_label: "Progress",
-                div { class: "row",
-                    span { class: "fileicon", style: "width:44px;height:44px;border-radius:12px",
-                        Icon { name: IconName::Music }
-                    }
-                    div { class: "grow", style: "min-width:0",
-                        div { class: "ellipsis", style: "font-weight:600", "{record.file.name}" }
-                        div { class: "faint tnum", style: "font-size:13px", "{file_meta}" }
-                    }
+                div { style: "min-width:0",
+                    div { class: "ellipsis", style: "font-weight:600", "{record.file.name}" }
+                    div { class: "faint tnum", style: "font-size:13px", "{file_meta}" }
                 }
                 ol { class: "stages", aria_label: "Stages",
                     StageItem {
@@ -173,23 +167,16 @@ pub fn Running(record: RunRecord) -> Element {
                 ProgressBar {
                     progress,
                     label: "Transcription progress",
-                    value_text: percent_text.clone(),
+                    value_text: percent_text,
                 }
                 div { class: "stats",
-                    Stat { label: "Progress", value: percent_text }
                     Stat { label: "Elapsed", value: timing::clock(run.elapsed_seconds(now())) }
                     Stat { label: "Speed", value: speed.map_or_else(|| "–".to_owned(), timing::speed_text) }
                     Stat { label: language_key, value: language_stat, small: true }
                 }
-                if let Some(speed) = speed {
-                    p { class: "foot", style: "margin:-6px 0 0", {timing::speed_explained(speed)} }
-                }
             }
             section { class: "card glass", aria_label: "Live transcript", style: "padding:12px 10px",
-                div { class: "row", style: "padding:4px 10px 8px",
-                    h2 { class: "t3 grow", "Live transcript" }
-                    Chip { tone: ChipTone::Accent, icon: IconName::Wave, "Streaming" }
-                }
+                h2 { class: "t3", style: "padding:4px 10px 8px", "Live transcript" }
                 ol { class: "live", style: "margin:0;padding:0", aria_live: "polite",
                     for (index , segment) in segments.iter().enumerate() {
                         li { key: "{index}", class: "seg-row new",
@@ -204,11 +191,6 @@ pub fn Running(record: RunRecord) -> Element {
                                 span { class: "caret" }
                             }
                         }
-                    }
-                }
-                if segments.is_empty() {
-                    p { class: "faint", style: "padding:6px 10px;margin:0;font-size:14px",
-                        "Text appears here as soon as the first sentence is recognised."
                     }
                 }
             }

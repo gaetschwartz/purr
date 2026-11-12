@@ -25,9 +25,6 @@ pub fn DropPad(
     /// The formats line under the title.
     #[props(into)]
     formats: String,
-    /// The Cmd or Ctrl label for the shortcut hint.
-    #[props(into)]
-    primary_key: String,
     on_file: EventHandler<FileData>,
 ) -> Element {
     let mut over = use_signal(|| false);
@@ -88,7 +85,6 @@ pub fn DropPad(
                 p {
                     "or "
                     span { class: "link", "choose a file" }
-                    " · {primary_key}+O"
                 }
                 span { class: "formats", id: "drop-formats", "{formats}" }
             }

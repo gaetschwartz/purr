@@ -29,7 +29,7 @@ pub fn DeleteDialog(
                     handler.call(());
                 }
             },
-            "“{name}” will be removed from History on this device. The audio file isn't affected."
+            "“{name}” will be removed from History."
         }
     }
 }

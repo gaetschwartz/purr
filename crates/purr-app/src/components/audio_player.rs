@@ -298,7 +298,7 @@ pub fn AudioPlayer(
         }
         if let Some(error) = player.error() {
             p { class: "foot", role: "alert", style: "margin:0",
-                "The audio can't be played here: {error}. The transcript is unaffected."
+                "The audio can't be played here: {error}."
             }
         }
     }

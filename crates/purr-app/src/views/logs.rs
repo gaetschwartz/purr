@@ -45,10 +45,7 @@ const FOCUS_LIST: &str =
     "requestAnimationFrame(() => document.getElementById('loglist')?.focus());";
 
 fn recorded_at(level: &LogLevel) -> String {
-    format!(
-        "Recorded at {} level. Logs stay on this device.",
-        level_name(level)
-    )
+    format!("Level: {}", level_name(level))
 }
 
 struct Tracker {
@@ -148,7 +145,7 @@ pub fn Logs() -> Element {
     });
 
     let subtitle = if env_overrides_log_level() {
-        "Recorded at the level RUST_LOG sets. Logs stay on this device.".to_owned()
+        "Level: set by RUST_LOG".to_owned()
     } else {
         recorded_at(&level.read())
     };
@@ -198,9 +195,8 @@ pub fn Logs() -> Element {
                 }
             }
             p { class: "foot", style: "padding-left:16px",
-                "{summary} File names appear in logs; transcript text never does. "
-                Link { to: Route::Settings {}, "Change the log level in Settings" }
-                "."
+                "{summary} "
+                Link { to: Route::Settings {}, "Change the level" }
             }
             div {
                 class: "sr",

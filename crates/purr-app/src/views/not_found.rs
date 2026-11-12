@@ -28,7 +28,6 @@ pub fn NotFound(segments: Vec<String>) -> Element {
                         "Go to Transcribe"
                     }
                 },
-                "The link may be out of date."
             }
         }
     }

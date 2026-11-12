@@ -9,23 +9,13 @@ use crate::{
     hooks::use_models::use_models,
     main_app::Route,
     model_catalog::{
-        entry::ModelEntry,
-        family::ModelGroup,
-        format::percent,
-        listing::ModelRow,
-        state::{ModelState, UnavailableReason},
+        copy, entry::ModelEntry, family::ModelGroup, format::percent, listing::ModelRow,
+        state::ModelState,
     },
     settings_store::use_settings,
     utils::byte_size::ByteSize,
 };
 use dioxus::prelude::*;
-
-const fn unavailable_text(reason: UnavailableReason) -> &'static str {
-    match reason {
-        UnavailableReason::NeedsShaderF16 => "Needs shader-f16, which this GPU lacks",
-        UnavailableReason::NeedsWebGpu => "Needs WebGPU",
-    }
-}
 
 /// Language and precision, such as "Multilingual · Q5".
 fn variant(entry: &ModelEntry) -> String {
@@ -41,7 +31,7 @@ fn variant(entry: &ModelEntry) -> String {
 
 fn subtitle(row: &ModelRow) -> String {
     match &row.state {
-        ModelState::Unavailable { reason, .. } => unavailable_text(*reason).to_owned(),
+        ModelState::Unavailable { reason, .. } => copy::unavailable(*reason).1.to_owned(),
         ModelState::Downloading(_) => "Downloading…".to_owned(),
         ModelState::Verifying => "Checking files…".to_owned(),
         ModelState::Failed(_) => "Last download failed".to_owned(),

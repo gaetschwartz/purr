@@ -5,13 +5,12 @@ use super::{
     icon::{Icon, IconName, IconSize},
     icon_button::IconButton,
     model_download::ModelDownload,
-    model_meters::ModelMeters,
     popover::{Popover, PopoverOption},
     spinner::Spinner,
 };
 use crate::{
     hooks::use_models::use_models,
-    model_catalog::{copy, entry::Language, listing::ModelRow, state::ModelState},
+    model_catalog::{copy, listing::ModelRow, state::ModelState},
     utils::{byte_size::ByteSize, dom_id::use_dom_id},
 };
 use dioxus::prelude::*;
@@ -38,7 +37,9 @@ pub fn ModelListRow(
         models.is_downloading() && !matches!(state, ModelState::Downloading(_));
 
     let (disabled, hint) = match &state {
-        ModelState::Unavailable { reason, .. } => (true, copy::unavailable(*reason).1.to_owned()),
+        ModelState::Unavailable { reason, .. } => {
+            (true, Some(copy::unavailable(*reason).1.to_owned()))
+        }
         ModelState::NotDownloaded
         | ModelState::Downloaded
         | ModelState::Downloading(_)
@@ -116,10 +117,7 @@ pub fn ModelListRow(
             if in_use {
                 Chip { tone: ChipTone::Accent, "In use" }
             }
-            span { class: "state-ok",
-                Icon { name: IconName::CheckCircle, size: IconSize::Small }
-                "On device"
-            }
+            span { class: "state-ok", "Downloaded" }
             {menu}
         },
         ModelState::Downloading(_) => rsx! {},
@@ -189,7 +187,7 @@ pub fn ModelListRow(
         ModelState::Unavailable { reason, installed } => {
             let (chip, _) = copy::unavailable(*reason);
             rsx! {
-                Chip { icon: IconName::Cpu, "{chip}" }
+                Chip { "{chip}" }
                 if *installed {
                     {menu}
                 }
@@ -237,17 +235,13 @@ pub fn ModelListRow(
         div { class, role: "group", aria_label: "{label}",
             div { style: "min-width:0",
                 div { class: "nm", "{entry.label}" }
-                div { class: "hint", "{hint}" }
+                if let Some(hint) = hint {
+                    div { class: "hint", "{hint}" }
+                }
                 div { class: "tags",
-                    Chip {
-                        icon: (entry.language == Language::Multilingual).then_some(IconName::Globe),
-                        "{entry.language.label()}"
-                    }
+                    Chip { "{entry.language.label()}" }
                     if let Some(tag) = entry.precision.tag() {
                         Chip { "{tag}" }
-                    }
-                    if let Some(ratings) = entry.group.ratings() {
-                        ModelMeters { ratings }
                     }
                 }
                 {notice}

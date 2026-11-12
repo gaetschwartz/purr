@@ -49,11 +49,6 @@ pub fn Failed(record: RunRecord, failure: RunFailure) -> Element {
                         if let Some(hint) = &failure.hint {
                             p { class: "muted", style: "margin:4px 0 0", "{hint}" }
                         }
-                        if !segments.is_empty() {
-                            p { class: "muted", style: "margin:4px 0 0",
-                                "The text recognised so far is kept below."
-                            }
-                        }
                     }
                 }
                 div { class: "row wrap",

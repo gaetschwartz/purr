@@ -97,7 +97,6 @@ pub fn History() -> Element {
                             "Transcribe a file"
                         }
                     },
-                    "Transcripts you make are saved here, on this device only. Nothing is synced or uploaded."
                 }
             }
         };
@@ -106,7 +105,7 @@ pub fn History() -> Element {
     rsx! {
         Page {
             title: "History",
-            subtitle: "{transcriptions(total)} · stored on this device",
+            subtitle: transcriptions(total),
             wide: true,
             actions: rsx! {
                 div { class: "row wrap",
@@ -149,9 +148,7 @@ pub fn History() -> Element {
                     }
                 }
             }
-            p { class: "foot", style: "padding-left:16px",
-                "History is kept until you delete it, newest {MAX_ENTRIES} at most. Deleting a transcript doesn't touch the original audio file."
-            }
+            p { class: "foot", style: "padding-left:16px", "Keeps the newest {MAX_ENTRIES}." }
         }
         if clearing() {
             ClearDialog {

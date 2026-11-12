@@ -1,8 +1,7 @@
 use super::{browser_panel::BrowserPanel, changes::report, sections::SettingsSection};
 use crate::{
     components::{
-        group::{Group, Item, TileColor},
-        icon::IconName,
+        group::{Group, Item},
         language_picker::LanguagePill,
         model_picker::ModelPill,
         segmented::{Segment, Segmented},
@@ -34,30 +33,21 @@ pub fn TranscriptionSection() -> Element {
         div { class: "sect", id: SettingsSection::Transcription.anchor(),
             Group { header: SettingsSection::Transcription.label(),
                 Item {
-                    icon: IconName::Globe,
-                    tile: TileColor::Indigo,
                     title: "Spoken language",
-                    subtitle: "Automatic works for most recordings.",
                     stackable: true,
                     control: rsx! {
                         LanguagePill { id: "settings-language" }
                     },
                 }
                 Item {
-                    icon: IconName::Cube,
-                    tile: TileColor::Purple,
                     title: "Model",
-                    subtitle: "Used for new transcriptions. Download and remove models in Models.",
                     stackable: true,
                     control: rsx! {
                         ModelPill { id: "settings-model" }
                     },
                 }
                 Item {
-                    icon: IconName::Translate,
-                    tile: TileColor::Orange,
                     title: "Translate to English",
-                    subtitle: "Writes English text whatever language is spoken.",
                     control: rsx! {
                         Switch {
                             label: "Translate to English",
@@ -67,10 +57,7 @@ pub fn TranscriptionSection() -> Element {
                     },
                 }
                 Item {
-                    icon: IconName::Share,
-                    tile: TileColor::Teal,
-                    title: "Export format",
-                    subtitle: "The format Export offers first.",
+                    title: "Default export format",
                     stackable: true,
                     control: rsx! {
                         Segmented {
@@ -86,10 +73,8 @@ pub fn TranscriptionSection() -> Element {
                 }
                 if !IS_WEB {
                     Item {
-                        icon: IconName::Thermometer,
-                        tile: TileColor::Pink,
                         title: "Temperature",
-                        subtitle: "Lower is more predictable. Raise it if the text repeats itself.",
+                        subtitle: "Raise it if the text repeats itself.",
                         value: temperature_text.clone(),
                         Slider {
                             label: "Temperature",

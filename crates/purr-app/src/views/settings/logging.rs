@@ -1,8 +1,7 @@
 use super::{changes::report, sections::SettingsSection};
 use crate::{
     components::{
-        group::{Group, Item, ItemAction, TileColor},
-        icon::IconName,
+        group::{Group, Item, ItemAction},
         select::{Select, SelectOption},
         toast::use_toasts,
     },
@@ -22,10 +21,7 @@ pub fn LoggingSection() -> Element {
     rsx! {
         Group { id: SettingsSection::Logging.anchor(), header: SettingsSection::Logging.label(),
             Item {
-                icon: IconName::Logs,
-                tile: TileColor::Gray,
                 title: "Log level",
-                subtitle: "Debug and Trace help when reporting a problem.",
                 control: rsx! {
                     Select {
                         label: "Log level",
@@ -42,8 +38,6 @@ pub fn LoggingSection() -> Element {
                 },
             }
             Item {
-                icon: IconName::Logs,
-                tile: TileColor::Indigo,
                 title: "Open logs",
                 action: ItemAction::Navigate(Route::Logs {}),
             }

@@ -13,9 +13,6 @@ pub fn BrowserPanel() -> Element {
         section { aria_labelledby: heading.clone(),
             h2 { class: "group-h", id: heading, "This browser" }
             SystemList { label: "WebGPU in this browser", rows }
-            p { class: "group-f",
-                "Read-only. Purr runs Whisper on your graphics card through WebGPU."
-            }
         }
     }
 }

@@ -26,7 +26,7 @@ use crate::{
         start_plan::{FileReadiness, ModelChoice, StartPlan, plan_start},
         timing,
     },
-    utils::{byte_size::ByteSize, file_kind::kind_label, primary_key::use_primary_key_label},
+    utils::{byte_size::ByteSize, file_kind::kind_label},
     views::settings::{jump::open_section, sections::SettingsSection},
 };
 use dioxus::{html::HasFileData, prelude::*};
@@ -47,7 +47,6 @@ pub fn Start() -> Element {
     let session = use_transcribe_session();
     let models = use_models();
     let settings = use_settings();
-    let primary_key = use_primary_key_label();
     let probe = use_system_probe();
     let navigator = use_navigator();
 
@@ -173,7 +172,6 @@ pub fn Start() -> Element {
                     DropPad {
                         reading: session.reading(),
                         formats: formats_line(),
-                        primary_key: primary_key(),
                         on_file: move |picked| session.choose(picked),
                     }
                 }

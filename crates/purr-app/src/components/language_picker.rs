@@ -151,7 +151,7 @@ pub fn LanguagePicker(
         Popover { anchor, label: "Spoken language", on_close,
             if english_only {
                 p { class: "foot", style: "margin:6px 10px",
-                    "The chosen model only transcribes English. Pick a multilingual model to use another language."
+                    "This model only transcribes English."
                 }
             } else {
                 SearchField {
