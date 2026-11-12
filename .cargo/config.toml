@@ -5,6 +5,9 @@ rustflags = "-lc++ -l framework=Accelerate --cfg=web_sys_unstable_apis"
 linker = "C:\\msys64\\mingw64\\bin\\gcc.exe"
 # ar = "C:\\msys64\\mingw64\\bin\\ar.exe"
 
+[target.x86_64-pc-windows-msvc]
+rustflags = ["--cfg=web_sys_unstable_apis", "-C", "target-feature=+crt-static"]
+
 [target.wasm32-unknown-unknown]
 rustflags = ["--cfg=web_sys_unstable_apis", "--cfg=getrandom_backend=\"wasm_js\""]
 
@@ -14,3 +17,6 @@ rustflags = ["--cfg=web_sys_unstable_apis"]
 # Fix for sccache incompatibility with complex ARM CPU flags
 [env]
 SCCACHE_DISABLE = "1"
+# whisper.cpp's CMake predates CMP0091 and builds nvcc host objects with /MD; keep in step with crt-static
+CMAKE_POLICY_DEFAULT_CMP0091 = "NEW"
+CMAKE_MSVC_RUNTIME_LIBRARY = "MultiThreaded"
