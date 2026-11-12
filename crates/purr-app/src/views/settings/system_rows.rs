@@ -10,7 +10,7 @@ use purr_common::{
         AccelBackend, AccelSelection, BackendReport, BackendStatus, BackendUnavailable, CpuReport,
         LastRun, SystemReport,
     },
-    platform::{DeviceInfo, DeviceType},
+    platform::DeviceInfo,
 };
 
 /// The status badge at the end of a row.
@@ -46,9 +46,7 @@ pub struct SystemRow {
 
 fn device_name(device: &DeviceInfo) -> String {
     match device.description.as_deref().map(str::trim) {
-        Some(description) if device.device_type == DeviceType::Cpu && !description.is_empty() => {
-            description.to_owned()
-        }
+        Some(description) if !description.is_empty() => description.to_owned(),
         Some(_) | None => device.name.clone(),
     }
 }
@@ -247,12 +245,18 @@ pub fn backend_options(report: Option<&SystemReport>) -> Vec<(AccelSelection, St
 mod tests {
     use super::*;
     use purr_common::accel::{CpuFeature, PassedOver, PassedReason};
+    use purr_common::platform::DeviceType;
 
-    fn device(name: &str, kind: DeviceType, memory: Option<usize>) -> DeviceInfo {
+    fn device(
+        name: &str,
+        description: &str,
+        kind: DeviceType,
+        memory: Option<usize>,
+    ) -> DeviceInfo {
         DeviceInfo {
             id: 0,
             name: name.to_owned(),
-            description: Some("Some Processor 9000".to_owned()),
+            description: Some(description.to_owned()),
             device_type: kind,
             memory_free: None,
             memory_total: memory,
@@ -296,8 +300,13 @@ mod tests {
                     AccelBackend::Vulkan,
                     BackendStatus::Available,
                     vec![
-                        device("NVIDIA GeForce RTX 4070", DeviceType::Gpu, Some(12 << 30)),
-                        device("Intel UHD Graphics 770", DeviceType::Gpu, None),
+                        device(
+                            "Vulkan0",
+                            "NVIDIA GeForce RTX 4070",
+                            DeviceType::Gpu,
+                            Some(12 << 30),
+                        ),
+                        device("Vulkan1", "Intel UHD Graphics 770", DeviceType::Gpu, None),
                     ],
                 ),
                 backend(
@@ -308,7 +317,12 @@ mod tests {
                 backend(
                     AccelBackend::Cpu,
                     BackendStatus::Available,
-                    vec![device("CPU", DeviceType::Cpu, Some(0))],
+                    vec![device(
+                        "CPU",
+                        "Some Processor 9000",
+                        DeviceType::Cpu,
+                        Some(0),
+                    )],
                 ),
             ],
             cpu: CpuReport {
