@@ -106,9 +106,15 @@ pub struct Cli {
     #[arg(long, default_value = "16000")]
     pub sample_rate: u32,
 
-    /// Chunk size for streaming (in seconds)
+    /// Seconds of new audio to gather before looking for a pause to decode up to while streaming
+    /// (only with --vad-model)
     #[arg(long, default_value = "4.0")]
     pub chunk_size: f32,
+
+    /// Silero voice activity model (ggml-silero-*.bin from whisper.cpp): streaming decodes up to
+    /// pauses in speech and skips audio without speech
+    #[arg(long, value_name = "PATH")]
+    pub vad_model: Option<PathBuf>,
 
     /// HTTP timeout for URL requests (in seconds)
     #[arg(long, default_value = "30")]
@@ -313,6 +319,7 @@ impl TranscriptionConfigWithCliExt for purr_core::TranscriptionConfig {
             .with_temperature(cli.temperature)
             .with_sample_rate(cli.sample_rate)
             .with_chunk_size(cli.chunk_size)
+            .with_vad_model(cli.vad_model.clone())
             .with_accel(cli.accel_config())
             .with_http_timeout(cli.http_timeout)
             .with_http_connect_timeout(cli.http_connect_timeout)

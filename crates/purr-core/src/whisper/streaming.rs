@@ -7,6 +7,7 @@ use crate::{
         commit::{Span, WindowKind, commit},
         language::{LanguageCode, StreamLanguage},
         loader::load_model,
+        speech::{SpeechDetector, last_pause},
     },
 };
 use futures::{FutureExt, Stream, StreamExt};
@@ -27,6 +28,7 @@ const SAMPLES_PER_CENTISECOND: usize = 160;
 const MAX_WINDOW_SECONDS: f32 = 30.0;
 const COMMIT_MARGIN_SECONDS: f32 = 1.0;
 const MIN_WINDOW_SECONDS: f32 = 0.1;
+const MIN_PAUSED_WINDOW_SECONDS: f32 = 1.0;
 
 pub struct StreamWhisperTranscriber {
     state: WhisperState,
@@ -36,8 +38,10 @@ pub struct StreamWhisperTranscriber {
 
 /// Window lengths of one stream, in samples.
 struct Windows {
+    step: usize,
     max: usize,
     min: usize,
+    min_paused: usize,
     margin: usize,
 }
 
@@ -45,8 +49,10 @@ impl Windows {
     fn new(config: &TranscriptionConfig) -> Self {
         let samples = |seconds: f32| (config.sample_rate as f32 * seconds) as usize;
         Self {
+            step: samples(config.chunk_size),
             max: samples(MAX_WINDOW_SECONDS),
             min: samples(MIN_WINDOW_SECONDS),
+            min_paused: samples(MIN_PAUSED_WINDOW_SECONDS),
             margin: samples(COMMIT_MARGIN_SECONDS),
         }
     }
@@ -62,10 +68,13 @@ struct Session {
     config: Arc<TranscriptionConfig>,
     windows: Windows,
     state: WhisperState,
+    speech: Option<SpeechDetector>,
     threads: usize,
     /// Audio from `origin` on that no committed segment covers yet
     pending: Vec<f32>,
     origin: usize,
+    /// How much of `pending` a window has already looked at
+    seen: usize,
     received: usize,
     language: StreamLanguage,
     chunk_index: usize,
@@ -133,13 +142,20 @@ impl Session {
                     })?,
             ),
         };
+        let speech = config
+            .vad_model_path
+            .as_deref()
+            .map(SpeechDetector::load)
+            .transpose()?;
         Ok(Self {
             windows: Windows::new(&config),
             config,
             state,
+            speech,
             threads,
             pending: Vec::new(),
             origin: 0,
+            seen: 0,
             received: 0,
             language,
             chunk_index: 0,
@@ -157,13 +173,16 @@ impl Session {
 
     /// The window to decode now, if any.
     ///
-    /// The stream waits for a full window: Whisper's segment timestamps in a short window are
-    /// too loose to commit on.
+    /// Without a voice activity model the stream waits for a full window: Whisper's segment
+    /// timestamps in a short window are too loose to commit on.
     fn next_window(&self, complete: bool) -> Option<WindowKind> {
-        if self.pending.len() >= self.windows.max {
+        let len = self.pending.len();
+        if len >= self.windows.max {
             Some(WindowKind::Full)
         } else if complete && !self.finished {
             Some(WindowKind::Last)
+        } else if self.speech.is_some() && len - self.seen >= self.windows.step {
+            Some(WindowKind::Growing)
         } else {
             None
         }
@@ -236,15 +255,38 @@ impl Session {
     fn consume(&mut self, n: usize) {
         self.pending.drain(..n);
         self.origin += n;
+        self.seen = self.seen.saturating_sub(n);
     }
 
     fn process(&mut self, kind: WindowKind) -> crate::Result<Vec<StreamingChunk>> {
-        let len = match kind {
+        let mut kind = kind;
+        let mut len = match kind {
             WindowKind::Full => self.windows.max,
-            WindowKind::Last => self.pending.len(),
+            WindowKind::Growing | WindowKind::Paused | WindowKind::Last => self.pending.len(),
         };
-        let window: Vec<f32> = self.pending.iter().take(len).copied().collect();
-        let spoke = len >= self.windows.min;
+        let mut window: Vec<f32> = self.pending.iter().take(len).copied().collect();
+        let mut spoke = len >= self.windows.min;
+
+        if let Some(detector) = self.speech.as_mut() {
+            let speech = if spoke {
+                detector.speech(&window)?
+            } else {
+                Vec::new()
+            };
+            self.seen = self.seen.max(len);
+            spoke = !speech.is_empty() && len >= self.windows.min;
+            if spoke && kind != WindowKind::Last {
+                match last_pause(&speech, len, self.windows.min_paused, self.windows.margin) {
+                    Some(cut) => {
+                        len = cut;
+                        window.truncate(cut);
+                        kind = WindowKind::Paused;
+                    }
+                    None if kind == WindowKind::Growing => return Ok(Vec::new()),
+                    None => {}
+                }
+            }
+        }
 
         let (mut decoded, language) = if spoke {
             let (language, probability) = match self.language {

@@ -188,6 +188,14 @@ pub enum TranscriptionError {
     #[error("Whisper detected a language id it has no code for: {id}")]
     #[diagnostic(code(whisper::transcription::unknown_language_id))]
     UnknownLanguageId { id: i32 },
+
+    #[error("Failed to load the voice activity model {}: {source}", path.display())]
+    #[diagnostic(code(whisper::transcription::vad_model))]
+    VadModel {
+        path: std::path::PathBuf,
+        #[source]
+        source: whisper_rs::WhisperError,
+    },
 }
 
 /// Acceleration backend selection errors

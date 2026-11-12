@@ -2,6 +2,7 @@ mod commit;
 mod language;
 pub mod loader;
 pub mod logging;
+mod speech;
 pub mod streaming;
 pub mod sync;
 

@@ -47,8 +47,13 @@ pub struct TranscriptionConfig {
     /// Enable verbose debug output
     pub verbose: bool,
 
-    /// Chunk size for streaming (in seconds)
+    /// Seconds of new audio a stream with a voice activity model gathers before it looks for a
+    /// pause to decode up to
     pub chunk_size: f32,
+
+    /// Silero voice activity model (ggml): streaming windows end at pauses in speech, and windows
+    /// without speech are not decoded
+    pub vad_model_path: Option<PathBuf>,
 
     /// HTTP timeout for URL requests (in seconds)
     pub http_timeout: u64,
@@ -84,7 +89,8 @@ impl Default for TranscriptionConfig {
             beam_size: Some(5), // Default to beam search with 5 beams for better quality
             output_format: OutputFormat::default(),
             verbose: false,
-            chunk_size: 4.0,          // 4 seconds
+            chunk_size: 4.0, // 4 seconds
+            vad_model_path: None,
             http_timeout: 30,         // 30 seconds
             http_connect_timeout: 10, // 10 seconds
         }
@@ -189,10 +195,17 @@ impl TranscriptionConfig {
         self
     }
 
-    /// Set the chunk size for streaming (in seconds)
+    /// Set the seconds of new audio a stream gathers before it looks for a pause
     #[must_use]
     pub fn with_chunk_size(mut self, chunk_size: f32) -> Self {
         self.chunk_size = chunk_size;
+        self
+    }
+
+    /// Optionally set the voice activity model used while streaming
+    #[must_use]
+    pub fn with_vad_model(mut self, path: Option<PathBuf>) -> Self {
+        self.vad_model_path = path;
         self
     }
 
