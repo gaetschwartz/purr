@@ -4,7 +4,7 @@ use crate::{
     error::TranscriptionError,
     whisper::{
         StreamingChunk, TranscriptionResult, TranscriptionStats, WhisperTranscriber,
-        loader::load_model,
+        loader::load_model, overlap::OverlapTrimmer,
     },
 };
 use futures::{Stream, StreamExt};
@@ -43,6 +43,8 @@ struct StreamingState {
     chunk_size: usize,
     /// Context size to retain between chunks (in samples)
     context_size: usize,
+    /// Drops the words a chunk repeats from the overlapping end of the previous one
+    overlap: OverlapTrimmer,
 }
 
 impl WhisperTranscriber for StreamWhisperTranscriber {
@@ -106,6 +108,7 @@ impl StreamingState {
             window_start_time: 0.0,
             chunk_size,
             context_size,
+            overlap: OverlapTrimmer::default(),
         }
     }
 
@@ -296,7 +299,8 @@ impl StreamWhisperTranscriber {
         params.set_print_progress(false);
         params.set_print_special(false);
         params.set_print_realtime(false);
-        params.set_no_context(false); // Keep context for continuity - CRITICAL for full transcription
+        // carried text gets copied into windows this short, and each copy is carried on into a loop
+        params.set_no_context(true);
         params.set_single_segment(false); // Allow multiple segments
 
         // Process audio through whisper
@@ -305,7 +309,7 @@ impl StreamWhisperTranscriber {
                 let num_segments = streaming_state.whisper_state.full_n_segments();
 
                 if num_segments == 0 {
-                    // No speech detected in this chunk
+                    streaming_state.overlap.reset();
                     return Ok(None);
                 }
 
@@ -346,8 +350,13 @@ impl StreamWhisperTranscriber {
                     }
                 }
 
-                // Only return a chunk if we have actual text
-                if chunk_text.trim().is_empty() {
+                if chunk_text.is_empty() {
+                    streaming_state.overlap.reset();
+                    return Ok(None);
+                }
+
+                let chunk_text = streaming_state.overlap.trim(&chunk_text).to_owned();
+                if chunk_text.is_empty() && !is_final_chunk {
                     return Ok(None);
                 }
 
