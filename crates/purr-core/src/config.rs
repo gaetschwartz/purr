@@ -1,5 +1,6 @@
 //! Configuration options for transcription
 
+use purr_common::beams::BeamSwitch;
 use serde::{Deserialize, Serialize};
 use std::{
     borrow::Cow,
@@ -55,6 +56,10 @@ pub struct TranscriptionConfig {
     /// without speech are not decoded
     pub vad_model_path: Option<PathBuf>,
 
+    /// Sends the decoder's beams as stream events while on, read at the start of each window
+    #[serde(skip)]
+    pub beam_telemetry: BeamSwitch,
+
     /// HTTP timeout for URL requests (in seconds)
     pub http_timeout: u64,
 
@@ -91,6 +96,7 @@ impl Default for TranscriptionConfig {
             verbose: false,
             chunk_size: 4.0, // 4 seconds
             vad_model_path: None,
+            beam_telemetry: BeamSwitch::default(),
             http_timeout: 30,         // 30 seconds
             http_connect_timeout: 10, // 10 seconds
         }
@@ -206,6 +212,13 @@ impl TranscriptionConfig {
     #[must_use]
     pub fn with_vad_model(mut self, path: Option<PathBuf>) -> Self {
         self.vad_model_path = path;
+        self
+    }
+
+    /// Share `switch`, which turns the beam telemetry on and off while the stream runs
+    #[must_use]
+    pub fn with_beam_telemetry(mut self, switch: BeamSwitch) -> Self {
+        self.beam_telemetry = switch;
         self
     }
 

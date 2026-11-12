@@ -4,6 +4,7 @@ mod fmt;
 mod json;
 mod models;
 mod progress;
+mod trace;
 
 use crate::fmt::{MyFormatter, Verbosity, VerbosityLevel};
 use clap::Parser as _;
@@ -14,9 +15,10 @@ use owo_colors::OwoColorize as _;
 use purr_core::model::registry::ModelSpec;
 use purr_core::model::vad_or_none;
 use purr_core::{
-    ModelManager, StreamEvent, StreamingTranscription, TranscriptionConfig, accel::backend::AccelBackend,
-    dev::FeatureStatus, install_logging_hooks, is_file_path, is_valid_url, list_devices,
-    transcribe_file_stream, transcribe_file_sync, transcribe_url_stream, transcribe_url_sync,
+    ModelManager, StreamEvent, StreamingTranscription, TranscriptionConfig,
+    accel::backend::AccelBackend, dev::FeatureStatus, install_logging_hooks, is_file_path,
+    is_valid_url, list_devices, transcribe_file_stream, transcribe_file_sync,
+    transcribe_url_stream, transcribe_url_sync,
 };
 use purr_core::{SystemInfo, math::ByteSpeed};
 use shadow_rs::shadow;
@@ -190,6 +192,13 @@ async fn handle_streaming_output(
                     eprint!("\r{}", progress::line(&progress));
                     progress_shown = true;
                 }
+                continue;
+            }
+            StreamEvent::Beams(snapshot) => {
+                if progress_shown {
+                    eprint!("\r");
+                }
+                eprintln!("{}", trace::line(&snapshot));
                 continue;
             }
             StreamEvent::Chunk(chunk) => chunk,

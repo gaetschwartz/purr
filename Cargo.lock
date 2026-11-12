@@ -5620,6 +5620,7 @@ dependencies = [
  "futures-util",
  "hex",
  "miette",
+ "parking_lot 0.13.0",
  "pretty_assertions",
  "purr-common",
  "purr-delayload",

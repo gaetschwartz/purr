@@ -8,7 +8,7 @@ use clap::{
     builder::{PossibleValue, TypedValueParser},
     error::ErrorKind,
 };
-use purr_common::Language;
+use purr_common::{Language, beams::BeamSwitch};
 use purr_core::accel::{backend::AccelBackend, config::AccelConfig};
 use std::{ffi::OsStr, path::PathBuf, str::FromStr as _};
 
@@ -94,6 +94,11 @@ pub struct Cli {
     /// duration (`2:51 / 7:30`); the duration shows once the whole audio has been read
     #[arg(long)]
     pub progress: bool,
+
+    /// While streaming, print on stderr one line per decoding step (at most ten a second): the
+    /// window, the step, and each of the decoder's beams with its log probability and newest text
+    #[arg(long)]
+    pub trace_beams: bool,
 
     /// Stream transcription results in real-time
     #[arg(short = 'S', long)]
@@ -326,6 +331,7 @@ impl TranscriptionConfigWithCliExt for purr_core::TranscriptionConfig {
             .with_sample_rate(cli.sample_rate)
             .with_chunk_size(cli.chunk_size)
             .with_vad_model(cli.vad_model.clone())
+            .with_beam_telemetry(BeamSwitch::new(cli.trace_beams))
             .with_accel(cli.accel_config())
             .with_http_timeout(cli.http_timeout)
             .with_http_connect_timeout(cli.http_connect_timeout)

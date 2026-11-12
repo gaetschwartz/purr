@@ -35,6 +35,7 @@ use dioxus::{
 use futures::{StreamExt as _, channel::oneshot};
 use purr_common::{
     accel::AccelPolicy,
+    beams::BeamSwitch,
     browser_engine::BrowserEngine,
     history::entry::{HistoryEntry, HistoryId, LanguageOrigin},
     platform::{
@@ -406,6 +407,7 @@ impl TranscribeSession {
             translate: settings.model.translate,
             engine: EngineOptions::from_settings(&settings),
             hugging_face_token: settings.model.hugging_face_token.clone(),
+            beam_telemetry: BeamSwitch::default(),
         };
         let run = Run::new(language == LanguageChoice::Automatic, now_ms());
         tracing::info!(

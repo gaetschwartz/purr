@@ -157,7 +157,8 @@ impl Platform for DesktopPlatformImpl {
                 .with_model_path(manager.get_model_path(model))
                 .with_vad_model(vad)
                 .with_opt_language(request.language)
-                .apply_output_format(|format| format.with_word_timestamps(true)),
+                .apply_output_format(|format| format.with_word_timestamps(true))
+                .with_beam_telemetry(request.beam_telemetry.clone()),
             &request.engine,
         );
         info!(
@@ -582,6 +583,11 @@ impl DesktopRun {
                 Some(Ok(purr_core::StreamEvent::Progress(progress))) => {
                     self.pending
                         .push_back(Ok(TranscriptionStatus::Progress(progress.frame)));
+                    self.phase = Phase::Decode(stream);
+                }
+                Some(Ok(purr_core::StreamEvent::Beams(snapshot))) => {
+                    self.pending
+                        .push_back(Ok(TranscriptionStatus::Telemetry(snapshot)));
                     self.phase = Phase::Decode(stream);
                 }
                 Some(Ok(purr_core::StreamEvent::Chunk(chunk))) => {

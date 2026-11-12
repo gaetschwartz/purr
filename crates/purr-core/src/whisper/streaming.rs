@@ -5,6 +5,7 @@ use crate::{
     whisper::{
         StreamEvent, StreamProgress, StreamingChunk, TranscriptionResult, TranscriptionStats,
         WhisperTranscriber,
+        beams::{self, BeamCollector},
         commit::{Span, WindowKind, commit},
         language::{LanguageCode, StreamLanguage},
         loader::{SpecialTokens, load_model},
@@ -78,6 +79,7 @@ type Events = mpsc::UnboundedSender<crate::Result<StreamEvent>>;
 struct Session {
     config: Arc<TranscriptionConfig>,
     out: Events,
+    beams: Arc<BeamCollector>,
     windows: Windows,
     state: WhisperState,
     tokens: SpecialTokens,
@@ -173,6 +175,7 @@ impl Session {
         Ok(Self {
             windows: Windows::new(&config),
             config,
+            beams: Arc::new(BeamCollector::new(tokens.eot, out.clone())),
             out,
             state,
             tokens,
@@ -281,9 +284,28 @@ impl Session {
         params.set_no_context(true);
         params.set_token_timestamps(self.config.output_format.word_timestamps);
 
+        let collector = self.config.beam_telemetry.is_on().then(|| {
+            let sr = self.sample_rate();
+            let start = self.origin as f64 / sr;
+            self.beams
+                .start_window((start, start + window.len() as f64 / sr));
+            Arc::clone(&self.beams)
+        });
+        if let Some(collector) = &collector {
+            // SAFETY: `on_logits` reads its user data only as a `&BeamCollector`, and `collector`
+            // keeps that collector alive until `full()` returns; whisper.cpp calls the callback
+            // only during that call.
+            unsafe {
+                params.set_filter_logits_callback(Some(beams::on_logits));
+                params
+                    .set_filter_logits_callback_user_data(Arc::as_ptr(collector).cast_mut().cast());
+            }
+        }
+
         self.state
             .full(params, window)
             .map_err(|source| TranscriptionError::Failed { source })?;
+        drop(collector);
 
         Ok(segments::read(&self.state, self.tokens.eot)?
             .into_iter()

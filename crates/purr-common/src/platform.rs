@@ -17,6 +17,7 @@ use std::{
 use crate::{
     accel::{AccelPolicy, LastRun, SystemReport},
     audio_overview::AudioOverview,
+    beams::{BeamSnapshot, BeamSwitch},
     browser_engine::{BrowserEngine, EnginePlan},
     history::{
         entry::{HistoryEntry, HistoryId, HistoryRecord},
@@ -352,6 +353,8 @@ pub struct TranscriptionRequest {
     pub engine: EngineOptions,
     /// Authenticates the downloads of a model that is not stored yet; desktop only fetches its voice activity model with it
     pub hugging_face_token: Option<HuggingFaceToken>,
+    /// Sends the decoder's beams as `Telemetry` while on; platforms without beams ignore it
+    pub beam_telemetry: BeamSwitch,
 }
 
 /// How the transcription engine runs, taken from the performance and model settings.
@@ -459,6 +462,8 @@ pub enum TranscriptionStatus {
     Segments { segments: Vec<TranscriptSegment> },
     /// How far the engine has come in the audio, apart from the text it produced
     Progress(ProgressFrame),
+    /// The decoder's hypotheses after a decoding step, while the request's beam switch is on
+    Telemetry(BeamSnapshot),
     /// Final result
     Completed {
         processing_time: f64,
