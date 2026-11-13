@@ -16,9 +16,9 @@ runs:
 
     - name: Install the Dioxus CLI
       if: steps.cache.outputs.cache-hit != 'true'
-      # outside the workspace, so its .cargo/config.toml rustflags (crt-static) do not apply
+      # outside the workspace, so its .cargo/config.toml rustflags (crt-static) do not apply; --force because rust-cache can restore a dx that cargo does not track
       working-directory: ${{ runner.temp }}
       shell: bash
       env:
         DIOXUS_VERSION: ${{ inputs.version }}
-      run: cargo install dioxus-cli --version "$DIOXUS_VERSION" --locked
+      run: cargo install dioxus-cli --version "$DIOXUS_VERSION" --locked --force
