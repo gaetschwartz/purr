@@ -23,12 +23,7 @@ pub fn EngineNotice(record: RunRecord) -> Element {
             }
         };
     }
-    let Some(notice) = record
-        .run
-        .engine
-        .as_ref()
-        .and_then(|ran| fallback_notice(record.accel, ran))
-    else {
+    let Some(notice) = record.run.engine.as_ref().and_then(fallback_notice) else {
         return rsx! {};
     };
 

@@ -10,7 +10,7 @@ use crate::{
     utils::dom_id::use_dom_id,
 };
 use dioxus::prelude::*;
-use purr_common::accel::{AccelPolicy, AccelSelection};
+use purr_common::devices::{DeviceKey, DevicePreference};
 
 /// Where browser transcriptions run.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -28,12 +28,11 @@ pub fn BrowserPanel() -> Element {
     let toasts = use_toasts();
     let heading = use_dom_id("browser");
     let rows = browser_rows(&models.gpu.read());
-    let run_on =
-        if settings.with(|settings| settings.performance.accel_policy()) == AccelPolicy::CPU_ONLY {
-            RunOn::Cpu
-        } else {
-            RunOn::WebGpu
-        };
+    let run_on = if settings.with(|settings| settings.performance.device_order().is_cpu_only()) {
+        RunOn::Cpu
+    } else {
+        RunOn::WebGpu
+    };
 
     rsx! {
         section { aria_labelledby: heading.clone(),
@@ -57,11 +56,12 @@ pub fn BrowserPanel() -> Element {
                                     toasts,
                                     settings
                                         .update(|s| {
-                                            s.performance.gpu_acceleration = true;
-                                            s.performance.accel_backend = match choice {
-                                                RunOn::WebGpu => AccelSelection::Auto,
-                                                RunOn::Cpu => AccelSelection::Cpu,
-                                            };
+                                            s.performance.set_devices(match choice {
+                                                RunOn::WebGpu => Vec::new(),
+                                                RunOn::Cpu => {
+                                                    vec![DevicePreference::enabled(DeviceKey::cpu())]
+                                                }
+                                            });
                                         }),
                                 );
                             },

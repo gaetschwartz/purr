@@ -3,12 +3,12 @@
 mod advanced;
 mod browser_panel;
 pub mod changes;
+mod device_list;
 pub mod dialog;
 pub mod dialog_handle;
 mod general;
 mod hardware;
 mod hugging_face_token;
-mod run_on;
 mod saved_audio;
 mod saved_tick;
 pub mod settings_page;

@@ -10,22 +10,21 @@ use crate::{
     components::{
         banner::{Banner, BannerTone},
         button::{Button, ButtonSize, ButtonVariant},
+        device_pill::DevicePill,
         drop_pad::{DropPad, FILE_INPUT_ID},
-        engine_chip::EngineChip,
         file_card::FileCard,
         icon::IconName,
         language_picker::LanguagePill,
         model_picker::ModelPill,
         page::Page,
     },
-    hooks::{use_models::use_models, use_system_probe::use_system_probe},
+    hooks::use_models::use_models,
     main_app::Route,
     platform::{IS_WEB, Platform as _, get_platform},
     settings_store::use_settings,
     shortcuts::{Key, KeyChord, Shortcut, use_shortcut},
     transcribe::{
         chosen_file::OverviewState,
-        engine_label::EngineLabel,
         expected_browser_engine::expected_browser_engine,
         language_choice::LanguageChoice,
         session::use_transcribe_session,
@@ -56,7 +55,6 @@ pub fn Home() -> Element {
     let navigator = use_navigator();
     let models = use_models();
     let settings = use_settings();
-    let probe = use_system_probe();
 
     use_shortcut(
         Shortcut::new(KeyChord::primary(Key::Char('o')), "Choose an audio file").in_inputs(),
@@ -96,20 +94,17 @@ pub fn Home() -> Element {
     let running_id = use_memo(move || session.running_id());
     let running = running_id();
     let can_start = matches!(plan, StartPlan::Start(_)) && running.is_none();
-    let policy = settings.with(|settings| settings.performance.accel_policy());
+    let devices = settings.with(|settings| settings.performance.device_order());
     let browser_engine = IS_WEB.then(|| {
         expected_browser_engine(
-            policy,
+            &devices,
             &models.gpu.read(),
             selected
                 .as_ref()
                 .is_some_and(|row| row.entry.requires_shader_f16),
         )
     });
-    let engine = match browser_engine {
-        Some(browser) => EngineLabel::browser(browser, &models.gpu.read()),
-        None => EngineLabel::planned(policy, session.engine_memory().as_ref(), &probe.read()),
-    };
+    let mut advanced = use_signal(|| false);
     let cpu_notice = match browser_engine {
         Some(BrowserEngine::Cpu(reason)) => reason.notice(),
         Some(BrowserEngine::WebGpu) | None => None,
@@ -201,7 +196,6 @@ pub fn Home() -> Element {
                     aria_label: "Transcription options",
                     ModelPill { id: "pick-model" }
                     LanguagePill { id: "pick-lang" }
-                    EngineChip { id: "engine-chip", label: engine }
                     Button {
                         variant: ButtonVariant::Primary,
                         size: ButtonSize::Large,
@@ -210,6 +204,22 @@ pub fn Home() -> Element {
                         disabled: !can_start,
                         onclick: start,
                         "Transcribe"
+                    }
+                }
+                if !IS_WEB {
+                    div { class: "advrow",
+                        button {
+                            id: "advanced-toggle",
+                            class: "advtoggle",
+                            r#type: "button",
+                            aria_expanded: advanced(),
+                            aria_controls: "advanced-options",
+                            onclick: move |_| advanced.toggle(),
+                            "Advanced"
+                        }
+                        if advanced() {
+                            div { id: "advanced-options", class: "advopts", DevicePill { id: "pick-device" } }
+                        }
                     }
                 }
                 ModelNotice { selection, plan }

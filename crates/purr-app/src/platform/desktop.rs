@@ -2,7 +2,7 @@
 /// This implementation uses direct file system access and native whisper transcription
 use super::{
     Platform, PlatformError, TranscriptionRequest, TranscriptionStatus,
-    engine_options::{apply_engine, device_info, last_run, probe},
+    engine_options::{apply_engine, backend_reports, last_run, probe},
     history_store::HistoryDir,
 };
 use bytes::Bytes;
@@ -23,8 +23,8 @@ use purr_common::platform::{
 };
 use purr_common::settings::Settings;
 use purr_core::WhisperError;
+use purr_core::accel::inventory::Inventory;
 use purr_core::config::TentativeText;
-use purr_core::dev;
 use purr_core::error::ConfigurationError;
 use purr_core::model::attributes::{ModelFeature, ModelLanguage};
 use purr_core::model::registry::ModelSpec;
@@ -387,7 +387,10 @@ impl Platform for DesktopPlatformImpl {
     }
 
     async fn list_available_devices(&self) -> Result<Vec<DeviceInfo>, PlatformError> {
-        Ok(dev::list_devices().into_iter().map(device_info).collect())
+        Ok(backend_reports(&Inventory::detect())
+            .into_iter()
+            .flat_map(|report| report.devices)
+            .collect())
     }
 
     async fn system_report(&self) -> Result<SystemReport, PlatformError> {

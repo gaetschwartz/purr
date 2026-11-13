@@ -88,7 +88,6 @@ mod tests {
             ..Settings::default()
         };
         "small".clone_into(&mut stored.model.model_name);
-        stored.performance.gpu_acceleration = false;
         let mut expected = Settings::default();
         "small".clone_into(&mut expected.model.model_name);
         assert_eq!(accept_loaded(Ok(stored)), Ok(expected));

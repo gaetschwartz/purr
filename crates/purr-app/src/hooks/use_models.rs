@@ -18,7 +18,6 @@ use dioxus::{
     prelude::*,
 };
 use futures::channel::oneshot;
-use purr_common::accel::AccelPolicy;
 use purr_common::platform::{DeviceType, ModelInfo, Platform as _};
 use std::{collections::HashMap, time::Duration};
 
@@ -97,8 +96,7 @@ impl ModelsHandle {
         IS_WEB
             && self
                 .settings
-                .with(|settings| settings.performance.accel_policy())
-                == AccelPolicy::CPU_ONLY
+                .with(|settings| settings.performance.device_order().is_cpu_only())
     }
 
     /// The catalog with a state per model (subscribes the caller); `None` until the list has loaded.

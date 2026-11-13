@@ -2,6 +2,7 @@
 
 pub mod beam_lanes;
 pub mod chosen_file;
+pub mod device_rows;
 pub mod engine;
 pub mod engine_label;
 pub mod eta;

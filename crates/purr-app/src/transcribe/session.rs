@@ -2,7 +2,7 @@
 
 use super::{
     chosen_file::{ChosenFile, FileProblem, OverviewState, WAVEFORM_BARS},
-    engine::RunMemory,
+    device_rows::{device_rows, override_for},
     engine_label::EngineLabel,
     language_choice::LanguageChoice,
     run::{Completion, Run, RunOutcome},
@@ -36,8 +36,9 @@ use dioxus::{
 };
 use futures::{StreamExt as _, channel::oneshot};
 use purr_common::{
-    accel::{AccelPolicy, EngineUsed},
+    accel::EngineUsed,
     beams::{BeamSnapshot, BeamSwitch},
+    devices::DeviceKey,
     history::{
         audio::HistoryAudio,
         entry::{HistoryEntry, HistoryId, InvalidHistoryId, LanguageOrigin},
@@ -58,8 +59,6 @@ pub struct RunRecord {
     pub model: ModelEntry,
     /// The language that applied, after the English-only lock.
     pub language: LanguageChoice,
-    /// The hardware choice the run was started with.
-    pub accel: AccelPolicy,
     pub run: Run,
 }
 
@@ -86,7 +85,6 @@ impl RunRecord {
         file: ChosenFile,
         model: ModelEntry,
         language: LanguageChoice,
-        accel: AccelPolicy,
         run: Run,
     ) -> Result<Self, InvalidHistoryId> {
         Ok(Self {
@@ -94,7 +92,6 @@ impl RunRecord {
             file,
             model,
             language,
-            accel,
             run,
         })
     }
@@ -119,7 +116,7 @@ pub struct TranscribeSession {
     overviews: Signal<HashMap<FileId, OverviewState>>,
     record: Signal<Option<RunRecord>>,
     cancelled: Signal<Option<Cancelled>>,
-    engine_memory: Signal<Option<RunMemory>>,
+    device_override: Signal<Option<DeviceKey>>,
     task: Signal<Option<Task>>,
     /// The model the current run is downloading before it starts.
     fetching: Signal<Option<String>>,
@@ -180,10 +177,16 @@ impl TranscribeSession {
         self.cancelled.read().clone()
     }
 
-    /// What the last run ran on, with the hardware choice it was started with (subscribes the caller).
+    /// The device the next runs start on instead of the settings order, until the app restarts
+    /// (subscribes the caller).
     #[must_use]
-    pub fn engine_memory(&self) -> Option<RunMemory> {
-        self.engine_memory.read().clone()
+    pub fn device_override(&self) -> Option<DeviceKey> {
+        self.device_override.read().clone()
+    }
+
+    /// Starts the next runs on `device`, or follows the settings order again with `None`.
+    pub fn set_device_override(mut self, device: Option<DeviceKey>) {
+        self.device_override.set(device);
     }
 
     /// The length and waveform of `id`.
@@ -437,27 +440,35 @@ impl TranscribeSession {
         let language = language.for_model(model.language == Language::EnglishOnly);
         let settings = self.settings.peek();
         let beam_switch = BeamSwitch::new(!IS_WEB && settings.ui.transcript.show_beams);
+        let mut engine = EngineOptions::from_settings(&settings);
+        let picked = self.device_override.peek().clone();
+        let first = match &*self.probe.peek() {
+            SystemProbe::Ready(report) => {
+                override_for(picked.as_ref(), &device_rows(&settings.performance, report))
+            }
+            SystemProbe::Checking | SystemProbe::Unavailable => picked,
+        };
+        engine.devices = std::mem::take(&mut engine.devices).with_first(first);
         let request = TranscriptionRequest {
             file: FileSource::Uploaded(file.id.clone()),
             model: ModelId::new(model.id.clone()),
             language: language.request_code(),
             translate: settings.model.translate,
-            engine: EngineOptions::from_settings(&settings),
+            engine,
             hugging_face_token: settings.model.hugging_face_token.clone(),
             beam_telemetry: beam_switch.clone(),
         };
         let run = Run::new(language == LanguageChoice::Automatic, now_ms());
         let model_id = model.id.clone();
-        let record =
-            match RunRecord::begin(file.clone(), model, language, request.engine.accel, run) {
-                Ok(record) => record,
-                Err(error) => {
-                    tracing::error!("Could not name the transcription: {error}");
-                    self.toasts
-                        .error("Couldn't start the transcription", error.to_string());
-                    return None;
-                }
-            };
+        let record = match RunRecord::begin(file.clone(), model, language, run) {
+            Ok(record) => record,
+            Err(error) => {
+                tracing::error!("Could not name the transcription: {error}");
+                self.toasts
+                    .error("Couldn't start the transcription", error.to_string());
+                return None;
+            }
+        };
         let id = record.id.clone();
         self.stop_task();
         self.fetching.set(None);
@@ -540,14 +551,6 @@ impl TranscribeSession {
                             | TranscriptionStatus::Error { .. }
                             | TranscriptionStatus::InitFailed { .. }
                     );
-                    if let TranscriptionStatus::Engine { run } = &status
-                        && let Some(record) = self.record.peek().as_ref()
-                    {
-                        self.engine_memory.set(Some(RunMemory {
-                            policy: record.accel,
-                            ran: run.clone(),
-                        }));
-                    }
                     if let Some(record) = self.record.write().as_mut() {
                         record.run.apply(&status, now_ms());
                     }
@@ -810,7 +813,7 @@ pub fn use_transcribe_session_provider() -> TranscribeSession {
             overviews: Signal::new(HashMap::new()),
             record: Signal::new(None),
             cancelled: Signal::new(None),
-            engine_memory: Signal::new(None),
+            device_override: Signal::new(None),
             task: Signal::new(None),
             fetching: Signal::new(None),
             beam_switch: Signal::new(BeamSwitch::default()),
@@ -870,7 +873,6 @@ mod tests {
             file(),
             model(),
             LanguageChoice::Automatic,
-            AccelPolicy::Auto,
             Run::new(true, 0.0),
         )
         .unwrap()

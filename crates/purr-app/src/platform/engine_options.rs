@@ -2,8 +2,8 @@
 
 use purr_common::{
     accel::{
-        AccelBackend, AccelPolicy, BackendReport, BackendStatus, BackendUnavailable, LastRun,
-        PassedOver, PassedReason, SystemReport,
+        AccelBackend, BackendReport, BackendStatus, BackendUnavailable, LastRun, PassedOver,
+        PassedReason, SystemReport,
     },
     platform::{DeviceInfo, DeviceType, EngineOptions},
 };
@@ -11,61 +11,20 @@ use purr_core::{
     TranscriptionConfig,
     accel::{
         backend::AccelBackend as CoreBackend,
-        config::AccelConfig,
+        devices::{DetectedDevice, detect},
         inventory::Inventory,
-        plan::locate,
+        plan::backend_status,
         report::{AccelReport, AttemptOutcome, UnavailableReason},
     },
     cpu,
-    dev::{self, Device},
+    dev::Device,
 };
 use std::collections::HashMap;
-
-/// The purr-core name of `backend`.
-pub const fn core_backend(backend: AccelBackend) -> CoreBackend {
-    match backend {
-        AccelBackend::Cuda => CoreBackend::Cuda,
-        AccelBackend::Hip => CoreBackend::Hip,
-        AccelBackend::CoreMl => CoreBackend::CoreMl,
-        AccelBackend::Metal => CoreBackend::Metal,
-        AccelBackend::Sycl => CoreBackend::Sycl,
-        AccelBackend::Vulkan => CoreBackend::Vulkan,
-        AccelBackend::Cpu => CoreBackend::Cpu,
-    }
-}
-
-/// The settings name of the purr-core `backend`.
-pub const fn backend_of_core(backend: CoreBackend) -> AccelBackend {
-    match backend {
-        CoreBackend::Cuda => AccelBackend::Cuda,
-        CoreBackend::Hip => AccelBackend::Hip,
-        CoreBackend::CoreMl => AccelBackend::CoreMl,
-        CoreBackend::Metal => AccelBackend::Metal,
-        CoreBackend::Sycl => AccelBackend::Sycl,
-        CoreBackend::Vulkan => AccelBackend::Vulkan,
-        CoreBackend::Cpu => AccelBackend::Cpu,
-    }
-}
-
-/// The purr-core backend selection for `policy`.
-pub fn accel_config(policy: AccelPolicy) -> AccelConfig {
-    match policy {
-        AccelPolicy::Auto => AccelConfig::default(),
-        AccelPolicy::Forced {
-            backend: AccelBackend::Cpu,
-            ..
-        } => AccelConfig::cpu_only(),
-        AccelPolicy::Forced {
-            backend,
-            allow_fallback,
-        } => AccelConfig::forced(core_backend(backend), allow_fallback),
-    }
-}
 
 /// `config` run the way `engine` asks.
 pub fn apply_engine(config: TranscriptionConfig, engine: &EngineOptions) -> TranscriptionConfig {
     let config = config
-        .with_accel(accel_config(engine.accel))
+        .with_devices(engine.devices.clone())
         .with_temperature(engine.temperature as f32);
     match engine.threads {
         Some(threads) => config.with_threads(threads as usize),
@@ -90,47 +49,59 @@ fn unavailable(reason: UnavailableReason) -> BackendUnavailable {
     }
 }
 
-/// A device in the platform's neutral description.
-pub fn device_info(device: Device) -> DeviceInfo {
-    DeviceInfo {
-        id: device.id,
-        name: device.name,
-        description: Some(device.description),
-        device_type: match device.tpe {
-            dev::DeviceType::Cpu => DeviceType::Cpu,
-            dev::DeviceType::Gpu | dev::DeviceType::Igpu => DeviceType::Gpu,
-            dev::DeviceType::Accel => DeviceType::Accel,
-            dev::DeviceType::Unknown => DeviceType::Unknown,
+fn capabilities(device: &Device) -> Option<HashMap<String, serde_json::Value>> {
+    device.caps.map(|caps| {
+        HashMap::from([
+            ("async".to_owned(), serde_json::Value::Bool(caps.async_)),
+            (
+                "host_buffer".to_owned(),
+                serde_json::Value::Bool(caps.host_buffer),
+            ),
+            (
+                "buffer_from_host_ptr".to_owned(),
+                serde_json::Value::Bool(caps.buffer_from_host_ptr),
+            ),
+            ("events".to_owned(), serde_json::Value::Bool(caps.events)),
+        ])
+    })
+}
+
+/// A detected device in the platform's neutral description.
+pub fn device_info(detected: &DetectedDevice, device: Option<Device>) -> DeviceInfo {
+    match device {
+        Some(device) => DeviceInfo {
+            id: device.id,
+            name: device.name.clone(),
+            description: Some(device.description.clone()),
+            device_type: device.tpe,
+            memory_free: Some(device.vram_free),
+            memory_total: Some(device.vram_total),
+            capabilities: capabilities(&device),
+            key: Some(detected.key.clone()),
         },
-        memory_free: Some(device.vram_free),
-        memory_total: Some(device.vram_total),
-        capabilities: device.caps.map(|caps| {
-            HashMap::from([
-                ("async".to_owned(), serde_json::Value::Bool(caps.async_)),
-                (
-                    "host_buffer".to_owned(),
-                    serde_json::Value::Bool(caps.host_buffer),
-                ),
-                (
-                    "buffer_from_host_ptr".to_owned(),
-                    serde_json::Value::Bool(caps.buffer_from_host_ptr),
-                ),
-                ("events".to_owned(), serde_json::Value::Bool(caps.events)),
-            ])
-        }),
+        None => DeviceInfo {
+            id: -1,
+            name: detected.name.clone(),
+            description: None,
+            device_type: DeviceType::Accel,
+            memory_free: None,
+            memory_total: None,
+            capabilities: None,
+            key: Some(detected.key.clone()),
+        },
     }
 }
 
 /// What the last transcription ran on, from the report the core made while loading the model.
 pub fn last_run(report: &AccelReport) -> LastRun {
     LastRun {
-        backend: backend_of_core(report.selected),
+        backend: report.selected.into(),
         device: report.device.clone(),
         passed_over: report
             .attempts
             .iter()
             .map(|attempt| PassedOver {
-                backend: backend_of_core(attempt.backend),
+                key: attempt.key.clone(),
                 reason: match &attempt.outcome {
                     AttemptOutcome::Unavailable(reason) => {
                         PassedReason::Unavailable(unavailable(reason.clone()))
@@ -142,22 +113,31 @@ pub fn last_run(report: &AccelReport) -> LastRun {
     }
 }
 
-/// Every backend in priority order with whether it can run and its devices.
+/// Every backend in priority order with whether it can run and its devices, which come in the
+/// order transcription tries them when nobody arranged them.
 pub fn backend_reports(inventory: &Inventory) -> Vec<BackendReport> {
+    let detected = detect(inventory);
     CoreBackend::DEFAULT_PRIORITY
         .iter()
         .map(|backend| BackendReport {
-            backend: backend_of_core(*backend),
-            status: match locate(*backend, inventory) {
-                Ok(_) => BackendStatus::Available,
+            backend: AccelBackend::from(*backend),
+            status: match backend_status(*backend, inventory, &detected) {
+                Ok(()) => BackendStatus::Available,
                 Err(reason) => BackendStatus::Unavailable(unavailable(reason)),
             },
-            devices: inventory
-                .devices
+            devices: detected
                 .iter()
-                .filter(|device| device.backend == Some(*backend))
-                .cloned()
-                .map(device_info)
+                .filter(|device| device.backend == *backend)
+                .map(|device| {
+                    let found = device.ggml_id.and_then(|id| {
+                        inventory
+                            .devices
+                            .iter()
+                            .find(|candidate| candidate.id == id)
+                            .cloned()
+                    });
+                    device_info(device, found)
+                })
                 .collect(),
         })
         .collect()
@@ -178,64 +158,23 @@ mod tests {
     use std::path::PathBuf;
 
     use super::*;
+    use purr_common::devices::{DeviceKey, DeviceOrder};
     use purr_core::accel::{
         backend::BuildStatus,
-        report::{AccelAttempt, AttemptFailure, AttemptOutcome},
+        report::{AccelAttempt, AttemptFailure},
     };
-
-    #[test]
-    fn the_priority_order_and_the_backends_match_purr_core() {
-        let core: Vec<_> = AccelBackend::PRIORITY
-            .iter()
-            .map(|b| core_backend(*b))
-            .collect();
-        assert_eq!(core, CoreBackend::DEFAULT_PRIORITY);
-        for backend in CoreBackend::ALL {
-            assert_eq!(core_backend(backend_of_core(*backend)), *backend);
-        }
-    }
-
-    #[test]
-    fn automatic_policy_is_the_default_priority_list() {
-        assert_eq!(accel_config(AccelPolicy::Auto), AccelConfig::default());
-    }
-
-    #[test]
-    fn cpu_only_policy_is_a_forced_cpu_without_fallback() {
-        assert_eq!(accel_config(AccelPolicy::CPU_ONLY), AccelConfig::cpu_only());
-        assert_eq!(
-            accel_config(AccelPolicy::Forced {
-                backend: AccelBackend::Cpu,
-                allow_fallback: true
-            }),
-            AccelConfig::cpu_only()
-        );
-    }
-
-    #[test]
-    fn a_forced_backend_keeps_the_fallback_choice() {
-        for allow_fallback in [true, false] {
-            assert_eq!(
-                accel_config(AccelPolicy::Forced {
-                    backend: AccelBackend::Vulkan,
-                    allow_fallback
-                }),
-                AccelConfig::forced(CoreBackend::Vulkan, allow_fallback)
-            );
-        }
-    }
 
     #[test]
     fn the_engine_options_reach_the_core_configuration() {
         let config = apply_engine(
             TranscriptionConfig::new(),
             &EngineOptions {
-                accel: AccelPolicy::CPU_ONLY,
+                devices: DeviceOrder::cpu_only(),
                 threads: Some(5),
                 temperature: 0.5,
             },
         );
-        assert_eq!(config.accel, AccelConfig::cpu_only());
+        assert_eq!(config.devices, DeviceOrder::cpu_only());
         assert_eq!(config.num_threads, Some(5));
         assert!((config.temperature - 0.5).abs() < f32::EPSILON);
     }
@@ -244,7 +183,7 @@ mod tests {
     fn without_threads_the_core_chooses() {
         let config = apply_engine(TranscriptionConfig::new(), &EngineOptions::default());
         assert_eq!(config.num_threads, None);
-        assert_eq!(config.accel, AccelConfig::default());
+        assert_eq!(config.devices, DeviceOrder::automatic());
     }
 
     fn inventory(devices: Vec<Device>, built: &[CoreBackend]) -> Inventory {
@@ -273,19 +212,23 @@ mod tests {
         }
     }
 
-    fn cpu_device() -> Device {
+    fn device(id: i32, description: &str, tpe: DeviceType, backend: CoreBackend) -> Device {
         Device {
-            id: 0,
-            name: "CPU".to_owned(),
-            description: "A processor".to_owned(),
+            id,
+            name: format!("dev{id}"),
+            description: description.to_owned(),
             device_id: None,
             vram_free: 0,
             vram_total: 0,
-            tpe: dev::DeviceType::Cpu,
-            backend: Some(CoreBackend::Cpu),
+            tpe,
+            backend: Some(backend),
             caps: None,
             vulkan_driver: None,
         }
+    }
+
+    fn cpu_device() -> Device {
+        device(0, "A processor", DeviceType::Cpu, CoreBackend::Cpu)
     }
 
     #[test]
@@ -340,22 +283,77 @@ mod tests {
     }
 
     #[test]
+    fn devices_keep_their_kind_their_key_and_the_order_they_are_tried_in() {
+        let reports = backend_reports(&inventory(
+            vec![
+                device(
+                    0,
+                    "AMD Radeon(TM) Graphics",
+                    DeviceType::Igpu,
+                    CoreBackend::Vulkan,
+                ),
+                device(
+                    1,
+                    "NVIDIA GeForce RTX 2070 SUPER",
+                    DeviceType::Gpu,
+                    CoreBackend::Vulkan,
+                ),
+                cpu_device(),
+            ],
+            &[CoreBackend::Vulkan, CoreBackend::Cpu],
+        ));
+        let vulkan = reports
+            .iter()
+            .find(|report| report.backend == AccelBackend::Vulkan)
+            .map(|report| {
+                report
+                    .devices
+                    .iter()
+                    .map(|device| (device.device_type, device.key.clone()))
+                    .collect::<Vec<_>>()
+            });
+        assert_eq!(
+            vulkan,
+            Some(vec![
+                (
+                    DeviceType::Gpu,
+                    Some(DeviceKey::new(
+                        AccelBackend::Vulkan,
+                        "NVIDIA GeForce RTX 2070 SUPER",
+                        0
+                    ))
+                ),
+                (
+                    DeviceType::Igpu,
+                    Some(DeviceKey::new(
+                        AccelBackend::Vulkan,
+                        "AMD Radeon(TM) Graphics",
+                        0
+                    ))
+                ),
+            ])
+        );
+    }
+
+    #[test]
     fn the_last_run_names_the_backend_and_what_was_passed_over() {
+        let vulkan = DeviceKey::new(AccelBackend::Vulkan, "AMD Radeon(TM) Graphics", 0);
         let report = AccelReport {
             selected: CoreBackend::Cpu,
-            device: Some("CPU".to_owned()),
-            attempts: vec![AccelAttempt {
-                backend: CoreBackend::Vulkan,
-                outcome: AttemptOutcome::Failed(AttemptFailure::ContextInit),
-            }],
+            key: DeviceKey::cpu(),
+            device: None,
+            attempts: vec![AccelAttempt::new(
+                vulkan.clone(),
+                AttemptOutcome::Failed(AttemptFailure::ContextInit),
+            )],
         };
         assert_eq!(
             last_run(&report),
             LastRun {
                 backend: AccelBackend::Cpu,
-                device: Some("CPU".to_owned()),
+                device: None,
                 passed_over: vec![PassedOver {
-                    backend: AccelBackend::Vulkan,
+                    key: vulkan,
                     reason: PassedReason::Failed(AttemptFailure::ContextInit.to_string()),
                 }],
             }

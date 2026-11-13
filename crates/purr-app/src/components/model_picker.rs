@@ -25,7 +25,6 @@ use crate::{
     settings_store::use_settings,
 };
 use dioxus::prelude::*;
-use purr_common::accel::AccelPolicy;
 
 /// Every model of `use_models()` in a [`ListPicker`], anchored on the element `anchor`.
 ///
@@ -229,8 +228,7 @@ pub fn ModelPicker(
 
     let on_cpu = IS_WEB
         && (*models.gpu.read() == GpuSupport::Unavailable
-            || settings.with(|settings| settings.performance.accel_policy())
-                == AccelPolicy::CPU_ONLY);
+            || settings.with(|settings| settings.performance.device_order().is_cpu_only()));
     let segments: Vec<Segment<PickerScope>> = PickerScope::ALL
         .into_iter()
         .map(|scope| Segment::new(scope, scope.label()))

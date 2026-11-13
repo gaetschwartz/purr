@@ -29,11 +29,10 @@ pub struct DetectedDevice {
 /// The name a device goes by: ggml's description, else its own name.
 #[must_use]
 pub fn display_name(device: &Device) -> String {
-    let description = device.description.trim();
-    if description.is_empty() {
+    if device.description.trim().is_empty() {
         device.name.clone()
     } else {
-        description.to_owned()
+        device.description.clone()
     }
 }
 
@@ -304,6 +303,20 @@ mod tests {
         let mut gpu = device(0, "", Vulkan, DeviceType::Gpu);
         gpu.description = "  ".to_owned();
         assert_eq!(display_name(&gpu), "vulkan0");
+    }
+
+    #[test]
+    fn a_reported_name_is_kept_exactly_as_ggml_gives_it() {
+        let cpu = device(
+            0,
+            "AMD Ryzen 9 7950X 16-Core Processor            ",
+            Cpu,
+            DeviceType::Cpu,
+        );
+        assert_eq!(
+            display_name(&cpu),
+            "AMD Ryzen 9 7950X 16-Core Processor            "
+        );
     }
 
     #[test]
