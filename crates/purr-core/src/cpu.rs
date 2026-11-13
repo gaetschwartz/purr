@@ -111,6 +111,7 @@ mod tests {
             tpe: DeviceType::Cpu,
             backend: Some(AccelBackend::Cpu),
             caps: None,
+            vulkan_driver: None,
         }
     }
 

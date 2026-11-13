@@ -2,7 +2,7 @@
 
 use std::{collections::HashMap, ffi::CStr, path::PathBuf};
 
-use purr_common::accel::CpuReport;
+use purr_common::{accel::CpuReport, vulkan::VulkanDriverStatus};
 use serde::{Deserialize, Serialize};
 use whisper_rs::whisper_rs_sys::{ggml_backend_dev_caps, ggml_backend_dev_count};
 
@@ -12,6 +12,7 @@ use crate::{
         inventory::Inventory,
         plan::{Candidate, Target, locate},
         report::UnavailableReason,
+        vulkan_probe,
     },
     cpu,
 };
@@ -31,6 +32,9 @@ pub struct Device {
     pub backend: Option<AccelBackend>,
     #[serde(with = "serde_ggml_backend_dev_caps")]
     pub caps: Option<ggml_backend_dev_caps>, // Optional capabilities
+    /// What the Vulkan driver says about a Vulkan device; `None` for every other device.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vulkan_driver: Option<VulkanDriverStatus>,
 }
 
 impl Device {
@@ -66,7 +70,8 @@ impl SystemInfo {
     /// Check system capabilities and available GPU devices
     #[must_use]
     pub fn get() -> Self {
-        let inventory = Inventory::detect();
+        let mut inventory = Inventory::detect();
+        vulkan_probe::attach_drivers(&mut inventory.devices);
 
         Self {
             picked_gpus: AccelBackend::ALL
@@ -195,6 +200,7 @@ pub fn list_devices() -> Vec<Device> {
             vram_total: props.memory_total,
             caps: Some(props.caps),
             backend: backend_of(device),
+            vulkan_driver: None,
             tpe,
         });
     }
@@ -253,6 +259,7 @@ mod tests {
             tpe: DeviceType::Gpu,
             backend: Some(AccelBackend::Vulkan),
             caps,
+            vulkan_driver: None,
         }
     }
 

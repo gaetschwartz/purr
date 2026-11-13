@@ -139,11 +139,10 @@ pub fn device_lines(device: &Device, picked_for: &[AccelBackend]) -> Vec<String>
     ));
     lines.push(memory_line(device));
     lines.push(capabilities_line(device));
-    if device.backend == Some(AccelBackend::Vulkan) {
-        lines.push(
-            "  Driver: not reported by ggml (`vulkaninfo --summary` lists the driver and Vulkan version)"
-                .to_owned(),
-        );
+    if let Some(status) = &device.vulkan_driver {
+        for (label, value) in status.fields() {
+            lines.push(format!("  {label}: {value}"));
+        }
     }
     if !picked_for.is_empty() {
         let names: Vec<_> = picked_for.iter().map(|b| b.pretty_name()).collect();
@@ -158,6 +157,10 @@ pub fn device_lines(device: &Device, picked_for: &[AccelBackend]) -> Vec<String>
 #[cfg(test)]
 mod tests {
     use super::*;
+    use purr_common::vulkan::{
+        VulkanApiVersion, VulkanDeviceType, VulkanDriverId, VulkanDriverIdentity, VulkanDriverInfo,
+        VulkanDriverStatus, VulkanDriverUnavailable,
+    };
     use purr_core::dev::FeatureStatus;
     use serde_json::json;
 
@@ -256,13 +259,34 @@ mod tests {
             tpe,
             backend: Some(AccelBackend::Vulkan),
             caps: None,
+            vulkan_driver: None,
         }
+    }
+
+    fn reported_driver() -> VulkanDriverStatus {
+        VulkanDriverStatus::Reported(VulkanDriverInfo {
+            device_name: "Intel(R) Iris(R) Xe Graphics".to_owned(),
+            device_type: VulkanDeviceType::IntegratedGpu,
+            vendor_id: 0x8086,
+            device_id: 0x9a49,
+            api_version: VulkanApiVersion::from_raw(0x0040_4162),
+            pci_bus: None,
+            driver: Some(VulkanDriverIdentity {
+                id: VulkanDriverId::IntelOpenSourceMesa,
+                name: "Mesa Intel".to_owned(),
+                info: "26.1.8".to_owned(),
+            }),
+        })
     }
 
     #[test]
     fn an_integrated_gpu_is_labelled_as_sharing_system_memory() {
+        let igpu = Device {
+            vulkan_driver: Some(reported_driver()),
+            ..device(DeviceType::Igpu, Some("0000:00:02.0"))
+        };
         assert_eq!(
-            device_lines(&device(DeviceType::Igpu, Some("0000:00:02.0")), &[]),
+            device_lines(&igpu, &[]),
             [
                 "Device 2 - Vulkan0",
                 "  Description: Intel(R) Iris(R) Xe Graphics",
@@ -271,18 +295,22 @@ mod tests {
                 "  Device id: 0000:00:02.0",
                 "  Memory: 8.0 GB total, 3.0 GB free (integrated GPUs share system RAM)",
                 "  Capabilities: not reported",
-                "  Driver: not reported by ggml (`vulkaninfo --summary` lists the driver and Vulkan version)",
+                "  Driver: Mesa Intel 26.1.8",
+                "  Vulkan API: 1.4.354",
             ]
         );
     }
 
     #[test]
     fn a_discrete_gpu_without_an_id_that_automatic_selection_picks_says_so() {
+        let unmatched = Device {
+            vulkan_driver: Some(VulkanDriverStatus::Unavailable(
+                VulkanDriverUnavailable::NoUnambiguousMatch,
+            )),
+            ..device(DeviceType::Gpu, None)
+        };
         assert_eq!(
-            device_lines(
-                &device(DeviceType::Gpu, None),
-                &[AccelBackend::Vulkan, AccelBackend::Cuda]
-            ),
+            device_lines(&unmatched, &[AccelBackend::Vulkan, AccelBackend::Cuda]),
             [
                 "Device 2 - Vulkan0",
                 "  Description: Intel(R) Iris(R) Xe Graphics",
@@ -291,7 +319,7 @@ mod tests {
                 "  Device id: not reported by ggml",
                 "  Memory: 8.0 GB total, 3.0 GB free",
                 "  Capabilities: not reported",
-                "  Driver: not reported by ggml (`vulkaninfo --summary` lists the driver and Vulkan version)",
+                "  Driver: could not be read (no single Vulkan device matches this one by PCI bus id or name)",
                 "  Picked by automatic selection for: Vulkan, CUDA",
             ]
         );
@@ -309,6 +337,7 @@ mod tests {
             tpe: DeviceType::Cpu,
             backend: Some(AccelBackend::Cpu),
             caps: None,
+            vulkan_driver: None,
         };
         assert_eq!(
             device_lines(&cpu, &[]),
@@ -426,5 +455,34 @@ mod tests {
                 }]
             })
         );
+    }
+
+    #[test]
+    fn the_vulkan_driver_is_an_additive_field_of_a_json_device() {
+        let device = Device {
+            vulkan_driver: Some(reported_driver()),
+            ..device(DeviceType::Igpu, Some("0000:00:02.0"))
+        };
+        let printed = serde_json::to_value(&device).expect("serializes");
+        assert_eq!(
+            printed.get("vulkan_driver"),
+            Some(&json!({
+                "Reported": {
+                    "device_name": "Intel(R) Iris(R) Xe Graphics",
+                    "device_type": "IntegratedGpu",
+                    "vendor_id": 32902,
+                    "device_id": 39497,
+                    "api_version": { "major": 1, "minor": 4, "patch": 354 },
+                    "pci_bus": null,
+                    "driver": {
+                        "id": "IntelOpenSourceMesa",
+                        "name": "Mesa Intel",
+                        "info": "26.1.8"
+                    }
+                }
+            }))
+        );
+        let parsed: Device = serde_json::from_value(printed).expect("parses back");
+        assert_eq!(parsed.vulkan_driver, device.vulkan_driver);
     }
 }

@@ -284,6 +284,7 @@ mod tests {
             tpe: dev::DeviceType::Cpu,
             backend: Some(CoreBackend::Cpu),
             caps: None,
+            vulkan_driver: None,
         }
     }
 

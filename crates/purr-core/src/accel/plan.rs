@@ -161,6 +161,7 @@ mod tests {
             tpe,
             backend: Some(backend),
             caps: None,
+            vulkan_driver: None,
         }
     }
 
