@@ -6,11 +6,18 @@ use crate::{
     platform::IS_WEB,
 };
 use dioxus::prelude::*;
+use purr_common::version::Release;
 
 const FONT_LICENCE: &str = include_str!("../../assets/fonts/OFL.txt");
 
 /// The version this build was made from.
-pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+pub fn version() -> String {
+    Release {
+        crate_version: env!("CARGO_PKG_VERSION"),
+        channel: purr_common::build_channel!(),
+    }
+    .to_string()
+}
 
 /// Where this build runs.
 pub const PLATFORM: &str = if IS_WEB { "Web" } else { "Desktop" };
@@ -26,6 +33,7 @@ pub fn AboutSheet(on_close: EventHandler<()>) -> Element {
     } else {
         ("on this computer", "The only network request")
     };
+    let version = version();
     rsx! {
         Sheet {
             title: "Runs locally",
@@ -41,7 +49,7 @@ pub fn AboutSheet(on_close: EventHandler<()>) -> Element {
             p {
                 "Audio, transcripts, models, settings and logs stay {place}. {network} is a model download from Hugging Face."
             }
-            p { class: "foot", "Purr {VERSION} · {PLATFORM}" }
+            p { class: "foot", "Purr {version} · {PLATFORM}" }
             details { class: "foot",
                 summary { "Inter font licence (SIL OFL)" }
                 pre { class: "preview", "{FONT_LICENCE}" }

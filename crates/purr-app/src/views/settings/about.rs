@@ -2,7 +2,7 @@ use super::sections::SettingsSection;
 use crate::{
     components::group::{Group, Item, ItemAction},
     views::{
-        about::{PLATFORM, VERSION},
+        about::{PLATFORM, version},
         shortcuts_sheet::ShortcutsSheet,
     },
 };
@@ -12,6 +12,7 @@ use dioxus::prelude::*;
 #[component]
 pub fn AboutSection(on_reset: EventHandler<()>) -> Element {
     let mut keys_open = use_signal(|| false);
+    let version = version();
 
     rsx! {
         div { class: "sect", id: SettingsSection::About.anchor(),
@@ -21,7 +22,7 @@ pub fn AboutSection(on_reset: EventHandler<()>) -> Element {
                     value: "?",
                     action: ItemAction::Press(EventHandler::new(move |_| keys_open.set(true))),
                 }
-                Item { title: "Purr {VERSION}", value: PLATFORM }
+                Item { title: "Purr {version}", value: PLATFORM }
             }
             Group { label: "Reset",
                 Item {
