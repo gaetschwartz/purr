@@ -1,4 +1,4 @@
-//! The shell layout and one module per routed view.
+//! The shell layout, the Settings dialog and one module per routed view.
 
 pub mod about;
 pub mod history;

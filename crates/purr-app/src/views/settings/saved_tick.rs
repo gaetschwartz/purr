@@ -8,7 +8,7 @@ use std::time::Duration;
 
 const TICK_VISIBLE: Duration = Duration::from_millis(1600);
 
-/// The quiet "Saved" in the page header: it shows for a moment after each saved change, and a
+/// The quiet "Saved" in the dialog header: it shows for a moment after each saved change, and a
 /// failed or paused save stays in view with its reason.
 #[component]
 pub fn SavedTick() -> Element {

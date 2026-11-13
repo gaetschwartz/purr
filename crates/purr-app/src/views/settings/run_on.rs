@@ -94,25 +94,27 @@ fn devices_label(entry: &BackendReport) -> String {
 }
 
 fn backend_option(entry: &BackendReport) -> Option<RunOnOption> {
-    let value = RunOn::named(entry.backend);
-    match (&entry.status, value) {
-        (_, RunOn::Cpu | RunOn::Automatic) => None,
-        (BackendStatus::Available, _) => Some(RunOnOption::enabled(value, devices_label(entry))),
-        (
-            BackendStatus::Unavailable(
-                BackendUnavailable::NoDevice | BackendUnavailable::RuntimeLibraryMissing { .. },
-            ),
-            _,
+    match entry.backend {
+        AccelBackend::Cpu => return None,
+        AccelBackend::Cuda
+        | AccelBackend::Hip
+        | AccelBackend::CoreMl
+        | AccelBackend::Metal
+        | AccelBackend::Sycl
+        | AccelBackend::Vulkan => {}
+    }
+    let value = RunOn::Backend(entry.backend);
+    match &entry.status {
+        BackendStatus::Available => Some(RunOnOption::enabled(value, devices_label(entry))),
+        BackendStatus::Unavailable(
+            BackendUnavailable::NoDevice | BackendUnavailable::RuntimeLibraryMissing { .. },
         ) => Some(RunOnOption {
             value,
             label: format!("{} (unavailable)", entry.backend.label()),
             disabled: true,
         }),
-        (
-            BackendStatus::Unavailable(
-                BackendUnavailable::NotBuilt | BackendUnavailable::NotBuiltOrNoDevice,
-            ),
-            _,
+        BackendStatus::Unavailable(
+            BackendUnavailable::NotBuilt | BackendUnavailable::NotBuiltOrNoDevice,
         ) => None,
     }
 }
