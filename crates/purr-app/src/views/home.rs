@@ -215,14 +215,13 @@ pub fn Home() -> Element {
                             aria_expanded: advanced(),
                             aria_controls: "advanced-options",
                             onclick: move |_| advanced.toggle(),
-                            Icon {
-                                name: if advanced() { IconName::ChevronDown } else { IconName::ChevronRight },
-                                size: IconSize::Small,
-                            }
                             "Advanced"
+                            Icon { name: IconName::ChevronDown, size: IconSize::Small, class: "chev" }
                         }
                         if advanced() {
-                            div { id: "advanced-options", class: "advopts", DevicePill { id: "pick-device" } }
+                            div { id: "advanced-options", class: "advopts surface",
+                                DevicePill { id: "pick-device" }
+                            }
                         }
                     }
                 }
