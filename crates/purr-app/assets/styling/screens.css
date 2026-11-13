@@ -17,7 +17,7 @@
 .engine-chip svg{color:var(--fg-3)}
 @container app (max-width:760px){.runbar{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.runbar .engine-chip{grid-column:1;justify-self:start}.runbar>.btn{grid-column:2}}
 @container app (max-width:520px){.runbar{grid-template-columns:minmax(0,1fr)}.runbar .engine-chip,.runbar>.btn{grid-column:1}}
-.runbar .runbar .runbar .filecard{display:flex;align-items:center;gap:16px;padding:16px;border-radius:var(--r-card)}
+.filecard{display:flex;align-items:center;gap:16px;padding:16px;border-radius:var(--r-card)}
 .fileicon{width:52px;height:52px;border-radius:12px;display:grid;place-items:center;background:var(--accent);color:#fff;flex:none}
 .fileicon.bad{background:var(--danger);color:var(--danger-on)}
 .filecard .name{font-weight:600;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
