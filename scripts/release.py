@@ -42,6 +42,13 @@ def fail(message: str) -> NoReturn:
     sys.exit(f"release: {message}")
 
 
+def parse_version(version: str) -> tuple[int, int, int]:
+    match = VERSION.match(version)
+    if match is None:
+        fail(f"{version!r} is not X.Y.Z")
+    return int(match["major"]), int(match["minor"]), int(match["patch"])
+
+
 def package_table(document: TOMLDocument) -> Table:
     workspace = document.get("workspace")
     package = workspace.get("package") if isinstance(workspace, Table) else None
@@ -108,11 +115,12 @@ def main() -> None:
     if needs_commit:
         print(f"  commit chore(release): {tag}")
     print(f"  annotated tag {tag}")
-    bumps = workspace_version(MANIFEST.read_text(encoding="utf-8")) == args.version
+    develop_version = workspace_version(MANIFEST.read_text(encoding="utf-8"))
+    bumps = parse_version(develop_version) <= parse_version(args.version)
     if bumps:
-        print(f"  commit on {BRANCH} starting {next_version}")
+        print(f"  commit on {BRANCH} starting {next_version} (it carries {develop_version})")
     else:
-        print(f"  {BRANCH} already moved past {args.version}, so its version stays")
+        print(f"  {BRANCH} carries {develop_version}, past {args.version}, so its version stays")
     if args.dry_run:
         return
 
