@@ -22,7 +22,10 @@ use crate::{
     components::toast::{Toast, ToastKind, Toasts},
     platform,
 };
-use dioxus::prelude::*;
+use dioxus::{
+    core::{Runtime, ScopeId},
+    prelude::*,
+};
 use futures::{
     StreamExt as _,
     channel::mpsc::{UnboundedReceiver, UnboundedSender, unbounded},
@@ -246,7 +249,9 @@ async fn save_to_platform(settings: Settings) -> Result<(), String> {
 /// Views must not render before [`SettingsStore::load_state`] leaves [`LoadState::Loading`].
 pub fn use_settings_store_provider(toasts: Toasts) -> SettingsStore {
     let store = use_hook(|| {
-        let (store, wakes) = SettingsStore::new(toasts, Settings::default(), LoadState::Loading);
+        let (store, wakes) = Runtime::current().in_scope(ScopeId::ROOT, || {
+            SettingsStore::new(toasts, Settings::default(), LoadState::Loading)
+        });
         spawn(store.run_writer(wakes));
         spawn(store.load());
         store
