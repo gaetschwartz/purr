@@ -54,11 +54,6 @@ impl OverviewState {
 /// Why a picked file was not accepted.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FileProblem {
-    /// The file is not audio by its name and reported type.
-    Unsupported {
-        name: String,
-        content_type: String,
-    },
     Empty {
         name: String,
     },
@@ -84,7 +79,6 @@ impl FileProblem {
     #[must_use]
     pub const fn title(&self) -> &'static str {
         match self {
-            Self::Unsupported { .. } => "Purr can't open this kind of file",
             Self::Empty { .. } => "This file is empty",
             Self::TooLarge { .. } => "This file is too large",
             Self::Unreadable { .. } => "Purr couldn't read this file",
@@ -96,16 +90,6 @@ impl FileProblem {
     #[must_use]
     pub fn message(&self) -> String {
         match self {
-            Self::Unsupported { name, content_type } => {
-                let kind = if content_type.is_empty() {
-                    "file".to_owned()
-                } else {
-                    format!("{content_type} file")
-                };
-                format!(
-                    "{name} is a {kind}, not audio. Export the audio as MP3, WAV, M4A or another supported format, then try again."
-                )
-            }
             Self::Empty { name } => format!(
                 "{name} is 0 bytes long, so there's nothing to transcribe. Check that the recording finished saving."
             ),

@@ -45,16 +45,10 @@ use run_link::RunLink;
 
 const OPEN_FILE_CHOOSER: &str = "document.getElementById('file-input')?.click();";
 
-fn formats_line() -> String {
-    let formats = if IS_WEB {
-        "MP3, WAV, AAC, FLAC, OGG, Opus, M4A or WebM"
-    } else {
-        "MP3, WAV, AAC, FLAC, OGG, Opus, M4A, WebM, or video such as MP4, MKV, MOV"
-    };
-    get_platform().max_upload_bytes().map_or_else(
-        || formats.to_owned(),
-        |limit| format!("{formats} · up to {}", ByteSize(limit)),
-    )
+fn size_limit() -> Option<String> {
+    get_platform()
+        .max_upload_bytes()
+        .map(|limit| format!("Up to {}", ByteSize(limit)))
 }
 
 /// The Transcribe view: drop pad or file card, then the run bar and the latest transcriptions.
@@ -187,7 +181,6 @@ pub fn Home() -> Element {
                         id: FILE_INPUT_ID,
                         tabindex: "-1",
                         aria_hidden: "true",
-                        accept: "audio/*",
                         onchange: move |event: FormEvent| {
                             if let Some(picked) = event.files().into_iter().next() {
                                 session.choose(picked);
@@ -197,7 +190,7 @@ pub fn Home() -> Element {
                 } else {
                     DropPad {
                         reading: session.reading(),
-                        formats: formats_line(),
+                        limit: size_limit(),
                         on_file: move |picked| session.choose(picked),
                     }
                 }

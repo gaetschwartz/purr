@@ -26,10 +26,7 @@ use crate::{
     },
     platform::{self, IS_WEB},
     settings_store::{SettingsStore, use_settings},
-    utils::{
-        clock::{now_ms, unix_ms},
-        file_kind::may_contain_audio,
-    },
+    utils::clock::{now_ms, unix_ms},
 };
 use dioxus::{
     core::{Runtime, ScopeId, Task, spawn_forever},
@@ -261,12 +258,6 @@ impl TranscribeSession {
         self.problem.set(None);
         self.cancelled.set(None);
         let content_type = data.content_type().unwrap_or_default();
-        if !may_contain_audio(&content_type, &name) {
-            tracing::info!("Refused {name}: {content_type}");
-            self.problem
-                .set(Some(FileProblem::Unsupported { name, content_type }));
-            return;
-        }
         if let Some(limit) = platform::get_platform().max_upload_bytes()
             && data.size() > limit
         {

@@ -2,19 +2,10 @@ use super::{
     icon::{Icon, IconName, IconSize},
     spinner::Spinner,
 };
-use crate::platform::IS_WEB;
 use dioxus::{html::FileData, html::HasFileData, prelude::*};
 
 /// The DOM id of the pad's file input; open the chooser by clicking it.
 pub const FILE_INPUT_ID: &str = "file-input";
-
-/// What the file chooser offers. Browsers also take `audio/*`; the desktop dialog would expand
-/// it into extensions the list already names.
-const ACCEPT: &str = if IS_WEB {
-    "audio/*,.mp3,.wav,.aac,.flac,.ogg,.oga,.opus,.webm,.weba,.m4a,.m4b,.mp4,.wma,.aif,.aiff,.amr,.mka"
-} else {
-    ".mp3,.wav,.aac,.flac,.ogg,.oga,.opus,.webm,.weba,.m4a,.m4b,.mp4,.wma,.aif,.aiff,.amr,.mka,.mkv,.mov,.m4v,.avi,.wmv,.asf,.flv,.mpg,.mpeg,.ts,.mts,.m2ts,.3gp,.3g2,.ogv"
-};
 
 /// The drop area of the Transcribe screen: drop a file on it, or click it (or press Space or
 /// Enter on it) to open the file chooser. It "purrs" a few times when it appears, unless motion is reduced.
@@ -22,9 +13,8 @@ const ACCEPT: &str = if IS_WEB {
 pub fn DropPad(
     /// The name of the file being read, while one is.
     reading: Option<String>,
-    /// The formats line under the title.
-    #[props(into)]
-    formats: String,
+    /// The size limit of a file, when the platform has one.
+    limit: Option<String>,
     on_file: EventHandler<FileData>,
 ) -> Element {
     let mut over = use_signal(|| false);
@@ -38,7 +28,7 @@ pub fn DropPad(
     rsx! {
         label {
             class,
-            title: "{formats}",
+            title: limit.clone(),
             ondragenter: move |event: DragEvent| {
                 event.prevent_default();
                 over.set(true);
@@ -63,8 +53,7 @@ pub fn DropPad(
                 multiple: false,
                 disabled: busy,
                 aria_label: "Choose an audio file",
-                aria_describedby: "drop-formats",
-                accept: ACCEPT,
+                aria_describedby: limit.is_some().then_some("drop-limit"),
                 onchange: move |event: FormEvent| {
                     if let Some(file) = event.files().into_iter().next() {
                         on_file.call(file);
@@ -86,7 +75,9 @@ pub fn DropPad(
                     "or "
                     span { class: "link", "choose a file" }
                 }
-                span { class: "sr", id: "drop-formats", "{formats}" }
+                if let Some(limit) = &limit {
+                    span { class: "sr", id: "drop-limit", "{limit}" }
+                }
             }
         }
     }
