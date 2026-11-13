@@ -38,9 +38,6 @@ jobs:
         with:
           triplet: x64-linux
       - uses: ./.github/actions/setup-rust
-      - uses: Swatinem/rust-cache@v2.9.3
-        with:
-          save-if: ${{ github.ref == 'refs/heads/develop' }}
       - uses: taiki-e/install-action@v2.90.3
         with:
           tool: cargo-nextest

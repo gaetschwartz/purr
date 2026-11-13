@@ -312,10 +312,6 @@ jobs:
       - uses: ./.github/actions/setup-rust
         with:
           targets: wasm32-unknown-unknown
-      - uses: Swatinem/rust-cache@v2.9.3
-        with:
-          key: web
-          save-if: ${{ github.ref == 'refs/heads/develop' }}
       - uses: ./.github/actions/setup-dioxus
         with:
           version: ${{ env.DIOXUS_VERSION }}
