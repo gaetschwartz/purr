@@ -7,6 +7,7 @@ use super::{
     segmented::{Segment, Segmented},
     spinner::Spinner,
 };
+use crate::utils::primary_key::use_primary_key_label;
 use crate::{
     components::toast::use_toasts,
     hooks::use_models::{GpuSupport, use_models},
@@ -87,6 +88,9 @@ pub fn ModelPicker(
     let mut precision = use_signal(PickerPrecision::default);
     let mut search = use_signal(String::new);
     let mut more_open = use_signal(|| false);
+    let primary_key = use_primary_key_label();
+    let default_hint = (target == PickTarget::Current)
+        .then(|| format!("{}+Click to set as default", primary_key()));
 
     let pick = move |row: ModelRow| {
         if matches!(row.state, ModelState::Unavailable { .. }) {
@@ -108,6 +112,30 @@ pub fn ModelPicker(
             }
         }
     };
+
+    let pick_default = move |row: ModelRow| {
+        if matches!(row.state, ModelState::Unavailable { .. }) {
+            return;
+        }
+        let id = row.entry.id.clone();
+        let saved = settings.update(|settings| {
+            settings.model.model_name.clone_from(&id);
+            settings.model.default_model = Some(id);
+        });
+        match saved {
+            Ok(()) => {
+                toasts.success("Default model set", row.entry.label.clone());
+                on_close.call(());
+                if let Some(handler) = on_pick {
+                    handler.call(row.entry);
+                }
+            }
+            Err(error) => {
+                toasts.error("That model can't be used", error.to_string());
+            }
+        }
+    };
+    let alt = (target == PickTarget::Current).then_some(EventHandler::new(pick_default));
 
     let body = match models.rows() {
         None => rsx! {
@@ -187,7 +215,9 @@ pub fn ModelPicker(
                             key: "{cluster.primary.entry.id}",
                             cluster: cluster.clone(),
                             selected: selected.clone(),
+                            hint: default_hint.clone(),
                             onselect: pick,
+                            on_alt: alt,
                         }
                     }
                     if older_count > 0 {
@@ -204,7 +234,9 @@ pub fn ModelPicker(
                                     key: "{cluster.primary.entry.id}",
                                     cluster: cluster.clone(),
                                     selected: selected.clone(),
+                                    hint: default_hint.clone(),
                                     onselect: pick,
+                                    on_alt: alt,
                                 }
                             }
                         }
@@ -272,14 +304,18 @@ pub fn ModelPicker(
 fn ClusterOption(
     cluster: ModelCluster,
     selected: String,
+    hint: Option<String>,
     onselect: EventHandler<ModelRow>,
+    on_alt: Option<EventHandler<ModelRow>>,
 ) -> Element {
     let name = cluster.primary.entry.name.clone();
     rsx! {
         ModelOption {
             row: cluster.primary.clone(),
             selected: cluster.primary.entry.id == selected,
+            hint: hint.clone(),
             onselect,
+            on_alt,
         }
         if !cluster.variants.is_empty() {
             div {
@@ -291,7 +327,9 @@ fn ClusterOption(
                         key: "{row.entry.id}",
                         selected: row.entry.id == selected,
                         row,
+                        hint: hint.clone(),
                         onselect,
+                        on_alt,
                     }
                 }
             }
@@ -300,7 +338,13 @@ fn ClusterOption(
 }
 
 #[component]
-fn VariantOption(row: ModelRow, selected: bool, onselect: EventHandler<ModelRow>) -> Element {
+fn VariantOption(
+    row: ModelRow,
+    selected: bool,
+    hint: Option<String>,
+    onselect: EventHandler<ModelRow>,
+    on_alt: Option<EventHandler<ModelRow>>,
+) -> Element {
     let disabled = matches!(row.state, ModelState::Unavailable { .. });
     let tag = match &row.entry.precision {
         Precision::Quantized { bits } => format!("Q{bits}"),
@@ -314,11 +358,17 @@ fn VariantOption(row: ModelRow, selected: bool, onselect: EventHandler<ModelRow>
             class: if selected { "pvar sel" } else { "pvar" },
             r#type: "button",
             role: "option",
+            title: hint,
             aria_selected: selected,
             aria_disabled: disabled.then_some("true"),
-            onclick: move |_| {
-                if !disabled {
-                    onselect.call(row.clone());
+            onclick: move |event: MouseEvent| {
+                if disabled {
+                    return;
+                }
+                let modifiers = event.modifiers();
+                match on_alt {
+                    Some(alt) if modifiers.ctrl() || modifiers.meta() => alt.call(row.clone()),
+                    Some(_) | None => onselect.call(row.clone()),
                 }
             },
             b { "{tag}" }
@@ -333,7 +383,13 @@ fn VariantOption(row: ModelRow, selected: bool, onselect: EventHandler<ModelRow>
 }
 
 #[component]
-fn ModelOption(row: ModelRow, selected: bool, onselect: EventHandler<ModelRow>) -> Element {
+fn ModelOption(
+    row: ModelRow,
+    selected: bool,
+    hint: Option<String>,
+    onselect: EventHandler<ModelRow>,
+    on_alt: Option<EventHandler<ModelRow>>,
+) -> Element {
     let disabled = matches!(row.state, ModelState::Unavailable { .. });
     let size = download_size(&row);
     let on_device = row.state.is_on_device();
@@ -363,6 +419,11 @@ fn ModelOption(row: ModelRow, selected: bool, onselect: EventHandler<ModelRow>) 
             status: on_device.then(|| rsx! {
                 Icon { name: IconName::CheckCircle, size: IconSize::Small }
                 span { class: "sr", "Downloaded" }
+            }),
+            hint,
+            on_alt: on_alt.map(|alt| {
+                let row = row.clone();
+                EventHandler::new(move |()| alt.call(row.clone()))
             }),
             onselect: move |()| onselect.call(row.clone()),
         }

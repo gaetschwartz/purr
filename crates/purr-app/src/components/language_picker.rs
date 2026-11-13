@@ -5,6 +5,7 @@ use super::{
     popover::{OptionRole, Popover, PopoverOption},
     search_field::SearchField,
 };
+use crate::utils::primary_key::use_primary_key_label;
 use crate::{
     components::toast::use_toasts,
     hooks::use_models::use_models,
@@ -159,6 +160,26 @@ pub fn LanguagePicker(
         }
     };
 
+    let primary_key = use_primary_key_label();
+    let alt_enabled = target == PickTarget::Current && !english_only;
+    let default_hint = alt_enabled.then(|| format!("{}+Click to set as default", primary_key()));
+    let choose_default = move |choice: LanguageChoice| {
+        let code = choice.setting().to_owned();
+        let saved = settings.update(|settings| {
+            settings.ui.language.clone_from(&code);
+            settings.ui.default_language = Some(code);
+        });
+        match saved {
+            Ok(()) => {
+                toasts.success("Default language set", choice.label());
+                on_close.call(());
+            }
+            Err(error) => {
+                toasts.error("That language can't be used", error.to_string());
+            }
+        }
+    };
+
     let keyboard_choices = choices.clone();
     let reveal_id = row_id.clone();
     let on_key = move |event: KeyboardEvent| {
@@ -243,6 +264,12 @@ pub fn LanguagePicker(
                         role: OptionRole::Option,
                         selected: choice == current && !none_selected,
                         highlighted: index == active,
+                        hint: default_hint.clone(),
+                        on_alt: alt_enabled
+                            .then(|| {
+                                let choice = choice.clone();
+                                EventHandler::new(move |()| choose_default(choice.clone()))
+                            }),
                         leading: rsx! {
                             if choice == current && !none_selected {
                                 Icon { name: IconName::Check, size: IconSize::Small }

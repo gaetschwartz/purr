@@ -9,8 +9,10 @@ use super::{
     popover::{Popover, PopoverOption},
 };
 use crate::{
+    components::toast::use_toasts,
     hooks::use_models::use_models,
     model_catalog::{copy, format::checking, listing::ModelRow, state::ModelState},
+    settings_store::use_settings,
     utils::{byte_size::ByteSize, dom_id::use_dom_id},
 };
 use dioxus::prelude::*;
@@ -27,6 +29,8 @@ pub fn ModelListRow(
     on_delete: EventHandler<String>,
 ) -> Element {
     let models = use_models();
+    let settings = use_settings();
+    let toasts = use_toasts();
     let mut menu_open = use_signal(|| false);
     let anchor = use_dom_id("model-menu");
     let ModelRow { entry, state } = row;
@@ -46,6 +50,8 @@ pub fn ModelListRow(
         | ModelState::NeedsRepair(_) => (false, None),
     };
     let can_verify = !matches!(state, ModelState::NeedsRepair(_));
+    let is_default =
+        settings.with(|settings| settings.model.default_model.as_deref() == Some(id.as_str()));
 
     let menu = rsx! {
         IconButton {
@@ -62,6 +68,29 @@ pub fn ModelListRow(
                 label: "Actions for {label}",
                 menu: true,
                 on_close: move |()| menu_open.set(false),
+                if !is_default && !disabled {
+                    PopoverOption {
+                        title: "Set as default",
+                        leading: rsx! {
+                            Icon { name: IconName::Check, size: IconSize::Small }
+                        },
+                        onselect: {
+                            let id = id.clone();
+                            let label = label.clone();
+                            move |()| {
+                                menu_open.set(false);
+                                match settings.set_default_model(Some(id.clone())) {
+                                    Ok(()) => {
+                                        toasts.success("Default model set", label.clone());
+                                    }
+                                    Err(error) => {
+                                        toasts.error("Couldn't set the default", error.to_string());
+                                    }
+                                }
+                            }
+                        },
+                    }
+                }
                 if can_verify {
                     PopoverOption {
                         title: "Check files",

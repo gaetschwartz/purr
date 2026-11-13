@@ -73,6 +73,11 @@ pub fn PopoverOption(
     #[props(default)]
     highlighted: bool,
     #[props(into)] id: Option<String>,
+    /// A tooltip for the row.
+    #[props(into)]
+    hint: Option<String>,
+    /// Runs instead of `onselect` when the row is clicked with Ctrl or Cmd held.
+    on_alt: Option<EventHandler<()>>,
     onselect: EventHandler<()>,
 ) -> Element {
     let class = match (danger, highlighted) {
@@ -91,11 +96,17 @@ pub fn PopoverOption(
             class,
             r#type: "button",
             role,
+            title: hint,
             aria_selected,
             aria_disabled: disabled.then_some("true"),
-            onclick: move |_| {
-                if !disabled {
-                    onselect.call(());
+            onclick: move |event: MouseEvent| {
+                if disabled {
+                    return;
+                }
+                let modifiers = event.modifiers();
+                match on_alt {
+                    Some(alt) if modifiers.ctrl() || modifiers.meta() => alt.call(()),
+                    Some(_) | None => onselect.call(()),
                 }
             },
             span { class: "ck", {leading} }
