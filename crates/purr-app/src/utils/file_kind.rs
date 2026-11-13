@@ -1,27 +1,41 @@
+use crate::platform::IS_WEB;
+
+/// Video containers the desktop decoder reads the audio track of; browsers decode far fewer.
+pub const DESKTOP_VIDEO_EXTENSIONS: [&str; 14] = [
+    "3g2", "3gp", "asf", "avi", "flv", "m2ts", "m4v", "mkv", "mov", "mpeg", "mpg", "mts", "ogv",
+    "ts",
+];
+
+fn is_video_container(extension: &str) -> bool {
+    !IS_WEB && DESKTOP_VIDEO_EXTENSIONS.contains(&extension)
+}
+
 fn has_audio_extension(file_name: &str) -> bool {
     let Some((_, extension)) = file_name.rsplit_once('.') else {
         return false;
     };
-    matches!(
-        extension.to_ascii_lowercase().as_str(),
-        "aac"
-            | "aif"
-            | "aiff"
-            | "amr"
-            | "flac"
-            | "m4a"
-            | "m4b"
-            | "mka"
-            | "mp3"
-            | "mp4"
-            | "oga"
-            | "ogg"
-            | "opus"
-            | "wav"
-            | "weba"
-            | "webm"
-            | "wma"
-    )
+    let extension = extension.to_ascii_lowercase();
+    is_video_container(&extension)
+        || matches!(
+            extension.as_str(),
+            "aac"
+                | "aif"
+                | "aiff"
+                | "amr"
+                | "flac"
+                | "m4a"
+                | "m4b"
+                | "mka"
+                | "mp3"
+                | "mp4"
+                | "oga"
+                | "ogg"
+                | "opus"
+                | "wav"
+                | "weba"
+                | "webm"
+                | "wma"
+        )
 }
 
 /// Whether a file can plausibly hold audio, judged by its extension and the MIME type the platform reported.
@@ -42,6 +56,7 @@ pub fn may_contain_audio(content_type: &str, file_name: &str) -> bool {
         .to_ascii_lowercase();
     essence.is_empty()
         || essence.starts_with("audio/")
+        || (!IS_WEB && essence.starts_with("video/"))
         || matches!(
             essence.as_str(),
             "video/mp4"
@@ -68,6 +83,17 @@ pub fn audio_mime(file_name: &str) -> &'static str {
         Some("aac") => "audio/aac",
         Some("webm" | "weba") => "audio/webm",
         Some("aif" | "aiff") => "audio/aiff",
+        Some("mkv") => "video/x-matroska",
+        Some("mov") => "video/quicktime",
+        Some("m4v") => "video/mp4",
+        Some("avi") => "video/x-msvideo",
+        Some("wmv" | "asf") => "video/x-ms-wmv",
+        Some("flv") => "video/x-flv",
+        Some("mpg" | "mpeg") => "video/mpeg",
+        Some("ts" | "mts" | "m2ts") => "video/mp2t",
+        Some("3gp") => "video/3gpp",
+        Some("3g2") => "video/3gpp2",
+        Some("ogv") => "video/ogg",
         Some(_) | None => "application/octet-stream",
     }
 }
@@ -114,6 +140,20 @@ mod tests {
         assert_eq!(audio_mime("memo.OGG"), "audio/ogg");
         assert_eq!(audio_mime("talk.m4a"), "audio/mp4");
         assert_eq!(audio_mime("mystery"), "application/octet-stream");
+    }
+
+    #[test]
+    fn video_containers_are_served_under_a_video_type() {
+        assert_eq!(audio_mime("clip.mkv"), "video/x-matroska");
+        assert_eq!(audio_mime("clip.MOV"), "video/quicktime");
+        assert_eq!(audio_mime("clip.ts"), "video/mp2t");
+    }
+
+    #[test]
+    fn desktop_accepts_video_containers_and_the_browser_does_not() {
+        assert_eq!(may_contain_audio("text/html", "clip.mkv"), !IS_WEB);
+        assert_eq!(may_contain_audio("video/quicktime", "clip"), !IS_WEB);
+        assert!(may_contain_audio("text/html", "clip.mp4"));
     }
 
     #[test]

@@ -13,7 +13,7 @@ pub const FILE_INPUT_ID: &str = "file-input";
 const ACCEPT: &str = if IS_WEB {
     "audio/*,.mp3,.wav,.aac,.flac,.ogg,.oga,.opus,.webm,.weba,.m4a,.m4b,.mp4,.wma,.aif,.aiff,.amr,.mka"
 } else {
-    ".mp3,.wav,.aac,.flac,.ogg,.oga,.opus,.webm,.weba,.m4a,.m4b,.mp4,.wma,.aif,.aiff,.amr,.mka"
+    ".mp3,.wav,.aac,.flac,.ogg,.oga,.opus,.webm,.weba,.m4a,.m4b,.mp4,.wma,.aif,.aiff,.amr,.mka,.mkv,.mov,.m4v,.avi,.wmv,.asf,.flv,.mpg,.mpeg,.ts,.mts,.m2ts,.3gp,.3g2,.ogv"
 };
 
 /// The drop area of the Transcribe screen: drop a file on it, or click it (or press Space or

@@ -46,7 +46,11 @@ use run_link::RunLink;
 const OPEN_FILE_CHOOSER: &str = "document.getElementById('file-input')?.click();";
 
 fn formats_line() -> String {
-    let formats = "MP3, WAV, AAC, FLAC, OGG, Opus, M4A or WebM";
+    let formats = if IS_WEB {
+        "MP3, WAV, AAC, FLAC, OGG, Opus, M4A or WebM"
+    } else {
+        "MP3, WAV, AAC, FLAC, OGG, Opus, M4A, WebM, or video such as MP4, MKV, MOV"
+    };
     get_platform().max_upload_bytes().map_or_else(
         || formats.to_owned(),
         |limit| format!("{formats} · up to {}", ByteSize(limit)),
