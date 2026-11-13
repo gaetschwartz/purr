@@ -42,7 +42,7 @@ git push --atomic origin develop v0.3.0
 `--rev` defaults to `HEAD`. `scripts/release.py`:
 
 1. Refuses unless the tree is clean, `develop` is checked out and equal to `origin/develop`, the commit is part of `develop`, and the tag is new.
-2. When the version at the commit is not already `0.3.0`, makes a `chore(release): v0.3.0` commit on top of it that sets it and updates `Cargo.lock`. A canary commit normally already carries it.
+2. When the version at the commit is not already `0.3.0`, makes a `chore(release): v0.3.0` commit on top of it that sets it and updates `Cargo.lock` (`cargo metadata` rewrites only the crate versions). A canary commit normally already carries it.
 3. Creates the annotated tag `v0.3.0`.
 4. When `develop` still carries `0.3.0`, adds a `chore: start 0.4.0 development` commit.
 5. Prints the push command and stops; nothing is pushed.

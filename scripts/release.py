@@ -64,7 +64,7 @@ def set_version(version: str) -> None:
     MANIFEST.write_text(
         with_version(MANIFEST.read_text(encoding="utf-8"), version), encoding="utf-8", newline="\n"
     )
-    run("cargo", "update", "--workspace", "--offline")
+    run("cargo", "metadata", "--format-version", "1", "--offline")
 
 
 def commit(message: str) -> None:
