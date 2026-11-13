@@ -417,7 +417,7 @@ kbd{font-family:var(--font);font-size:12px;font-weight:600;padding:2px 7px;borde
 .ml-mk.warn{color:var(--warning)}
 .ml-mk.busy{color:var(--accent-text)}
 .ml-mk .spinner{width:14px;height:14px}
-@container picker (max-width:420px){
+@container picker (max-width:430px){
   .mline{display:grid;grid-template-columns:18px minmax(0,1fr) auto;grid-template-rows:1fr auto;grid-template-areas:"ck nm vers" ". mk vers";gap:0 10px;padding:6px 6px 6px 10px}
   .ml-mk{width:auto;justify-content:flex-start;font-size:12px}
   .ml-mk:empty{display:none}
