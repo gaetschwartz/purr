@@ -457,7 +457,7 @@ impl AudioProcessor {
                 "audio extraction",
                 std::io::Error::new(
                     std::io::ErrorKind::InvalidData,
-                    "No audio data could be extracted from URL - stream may be corrupted or unsupported",
+                    "No audio data could be extracted - the input may be corrupted or unsupported",
                 ),
             )));
         }
