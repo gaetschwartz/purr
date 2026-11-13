@@ -1,10 +1,8 @@
+use crate::color::ColorChoice;
 use crate::fmt::Verbosity;
-use clap::builder::{
-    Styles,
-    styling::{AnsiColor, Effects, Style},
-};
+use crate::theme::CLAP_STYLES;
 use clap::{
-    Parser, Subcommand,
+    CommandFactory as _, FromArgMatches as _, Parser, Subcommand,
     builder::{PossibleValue, TypedValueParser},
     error::ErrorKind,
 };
@@ -17,7 +15,7 @@ const ABOUT: &str = "😸 Transcribe audio files and URLs using Whisper AI";
 #[command(name = env!("CARGO_PKG_NAME"), author = env!("CARGO_PKG_AUTHORS"))]
 #[command(about = ABOUT)]
 #[command(version = "0.1.0")]
-#[command(styles = CLAP_STYLING)]
+#[command(styles = CLAP_STYLES)]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Option<Commands>,
@@ -111,6 +109,13 @@ pub struct Cli {
     /// Verbose output
     #[clap(flatten)]
     pub verbosity: Verbosity,
+
+    /// When to colour the output. `always` and `never` override the environment. `auto` follows,
+    /// in this order: NO_COLOR (any non-empty value disables colours), CLICOLOR_FORCE (any value
+    /// but 0 enables them), CLICOLOR=0 (disables them), then whether the stream is a terminal.
+    /// Standard output and standard error are decided separately
+    #[arg(long, global = true, value_enum, default_value_t, value_name = "WHEN")]
+    pub color: ColorChoice,
 
     /// Sample rate to use in Hz. 16'000 is the recommended and default value.
     #[arg(long, default_value = "16000")]
@@ -314,6 +319,30 @@ impl TypedValueParser for AccelChoiceParser {
 }
 
 impl Cli {
+    /// Parses the process arguments; `--help` and usage errors honour `--color` too.
+    pub fn from_env() -> Self {
+        let args: Vec<std::ffi::OsString> = std::env::args_os().collect();
+        let color = Self::color_choice_in(&args);
+        Self::command()
+            .color(color.into())
+            .try_get_matches_from(&args)
+            .and_then(|matches| Self::from_arg_matches(&matches))
+            .unwrap_or_else(|error| error.exit())
+    }
+
+    /// `--color` read ahead of the full parse, so that the help text it triggers is already
+    /// coloured accordingly. Whatever is wrong with the rest of the command line is ignored.
+    fn color_choice_in<S: AsRef<OsStr>>(args: &[S]) -> ColorChoice {
+        Self::command()
+            .disable_help_flag(true)
+            .disable_version_flag(true)
+            .ignore_errors(true)
+            .try_get_matches_from(args.iter().map(AsRef::as_ref))
+            .ok()
+            .and_then(|matches| matches.get_one::<ColorChoice>("color").copied())
+            .unwrap_or_default()
+    }
+
     /// Acceleration settings from `--accel`, `--accel-fallback`, `--accel-priority` and
     /// `--no-gpu`.
     pub fn accel_config(&self) -> AccelConfig {
@@ -382,23 +411,6 @@ pub const ASCII_ART: &str = r"
   |  |  |  |(_(  |  |  |  |  |  |  |  |  |  |
   |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
   |  |  |  |  |  |  |  |  |  |  |  |  |  |  |";
-
-pub const HEADER: Style = AnsiColor::Green.on_default().effects(Effects::BOLD);
-pub const USAGE: Style = AnsiColor::Green.on_default().effects(Effects::BOLD);
-pub const LITERAL: Style = AnsiColor::Cyan.on_default().effects(Effects::BOLD);
-pub const PLACEHOLDER: Style = AnsiColor::Cyan.on_default().italic();
-pub const ERROR: Style = AnsiColor::Red.on_default().effects(Effects::BOLD);
-pub const VALID: Style = AnsiColor::Cyan.on_default().effects(Effects::BOLD);
-pub const INVALID: Style = AnsiColor::Yellow.on_default().effects(Effects::BOLD);
-
-const CLAP_STYLING: Styles = Styles::styled()
-    .header(HEADER)
-    .usage(USAGE)
-    .literal(LITERAL)
-    .placeholder(PLACEHOLDER)
-    .error(ERROR)
-    .valid(VALID)
-    .invalid(INVALID);
 
 #[cfg(test)]
 mod tests {
@@ -495,6 +507,45 @@ mod tests {
             accel_of(&["--accel-priority", "vulkan,cuda"]).priority,
             [AccelBackend::Vulkan, AccelBackend::Cuda]
         );
+    }
+
+    #[test]
+    fn color_is_a_global_flag_in_either_position() {
+        for args in [
+            ["purr", "--color", "never", "sys"],
+            ["purr", "sys", "--color", "never"],
+        ] {
+            assert_eq!(Cli::try_parse_from(args).unwrap().color, ColorChoice::Never);
+        }
+        assert_eq!(
+            Cli::try_parse_from(["purr", "sys"]).unwrap().color,
+            ColorChoice::Auto
+        );
+        assert_eq!(
+            Cli::try_parse_from(["purr", "--color", "sometimes", "sys"])
+                .unwrap_err()
+                .kind(),
+            ErrorKind::InvalidValue
+        );
+    }
+
+    #[test]
+    fn the_flag_is_found_wherever_it_stands() {
+        let table: [(&[&str], ColorChoice); 7] = [
+            (&["purr"], ColorChoice::Auto),
+            (&["purr", "--color", "never", "sys"], ColorChoice::Never),
+            (&["purr", "sys", "--color", "never"], ColorChoice::Never),
+            (&["purr", "sys", "--color=always"], ColorChoice::Always),
+            (
+                &["purr", "a.wav", "-m", "base", "--color", "always", "-vv"],
+                ColorChoice::Always,
+            ),
+            (&["purr", "--color", "sometimes", "sys"], ColorChoice::Auto),
+            (&["purr", "--help"], ColorChoice::Auto),
+        ];
+        for (args, expected) in table {
+            assert_eq!(Cli::color_choice_in(args), expected, "{args:?}");
+        }
     }
 
     #[test]

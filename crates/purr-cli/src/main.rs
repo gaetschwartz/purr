@@ -1,12 +1,17 @@
 //! Whisper UI CLI - Audio transcription command-line interface
 mod cli;
+mod color;
 mod fmt;
+mod global;
 mod json;
 mod models;
 mod progress;
 mod runtime;
+mod scope;
 mod sys_report;
+mod theme;
 mod trace;
+mod vt;
 
 use crate::fmt::{MyFormatter, Verbosity, VerbosityLevel};
 use clap::Parser as _;

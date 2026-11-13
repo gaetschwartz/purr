@@ -1,4 +1,3 @@
-use owo_colors::OwoColorize;
 use purr_core::whisper::logging::{GGML_LOG_TARGET, WHISPER_LOG_TARGET};
 use std::{fmt, ops::Deref};
 use tracing::Level;
@@ -10,6 +9,7 @@ use tracing_subscriber::fmt::{
 use tracing_subscriber::registry::LookupSpan;
 
 use crate::APP_NAME;
+use crate::theme::Role;
 
 pub struct MyFormatter {
     _verbosity: Verbosity,
@@ -67,17 +67,15 @@ where
         if !(self.filter)(event) {
             return Ok(());
         }
-        match *metadata.level() {
-            Level::TRACE => write!(
-                &mut writer,
-                "{}: ",
-                "trace".fg_rgb::<255, 105, 180>().bold()
-            ),
-            Level::DEBUG => write!(&mut writer, "{}: ", "debug".green().bold()),
-            Level::INFO => write!(&mut writer, "{}: ", "info".blue().bold()),
-            Level::WARN => write!(&mut writer, "{}: ", "warn".yellow().bold()),
-            Level::ERROR => write!(&mut writer, "{}: ", "error".red().bold()),
-        }?;
+        let (role, label) = match *metadata.level() {
+            Level::TRACE => (Role::Trace, "trace"),
+            Level::DEBUG => (Role::Debug, "debug"),
+            Level::INFO => (Role::Info, "info"),
+            Level::WARN => (Role::Warning, "warn"),
+            Level::ERROR => (Role::Error, "error"),
+        };
+        let ansi = writer.has_ansi_escapes();
+        write!(&mut writer, "{}: ", role.paint(label).fixed(ansi))?;
 
         // Format all the spans in the event's span context.
         if let Some(scope) = ctx.event_scope() {
@@ -171,5 +169,76 @@ impl Deref for VerbosityLevel {
 
     fn deref(&self) -> &Self::Target {
         &self.verbose
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::{Arc, Mutex};
+    use tracing_subscriber::fmt::MakeWriter;
+
+    #[derive(Clone, Default)]
+    struct Capture(Arc<Mutex<Vec<u8>>>);
+
+    impl std::io::Write for Capture {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().expect("lock").extend_from_slice(bytes);
+            Ok(bytes.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    impl<'a> MakeWriter<'a> for Capture {
+        type Writer = Self;
+
+        fn make_writer(&'a self) -> Self::Writer {
+            self.clone()
+        }
+    }
+
+    fn logged(ansi: bool, log: impl FnOnce()) -> String {
+        let capture = Capture::default();
+        let subscriber = tracing_subscriber::fmt()
+            .with_ansi(ansi)
+            .event_format(MyFormatter::new(Verbosity {
+                verbose: VerbosityLevel::NORMAL,
+            }))
+            .with_writer(capture.clone())
+            .finish();
+        tracing::subscriber::with_default(subscriber, log);
+        let bytes = capture.0.lock().expect("lock").clone();
+        String::from_utf8(bytes).expect("utf-8")
+    }
+
+    #[test]
+    fn a_log_line_without_colours_is_plain_text() {
+        let line = logged(false, || {
+            tracing::info!(target: "purr", "Input: {} (file)", "jfk.mp3");
+        });
+        assert_eq!(line, "info: Input: jfk.mp3 (file)\n");
+    }
+
+    #[test]
+    fn a_log_line_with_colours_styles_only_its_level() {
+        let line = logged(true, || {
+            tracing::info!(target: "purr", "Input: {} (file)", "jfk.mp3");
+        });
+        assert_eq!(line, "\u{1b}[34;1minfo\u{1b}[0m: Input: jfk.mp3 (file)\n");
+    }
+
+    #[test]
+    fn every_level_has_its_role() {
+        let line = logged(true, || {
+            tracing::warn!(target: "purr", "careful");
+            tracing::error!(target: "purr", "broken");
+        });
+        assert_eq!(
+            line,
+            "\u{1b}[33;1mwarn\u{1b}[0m: careful\n\u{1b}[31;1merror\u{1b}[0m: broken\n"
+        );
     }
 }
