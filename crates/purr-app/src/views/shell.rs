@@ -7,19 +7,10 @@ use crate::{
     platform::IS_WEB,
     shortcuts::{Key, KeyChord, Shortcut, use_shortcut},
     transcribe::session::use_transcribe_session,
-    views::{
-        about::AboutSheet, settings_load_banner::SettingsLoadBanner,
-        shortcuts_sheet::ShortcutsSheet,
-    },
+    views::{settings_load_banner::SettingsLoadBanner, shortcuts_sheet::ShortcutsSheet},
 };
 use dioxus::prelude::*;
 use std::rc::Rc;
-
-const LOCAL_ONLY: &str = if IS_WEB {
-    "Runs in this browser. Nothing is sent to a server."
-} else {
-    "Runs on this computer. Nothing is sent to a server."
-};
 
 struct NavEntry {
     section: NavSection,
@@ -117,7 +108,6 @@ pub fn Shell() -> Element {
     let route = use_route::<Route>();
     let current = NavSection::of(&route);
     let navigator = use_navigator();
-    let mut about_open = use_signal(|| false);
     let mut keys_open = use_signal(|| false);
     let mut main_area = use_signal(|| None::<Rc<MountedData>>);
 
@@ -178,14 +168,13 @@ pub fn Shell() -> Element {
                     NavLink { section: NavSection::Settings, current }
                     NavLink { section: NavSection::Logs, current }
                     button {
-                        class: "local-only",
+                        class: "side-keys",
                         r#type: "button",
-                        title: LOCAL_ONLY,
-                        aria_label: LOCAL_ONLY,
+                        title: "Keyboard shortcuts",
                         aria_haspopup: "dialog",
-                        onclick: move |_| about_open.set(true),
-                        Icon { name: IconName::Lock, size: IconSize::Small }
-                        span { class: "nav-text", aria_hidden: "true", "Local only" }
+                        onclick: move |_| keys_open.set(true),
+                        Icon { name: IconName::Keyboard, size: IconSize::Small }
+                        span { class: "nav-text", "Keyboard shortcuts" }
                     }
                 }
             }
@@ -210,9 +199,6 @@ pub fn Shell() -> Element {
                     }
                 }
             }
-        }
-        if about_open() {
-            AboutSheet { on_close: move |()| about_open.set(false) }
         }
         if keys_open() {
             ShortcutsSheet { on_close: move |()| keys_open.set(false) }
