@@ -1,115 +1,106 @@
 //! Whisper UI CLI - Audio transcription command-line interface
+#![deny(clippy::print_stdout, clippy::print_stderr, clippy::dbg_macro)]
+
 mod cli;
 mod color;
-mod fmt;
+mod download_prompt;
 mod global;
 mod json;
+mod logging;
 mod models;
+mod output;
 mod progress;
 mod runtime;
 mod scope;
+mod stats;
+mod sys_command;
 mod sys_report;
 mod theme;
 mod trace;
+mod verbosity;
 mod vt;
 
-use crate::color::Stream;
-use crate::fmt::{MyFormatter, VerbosityLevel};
-use crate::theme::{Role, Themed as _};
+use crate::download_prompt::prompt_for_model_download;
+use crate::theme::Themed as _;
 use cli::{ASCII_ART, Cli, Commands, OutputFormat, TranscriptionConfigWithCliExt};
-use indicatif::{HumanBytes, HumanDuration};
+use futures::StreamExt as _;
+use indicatif::{ProgressBar, ProgressFinish, ProgressStyle};
 use miette::IntoDiagnostic as _;
 use purr_common::platform::ChunkKind;
-use purr_core::model::registry::ModelSpec;
-use purr_core::model::vad_or_none;
 use purr_core::{
-    ModelManager, StreamEvent, StreamingTranscription, TranscriptionConfig,
-    accel::backend::AccelBackend, dev::FeatureStatus, install_logging_hooks, is_file_path,
-    is_valid_url, transcribe_file_stream, transcribe_file_sync, transcribe_url_stream,
-    transcribe_url_sync,
+    ModelManager, StreamEvent, StreamingTranscription, TranscriptionConfig, install_logging_hooks,
+    is_file_path, is_valid_url, model::vad_or_none, transcribe_file_stream, transcribe_file_sync,
+    transcribe_url_stream, transcribe_url_sync,
 };
-use purr_core::{SystemInfo, math::ByteSpeed};
 use shadow_rs::shadow;
-use std::path::{Path, PathBuf};
-use std::process;
-use std::{
-    borrow::Cow,
-    io::{self, Write},
-};
-use tracing::{Level, debug, error, info, warn};
-use tracing_subscriber::{EnvFilter, fmt::time::Uptime};
+use std::borrow::Cow;
+use std::path::Path;
+use std::process::ExitCode;
+use tracing::{debug, info};
 
 const APP_NAME: &str = env!("CARGO_BIN_NAME");
 
 shadow!(build);
 
 #[tokio::main]
-async fn main() -> miette::Result<()> {
-    if let Err(e) = main_impl().await {
-        scope::on_stderr(|| eprintln!("{}: {}", "Error".error(), e));
-        drop(e);
-        process::exit(1);
+async fn main() -> ExitCode {
+    match main_impl().await {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            logging::record_fatal(&error);
+            errorln!("{}: {}", "Error".error(), error);
+            ExitCode::FAILURE
+        }
     }
-    Ok(())
 }
 
 async fn main_impl() -> miette::Result<()> {
     let cli = global::init(Cli::from_env());
 
-    // Setup logging
-    setup_tracing(cli)?;
+    logging::init(cli)?;
     debug!("Command line arguments: {:?}", cli);
     install_logging_hooks();
 
-    // Handle subcommands
     if let Some(command) = &cli.command {
         return handle_command(command).await;
     }
 
-    // Handle transcription (original behavior)
     let Some(audio_input) = cli.audio_input.clone() else {
-        println!("{ASCII_ART}\n");
-        error!(
+        statusln!("{ASCII_ART}\n");
+        return Err(miette::miette!(
             "No audio file or URL specified. Please provide an audio file path or URL to transcribe."
-        );
-        std::process::exit(1);
+        ));
     };
 
-    // Determine if input is a URL or file path
     let is_url = is_valid_url(&audio_input);
     let is_path = is_file_path(&audio_input);
 
     if !is_url && !is_path {
-        error!("Invalid input: '{audio_input}'. Please provide a valid file path or URL.");
-        process::exit(1);
+        return Err(miette::miette!(
+            "Invalid input: '{audio_input}'. Please provide a valid file path or URL."
+        ));
     }
 
-    // Validate file exists if it's a file path
     if is_path {
-        let path = std::path::Path::new(&audio_input);
+        let path = Path::new(&audio_input);
         if !path.exists() {
-            error!("Audio file not found: {}", path.display());
-            process::exit(1);
+            return Err(miette::miette!("Audio file not found: {}", path.display()));
         }
     }
 
-    // Display input type
-    if is_url {
-        info!("Input: {audio_input} (URL)");
-    } else {
-        info!("Input: {audio_input} (file)");
-    }
+    let kind = if is_url { "URL" } else { "file" };
+    info!("Input: {audio_input} ({kind})");
+    statusln!("{} {} ({kind})", "Transcribing:".info(), audio_input.path());
 
     let config = setup_config(cli).await?;
 
-    // Print startup info
-    info!("Whisper UI - Audio Transcription");
     if let Some(lang) = &config.language {
         info!("Language: {lang}");
+        statusln!("{} {lang}", "Language:".info());
     }
 
     if cli.no_stream {
-        info!("Transcribing audio...");
+        debug!("Transcribing without streaming");
 
         let result = if is_url {
             transcribe_url_sync(&audio_input, Some(config))
@@ -123,9 +114,8 @@ async fn main_impl() -> miette::Result<()> {
 
         handle_output(result, cli)?;
     } else {
-        info!("Streaming transcription...");
+        debug!("Streaming transcription");
 
-        // Handle streaming transcription
         let stream = if is_url {
             transcribe_url_stream(&audio_input, config)
                 .await
@@ -136,47 +126,19 @@ async fn main_impl() -> miette::Result<()> {
                 .into_diagnostic()?
         };
 
-        // Process streaming results
         handle_streaming_output(stream, cli).await?;
     }
 
     Ok(())
 }
 
-fn setup_tracing(cli: &Cli) -> Result<(), miette::Error> {
-    let ansi = global::colors().enabled(Stream::Stderr);
-    match *cli.verbosity.verbose {
-        VerbosityLevel::DEBUG_VALUE.. => {
-            tracing_subscriber::fmt()
-                .with_ansi(ansi)
-                .with_env_filter(
-                    EnvFilter::builder()
-                        .with_default_directive(Level::TRACE.into())
-                        .from_env()
-                        .into_diagnostic()?,
-                )
-                .with_timer(Uptime::default())
-                .with_writer(io::stderr)
-                .init();
-        }
-        VerbosityLevel::VERBOSE_VALUE => {
-            tracing_subscriber::fmt()
-                .with_ansi(ansi)
-                .with_timer(Uptime::default())
-                .event_format(MyFormatter::new(cli.verbosity))
-                .with_writer(io::stderr)
-                .init();
-        }
-        VerbosityLevel::NORMAL_VALUE => {
-            tracing_subscriber::fmt()
-                .with_ansi(ansi)
-                .event_format(MyFormatter::new(cli.verbosity))
-                .with_writer(io::stderr)
-                .init();
-        }
-    }
-
-    Ok(())
+fn progress_line_bar() -> miette::Result<ProgressBar> {
+    let style = ProgressStyle::with_template("{msg}").into_diagnostic()?;
+    Ok(output::add_bar(
+        ProgressBar::new_spinner()
+            .with_style(style)
+            .with_finish(ProgressFinish::AndClear),
+    ))
 }
 
 /// Handle streaming transcription output
@@ -188,25 +150,25 @@ async fn handle_streaming_output(
 
     let mut all_chunks = Vec::new();
     let mut output_buffer = String::new();
-    let mut stdout = io::stdout();
 
-    use futures::StreamExt;
+    let progress_bar = if cli.progress && output::is_interactive() {
+        Some(progress_line_bar()?)
+    } else {
+        None
+    };
+    // A bar is drawn below the last line, so each chunk has to end its own line.
+    let one_chunk_per_line = progress_bar.is_some();
 
-    let mut progress_shown = false;
     while let Some(event) = stream.next().await {
         let chunk = match event? {
             StreamEvent::Progress(progress) => {
-                if cli.progress {
-                    scope::on_stderr(|| eprint!("\r{}", progress::line(&progress).muted()));
-                    progress_shown = true;
+                if let Some(bar) = &progress_bar {
+                    bar.set_message(progress::line(&progress).muted().to_string());
                 }
                 continue;
             }
             StreamEvent::Beams(snapshot) => {
-                if progress_shown {
-                    eprint!("\r");
-                }
-                eprintln!("{}", trace::line(&snapshot));
+                traceln!("{}", trace::line(&snapshot));
                 continue;
             }
             StreamEvent::Chunk(chunk) => chunk,
@@ -218,7 +180,6 @@ async fn handle_streaming_output(
         all_chunks.push(chunk.clone());
 
         if !chunk.text.is_empty() || matches!(cli.output, OutputFormat::Json) {
-            // Format the chunk for real-time output
             let chunk_text: Cow<'_, str> = match cli.output {
                 OutputFormat::Text => {
                     if cli.timestamps {
@@ -243,251 +204,68 @@ async fn handle_streaming_output(
                 OutputFormat::Txt => Cow::Borrowed(&chunk.text),
             };
 
-            // Print to stdout or accumulate for file output
             if cli.output_file.is_some() {
                 output_buffer.push_str(&chunk_text);
                 if !matches!(cli.output, OutputFormat::Txt) {
                     output_buffer.push('\n');
                 }
             } else if matches!(cli.output, OutputFormat::Json) {
-                writeln!(stdout, "{chunk_text}").into_diagnostic()?;
+                resultln!("{chunk_text}")?;
             } else {
-                write!(stdout, "{chunk_text}").into_diagnostic()?;
+                result!("{chunk_text}")?;
                 if !chunk.text.is_empty() && !chunk.text.ends_with('\n') {
-                    if matches!(cli.output, OutputFormat::Srt) {
-                        writeln!(stdout).into_diagnostic()?;
+                    if matches!(cli.output, OutputFormat::Srt) || one_chunk_per_line {
+                        resultln!()?;
                     } else {
-                        write!(stdout, " ").into_diagnostic()?;
+                        result!(" ")?;
                     }
                 }
-                stdout.flush().into_diagnostic()?;
             }
         }
-        // Check for final statistics
-        if let Some(ref stats) = chunk.final_stats {
-            // Display statistics after processing is complete
-            if cli.verbosity.is_verbose() {
-                scope::on_stderr(|| {
-                    eprintln!();
-                    eprintln!("{}", "Streaming Transcription Statistics:".heading());
-                    eprintln!("Audio duration: {:.2}s", stats.audio_duration);
-                    eprintln!("Processing time: {:.2}s", stats.processing_time);
-                    eprintln!("Real-time factor: {:.2}x", stats.real_time_factor());
-                    eprintln!("Segments: {}", stats.segment_count);
-                    eprintln!("Words: {}", stats.word_count);
-                    eprintln!("Words per minute: {:.1}", stats.words_per_minute());
-                });
-            }
+        if let Some(ref chunk_stats) = chunk.final_stats
+            && cli.verbosity.is_verbose()
+        {
+            stats::show("Streaming Transcription Statistics:", chunk_stats, None);
         }
     }
 
-    if progress_shown {
-        eprintln!();
+    if let Some(bar) = &progress_bar {
+        bar.finish_and_clear();
     }
 
-    // Write to file if specified
     if let Some(output_file) = &cli.output_file {
         fs::write(output_file, &output_buffer).into_diagnostic()?;
         if cli.verbosity.is_verbose() {
-            info!("\nStreaming output written to: {}", output_file.display());
+            statusln!(
+                "{} Streaming output written to: {}",
+                "Success:".success(),
+                output_file.display().path()
+            );
         }
     } else {
-        println!(); // Final newline for stdout
+        resultln!()?;
     }
 
     if cli.verbosity.is_verbose() {
         debug!("Processed {} chunks", all_chunks.len());
     }
 
-    // If no chunks were produced, consider this a failure
     if all_chunks.is_empty() {
-        error!("No audio content was transcribed. The file may not be a valid audio file.");
-        process::exit(1);
+        return Err(miette::miette!(
+            "No audio content was transcribed. The file may not be a valid audio file."
+        ));
     }
 
     Ok(())
-}
-
-/// Prompt user to download base model when none is found
-async fn prompt_for_model_download(
-    model_manager: &ModelManager,
-    model: Option<&ModelSpec>,
-) -> miette::Result<Option<PathBuf>> {
-    if let Some(model) = model {
-        println!();
-        println!(
-            "{} Model {} is not downloaded!",
-            "Notice:".warning(),
-            model.id.name()
-        );
-    } else {
-        println!();
-        println!("{} No Whisper model found!", "Notice:".warning());
-        println!("To transcribe audio, you need to download a Whisper model first.");
-        println!();
-        println!(
-            "The {} model is recommended for most users:",
-            model_manager.registry().default_model().id.name()
-        );
-    }
-    let model = model.unwrap_or_else(|| model_manager.registry().default_model());
-    println!("  • {}", model.description.muted());
-    println!("  • Size: {}", HumanBytes(model.file.size_bytes).quantity());
-    println!(
-        "  • Download time: {}",
-        HumanDuration(model.estimated_download_time(64u32 * ByteSpeed::MIBPS)).quantity()
-    );
-    println!();
-
-    print!(
-        "Would you like to download the {} model now? [Y/n]: ",
-        model.id
-    );
-    io::stdout().flush().into_diagnostic()?;
-
-    let mut input = String::new();
-    io::stdin().read_line(&mut input).into_diagnostic()?;
-    let input = input.trim().to_lowercase();
-
-    // Default to 'yes' if user just presses enter
-    let should_download = input.is_empty() || input == "y" || input == "yes";
-
-    if should_download {
-        println!();
-        println!("{} Downloading {} model...", "Info:".info(), model.id);
-
-        match model_manager.download_model(model, None).await {
-            Ok(model_path) => {
-                models::ensure_vad(model_manager).await;
-                println!(
-                    "{} Model downloaded successfully to: {}",
-                    "Success:".success(),
-                    model_path.display().path()
-                );
-                println!();
-                Ok(Some(model_path))
-            }
-            Err(e) => {
-                error!("Failed to download model: {}", e);
-                Err(e.into())
-            }
-        }
-    } else {
-        println!();
-        println!("Model download cancelled. You can download a model later with:");
-        println!(
-            "  {}",
-            format_args!("{} models download <model>", env!("CARGO_PKG_NAME")).command()
-        );
-        Ok(None)
-    }
 }
 
 /// Handle subcommands
 async fn handle_command(command: &Commands) -> miette::Result<()> {
     match command {
         Commands::Models { command } => models::handle_model_command(command).await,
-        Commands::Sys { json } => handle_sys_command(*json),
+        Commands::Sys { json } => sys_command::handle(*json),
         Commands::Runtime { command } => runtime::handle_runtime_command(command),
     }
-}
-
-/// Handle system subcommands
-fn handle_sys_command(json: bool) -> miette::Result<()> {
-    let sys = SystemInfo::get();
-
-    if json {
-        println!("{}", sys_report::json(&sys).into_diagnostic()?);
-        return Ok(());
-    }
-
-    fn feature_status(
-        backend: AccelBackend,
-        feature: &FeatureStatus,
-    ) -> theme::Painted<Cow<'static, str>> {
-        match feature {
-            FeatureStatus::Disabled => Role::Caution.paint(Cow::Borrowed("Not built")),
-            FeatureStatus::RuntimeLibraryMissing { library, .. } => {
-                let hint = backend
-                    .runtime_library_hint()
-                    .map(|hint| format!("; {hint}"))
-                    .unwrap_or_default();
-                Role::Negative.paint(Cow::Owned(format!(
-                    "Built, but the runtime library {library} cannot be loaded{hint}"
-                )))
-            }
-            FeatureStatus::EnabledButNotAvailable => {
-                Role::Negative.paint(Cow::Borrowed("Built, but no usable device"))
-            }
-            FeatureStatus::Available(_) => Role::Positive.paint(Cow::Borrowed("Available")),
-        }
-    }
-
-    println!(
-        "{}",
-        "Acceleration backends (default priority order, best first):".heading()
-    );
-    println!();
-    let longest = AccelBackend::DEFAULT_PRIORITY
-        .iter()
-        .map(|b| b.pretty_name().len())
-        .max()
-        .unwrap_or(0);
-
-    for backend in AccelBackend::DEFAULT_PRIORITY {
-        let status = sys
-            .backends
-            .get(backend)
-            .unwrap_or(&FeatureStatus::Disabled);
-        println!(
-            "  * {:longest$} - {}",
-            backend.pretty_name(),
-            feature_status(*backend, status)
-        );
-        if let FeatureStatus::RuntimeLibraryMissing { searched, .. } = status {
-            println!("    {}", runtime::searched_summary(searched).muted());
-        }
-    }
-    println!();
-
-    println!("{}", "Devices:".heading());
-    println!();
-
-    if sys.devices.is_empty() {
-        warn!("No devices found.");
-        warn!("To enable GPU support, ensure:");
-        warn!("  • Vulkan drivers are installed");
-        warn!("  • Compatible GPU hardware is available");
-        warn!("  • Vulkan feature is enabled (use --features vulkan)");
-    } else {
-        for device in &sys.devices {
-            let picked_for: Vec<_> = AccelBackend::DEFAULT_PRIORITY
-                .iter()
-                .copied()
-                .filter(|backend| sys.picked_gpus.get(backend) == Some(&device.id))
-                .collect();
-            let mut lines = sys_report::device_lines(device, &picked_for).into_iter();
-            if let Some(headline) = lines.next() {
-                println!("{}", headline.name());
-            }
-            for line in lines {
-                println!("{line}");
-            }
-            println!();
-        }
-    }
-
-    println!("{}", "CPU:".heading());
-    println!();
-    let mut lines = sys_report::cpu_lines(&sys.cpu).into_iter();
-    if let Some(headline) = lines.next() {
-        println!("{}", headline.name());
-    }
-    for line in lines {
-        println!("{line}");
-    }
-
-    Ok(())
 }
 
 /// Format time for SRT subtitles (HH:MM:SS,mmm)
@@ -501,7 +279,6 @@ fn format_srt_time(seconds: f64) -> String {
 }
 
 async fn setup_config(cli: &Cli) -> miette::Result<TranscriptionConfig> {
-    // Build transcription config
     let mut config = TranscriptionConfig::new();
 
     config = setup_model_config(cli, config).await?;
@@ -524,7 +301,6 @@ async fn setup_model_config(
     if let Some(ref model_string) = cli.model {
         let model_path = Path::new(model_string);
         if model_path.is_absolute() {
-            // If absolute path, use it directly
             if !model_path.exists() {
                 return Err(miette::miette!(
                     "Model file not found at: {}",
@@ -533,49 +309,37 @@ async fn setup_model_config(
             }
             config = config.with_model_path(model_path);
         } else {
-            // Otherwise, resolve relative to current directory
             let model_path = std::env::current_dir().into_diagnostic()?.join(model_path);
             if model_path.exists() {
                 config = config.with_model_path(model_path);
             } else {
-                // intelligently check if the model is downloaded
                 let model = model_manager.model(model_string)?;
                 if model_manager.is_model_downloaded(model).await? {
                     config = config.with_model_path(model_manager.get_model_path(model));
+                } else if let Some(model_path) =
+                    prompt_for_model_download(&model_manager, Some(model)).await?
+                {
+                    config = config.with_model_path(model_path);
                 } else {
-                    // If not downloaded, prompt user to download
-                    if let Some(model_path) =
-                        prompt_for_model_download(&model_manager, Some(model)).await?
-                    {
-                        config = config.with_model_path(model_path);
-                    } else {
-                        return Err(miette::miette!(
-                            "No model specified and no downloaded models found."
-                        ));
-                    }
+                    return Err(miette::miette!(
+                        "No model specified and no downloaded models found."
+                    ));
                 }
             }
         }
+    } else if let Some(model) = model_manager.find_first_available_model().await? {
+        config = config.with_model_path(model);
+    } else if let Some(model_path) = prompt_for_model_download(&model_manager, None).await? {
+        config = config.with_model_path(model_path);
     } else {
-        // No model specified, check if any downloaded models exist
-        if let Some(model) = model_manager.find_first_available_model().await? {
-            config = config.with_model_path(model);
-        } else {
-            // Prompt user to download the recommended model
-            if let Some(model_path) = prompt_for_model_download(&model_manager, None).await? {
-                config = config.with_model_path(model_path);
-            } else {
-                return Err(miette::miette!(
-                    "No model specified and no downloaded models found."
-                ));
-            }
-        }
+        return Err(miette::miette!(
+            "No model specified and no downloaded models found."
+        ));
     }
     Ok(config)
 }
 
 fn handle_output(result: purr_core::SyncTranscriptionResult, cli: &Cli) -> miette::Result<()> {
-    // Prepare output content
     let output_content = match cli.output {
         OutputFormat::Text => {
             if cli.timestamps {
@@ -616,32 +380,25 @@ fn handle_output(result: purr_core::SyncTranscriptionResult, cli: &Cli) -> miett
         OutputFormat::Txt => result.text.clone(),
     };
 
-    // Write output to file or stdout
     if let Some(output_file) = &cli.output_file {
-        use std::fs;
-        fs::write(output_file, &output_content).into_diagnostic()?;
+        std::fs::write(output_file, &output_content).into_diagnostic()?;
         if cli.verbosity.is_verbose() {
-            println!(
+            statusln!(
                 "{} Output written to: {}",
                 "Success:".success(),
                 output_file.display().path()
             );
         }
     } else {
-        print!("{output_content}");
+        result!("{output_content}")?;
     }
 
-    // Print statistics
     if cli.verbosity.is_verbose() {
-        println!();
-        println!("{}", "Transcription Statistics:".heading());
-        println!("Audio duration: {:.2}s", result.stats.audio_duration);
-        println!("Processing time: {:.2}s", result.stats.processing_time);
-        println!("Real-time factor: {:.2}x", result.stats.real_time_factor());
-        println!("Segments: {}", result.stats.segment_count);
-        println!("Words: {}", result.stats.word_count);
-        println!("Words per minute: {:.1}", result.stats.words_per_minute());
-        println!("Acceleration: {}", result.accel.selected.pretty_name());
+        stats::show(
+            "Transcription Statistics:",
+            &result.stats,
+            Some(result.accel.selected.pretty_name()),
+        );
     }
 
     Ok(())

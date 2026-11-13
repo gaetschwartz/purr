@@ -3,7 +3,9 @@
 use crate::cli::ModelCommands;
 use crate::color::Stream;
 use crate::global;
+use crate::output;
 use crate::theme::{ProgressPart, Themed as _, progress_style};
+use crate::{resultln, statusln};
 use indicatif::{HumanBytes, HumanDuration, ProgressBar, ProgressStyle};
 use miette::IntoDiagnostic as _;
 use purr_core::ModelManager;
@@ -35,8 +37,8 @@ fn verify_spinner_template(colors: bool) -> String {
     )
 }
 
-fn stderr_colors() -> bool {
-    global::colors().enabled(Stream::Stderr)
+fn bar_colors() -> bool {
+    global::colors().enabled(Stream::Stdout)
 }
 
 /// Handle model management subcommands
@@ -79,7 +81,7 @@ pub async fn ensure_vad(manager: &ModelManager) {
 
 async fn download(manager: &ModelManager, spec: &ModelSpec, force: bool) -> miette::Result<()> {
     if !force && manager.is_model_downloaded(spec).await? {
-        println!(
+        statusln!(
             "{} Model {} is already downloaded.",
             "Info:".info(),
             spec.id
@@ -87,7 +89,7 @@ async fn download(manager: &ModelManager, spec: &ModelSpec, force: bool) -> miet
         return Ok(());
     }
 
-    println!(
+    statusln!(
         "{} Downloading model: {} ({}, {})",
         "Info:".info(),
         spec.id,
@@ -95,13 +97,13 @@ async fn download(manager: &ModelManager, spec: &ModelSpec, force: bool) -> miet
         HumanBytes(spec.file.size_bytes)
     );
 
-    let colors = stderr_colors();
+    let colors = bar_colors();
     let bar_style = ProgressStyle::with_template(&download_bar_template(colors))
         .into_diagnostic()?
         .progress_chars("#>-");
     let spinner_style =
         ProgressStyle::with_template(&download_spinner_template(colors)).into_diagnostic()?;
-    let progress_bar = ProgressBar::new(0);
+    let progress_bar = output::add_bar(ProgressBar::new(0));
     progress_bar.set_style(bar_style);
 
     manager
@@ -126,7 +128,7 @@ async fn download(manager: &ModelManager, spec: &ModelSpec, force: bool) -> miet
     let average = per_sec.map_or_else(String::new, |per_sec| {
         format!(" ({}/s avg)", HumanBytes(per_sec as u64).quantity())
     });
-    println!(
+    statusln!(
         "{} Model downloaded and verified in {:#}{average}.",
         "Success:".success(),
         HumanDuration(elapsed).quantity(),
@@ -138,52 +140,52 @@ async fn list_downloaded(manager: &ModelManager) -> miette::Result<()> {
     let local = manager.local_models().await?;
 
     if local.is_empty() {
-        println!("{} No models downloaded yet.", "Info:".info());
-        println!(
+        resultln!("{} No models downloaded yet.", "Info:".info())?;
+        resultln!(
             "Use {} to download a model.",
             format_args!("{} models download base", env!("CARGO_PKG_NAME")).command()
-        );
+        )?;
         return Ok(());
     }
 
-    println!("{} Downloaded models:", "Info:".info());
-    println!();
+    resultln!("{} Downloaded models:", "Info:".info())?;
+    resultln!()?;
 
     for (spec, status) in &local {
         let path = manager.get_model_path(spec);
         match status {
-            ModelFileStatus::Present => println!(
+            ModelFileStatus::Present => resultln!(
                 "  {} - {} ({})",
                 spec.id.name(),
                 spec.description.muted(),
                 HumanBytes(spec.file.size_bytes).quantity()
-            ),
-            ModelFileStatus::SizeMismatch { expected, actual } => println!(
+            )?,
+            ModelFileStatus::SizeMismatch { expected, actual } => resultln!(
                 "  {} - {} (has {}, expected {}; download it again)",
                 spec.id.negative(),
                 "incomplete".negative(),
                 HumanBytes(*actual).quantity(),
                 HumanBytes(*expected).quantity()
-            ),
+            )?,
             ModelFileStatus::Missing => {}
         }
 
         if global::verbosity().is_verbose() {
-            println!("    Path: {}", path.display().path());
+            resultln!("    Path: {}", path.display().path())?;
         }
     }
 
-    println!();
-    println!(
+    resultln!()?;
+    resultln!(
         "XDG data directory: {}",
         manager.models_dir().display().path()
-    );
+    )?;
     Ok(())
 }
 
 async fn list_available(manager: &ModelManager) -> miette::Result<()> {
-    println!("{}", "Available Whisper Models:".heading());
-    println!();
+    resultln!("{}", "Available Whisper Models:".heading())?;
+    resultln!()?;
 
     let registry = manager.registry();
     let id_width = registry
@@ -194,11 +196,11 @@ async fn list_available(manager: &ModelManager) -> miette::Result<()> {
         .unwrap_or_default();
 
     for group in registry.groups() {
-        println!(
+        resultln!(
             "  {} - {}",
             group.family.to_string().name(),
             group.family.summary()
-        );
+        )?;
 
         for spec in group.models {
             let mut notes = Vec::new();
@@ -226,17 +228,17 @@ async fn list_available(manager: &ModelManager) -> miette::Result<()> {
             if !notes.is_empty() {
                 write!(line, "  {}", notes.join(", ").muted()).into_diagnostic()?;
             }
-            println!("{line}");
+            resultln!("{line}")?;
         }
-        println!();
+        resultln!()?;
     }
 
-    println!(
+    resultln!(
         "{}{}",
         "Usage: ".muted(),
         format_args!("{} models download <model>", env!("CARGO_PKG_NAME")).command()
-    );
-    println!(
+    )?;
+    resultln!(
         "{}{}",
         "Example: ".muted(),
         format_args!(
@@ -245,14 +247,14 @@ async fn list_available(manager: &ModelManager) -> miette::Result<()> {
             registry.default_model().id
         )
         .command()
-    );
+    )?;
     Ok(())
 }
 
 async fn delete(manager: &ModelManager, spec: &ModelSpec) -> miette::Result<()> {
     match manager.file_status(spec).await? {
         ModelFileStatus::Missing => {
-            println!(
+            statusln!(
                 "{} Model {} is not downloaded.",
                 "Warning:".warning(),
                 spec.id
@@ -264,7 +266,7 @@ async fn delete(manager: &ModelManager, spec: &ModelSpec) -> miette::Result<()> 
 
     manager.delete_model(spec).await?;
 
-    println!(
+    statusln!(
         "{} Model {} deleted successfully.",
         "Success:".success(),
         spec.id
@@ -273,45 +275,45 @@ async fn delete(manager: &ModelManager, spec: &ModelSpec) -> miette::Result<()> 
 }
 
 async fn info(manager: &ModelManager, spec: &ModelSpec) -> miette::Result<()> {
-    println!("{} Model Information", "Info:".info());
-    println!();
-    println!("Name: {}", spec.id.name());
-    println!("Description: {}", spec.description);
-    println!("Family: {}", spec.family);
-    println!("Language: {}", spec.language);
-    println!("Quantization: {}", spec.quantization);
+    resultln!("{} Model Information", "Info:".info())?;
+    resultln!()?;
+    resultln!("Name: {}", spec.id.name())?;
+    resultln!("Description: {}", spec.description)?;
+    resultln!("Family: {}", spec.family)?;
+    resultln!("Language: {}", spec.language)?;
+    resultln!("Quantization: {}", spec.quantization)?;
     if spec.features.is_empty() {
-        println!("Features: none");
+        resultln!("Features: none")?;
     } else {
         let features: Vec<String> = spec.features.iter().map(ToString::to_string).collect();
-        println!("Features: {}", features.join(", "));
+        resultln!("Features: {}", features.join(", "))?;
     }
-    println!("Filename: {}", spec.filename.path());
-    println!(
+    resultln!("Filename: {}", spec.filename.path())?;
+    resultln!(
         "Size: {} ({} bytes)",
         HumanBytes(spec.file.size_bytes).to_string().quantity(),
         spec.file.size_bytes
-    );
-    println!("SHA-256: {}", spec.file.sha256);
-    println!("Source: {} @ {}", spec.source.repo, spec.source.revision);
-    println!("URL: {}", spec.url());
+    )?;
+    resultln!("SHA-256: {}", spec.file.sha256)?;
+    resultln!("Source: {} @ {}", spec.source.repo, spec.source.revision)?;
+    resultln!("URL: {}", spec.url())?;
 
     let path = manager.get_model_path(spec);
     match manager.file_status(spec).await? {
         ModelFileStatus::Present => {
-            println!("Downloaded: {}", "yes".positive());
-            println!("Path: {}", path.display().path());
+            resultln!("Downloaded: {}", "yes".positive())?;
+            resultln!("Path: {}", path.display().path())?;
         }
         ModelFileStatus::SizeMismatch { expected, actual } => {
-            println!(
+            resultln!(
                 "Downloaded: {} (file has {}, expected {})",
                 "incomplete".negative(),
                 HumanBytes(actual),
                 HumanBytes(expected)
-            );
-            println!("Path: {}", path.display().path());
+            )?;
+            resultln!("Path: {}", path.display().path())?;
         }
-        ModelFileStatus::Missing => println!("Downloaded: {}", "no".negative()),
+        ModelFileStatus::Missing => resultln!("Downloaded: {}", "no".negative())?,
     }
     Ok(())
 }
@@ -329,16 +331,16 @@ async fn verify(manager: &ModelManager, model: Option<&str>) -> miette::Result<(
     };
 
     if specs.is_empty() {
-        println!("{} No models downloaded yet.", "Info:".info());
+        resultln!("{} No models downloaded yet.", "Info:".info())?;
         return Ok(());
     }
 
-    let spinner_style = ProgressStyle::with_template(&verify_spinner_template(stderr_colors()))
-        .into_diagnostic()?;
+    let spinner_style =
+        ProgressStyle::with_template(&verify_spinner_template(bar_colors())).into_diagnostic()?;
     let mut failed = 0usize;
 
     for spec in specs {
-        let spinner = ProgressBar::new_spinner();
+        let spinner = output::add_bar(ProgressBar::new_spinner());
         spinner.set_style(spinner_style.clone());
         spinner.set_message(format!(
             "Verifying {} ({})",
@@ -351,28 +353,28 @@ async fn verify(manager: &ModelManager, model: Option<&str>) -> miette::Result<(
 
         match integrity? {
             ModelIntegrity::Verified => {
-                println!("{} {}", "ok     ".success(), spec.id);
+                resultln!("{} {}", "ok     ".success(), spec.id)?;
             }
             ModelIntegrity::Missing => {
-                println!("{} {}", "missing".warning(), spec.id);
+                resultln!("{} {}", "missing".warning(), spec.id)?;
             }
             ModelIntegrity::SizeMismatch { expected, actual } => {
                 failed += 1;
-                println!(
+                resultln!(
                     "{} {}: {} bytes, expected {} bytes",
                     "corrupt".error(),
                     spec.id,
                     actual,
                     expected
-                );
+                )?;
             }
             ModelIntegrity::ChecksumMismatch { expected, actual } => {
                 failed += 1;
-                println!(
+                resultln!(
                     "{} {}: SHA-256 {actual}, expected {expected}",
                     "corrupt".error(),
                     spec.id,
-                );
+                )?;
             }
         }
     }

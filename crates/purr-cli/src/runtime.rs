@@ -8,6 +8,7 @@ use purr_core::accel::{
 };
 
 use crate::cli::RuntimeCommands;
+use crate::resultln;
 
 pub fn handle_runtime_command(command: &RuntimeCommands) -> miette::Result<()> {
     let env = Environment::current();
@@ -16,7 +17,7 @@ pub fn handle_runtime_command(command: &RuntimeCommands) -> miette::Result<()> {
             let dir = install_dir(&env).ok_or_else(|| {
                 miette!("no per-user data directory is known; set PURR_RUNTIME_DIR")
             })?;
-            println!("{}", dir.display());
+            resultln!("{}", dir.display())?;
         }
         RuntimeCommands::Status => {
             let dirs = search_dirs(&env);
@@ -31,7 +32,7 @@ pub fn handle_runtime_command(command: &RuntimeCommands) -> miette::Result<()> {
                 .collect();
             let contents = inspect(&dirs, &libraries, Path::is_dir, Path::is_file);
             for line in render_status(&contents, &needs) {
-                println!("{line}");
+                resultln!("{line}")?;
             }
         }
     }
