@@ -1,7 +1,4 @@
-use super::{
-    changes::report, device_list::DeviceList, system_list::SystemList,
-    system_rows::unavailable_rows,
-};
+use super::{changes::report, device_list::DeviceList};
 use crate::{
     components::{
         banner::{Banner, BannerTone},
@@ -54,7 +51,6 @@ pub fn SystemPanel(system: Resource<Result<SystemReport, String>>) -> Element {
                     let rows = device_rows(&settings.with(|settings| settings.performance.clone()), &found);
                     let list = saved_list(&rows);
                     let list_for_toggle = list.clone();
-                    let unavailable = unavailable_rows(&found);
                     rsx! {
                         DeviceList {
                             rows,
@@ -66,10 +62,6 @@ pub fn SystemPanel(system: Resource<Result<SystemReport, String>>) -> Element {
                                 let next = toggled(&list_for_toggle, &key, enabled);
                                 report(toasts, settings.update(|s| s.performance.set_devices(next)));
                             },
-                        }
-                        if !unavailable.is_empty() {
-                            h3 { class: "group-h", "Not usable on this computer" }
-                            SystemList { label: "Backends that cannot run", rows: unavailable }
                         }
                     }
                 }

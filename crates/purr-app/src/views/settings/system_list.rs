@@ -8,7 +8,6 @@ use dioxus::prelude::*;
 const fn badge_tone(badge: Badge) -> ChipTone {
     match badge {
         Badge::Available => ChipTone::Ok,
-        Badge::BuiltUnavailable => ChipTone::Warn,
         Badge::Unavailable => ChipTone::Neutral,
     }
 }
@@ -16,7 +15,6 @@ const fn badge_tone(badge: Badge) -> ChipTone {
 const fn badge_icon(badge: Badge) -> Option<IconName> {
     match badge {
         Badge::Available => Some(IconName::CheckCircle),
-        Badge::BuiltUnavailable => Some(IconName::Warning),
         Badge::Unavailable => None,
     }
 }

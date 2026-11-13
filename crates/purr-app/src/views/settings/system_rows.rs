@@ -1,13 +1,11 @@
-//! The read-only system panel as plain rows, made from what the platform reports.
+//! The browser's WebGPU adapter as plain rows.
 
 use crate::hooks::use_models::GpuSupport;
-use purr_common::accel::{AccelBackend, BackendStatus, BackendUnavailable, SystemReport};
 
 /// The status badge at the end of a row.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Badge {
     Available,
-    BuiltUnavailable,
     Unavailable,
 }
 
@@ -17,7 +15,7 @@ impl Badge {
     pub const fn label(self) -> &'static str {
         match self {
             Self::Available => "Available",
-            Self::BuiltUnavailable | Self::Unavailable => "Unavailable",
+            Self::Unavailable => "Unavailable",
         }
     }
 }
@@ -29,51 +27,6 @@ pub struct SystemRow {
     pub name: String,
     pub detail: Option<String>,
     pub badge: Badge,
-}
-
-fn missing_library_detail(searched: &[String]) -> String {
-    if searched.is_empty() {
-        "Purr supports it, but the library it needs is not installed.".to_owned()
-    } else {
-        format!(
-            "Purr supports it, but the library it needs is not installed. Looked in {}, then the system's library folders.",
-            searched.join(", ")
-        )
-    }
-}
-
-fn unavailable_row(backend: AccelBackend, why: &BackendUnavailable) -> Option<SystemRow> {
-    let (name, detail) = match why {
-        BackendUnavailable::NotBuilt | BackendUnavailable::NotBuiltOrNoDevice => return None,
-        BackendUnavailable::NoDevice => (
-            "No usable device found".to_owned(),
-            Some("Purr supports it, but no device or driver responded.".to_owned()),
-        ),
-        BackendUnavailable::RuntimeLibraryMissing { library, searched } => (
-            format!("Missing {library}"),
-            Some(missing_library_detail(searched)),
-        ),
-    };
-    Some(SystemRow {
-        backend: backend.label(),
-        name,
-        detail,
-        badge: Badge::BuiltUnavailable,
-    })
-}
-
-/// Rows for the backends this build includes that cannot run here, with why. They have no device
-/// to list, so the device list cannot show them.
-#[must_use]
-pub fn unavailable_rows(report: &SystemReport) -> Vec<SystemRow> {
-    report
-        .backends
-        .iter()
-        .filter_map(|entry| match &entry.status {
-            BackendStatus::Available => None,
-            BackendStatus::Unavailable(why) => unavailable_row(entry.backend, why),
-        })
-        .collect()
 }
 
 /// The rows for the browser's WebGPU adapter.
@@ -111,15 +64,6 @@ pub fn browser_rows(gpu: &GpuSupport) -> Vec<SystemRow> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use purr_common::accel::{BackendReport, CpuReport};
-
-    fn backend(backend: AccelBackend, status: BackendStatus) -> purr_common::accel::BackendReport {
-        BackendReport {
-            backend,
-            status,
-            devices: vec![],
-        }
-    }
 
     fn row(backend: &'static str, name: &str, detail: Option<&str>, badge: Badge) -> SystemRow {
         SystemRow {
@@ -128,56 +72,6 @@ mod tests {
             detail: detail.map(str::to_owned),
             badge,
         }
-    }
-
-    #[test]
-    fn only_backends_this_build_has_but_cannot_run_get_a_row() {
-        let report = SystemReport {
-            backends: vec![
-                backend(
-                    AccelBackend::Cuda,
-                    BackendStatus::Unavailable(BackendUnavailable::RuntimeLibraryMissing {
-                        library: "cudart64_13.dll".to_owned(),
-                        searched: vec!["runtime".to_owned()],
-                    }),
-                ),
-                backend(
-                    AccelBackend::Metal,
-                    BackendStatus::Unavailable(BackendUnavailable::NotBuilt),
-                ),
-                backend(
-                    AccelBackend::Hip,
-                    BackendStatus::Unavailable(BackendUnavailable::NoDevice),
-                ),
-                backend(AccelBackend::Cpu, BackendStatus::Available),
-            ],
-            cpu: CpuReport {
-                name: None,
-                logical_threads: None,
-                built_with: vec![],
-                detected: None,
-            },
-            last_run: None,
-        };
-        assert_eq!(
-            unavailable_rows(&report),
-            [
-                row(
-                    "CUDA",
-                    "Missing cudart64_13.dll",
-                    Some(
-                        "Purr supports it, but the library it needs is not installed. Looked in runtime, then the system's library folders."
-                    ),
-                    Badge::BuiltUnavailable
-                ),
-                row(
-                    "ROCm",
-                    "No usable device found",
-                    Some("Purr supports it, but no device or driver responded."),
-                    Badge::BuiltUnavailable
-                ),
-            ]
-        );
     }
 
     #[test]
