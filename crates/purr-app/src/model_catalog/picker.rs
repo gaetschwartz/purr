@@ -132,10 +132,12 @@ pub struct PickerModel {
     /// Every version, largest (most precise) first; never empty.
     pub versions: Vec<ModelRow>,
     key: String,
+    /// The ids of the versions the search matched; every version without a search.
+    matched: Vec<String>,
 }
 
 impl PickerModel {
-    fn new(versions: Vec<ModelRow>) -> Option<Self> {
+    fn new(versions: Vec<ModelRow>, search: &str) -> Option<Self> {
         let mut versions = versions;
         versions.sort_by_key(|row| std::cmp::Reverse(row.entry.size_bytes));
         let first = versions.first()?;
@@ -145,10 +147,16 @@ impl PickerModel {
             first.entry.name.clone()
         };
         let key = format!("model:{}", first.entry.id);
+        let matched = versions
+            .iter()
+            .filter(|row| row.entry.matches(search))
+            .map(|row| row.entry.id.clone())
+            .collect();
         Some(Self {
             title,
             versions,
             key,
+            matched,
         })
     }
 
@@ -187,15 +195,14 @@ impl PickerModel {
             .any(|row| row.state.is_active() || matches!(row.state, ModelState::NeedsRepair(_)))
     }
 
-    fn matches(&self, search: &str) -> bool {
-        self.versions.iter().any(|row| row.entry.matches(search))
-    }
-
-    /// The version picking the model takes: the selected one, else one already stored here, else
-    /// the most precise; `None` when no version can run here.
+    /// The version picking the model takes among those the search matched: the selected one, else
+    /// one already stored here, else the most precise; `None` when no version can run here.
     #[must_use]
     pub fn preferred(&self, selected: &str) -> Option<&ModelRow> {
-        let mut runnable = self.versions.iter().filter(|row| can_run(row));
+        let mut runnable = self
+            .versions
+            .iter()
+            .filter(|row| can_run(row) && self.matched.contains(&row.entry.id));
         runnable
             .clone()
             .find(|row| row.entry.id == selected)
@@ -257,8 +264,8 @@ pub fn picker_list(
     let search = search.trim();
     let mut models: Vec<PickerModel> = cluster(rows)
         .into_iter()
-        .filter_map(|cluster| PickerModel::new(cluster.rows().cloned().collect()))
-        .filter(|model| model.matches(search))
+        .filter_map(|cluster| PickerModel::new(cluster.rows().cloned().collect(), search))
+        .filter(|model| !model.matched.is_empty())
         .collect();
     models.sort_by_key(|model| {
         ModelGroup::ORDER
@@ -453,6 +460,17 @@ mod tests {
         );
         let tiny = &list.models[5];
         assert_eq!(id(tiny.preferred("")), Some("tiny".to_owned()));
+    }
+
+    #[test]
+    fn picking_a_model_found_through_a_version_takes_that_version() {
+        let list = picker_list(&catalog(), PickerScope::All, "turbo q8", "");
+        assert_eq!(
+            list.models[0]
+                .preferred("")
+                .map(|row| row.entry.id.as_str()),
+            Some("large-v3-turbo-q8_0")
+        );
     }
 
     #[test]
