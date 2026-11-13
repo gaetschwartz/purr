@@ -83,7 +83,7 @@ pub const fn step(current: Option<usize>, count: usize, down: bool) -> Option<us
 ///
 /// `keys` names the rows in the order they show; arrows move through them from the search field
 /// and Enter calls `on_enter` with the marked key. Rows mark themselves with `nav.active(..)` and
-/// call `nav.point(..)` on hover, so the pointer and the keyboard share one mark.
+/// call `nav.point(..)` on pointer moves, so the pointer and the keyboard share one mark.
 #[component]
 pub fn ListPicker(
     /// The id of the element the popover hangs from.

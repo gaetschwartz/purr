@@ -9,6 +9,7 @@ use crate::{
         entry::{ModelEntry, Precision},
         format::{check_percent, percent},
         listing::ModelRow,
+        picker::stored_here,
         state::ModelState,
     },
     utils::byte_size::ByteSize,
@@ -96,7 +97,7 @@ pub fn ModelChoice(
     on_alt: Option<EventHandler<ModelRow>>,
 ) -> Element {
     let disabled = matches!(row.state, ModelState::Unavailable { .. });
-    let size = download_size(&row);
+    let size = (!stored_here(&row)).then(|| download_size(&row)).flatten();
     let downloading = matches!(row.state, ModelState::Downloading(_));
     let class = if highlighted { "opt kb" } else { "opt" };
     let id = row.entry.id.clone();
@@ -111,7 +112,7 @@ pub fn ModelChoice(
             title: hint,
             aria_selected: selected,
             aria_disabled: disabled.then_some("true"),
-            onmouseenter: move |_| nav.point(&id),
+            onmousemove: move |_| nav.point(&id),
             onclick: move |event: MouseEvent| choose(&event, &row, onselect, on_alt),
             span { class: "ck",
                 if selected {
@@ -195,7 +196,7 @@ fn VersionChoice(
 ) -> Element {
     let disabled = matches!(row.state, ModelState::Unavailable { .. });
     let tag = version_tag(&row.entry.precision);
-    let size = download_size(&row);
+    let size = (!stored_here(&row)).then(|| download_size(&row)).flatten();
     let class = match (selected, highlighted) {
         (true, true) => "pvar sel kb",
         (true, false) => "pvar sel",
@@ -217,7 +218,7 @@ fn VersionChoice(
             aria_label: name,
             aria_selected: selected,
             aria_disabled: disabled.then_some("true"),
-            onmouseenter: move |_| nav.point(&id),
+            onmousemove: move |_| nav.point(&id),
             onclick: move |event: MouseEvent| choose(&event, &row, onselect, on_alt),
             if selected {
                 Icon { name: IconName::Check, size: IconSize::Small }

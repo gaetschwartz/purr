@@ -93,7 +93,7 @@ pub fn PopoverOption(
     hint: Option<String>,
     /// Runs instead of `onselect` when the row is clicked with Ctrl or Cmd held.
     on_alt: Option<EventHandler<()>>,
-    /// Runs when the pointer enters the row.
+    /// Runs when the pointer moves over the row; scrolling under a still pointer does not count.
     on_hover: Option<EventHandler<()>>,
     onselect: EventHandler<()>,
 ) -> Element {
@@ -116,7 +116,7 @@ pub fn PopoverOption(
             title: hint,
             aria_selected,
             aria_disabled: disabled.then_some("true"),
-            onmouseenter: move |_| {
+            onmousemove: move |_| {
                 if let Some(hover) = on_hover {
                     hover.call(());
                 }

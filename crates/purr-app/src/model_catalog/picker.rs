@@ -58,6 +58,13 @@ fn needs_attention(cluster: &ModelCluster) -> bool {
     })
 }
 
+/// Whether the popup counts `row` as on this device: stored, or stored and being checked.
+#[must_use]
+pub fn stored_here(row: &ModelRow) -> bool {
+    row.state.is_on_device()
+        || (row.entry.installed && matches!(row.state, ModelState::Verifying(_)))
+}
+
 /// Sorts the models matching `search` into the popup's sections.
 #[must_use]
 pub fn picker_sections(rows: &[ModelRow], search: &str) -> PickerSections {
@@ -66,7 +73,7 @@ pub fn picker_sections(rows: &[ModelRow], search: &str) -> PickerSections {
         .iter()
         .filter(|row| row.entry.matches(search))
         .cloned()
-        .partition(|row| row.state.is_on_device());
+        .partition(stored_here);
     on_device.sort_by_key(|row| row.entry.size_bytes);
     elsewhere.sort_by_key(|row| row.entry.size_bytes);
     let (older, mut download): (Vec<ModelCluster>, Vec<ModelCluster>) = cluster(&elsewhere)
@@ -83,7 +90,10 @@ pub fn picker_sections(rows: &[ModelRow], search: &str) -> PickerSections {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model_catalog::{activity::DownloadProgress, entry::ModelEntry};
+    use crate::model_catalog::{
+        activity::{DownloadProgress, VerifyProgress},
+        entry::ModelEntry,
+    };
     use purr_common::platform::{ModelInfo, ModelMetadata};
 
     fn row(id: &str, family: &str, size: u64, quantization: Option<&str>) -> ModelRow {
@@ -169,6 +179,15 @@ mod tests {
         rows[2].state = ModelState::Downloading(DownloadProgress::default());
         let sections = picker_sections(&rows, "");
         assert_eq!(sections.download[0].primary.entry.id, "small");
+    }
+
+    #[test]
+    fn a_stored_model_being_checked_stays_on_the_device() {
+        let mut rows = catalog();
+        rows[3].entry.installed = true;
+        rows[3].state = ModelState::Verifying(VerifyProgress::default());
+        let sections = picker_sections(&rows, "");
+        assert_eq!(ids(&sections.on_device), ["base", "large-v3-turbo-q5"]);
     }
 
     #[test]
