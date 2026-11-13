@@ -108,8 +108,7 @@ fn glide_input(record: &RunRecord, duration: f64) -> GlideInput {
     }
 }
 
-/// Leaves an ended run for the start screen. A saved result keeps its address in History; an
-/// unsaved one has none left, so the screen replaces it instead of leaving it behind in Back.
+/// Leaves an ended run for the start screen, replacing its address in Back unless it was saved.
 fn leave(session: TranscribeSession, navigator: Navigator) {
     let saved = matches!(session.save_state(), SaveState::Saved(_));
     session.new_transcription();

@@ -782,7 +782,7 @@ fn finished(
     }
 }
 
-/// Whether the Transcribe item leaves the run shown: a failed run, or a result saved to History.
+/// Whether the Transcribe item drops the run held in the session: a failed run, or a result saved to History.
 fn starts_over(outcome: Option<&RunOutcome>, saved: &SaveState) -> bool {
     match (outcome, saved) {
         (Some(RunOutcome::Failed(_)), _)

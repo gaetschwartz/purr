@@ -97,7 +97,8 @@ pub fn Home() -> Element {
         .as_ref()
         .is_some_and(|row| models.is_downloading() && !models.is_busy(&row.entry.id));
     let plan = plan_start(readiness, &choice, other_download);
-    let running = session.running_id();
+    let running_id = use_memo(move || session.running_id());
+    let running = running_id();
     let can_start = matches!(plan, StartPlan::Start(_)) && running.is_none();
     let policy = settings.with(|settings| settings.performance.accel_policy());
     let engine_plan = use_engine_plan(selected.as_ref().map(|row| row.entry.id.clone()), policy);
