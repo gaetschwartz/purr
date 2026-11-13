@@ -1,6 +1,6 @@
 [package]
 name = "purr-app"
-version = "0.1.0"
+version.workspace = true
 authors = ["Gaëtan Schwartz"]
 edition = "2024"
 
@@ -114,4 +114,4 @@ wasm-bindgen-test = "0.3"
 workspace = true
 
 [build-dependencies]
-purr-delayload = { version = "0.1.0", path = "../purr-delayload" }
+purr-delayload = { path = "../purr-delayload" }

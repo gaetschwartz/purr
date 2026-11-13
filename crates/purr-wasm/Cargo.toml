@@ -1,6 +1,6 @@
 [package]
 name = "purr-wasm"
-version = "0.1.0"
+version.workspace = true
 edition = "2024"
 description = "WebAssembly platform implementation for Purr transcription engine"
 

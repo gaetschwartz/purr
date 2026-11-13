@@ -1,6 +1,6 @@
 [package]
 name = "purr-cli"
-version = "0.1.0"
+version.workspace = true
 edition = "2024"
 
 [[bin]]
@@ -58,7 +58,7 @@ coreml = ["purr-core/coreml"]
 static-ffmpeg = ["purr-core/static-ffmpeg"]
 
 [build-dependencies]
-purr-delayload = { version = "0.1.0", path = "../purr-delayload" }
+purr-delayload = { path = "../purr-delayload" }
 shadow-rs = "2.0.0"
 
 [lints]

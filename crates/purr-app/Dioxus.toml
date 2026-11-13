@@ -9,7 +9,6 @@ title = "Purr"
 
 [bundle]
 identifier = "dev.gaetans.purr"
-version = "0.1.0"
 publisher = "Gaëtan Schwartz"
 icon = ["../../res/icons/icon.png"]
 category = "Utility"

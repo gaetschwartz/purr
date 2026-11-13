@@ -1,6 +1,6 @@
 [package]
 name = "purr-core"
-version = "0.1.0"
+version.workspace = true
 edition = "2024"
 
 [dependencies]
@@ -40,7 +40,7 @@ url = "2.5"
 sha2 = "0.10.9"
 hex = "0.4.3"
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
-purr-common = { version = "0.1.0", path = "../purr-common" }
+purr-common = { path = "../purr-common" }
 parking_lot = "0.13.0"
 ash = { version = "0.38.0", default-features = false, features = ["loaded", "std"] }
 
@@ -62,7 +62,7 @@ static-ffmpeg = ["ffmpeg-next/static"]
 
 [build-dependencies]
 build-target = "0.8.0"
-purr-delayload = { version = "0.1.0", path = "../purr-delayload" }
+purr-delayload = { path = "../purr-delayload" }
 
 [lints]
 workspace = true
