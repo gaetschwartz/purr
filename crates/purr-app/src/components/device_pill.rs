@@ -91,7 +91,7 @@ pub fn DevicePicker(
     let session = use_transcribe_session();
     let options = choices(&rows);
     rsx! {
-        Popover { anchor, label: "Device", on_close,
+        Popover { anchor, label: "Device", on_close, wide: true,
             for (index , choice) in options.into_iter().enumerate() {
                 {
                     let selected = match &choice {

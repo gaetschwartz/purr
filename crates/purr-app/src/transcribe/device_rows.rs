@@ -173,6 +173,15 @@ pub fn device_rows(performance: &PerformanceSettings, system: &SystemReport) -> 
         .collect()
 }
 
+/// How many rows from the top can be reached: the devices after the CPU never are, since the CPU
+/// always loads.
+#[must_use]
+pub fn reachable_rows(rows: &[DeviceRow]) -> usize {
+    rows.iter()
+        .position(|row| row.key.is_cpu())
+        .map_or(rows.len(), |cpu| cpu + 1)
+}
+
 /// The list as it is saved.
 #[must_use]
 pub fn saved_list(rows: &[DeviceRow]) -> Vec<DevicePreference> {
@@ -542,6 +551,15 @@ mod tests {
             rows.first().map(|row| row.state.clone()),
             Some(DeviceState::Unavailable(BackendUnavailable::NoDevice))
         );
+    }
+
+    #[test]
+    fn the_devices_after_the_cpu_are_out_of_reach() {
+        let rows = device_rows(&PerformanceSettings::default(), &system());
+        assert_eq!(reachable_rows(&rows), 4);
+        let cpu_first = performance(vec![pref(DeviceKey::cpu(), true), pref(cuda(), true)]);
+        assert_eq!(reachable_rows(&device_rows(&cpu_first, &system())), 1);
+        assert_eq!(reachable_rows(&[]), 0);
     }
 
     #[test]

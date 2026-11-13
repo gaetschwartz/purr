@@ -13,7 +13,7 @@ use crate::{
         device_pill::DevicePill,
         drop_pad::{DropPad, FILE_INPUT_ID},
         file_card::FileCard,
-        icon::IconName,
+        icon::{Icon, IconName, IconSize},
         language_picker::LanguagePill,
         model_picker::ModelPill,
         page::Page,
@@ -215,6 +215,10 @@ pub fn Home() -> Element {
                             aria_expanded: advanced(),
                             aria_controls: "advanced-options",
                             onclick: move |_| advanced.toggle(),
+                            Icon {
+                                name: if advanced() { IconName::ChevronDown } else { IconName::ChevronRight },
+                                size: IconSize::Small,
+                            }
                             "Advanced"
                         }
                         if advanced() {

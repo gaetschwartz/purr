@@ -5,7 +5,7 @@ use crate::{
         icon_button::IconButton,
         switch::Switch,
     },
-    transcribe::device_rows::{DeviceRow, DeviceState, Move},
+    transcribe::device_rows::{DeviceRow, DeviceState, Move, reachable_rows},
 };
 use dioxus::prelude::*;
 use purr_common::{accel::BackendUnavailable, devices::DeviceKey};
@@ -93,6 +93,7 @@ pub fn DeviceList(
         }
     });
     let count = rows.len();
+    let reachable = reachable_rows(&rows);
 
     rsx! {
         div {
@@ -102,7 +103,7 @@ pub fn DeviceList(
             for (index , row) in rows.iter().cloned().enumerate() {
                 div {
                     key: "{row.backend.label()}|{row.key.name}|{row.key.occurrence}",
-                    class: row_class(&row),
+                    class: if index >= reachable && row.enabled { "devrow unreached" } else { row_class(&row) },
                     role: "listitem",
                     span { class: "devrank", aria_hidden: "true", "{index + 1}" }
                     span { class: "devbe", "{row.backend.label()}" }
@@ -113,6 +114,9 @@ pub fn DeviceList(
                         }
                         if let Some(note) = state_note(&row.state) {
                             small { class: "note", "{note}" }
+                        }
+                        if index >= reachable && row.enabled {
+                            small { class: "note", "Not reached: the CPU runs first." }
                         }
                     }
                     {
