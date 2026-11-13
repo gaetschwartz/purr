@@ -48,6 +48,12 @@ pub fn PerformanceSection() -> Element {
         .and_then(|report| report.cpu.logical_threads)
         .unwrap_or(THREAD_LIMIT_WITHOUT_PROBE)
         .max(1);
+    let auto_hint = loaded
+        .and_then(|report| report.cpu.logical_threads)
+        .map_or_else(
+            || "Auto uses every thread the processor has.".to_owned(),
+            |threads| format!("Auto uses all {threads}."),
+        );
     let automatic = backend == AccelSelection::Auto;
     let fallback_hint = automatic.then_some("Always on with Automatic.");
 
@@ -93,7 +99,7 @@ pub fn PerformanceSection() -> Element {
             Group {
                 Item {
                     title: "CPU threads",
-                    subtitle: "Auto uses up to 4.",
+                    subtitle: auto_hint,
                     control: rsx! {
                         Stepper {
                             label: "CPU threads",

@@ -12,6 +12,11 @@ use crate::accel::{
     config::{AccelConfig, AccelMode},
 };
 
+/// The threads a transcription uses when none is asked for: every one the processor runs at once.
+pub fn auto_threads() -> std::io::Result<usize> {
+    std::thread::available_parallelism().map(std::num::NonZeroUsize::get)
+}
+
 /// Configuration for transcription operations
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TranscriptionConfig {

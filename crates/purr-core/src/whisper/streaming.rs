@@ -162,7 +162,7 @@ impl Session {
     ) -> crate::Result<Self> {
         let threads = match config.num_threads {
             Some(threads) => threads,
-            None => std::thread::available_parallelism()?.get().min(4),
+            None => crate::config::auto_threads()?,
         };
         let language = match config.language.as_deref() {
             None | Some("auto") => StreamLanguage::Detecting,
