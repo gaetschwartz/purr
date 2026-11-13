@@ -191,98 +191,6 @@ impl AudioProcessor {
         self.stream_audio_from_input(custom_input, tx)
     }
 
-    /// Process a single audio frame into a buffer (for streaming)
-    fn process_audio_frame_to_buffer(
-        frame: &ffmpeg::frame::Audio,
-        output_samples: &mut Vec<f32>,
-        resampled: &mut ffmpeg::frame::Audio,
-        resampler: &mut Option<ffmpeg::software::resampling::context::Context>,
-        last_format: &mut Option<ffmpeg::format::Sample>,
-        last_channel_layout: &mut Option<ffmpeg::channel_layout::ChannelLayout>,
-        last_rate: &mut Option<u32>,
-    ) -> Result<()> {
-        // Check if frame properties have changed and we need to recreate the resampler
-        let current_format = frame.format();
-        let current_rate = frame.rate();
-
-        // Determine the channel layout for this frame
-        let current_channel_layout = if frame.channel_layout().channels() == 0 {
-            // Use default based on channel count
-            match frame.channels() {
-                1 => ffmpeg::channel_layout::ChannelLayout::MONO,
-                2 => ffmpeg::channel_layout::ChannelLayout::STEREO,
-                _ => ffmpeg::channel_layout::ChannelLayout::default(i32::from(frame.channels())),
-            }
-        } else {
-            frame.channel_layout()
-        };
-
-        // Check if we need to recreate the resampler
-        let resampler_needs_update = (*last_format != Some(current_format))
-            || (*last_channel_layout != Some(current_channel_layout))
-            || (*last_rate != Some(current_rate));
-
-        // Always use resampler for consistent processing and better format handling
-        // This ensures proper stereo-to-mono conversion and sample rate conversion
-        if resampler_needs_update || resampler.is_none() {
-            *resampler = Some(
-                ffmpeg::software::resampling::context::Context::get(
-                    current_format,
-                    current_channel_layout,
-                    current_rate,
-                    ffmpeg::format::Sample::F32(ffmpeg::format::sample::Type::Planar),
-                    ffmpeg::channel_layout::ChannelLayout::MONO,
-                    16000,
-                )
-                .map_err(WhisperError::from)?,
-            );
-
-            // Update our tracking variables
-            *last_format = Some(current_format);
-            *last_channel_layout = Some(current_channel_layout);
-            *last_rate = Some(current_rate);
-        }
-
-        // Resample frame with error handling
-        if let Some(resampler_ctx) = resampler {
-            match resampler_ctx.run(frame, resampled) {
-                Ok(_) => {
-                    // Successfully resampled - extract f32 samples
-                    let data = resampled.data(0);
-                    let sample_count = resampled.samples();
-
-                    if sample_count > 0 {
-                        unsafe {
-                            let ptr = data.as_ptr().cast::<f32>();
-                            let slice = std::slice::from_raw_parts(ptr, sample_count);
-                            output_samples.extend_from_slice(slice);
-                        }
-                    }
-                }
-                Err(e) => {
-                    // Force recreation of resampler for next frame
-                    *resampler = None;
-                    *last_format = None;
-                    *last_channel_layout = None;
-                    *last_rate = None;
-
-                    // Try fallback processing for this frame
-                    match crate::resample::fallback_convert(frame, output_samples, current_rate) {
-                        Ok(()) => {
-                            // Fallback succeeded, continue
-                        }
-                        _ => {
-                            // Log warning and skip this frame
-                            warn!("Skipping frame due to resampling error: {}", e);
-                        }
-                    }
-                }
-            }
-        }
-
-        Ok(())
-    }
-
     /// Load audio from URL and convert to the format expected by Whisper
     pub async fn load_audio_from_url(url: impl IntoUrl) -> Result<AudioData> {
         Self::load_audio_from_url_with_config(
@@ -471,6 +379,27 @@ impl AudioProcessor {
         })
     }
 
+    /// Send every complete chunk buffered in `output_samples`; false once the receiver is gone.
+    fn send_full_chunks(
+        output_samples: &mut Vec<f32>,
+        chunk_index: &mut usize,
+        total_processed_time: &mut f32,
+        tx: &mpsc::UnboundedSender<Result<AudioChunk>>,
+    ) -> bool {
+        while output_samples.len() >= AudioChunk::TARGET_SAMPLES {
+            let chunk_samples: Vec<f32> =
+                output_samples.drain(..AudioChunk::TARGET_SAMPLES).collect();
+            let chunk = AudioChunk::new(chunk_samples, *chunk_index, *total_processed_time, false);
+            *total_processed_time += chunk.duration;
+            *chunk_index += 1;
+
+            if tx.send(Ok(chunk)).is_err() {
+                return false;
+            }
+        }
+        true
+    }
+
     /// Stream audio from AsyncCustomInput for real-time processing
     fn stream_audio_from_input(
         &mut self,
@@ -499,6 +428,7 @@ impl AudioProcessor {
 
         let mut output_samples = Vec::new();
         let mut frame = ffmpeg::frame::Audio::empty();
+        let mut resampler = FrameResampler::new();
 
         let mut chunk_index = 0;
         let mut total_processed_time = 0.0;
@@ -509,42 +439,15 @@ impl AudioProcessor {
                 match decoder.send_packet(&packet) {
                     Ok(()) => {
                         while decoder.receive_frame(&mut frame).is_ok() {
-                            let mut resampled = ffmpeg::frame::Audio::empty();
-                            let mut resampler: Option<
-                                ffmpeg::software::resampling::context::Context,
-                            > = None;
-                            let mut last_format: Option<ffmpeg::format::Sample> = None;
-                            let mut last_channel_layout: Option<
-                                ffmpeg::channel_layout::ChannelLayout,
-                            > = None;
-                            let mut last_rate: Option<u32> = None;
+                            resampler.push(&frame, &mut output_samples)?;
 
-                            Self::process_audio_frame_to_buffer(
-                                &frame,
+                            if !Self::send_full_chunks(
                                 &mut output_samples,
-                                &mut resampled,
-                                &mut resampler,
-                                &mut last_format,
-                                &mut last_channel_layout,
-                                &mut last_rate,
-                            )?;
-
-                            // Check if we have enough samples for a chunk
-                            while output_samples.len() >= AudioChunk::TARGET_SAMPLES {
-                                let chunk_samples: Vec<f32> =
-                                    output_samples.drain(..AudioChunk::TARGET_SAMPLES).collect();
-                                let chunk = AudioChunk::new(
-                                    chunk_samples,
-                                    chunk_index,
-                                    total_processed_time,
-                                    false,
-                                );
-                                total_processed_time += chunk.duration;
-                                chunk_index += 1;
-
-                                if tx.send(Ok(chunk)).is_err() {
-                                    return Ok(());
-                                }
+                                &mut chunk_index,
+                                &mut total_processed_time,
+                                &tx,
+                            ) {
+                                return Ok(());
                             }
                         }
                     }
@@ -567,46 +470,31 @@ impl AudioProcessor {
         match decoder.send_eof() {
             Ok(()) => {
                 while decoder.receive_frame(&mut frame).is_ok() {
-                    let mut resampled = ffmpeg::frame::Audio::empty();
-                    let mut resampler: Option<ffmpeg::software::resampling::context::Context> =
-                        None;
-                    let mut last_format: Option<ffmpeg::format::Sample> = None;
-                    let mut last_channel_layout: Option<ffmpeg::channel_layout::ChannelLayout> =
-                        None;
-                    let mut last_rate: Option<u32> = None;
+                    resampler.push(&frame, &mut output_samples)?;
 
-                    Self::process_audio_frame_to_buffer(
-                        &frame,
+                    if !Self::send_full_chunks(
                         &mut output_samples,
-                        &mut resampled,
-                        &mut resampler,
-                        &mut last_format,
-                        &mut last_channel_layout,
-                        &mut last_rate,
-                    )?;
-
-                    // Process any complete chunks
-                    while output_samples.len() >= AudioChunk::TARGET_SAMPLES {
-                        let chunk_samples: Vec<f32> =
-                            output_samples.drain(..AudioChunk::TARGET_SAMPLES).collect();
-                        let chunk = AudioChunk::new(
-                            chunk_samples,
-                            chunk_index,
-                            total_processed_time,
-                            false,
-                        );
-                        total_processed_time += chunk.duration;
-                        chunk_index += 1;
-
-                        if tx.send(Ok(chunk)).is_err() {
-                            return Ok(());
-                        }
+                        &mut chunk_index,
+                        &mut total_processed_time,
+                        &tx,
+                    ) {
+                        return Ok(());
                     }
                 }
             }
             Err(e) => {
                 eprintln!("Warning: Failed to flush decoder, but continuing: {e}");
             }
+        }
+
+        resampler.finish(&mut output_samples)?;
+        if !Self::send_full_chunks(
+            &mut output_samples,
+            &mut chunk_index,
+            &mut total_processed_time,
+            &tx,
+        ) {
+            return Ok(());
         }
 
         // Send remaining samples as final chunk
