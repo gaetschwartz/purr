@@ -364,11 +364,10 @@ kbd{font-family:var(--font);font-size:12px;font-weight:600;padding:2px 7px;borde
 @keyframes popout{to{opacity:0;transform:scale(.96) translateY(-2px)}}
 @keyframes sheetout{to{opacity:0;transform:translateY(10px) scale(.98)}}
 @keyframes fadeout{to{opacity:0}}
-.layer-wrap{display:contents}
-.layer-wrap.exit{pointer-events:none}
-.layer-wrap.exit .scrim{animation:fadeout .2s ease forwards}
-.layer-wrap.exit .popover{animation:popout .14s ease-in forwards}
-.layer-wrap.exit .sheet,.layer-wrap.exit .pdlg{animation:sheetout .2s ease-in forwards}
+.layer.exit,.layer.exit *{pointer-events:none!important}
+.layer.exit .scrim{animation:fadeout .2s ease forwards}
+.layer.exit .popover{animation:popout .14s ease-in forwards}
+.layer.exit .sheet,.layer.exit .pdlg{animation:sheetout .2s ease-in forwards}
 .popover>.pscroll{flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;padding:6px;display:flex;flex-direction:column}
 .popover>.pscroll>*{flex:none}
 .popover>.pscroll::-webkit-scrollbar{width:10px}

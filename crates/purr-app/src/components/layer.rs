@@ -1,66 +1,29 @@
-use crate::utils::delay::sleep;
-use dioxus::{
-    core::{Runtime, ScopeId, spawn_forever},
-    prelude::*,
-};
-use std::time::Duration;
-
-/// How long a closed layer stays on screen to play its exit animation.
-const EXIT: Duration = Duration::from_millis(220);
-
-#[derive(Clone, PartialEq)]
-struct Layer {
-    id: String,
-    view: Element,
-    closing: bool,
-}
+use dioxus::prelude::*;
 
 /// The overlay stack: popovers and sheets render here, inside `.app`, whatever component opened them.
 #[derive(Clone, Copy)]
 pub struct LayerHost {
-    layers: Signal<Vec<Layer>>,
+    layers: Signal<Vec<(String, Element)>>,
 }
 
 impl LayerHost {
     fn put(mut self, id: &str, view: Element) {
         let mut layers = self.layers.write();
-        match layers.iter_mut().find(|layer| layer.id == id) {
-            Some(layer) => {
-                layer.view = view;
-                layer.closing = false;
-            }
-            None => layers.push(Layer {
-                id: id.to_owned(),
-                view,
-                closing: false,
-            }),
+        match layers.iter_mut().find(|(existing, _)| existing == id) {
+            Some(entry) => entry.1 = view,
+            None => layers.push((id.to_owned(), view)),
         }
     }
 
     fn remove(mut self, id: &str) {
-        {
-            let mut layers = self.layers.write();
-            let Some(layer) = layers.iter_mut().find(|layer| layer.id == id) else {
-                return;
-            };
-            layer.closing = true;
-        }
-        let id = id.to_owned();
-        spawn_forever(async move {
-            sleep(EXIT).await;
-            self.layers
-                .write()
-                .retain(|layer| !(layer.id == id && layer.closing));
-        });
+        self.layers.write().retain(|(existing, _)| existing != id);
     }
 }
 
 /// Provides the [`LayerHost`]; call once at the root, above [`LayerOutlet`].
 pub fn use_layer_host_provider() -> LayerHost {
-    use_context_provider(|| {
-        Runtime::current().in_scope(ScopeId::ROOT, || LayerHost {
-            layers: Signal::new(Vec::new()),
-        })
+    use_context_provider(|| LayerHost {
+        layers: Signal::new(Vec::new()),
     })
 }
 
@@ -70,12 +33,8 @@ pub fn LayerOutlet() -> Element {
     let host = use_context::<LayerHost>();
     let layers = host.layers.read().clone();
     rsx! {
-        for layer in layers {
-            div {
-                key: "{layer.id}",
-                class: if layer.closing { "layer-wrap exit" } else { "layer-wrap" },
-                {layer.view}
-            }
+        for (id , view) in layers {
+            Fragment { key: "{id}", {view} }
         }
     }
 }
@@ -175,12 +134,22 @@ if (root) {{
       }}
     }}
   }});
-  const wrap = root.closest('.layer-wrap');
-  const parent = wrap ? wrap.parentNode : root.parentNode;
+  const parent = root.parentNode;
   if (parent) {{
-    const watcher = new MutationObserver(() => {{
+    const watcher = new MutationObserver((records) => {{
       if (root.isConnected) return;
       watcher.disconnect();
+      if (records.some((record) => [...record.removedNodes].includes(root))) {{
+        const ghost = root.cloneNode(true);
+        for (const el of [ghost, ...ghost.querySelectorAll('[id],[data-dioxus-id]')]) {{
+          el.removeAttribute('id');
+          el.removeAttribute('data-dioxus-id');
+        }}
+        ghost.setAttribute('inert', '');
+        ghost.classList.add('exit');
+        parent.appendChild(ghost);
+        setTimeout(() => ghost.remove(), 240);
+      }}
       const opener = openers.get(id);
       openers.delete(id);
       const focus = document.activeElement;
