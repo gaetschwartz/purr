@@ -1,0 +1,21 @@
+name: Prune the superseded Rust cache
+description: >
+  Last step of a job that ran setup-rust with a cache. When the job is about to save a new Rust
+  cache entry, delete the entries of its family first, so the old and the new one never exist at
+  once. Needs the actions: write permission.
+inputs:
+  cache-hit:
+    description: The cache-hit output of setup-rust
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Delete the Rust cache entries the new one replaces
+      # a failure here must not fail the job: rust-cache saves only after a successful job
+      continue-on-error: true
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        GH_REPO: ${{ github.repository }}
+        CACHE_HIT: ${{ inputs.cache-hit }}
+      run: bash "$GITHUB_WORKSPACE/scripts/prune-rust-caches.sh" own-family

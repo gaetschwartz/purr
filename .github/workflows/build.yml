@@ -67,6 +67,9 @@ jobs:
     needs: [ffmpeg-linux]
     runs-on: ubuntu-24.04
     timeout-minutes: 120
+    permissions:
+      contents: read
+      actions: write
     env:
       GGML_CUDA_NO_VMM: ${{ matrix.cuda_no_vmm && 'ON' || 'OFF' }}
     strategy:
@@ -109,12 +112,13 @@ jobs:
         uses: ./.github/actions/setup-vulkan
         with:
           version: ${{ env.VULKAN_SDK_VERSION }}
-      - uses: ./.github/actions/setup-rust
-      - uses: Swatinem/rust-cache@v2.9.3
+      - id: rust
+        uses: ./.github/actions/setup-rust
         with:
+          cache: true
           # whisper-rs-sys does not rebuild ggml when GGML_* or the GPU SDKs change, so each configuration needs its own cache
-          key: ${{ matrix.variant }}-ggml-native-${{ env.GGML_NATIVE }}-no-vmm-${{ env.GGML_CUDA_NO_VMM }}-cuda-${{ env.CUDA_VERSION }}-vulkan-${{ env.VULKAN_SDK_VERSION }}
-          save-if: ${{ github.ref == 'refs/heads/develop' && matrix.save_cache == true }}
+          cache-key: ${{ matrix.variant }}-ggml-native-${{ env.GGML_NATIVE }}-no-vmm-${{ env.GGML_CUDA_NO_VMM }}-cuda-${{ env.CUDA_VERSION }}-vulkan-${{ env.VULKAN_SDK_VERSION }}
+          cache-save: ${{ github.ref == 'refs/heads/develop' && matrix.save_cache == true }}
       - name: Build the CLI
         env:
           RUSTFLAGS: -C link-arg=-Wl,-rpath,$ORIGIN/lib:$ORIGIN/../lib/purr-desktop --cfg=web_sys_unstable_apis
@@ -175,12 +179,18 @@ jobs:
           name: purr-cli-linux-x64-${{ matrix.variant }}
           path: artifacts/cli/
           retention-days: 30
+      - uses: ./.github/actions/prune-rust-cache
+        with:
+          cache-hit: ${{ steps.rust.outputs.cache-hit }}
 
   desktop-linux:
     name: desktop (linux, all)
     needs: [ffmpeg-linux]
     runs-on: ubuntu-24.04
     timeout-minutes: 120
+    permissions:
+      contents: read
+      actions: write
     env:
       # without it the app links libcuda.so.1 and does not start without the NVIDIA driver
       GGML_CUDA_NO_VMM: "ON"
@@ -204,14 +214,14 @@ jobs:
       - uses: ./.github/actions/setup-vulkan
         with:
           version: ${{ env.VULKAN_SDK_VERSION }}
-      - uses: ./.github/actions/setup-rust
+      - id: rust
+        uses: ./.github/actions/setup-rust
         with:
           targets: x86_64-unknown-linux-gnu, wasm32-unknown-unknown
-      - uses: Swatinem/rust-cache@v2.9.3
-        with:
+          cache: true
           # whisper-rs-sys does not rebuild ggml when GGML_* or the GPU SDKs change, so each configuration needs its own cache
-          key: all-ggml-native-${{ env.GGML_NATIVE }}-no-vmm-${{ env.GGML_CUDA_NO_VMM }}-cuda-${{ env.CUDA_VERSION }}-vulkan-${{ env.VULKAN_SDK_VERSION }}
-          save-if: ${{ github.ref == 'refs/heads/develop' }}
+          cache-key: all-ggml-native-${{ env.GGML_NATIVE }}-no-vmm-${{ env.GGML_CUDA_NO_VMM }}-cuda-${{ env.CUDA_VERSION }}-vulkan-${{ env.VULKAN_SDK_VERSION }}
+          cache-save: ${{ github.ref == 'refs/heads/develop' }}
       - uses: ./.github/actions/setup-dioxus
         with:
           version: ${{ env.DIOXUS_VERSION }}
@@ -302,6 +312,9 @@ jobs:
             dist-linux/*.AppImage
           if-no-files-found: error
           retention-days: 30
+      - uses: ./.github/actions/prune-rust-cache
+        with:
+          cache-hit: ${{ steps.rust.outputs.cache-hit }}
 
   web:
     name: web
@@ -330,6 +343,9 @@ jobs:
     needs: [ffmpeg-macos]
     runs-on: macos-26
     timeout-minutes: 60
+    permissions:
+      contents: read
+      actions: write
     env:
       GGML_CPU_ARM_ARCH: armv8.2-a+dotprod+fp16
     strategy:
@@ -348,12 +364,13 @@ jobs:
       - uses: ./.github/actions/setup-ffmpeg
         with:
           triplet: arm64-osx
-      - uses: ./.github/actions/setup-rust
-      - uses: Swatinem/rust-cache@v2.9.3
+      - id: rust
+        uses: ./.github/actions/setup-rust
         with:
+          cache: true
           # whisper-rs-sys does not rebuild ggml when GGML_* changes, so each ggml configuration needs its own cache
-          key: ${{ matrix.backend }}-ggml-native-${{ env.GGML_NATIVE }}-arm-${{ env.GGML_CPU_ARM_ARCH }}
-          save-if: ${{ github.ref == 'refs/heads/develop' && matrix.is_release == true }}
+          cache-key: ${{ matrix.backend }}-ggml-native-${{ env.GGML_NATIVE }}-arm-${{ env.GGML_CPU_ARM_ARCH }}
+          cache-save: ${{ github.ref == 'refs/heads/develop' && matrix.is_release == true }}
       - name: Build the CLI
         run: |
           export CFLAGS="-march=armv8.2-a+crypto+noi8mm"
@@ -370,12 +387,18 @@ jobs:
           name: purr-${{ matrix.is_release == true && 'cli' || 'dev-cli' }}-macos-arm64-${{ matrix.backend == 'none' && 'cpu' || matrix.backend }}
           path: artifacts/cli/
           retention-days: ${{ matrix.is_release == true && 30 || 7 }}
+      - uses: ./.github/actions/prune-rust-cache
+        with:
+          cache-hit: ${{ steps.rust.outputs.cache-hit }}
 
   desktop-macos:
     name: desktop (macos, metal)
     needs: [ffmpeg-macos]
     runs-on: macos-26
     timeout-minutes: 60
+    permissions:
+      contents: read
+      actions: write
     env:
       GGML_CPU_ARM_ARCH: armv8.2-a+dotprod+fp16
     steps:
@@ -387,14 +410,14 @@ jobs:
       - uses: ./.github/actions/setup-ffmpeg
         with:
           triplet: arm64-osx
-      - uses: ./.github/actions/setup-rust
+      - id: rust
+        uses: ./.github/actions/setup-rust
         with:
           targets: wasm32-unknown-unknown
-      - uses: Swatinem/rust-cache@v2.9.3
-        with:
+          cache: true
           # whisper-rs-sys does not rebuild ggml when GGML_* changes, so each ggml configuration needs its own cache
-          key: metal-ggml-native-${{ env.GGML_NATIVE }}-arm-${{ env.GGML_CPU_ARM_ARCH }}
-          save-if: ${{ github.ref == 'refs/heads/develop' }}
+          cache-key: metal-ggml-native-${{ env.GGML_NATIVE }}-arm-${{ env.GGML_CPU_ARM_ARCH }}
+          cache-save: ${{ github.ref == 'refs/heads/develop' }}
       - uses: ./.github/actions/setup-dioxus
         with:
           version: ${{ env.DIOXUS_VERSION }}
@@ -412,12 +435,18 @@ jobs:
           path: dist-macos/*.dmg
           if-no-files-found: error
           retention-days: 30
+      - uses: ./.github/actions/prune-rust-cache
+        with:
+          cache-hit: ${{ steps.rust.outputs.cache-hit }}
 
   cli-windows:
     name: cli (windows, ${{ matrix.backend == 'none' && 'cpu' || matrix.label || matrix.backend }})
     needs: [ffmpeg-windows]
     runs-on: windows-2025-vs2026
     timeout-minutes: 120
+    permissions:
+      contents: read
+      actions: write
     defaults:
       run:
         shell: pwsh
@@ -449,14 +478,15 @@ jobs:
         uses: ./.github/actions/setup-vulkan
         with:
           version: ${{ env.VULKAN_SDK_VERSION }}
-      - uses: ./.github/actions/setup-rust
-      - uses: Swatinem/rust-cache@v2.9.3
+      - id: rust
+        uses: ./.github/actions/setup-rust
         with:
+          cache: true
           # rust-cache joins the target onto the workspace path, and CARGO_TARGET_DIR is D:\t
-          workspaces: ". -> ../../../t"
+          cache-workspaces: ". -> ../../../t"
           # whisper-rs-sys does not rebuild ggml when GGML_* or the GPU SDKs change, so each configuration needs its own cache
-          key: ${{ matrix.label || matrix.backend }}-ggml-native-${{ env.GGML_NATIVE }}-crt-static-${{ env.CMAKE_GENERATOR_x86_64_pc_windows_msvc || 'msbuild' }}-cuda-${{ env.CUDA_VERSION }}-vulkan-${{ env.VULKAN_SDK_VERSION }}
-          save-if: ${{ github.ref == 'refs/heads/develop' && matrix.is_release == true }}
+          cache-key: ${{ matrix.label || matrix.backend }}-ggml-native-${{ env.GGML_NATIVE }}-crt-static-${{ env.CMAKE_GENERATOR_x86_64_pc_windows_msvc || 'msbuild' }}-cuda-${{ env.CUDA_VERSION }}-vulkan-${{ env.VULKAN_SDK_VERSION }}
+          cache-save: ${{ github.ref == 'refs/heads/develop' && matrix.is_release == true }}
       - name: Build the CLI
         run: |
           cargo build -p purr-cli --release --features static-ffmpeg${{ matrix.backend != 'none' && format(',{0}', matrix.backend) || '' }}
@@ -494,12 +524,18 @@ jobs:
           name: purr-${{ matrix.is_release == true && 'cli' || 'dev-cli' }}-windows-x64-${{ matrix.backend == 'none' && 'cpu' || matrix.label || matrix.backend }}
           path: artifacts/cli/
           retention-days: ${{ matrix.is_release == true && 30 || 7 }}
+      - uses: ./.github/actions/prune-rust-cache
+        with:
+          cache-hit: ${{ steps.rust.outputs.cache-hit }}
 
   desktop-windows:
     name: desktop (windows, cuda-vulkan)
     needs: [ffmpeg-windows]
     runs-on: windows-2025-vs2026
     timeout-minutes: 120
+    permissions:
+      contents: read
+      actions: write
     defaults:
       run:
         shell: pwsh
@@ -522,16 +558,16 @@ jobs:
       - uses: ./.github/actions/setup-vulkan
         with:
           version: ${{ env.VULKAN_SDK_VERSION }}
-      - uses: ./.github/actions/setup-rust
+      - id: rust
+        uses: ./.github/actions/setup-rust
         with:
           targets: wasm32-unknown-unknown
-      - uses: Swatinem/rust-cache@v2.9.3
-        with:
+          cache: true
           # rust-cache joins the target onto the workspace path, and CARGO_TARGET_DIR is D:\t
-          workspaces: ". -> ../../../t"
+          cache-workspaces: ". -> ../../../t"
           # whisper-rs-sys does not rebuild ggml when GGML_* or the GPU SDKs change, so each configuration needs its own cache
-          key: cuda-vulkan-ggml-native-${{ env.GGML_NATIVE }}-crt-static-${{ env.CMAKE_GENERATOR_x86_64_pc_windows_msvc || 'msbuild' }}-cuda-${{ env.CUDA_VERSION }}-vulkan-${{ env.VULKAN_SDK_VERSION }}
-          save-if: ${{ github.ref == 'refs/heads/develop' }}
+          cache-key: cuda-vulkan-ggml-native-${{ env.GGML_NATIVE }}-crt-static-${{ env.CMAKE_GENERATOR_x86_64_pc_windows_msvc || 'msbuild' }}-cuda-${{ env.CUDA_VERSION }}-vulkan-${{ env.VULKAN_SDK_VERSION }}
+          cache-save: ${{ github.ref == 'refs/heads/develop' }}
       - uses: ./.github/actions/setup-dioxus
         with:
           version: ${{ env.DIOXUS_VERSION }}
@@ -571,6 +607,9 @@ jobs:
           path: artifacts/desktop/
           if-no-files-found: error
           retention-days: 30
+      - uses: ./.github/actions/prune-rust-cache
+        with:
+          cache-hit: ${{ steps.rust.outputs.cache-hit }}
 
   deploy-web:
     name: deploy web (vercel)
@@ -967,23 +1006,19 @@ jobs:
   prune-caches:
     name: prune caches
     if: ${{ !cancelled() && github.ref == 'refs/heads/develop' }}
-    needs: [cli-linux, desktop-linux, web, cli-macos, desktop-macos, cli-windows, desktop-windows]
+    needs: [cli-linux, desktop-linux, cli-macos, desktop-macos, cli-windows, desktop-windows]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
+      contents: read
       actions: write
     steps:
-      - name: Delete the Rust caches superseded by a newer one of the same job
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: scripts
+          persist-credentials: false
+      - name: Delete the Rust caches superseded by a newer one of the same family
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-        run: |
-          set -euo pipefail
-          gh cache list --ref refs/heads/develop --key v0-rust- --limit 1000 --json id,key,createdAt \
-            | jq -r 'group_by(.key | sub("-[0-9a-f]{8}-[0-9a-f]{8}$"; ""))
-                     | map(sort_by(.createdAt) | reverse | .[1:][])
-                     | .[] | "\(.id) \(.key)"' \
-            | while read -r id key; do
-                echo "deleting $key"
-                gh cache delete "$id"
-              done
+        run: bash scripts/prune-rust-caches.sh superseded

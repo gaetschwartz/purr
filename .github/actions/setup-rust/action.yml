@@ -1,6 +1,7 @@
 name: Set up Rust
 description: >
-  Install the Rust toolchain that CI is pinned to, and make it the only one installed.
+  Install the Rust toolchain that CI is pinned to, make it the only one installed, and optionally
+  restore the Rust build cache. A job that saves the cache ends with prune-rust-cache.
   The version is bumped here and nowhere else.
 inputs:
   toolchain:
@@ -14,6 +15,24 @@ inputs:
     description: Comma-separated components to add. The hosted images ship both defaults with their own toolchain, which the pinned install replaces.
     required: false
     default: clippy,rustfmt
+  cache:
+    description: "true: restore the Rust build cache"
+    required: false
+    default: "false"
+  cache-key:
+    description: Extra rust-cache key, to tell apart the configurations of one job
+    required: false
+  cache-save:
+    description: "true: the job saves the cache when it succeeds without an exact hit. It is rust-cache's save-if, and what prune-rust-cache acts on."
+    required: false
+    default: "false"
+  cache-workspaces:
+    description: rust-cache workspaces, `<workspace> -> <target>`
+    required: false
+outputs:
+  cache-hit:
+    description: "true when rust-cache found an exact match"
+    value: ${{ steps.cache.outputs.cache-hit }}
 runs:
   using: composite
   steps:
@@ -38,7 +57,28 @@ runs:
         rustup toolchain list --quiet | tr -d '\r' | while read -r installed; do
           case "$installed" in
             "$TOOLCHAIN"-*) ;;
-            *) rustup toolchain uninstall "$installed" ;;
+            *) rustup toolchain uninstall "$installed" || echo "::warning::could not uninstall $installed, so the Rust cache keys depend on it" ;;
           esac
         done
         rustup toolchain list
+
+    - name: Restore the Rust cache
+      id: cache
+      if: inputs.cache == 'true'
+      uses: Swatinem/rust-cache@v2.9.3
+      with:
+        key: ${{ inputs.cache-key }}
+        workspaces: ${{ inputs.cache-workspaces }}
+        save-if: ${{ inputs.cache-save }}
+
+    - name: Remember the cache family for pruning
+      if: inputs.cache == 'true'
+      shell: bash
+      env:
+        CACHE_KEY: ${{ inputs.cache-key }}
+        CACHE_SAVE: ${{ inputs.cache-save }}
+      run: |
+        {
+          echo "PURR_RUST_CACHE_KEY=$CACHE_KEY"
+          echo "PURR_RUST_CACHE_SAVE=$CACHE_SAVE"
+        } >> "$GITHUB_ENV"
