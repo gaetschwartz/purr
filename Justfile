@@ -167,6 +167,10 @@ trigger-build:
 release version *ARGS:
     uv run scripts/release.py {{version}} {{ARGS}}
 
+# Regenerate the third-party licence list shown on the app's Licenses page (needs cargo-about)
+licenses:
+    uv run scripts/generate-licenses.py
+
 [macos]
 _cn *ARGS:
     @echo "{{BLUE}}[INFO]{{NC}} Running tests with Metal support..."

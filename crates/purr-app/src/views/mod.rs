@@ -4,6 +4,7 @@ pub mod about;
 pub mod history;
 pub mod history_item;
 pub mod home;
+pub mod licenses;
 pub mod logs;
 pub mod models;
 pub mod not_found;

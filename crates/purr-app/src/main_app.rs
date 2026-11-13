@@ -3,8 +3,8 @@
 use crate::platform::logging::apply_saved_log_level;
 use crate::settings_store::use_settings;
 use crate::views::{
-    history::History, history_item::HistoryItem, home::Home, logs::Logs, models::Models,
-    not_found::NotFound, settings::Settings, shell::Shell,
+    history::History, history_item::HistoryItem, home::Home, licenses::Licenses, logs::Logs,
+    models::Models, not_found::NotFound, settings::Settings, shell::Shell,
 };
 use dioxus::prelude::*;
 use purr_common::history::entry::HistoryId;
@@ -24,6 +24,8 @@ pub enum Route {
         Models {},
         #[route("/settings")]
         Settings {},
+        #[route("/settings/licenses")]
+        Licenses {},
         #[route("/settings/logs")]
         Logs {},
         #[route("/:..segments")]
@@ -48,7 +50,7 @@ impl NavSection {
             Route::Home {} => Some(Self::Transcribe),
             Route::History {} | Route::HistoryItem { .. } => Some(Self::History),
             Route::Models {} => Some(Self::Models),
-            Route::Settings {} => Some(Self::Settings),
+            Route::Settings {} | Route::Licenses {} => Some(Self::Settings),
             Route::Logs {} => Some(Self::Logs),
             Route::NotFound { .. } => None,
         }
@@ -87,6 +89,10 @@ mod tests {
             NavSection::of(&Route::Settings {}),
             Some(NavSection::Settings)
         );
+        assert_eq!(
+            NavSection::of(&Route::Licenses {}),
+            Some(NavSection::Settings)
+        );
         assert_eq!(NavSection::of(&Route::NotFound { segments: vec![] }), None);
     }
 
@@ -95,6 +101,10 @@ mod tests {
         assert_eq!("/history".parse::<Route>().ok(), Some(Route::History {}));
         assert_eq!("/models".parse::<Route>().ok(), Some(Route::Models {}));
         assert_eq!("/settings/logs".parse::<Route>().ok(), Some(Route::Logs {}));
+        assert_eq!(
+            "/settings/licenses".parse::<Route>().ok(),
+            Some(Route::Licenses {})
+        );
         assert_eq!(
             "/history/0d6c-41af".parse::<Route>().ok(),
             HistoryId::parse("0d6c-41af")
