@@ -20,7 +20,7 @@ impl Badge {
     }
 }
 
-/// One line of the panel: a backend, the device it uses or why it cannot run, and its badge.
+/// One line of the panel: a backend, what it found, and its badge.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SystemRow {
     pub backend: &'static str,
