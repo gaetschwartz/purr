@@ -8,6 +8,7 @@ use crate::{
     shortcuts::{Key, KeyChord, Shortcut, use_shortcut},
     transcribe::session::use_transcribe_session,
     views::{
+        about::{AboutSheet, version},
         settings::{dialog::SettingsDialogView, dialog_handle::use_settings_dialog},
         settings_load_banner::SettingsLoadBanner,
         shortcuts_sheet::ShortcutsSheet,
@@ -82,6 +83,7 @@ pub fn Shell() -> Element {
     let navigator = use_navigator();
     let settings_dialog = use_settings_dialog();
     let mut keys_open = use_signal(|| false);
+    let mut about_open = use_signal(|| false);
     let mut main_area = use_signal(|| None::<Rc<MountedData>>);
 
     use_shortcut(
@@ -158,8 +160,18 @@ pub fn Shell() -> Element {
                     NavLink { key: "{section:?}", section, current }
                 }
                 div { class: "side-foot",
+                    span { class: "side-version", "{version()}" }
                     button {
-                        class: "side-cog",
+                        class: "side-icon",
+                        r#type: "button",
+                        aria_label: "About Purr",
+                        title: "About Purr",
+                        aria_haspopup: "dialog",
+                        onclick: move |_| about_open.set(true),
+                        Icon { name: IconName::Info }
+                    }
+                    button {
+                        class: "side-icon",
                         r#type: "button",
                         aria_label: "Settings",
                         title: "Settings",
@@ -194,6 +206,9 @@ pub fn Shell() -> Element {
         }
         if settings_dialog.is_open() {
             SettingsDialogView {}
+        }
+        if about_open() {
+            AboutSheet { on_close: move |()| about_open.set(false) }
         }
         if keys_open() {
             ShortcutsSheet { on_close: move |()| keys_open.set(false) }

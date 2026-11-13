@@ -1,22 +1,54 @@
-use dioxus::prelude::*;
+use crate::utils::delay::sleep;
+use dioxus::{core::spawn_forever, prelude::*};
+use std::time::Duration;
+
+/// How long a closed layer stays on screen to play its exit animation.
+const EXIT: Duration = Duration::from_millis(220);
+
+#[derive(Clone, PartialEq)]
+struct Layer {
+    id: String,
+    view: Element,
+    closing: bool,
+}
 
 /// The overlay stack: popovers and sheets render here, inside `.app`, whatever component opened them.
 #[derive(Clone, Copy)]
 pub struct LayerHost {
-    layers: Signal<Vec<(String, Element)>>,
+    layers: Signal<Vec<Layer>>,
 }
 
 impl LayerHost {
     fn put(mut self, id: &str, view: Element) {
         let mut layers = self.layers.write();
-        match layers.iter_mut().find(|(existing, _)| existing == id) {
-            Some(entry) => entry.1 = view,
-            None => layers.push((id.to_owned(), view)),
+        match layers.iter_mut().find(|layer| layer.id == id) {
+            Some(layer) => {
+                layer.view = view;
+                layer.closing = false;
+            }
+            None => layers.push(Layer {
+                id: id.to_owned(),
+                view,
+                closing: false,
+            }),
         }
     }
 
     fn remove(mut self, id: &str) {
-        self.layers.write().retain(|(existing, _)| existing != id);
+        {
+            let mut layers = self.layers.write();
+            let Some(layer) = layers.iter_mut().find(|layer| layer.id == id) else {
+                return;
+            };
+            layer.closing = true;
+        }
+        let id = id.to_owned();
+        spawn_forever(async move {
+            sleep(EXIT).await;
+            self.layers
+                .write()
+                .retain(|layer| !(layer.id == id && layer.closing));
+        });
     }
 }
 
@@ -33,8 +65,12 @@ pub fn LayerOutlet() -> Element {
     let host = use_context::<LayerHost>();
     let layers = host.layers.read().clone();
     rsx! {
-        for (id , view) in layers {
-            Fragment { key: "{id}", {view} }
+        for layer in layers {
+            div {
+                key: "{layer.id}",
+                class: if layer.closing { "layer-wrap exit" } else { "layer-wrap" },
+                {layer.view}
+            }
         }
     }
 }
@@ -134,7 +170,8 @@ if (root) {{
       }}
     }}
   }});
-  const parent = root.parentNode;
+  const wrap = root.closest('.layer-wrap');
+  const parent = wrap ? wrap.parentNode : root.parentNode;
   if (parent) {{
     const watcher = new MutationObserver(() => {{
       if (root.isConnected) return;

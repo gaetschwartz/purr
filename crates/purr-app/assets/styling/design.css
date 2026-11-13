@@ -169,9 +169,10 @@ h1[tabindex="-1"]:focus{outline:none}
 .nav-item:hover{background:var(--fill-hover)}
 .nav-item[aria-current="page"]{background:var(--accent-soft-2);color:var(--accent-text)}
 .nav-item[aria-current="page"] svg{color:var(--accent-text)}
-.side-foot{margin-top:auto;display:flex;justify-content:flex-end;padding-top:6px}
-.side-cog{display:grid;place-items:center;width:36px;height:36px;border-radius:10px;color:var(--fg-2);transition:background .2s}
-.side-cog:hover{background:var(--fill-hover)}
+.side-foot{margin-top:auto;display:flex;align-items:center;gap:2px;padding-top:6px}
+.side-version{margin-right:auto;padding:0 10px;font-size:12px;color:var(--fg-3);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.side-icon{display:grid;place-items:center;width:36px;height:36px;border-radius:10px;color:var(--fg-2);flex:none;transition:background .2s}
+.side-icon:hover{background:var(--fill-hover)}
 
 .main{position:relative;min-width:0;min-height:0;display:flex;flex-direction:column}
 .scroller{flex:1;overflow-y:auto;overflow-x:hidden;min-height:0;scroll-behavior:smooth;overscroll-behavior:contain}
@@ -360,6 +361,14 @@ kbd{font-family:var(--font);font-size:12px;font-weight:600;padding:2px 7px;borde
   overflow:hidden;transform-origin:top left;animation:popin .38s var(--ease-spring)}
 .popover:not([data-placed]){visibility:hidden;animation:none}
 @keyframes popin{from{opacity:0;transform:scale(.94) translateY(-4px)}to{opacity:1;transform:none}}
+@keyframes popout{to{opacity:0;transform:scale(.96) translateY(-2px)}}
+@keyframes sheetout{to{opacity:0;transform:translateY(10px) scale(.98)}}
+@keyframes fadeout{to{opacity:0}}
+.layer-wrap{display:contents}
+.layer-wrap.exit{pointer-events:none}
+.layer-wrap.exit .scrim{animation:fadeout .2s ease forwards}
+.layer-wrap.exit .popover{animation:popout .14s ease-in forwards}
+.layer-wrap.exit .sheet,.layer-wrap.exit .pdlg{animation:sheetout .2s ease-in forwards}
 .popover>.pscroll{flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;padding:6px;display:flex;flex-direction:column}
 .popover>.pscroll>*{flex:none}
 .popover>.pscroll::-webkit-scrollbar{width:10px}
@@ -435,8 +444,9 @@ details>.preview{margin:8px 0 0;font-family:var(--font)}
   .side-brand{padding:4px 0 16px}
   .side-brand b,.nav-item .nav-text{position:absolute!important;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
   .nav-item{width:44px;height:40px;padding:0;justify-content:center}
-  .side-foot{justify-content:center}
-  .side-cog{width:44px;height:40px}
+  .side-foot{flex-direction:column;justify-content:center}
+  .side-version{display:none}
+  .side-icon{width:44px;height:40px}
   .content{padding:24px 24px 40px}
 }
 @container app (max-width:720px){

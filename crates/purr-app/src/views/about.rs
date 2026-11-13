@@ -37,7 +37,7 @@ pub fn AboutSheet(on_close: EventHandler<()>) -> Element {
     let version = version();
     rsx! {
         Sheet {
-            title: "About Purr",
+            title: "About",
             on_close,
             actions: rsx! {
                 Button {
@@ -52,7 +52,7 @@ pub fn AboutSheet(on_close: EventHandler<()>) -> Element {
                     variant: ButtonVariant::Primary,
                     autofocus: true,
                     onclick: move |_| on_close.call(()),
-                    "Done"
+                    "Close"
                 }
             },
             div { class: "about-id",
