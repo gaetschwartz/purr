@@ -9,7 +9,7 @@ use purr_core::accel::{
 
 use crate::cli::RuntimeCommands;
 
-pub fn handle_runtime_command(command: RuntimeCommands) -> miette::Result<()> {
+pub fn handle_runtime_command(command: &RuntimeCommands) -> miette::Result<()> {
     let env = Environment::current();
     match command {
         RuntimeCommands::Path => {

@@ -13,12 +13,12 @@ mod theme;
 mod trace;
 mod vt;
 
-use crate::fmt::{MyFormatter, Verbosity, VerbosityLevel};
-use clap::Parser as _;
+use crate::color::Stream;
+use crate::fmt::{MyFormatter, VerbosityLevel};
+use crate::theme::{Role, Themed as _};
 use cli::{ASCII_ART, Cli, Commands, OutputFormat, TranscriptionConfigWithCliExt};
 use indicatif::{HumanBytes, HumanDuration};
 use miette::IntoDiagnostic as _;
-use owo_colors::OwoColorize as _;
 use purr_common::platform::ChunkKind;
 use purr_core::model::registry::ModelSpec;
 use purr_core::model::vad_or_none;
@@ -45,9 +45,8 @@ shadow!(build);
 
 #[tokio::main]
 async fn main() -> miette::Result<()> {
-    // Initialize tracing subscriber
     if let Err(e) = main_impl().await {
-        println!("{}: {}", "Error".red().bold(), e);
+        scope::on_stderr(|| eprintln!("{}: {}", "Error".error(), e));
         drop(e);
         process::exit(1);
     }
@@ -55,16 +54,16 @@ async fn main() -> miette::Result<()> {
 }
 
 async fn main_impl() -> miette::Result<()> {
-    let cli = Cli::parse();
+    let cli = global::init(Cli::from_env());
 
     // Setup logging
-    setup_tracing(&cli)?;
+    setup_tracing(cli)?;
     debug!("Command line arguments: {:?}", cli);
     install_logging_hooks();
 
     // Handle subcommands
-    if let Some(command) = cli.command {
-        return handle_command(command, cli.verbosity).await;
+    if let Some(command) = &cli.command {
+        return handle_command(command).await;
     }
 
     // Handle transcription (original behavior)
@@ -81,10 +80,7 @@ async fn main_impl() -> miette::Result<()> {
     let is_path = is_file_path(&audio_input);
 
     if !is_url && !is_path {
-        error!(
-            "Invalid input: '{}'. Please provide a valid file path or URL.",
-            audio_input.bold()
-        );
+        error!("Invalid input: '{audio_input}'. Please provide a valid file path or URL.");
         process::exit(1);
     }
 
@@ -92,22 +88,22 @@ async fn main_impl() -> miette::Result<()> {
     if is_path {
         let path = std::path::Path::new(&audio_input);
         if !path.exists() {
-            error!("Audio file not found: {}", path.display().bold());
+            error!("Audio file not found: {}", path.display());
             process::exit(1);
         }
     }
 
     // Display input type
     if is_url {
-        info!("Input: {} (URL)", audio_input.cyan());
+        info!("Input: {audio_input} (URL)");
     } else {
-        info!("Input: {} (file)", audio_input.cyan());
+        info!("Input: {audio_input} (file)");
     }
 
-    let config = setup_config(&cli).await?;
+    let config = setup_config(cli).await?;
 
     // Print startup info
-    info!("{}", "Whisper UI - Audio Transcription".blue().bold());
+    info!("Whisper UI - Audio Transcription");
     if let Some(lang) = &config.language {
         info!("Language: {lang}");
     }
@@ -125,7 +121,7 @@ async fn main_impl() -> miette::Result<()> {
                 .into_diagnostic()?
         };
 
-        handle_output(result, &cli)?;
+        handle_output(result, cli)?;
     } else {
         info!("Streaming transcription...");
 
@@ -141,16 +137,18 @@ async fn main_impl() -> miette::Result<()> {
         };
 
         // Process streaming results
-        handle_streaming_output(stream, &cli).await?;
+        handle_streaming_output(stream, cli).await?;
     }
 
     Ok(())
 }
 
 fn setup_tracing(cli: &Cli) -> Result<(), miette::Error> {
+    let ansi = global::colors().enabled(Stream::Stderr);
     match *cli.verbosity.verbose {
         VerbosityLevel::DEBUG_VALUE.. => {
             tracing_subscriber::fmt()
+                .with_ansi(ansi)
                 .with_env_filter(
                     EnvFilter::builder()
                         .with_default_directive(Level::TRACE.into())
@@ -163,6 +161,7 @@ fn setup_tracing(cli: &Cli) -> Result<(), miette::Error> {
         }
         VerbosityLevel::VERBOSE_VALUE => {
             tracing_subscriber::fmt()
+                .with_ansi(ansi)
                 .with_timer(Uptime::default())
                 .event_format(MyFormatter::new(cli.verbosity))
                 .with_writer(io::stderr)
@@ -170,6 +169,7 @@ fn setup_tracing(cli: &Cli) -> Result<(), miette::Error> {
         }
         VerbosityLevel::NORMAL_VALUE => {
             tracing_subscriber::fmt()
+                .with_ansi(ansi)
                 .event_format(MyFormatter::new(cli.verbosity))
                 .with_writer(io::stderr)
                 .init();
@@ -197,7 +197,7 @@ async fn handle_streaming_output(
         let chunk = match event? {
             StreamEvent::Progress(progress) => {
                 if cli.progress {
-                    eprint!("\r{}", progress::line(&progress));
+                    scope::on_stderr(|| eprint!("\r{}", progress::line(&progress).muted()));
                     progress_shown = true;
                 }
                 continue;
@@ -267,14 +267,16 @@ async fn handle_streaming_output(
         if let Some(ref stats) = chunk.final_stats {
             // Display statistics after processing is complete
             if cli.verbosity.is_verbose() {
-                eprintln!();
-                eprintln!("{}", "Streaming Transcription Statistics:".green().bold());
-                eprintln!("Audio duration: {:.2}s", stats.audio_duration);
-                eprintln!("Processing time: {:.2}s", stats.processing_time);
-                eprintln!("Real-time factor: {:.2}x", stats.real_time_factor());
-                eprintln!("Segments: {}", stats.segment_count);
-                eprintln!("Words: {}", stats.word_count);
-                eprintln!("Words per minute: {:.1}", stats.words_per_minute());
+                scope::on_stderr(|| {
+                    eprintln!();
+                    eprintln!("{}", "Streaming Transcription Statistics:".heading());
+                    eprintln!("Audio duration: {:.2}s", stats.audio_duration);
+                    eprintln!("Processing time: {:.2}s", stats.processing_time);
+                    eprintln!("Real-time factor: {:.2}x", stats.real_time_factor());
+                    eprintln!("Segments: {}", stats.segment_count);
+                    eprintln!("Words: {}", stats.word_count);
+                    eprintln!("Words per minute: {:.1}", stats.words_per_minute());
+                });
             }
         }
     }
@@ -287,11 +289,7 @@ async fn handle_streaming_output(
     if let Some(output_file) = &cli.output_file {
         fs::write(output_file, &output_buffer).into_diagnostic()?;
         if cli.verbosity.is_verbose() {
-            info!(
-                "\n{} Streaming output written to: {}",
-                "Success:".green().bold(),
-                output_file.display()
-            );
+            info!("\nStreaming output written to: {}", output_file.display());
         }
     } else {
         println!(); // Final newline for stdout
@@ -319,25 +317,25 @@ async fn prompt_for_model_download(
         println!();
         println!(
             "{} Model {} is not downloaded!",
-            "Notice:".yellow().bold(),
-            model.id.green().bold()
+            "Notice:".warning(),
+            model.id.name()
         );
     } else {
         println!();
-        println!("{} No Whisper model found!", "Notice:".yellow().bold());
+        println!("{} No Whisper model found!", "Notice:".warning());
         println!("To transcribe audio, you need to download a Whisper model first.");
         println!();
         println!(
             "The {} model is recommended for most users:",
-            model_manager.registry().default_model().id.green().bold()
+            model_manager.registry().default_model().id.name()
         );
     }
     let model = model.unwrap_or_else(|| model_manager.registry().default_model());
-    println!("  • {}", model.description.green());
-    println!("  • Size: {}", HumanBytes(model.file.size_bytes).yellow());
+    println!("  • {}", model.description.muted());
+    println!("  • Size: {}", HumanBytes(model.file.size_bytes).quantity());
     println!(
         "  • Download time: {}",
-        HumanDuration(model.estimated_download_time(64u32 * ByteSpeed::MIBPS)).yellow()
+        HumanDuration(model.estimated_download_time(64u32 * ByteSpeed::MIBPS)).quantity()
     );
     println!();
 
@@ -356,19 +354,15 @@ async fn prompt_for_model_download(
 
     if should_download {
         println!();
-        println!(
-            "{} Downloading {} model...",
-            "Info:".blue().bold(),
-            model.id
-        );
+        println!("{} Downloading {} model...", "Info:".info(), model.id);
 
         match model_manager.download_model(model, None).await {
             Ok(model_path) => {
                 models::ensure_vad(model_manager).await;
                 println!(
                     "{} Model downloaded successfully to: {}",
-                    "Success:".green().bold(),
-                    model_path.display()
+                    "Success:".success(),
+                    model_path.display().path()
                 );
                 println!();
                 Ok(Some(model_path))
@@ -382,25 +376,24 @@ async fn prompt_for_model_download(
         println!();
         println!("Model download cancelled. You can download a model later with:");
         println!(
-            "  {}{}",
-            env!("CARGO_PKG_NAME").cyan(),
-            " models download <model>".cyan()
+            "  {}",
+            format_args!("{} models download <model>", env!("CARGO_PKG_NAME")).command()
         );
         Ok(None)
     }
 }
 
 /// Handle subcommands
-async fn handle_command(command: Commands, verbosity: Verbosity) -> miette::Result<()> {
+async fn handle_command(command: &Commands) -> miette::Result<()> {
     match command {
-        Commands::Models { command } => models::handle_model_command(command, verbosity).await,
-        Commands::Sys { json } => handle_sys_command(verbosity, json).await,
+        Commands::Models { command } => models::handle_model_command(command).await,
+        Commands::Sys { json } => handle_sys_command(*json),
         Commands::Runtime { command } => runtime::handle_runtime_command(command),
     }
 }
 
 /// Handle system subcommands
-async fn handle_sys_command(_verbosity: Verbosity, json: bool) -> miette::Result<()> {
+fn handle_sys_command(json: bool) -> miette::Result<()> {
     let sys = SystemInfo::get();
 
     if json {
@@ -408,30 +401,31 @@ async fn handle_sys_command(_verbosity: Verbosity, json: bool) -> miette::Result
         return Ok(());
     }
 
-    fn feature_status(backend: AccelBackend, feature: &FeatureStatus) -> String {
+    fn feature_status(
+        backend: AccelBackend,
+        feature: &FeatureStatus,
+    ) -> theme::Painted<Cow<'static, str>> {
         match feature {
-            FeatureStatus::Disabled => "Not built".yellow().to_string(),
+            FeatureStatus::Disabled => Role::Caution.paint(Cow::Borrowed("Not built")),
             FeatureStatus::RuntimeLibraryMissing { library, .. } => {
                 let hint = backend
                     .runtime_library_hint()
                     .map(|hint| format!("; {hint}"))
                     .unwrap_or_default();
-                format!("Built, but the runtime library {library} cannot be loaded{hint}")
-                    .red()
-                    .to_string()
+                Role::Negative.paint(Cow::Owned(format!(
+                    "Built, but the runtime library {library} cannot be loaded{hint}"
+                )))
             }
             FeatureStatus::EnabledButNotAvailable => {
-                "Built, but no usable device".red().to_string()
+                Role::Negative.paint(Cow::Borrowed("Built, but no usable device"))
             }
-            FeatureStatus::Available(_) => "Available".green().to_string(),
+            FeatureStatus::Available(_) => Role::Positive.paint(Cow::Borrowed("Available")),
         }
     }
 
     println!(
         "{}",
-        "Acceleration backends (default priority order, best first):"
-            .blue()
-            .bold()
+        "Acceleration backends (default priority order, best first):".heading()
     );
     println!();
     let longest = AccelBackend::DEFAULT_PRIORITY
@@ -451,17 +445,17 @@ async fn handle_sys_command(_verbosity: Verbosity, json: bool) -> miette::Result
             feature_status(*backend, status)
         );
         if let FeatureStatus::RuntimeLibraryMissing { searched, .. } = status {
-            println!("    {}", runtime::searched_summary(searched).dimmed());
+            println!("    {}", runtime::searched_summary(searched).muted());
         }
     }
     println!();
 
-    println!("{}", "Devices:".blue().bold());
+    println!("{}", "Devices:".heading());
     println!();
 
     if sys.devices.is_empty() {
-        warn!("{} No devices found.", "Info:".blue().bold());
-        warn!("{} To enable GPU support, ensure:", "Info:".blue().bold());
+        warn!("No devices found.");
+        warn!("To enable GPU support, ensure:");
         warn!("  • Vulkan drivers are installed");
         warn!("  • Compatible GPU hardware is available");
         warn!("  • Vulkan feature is enabled (use --features vulkan)");
@@ -474,7 +468,7 @@ async fn handle_sys_command(_verbosity: Verbosity, json: bool) -> miette::Result
                 .collect();
             let mut lines = sys_report::device_lines(device, &picked_for).into_iter();
             if let Some(headline) = lines.next() {
-                println!("{}", headline.green());
+                println!("{}", headline.name());
             }
             for line in lines {
                 println!("{line}");
@@ -483,11 +477,11 @@ async fn handle_sys_command(_verbosity: Verbosity, json: bool) -> miette::Result
         }
     }
 
-    println!("{}", "CPU:".blue().bold());
+    println!("{}", "CPU:".heading());
     println!();
     let mut lines = sys_report::cpu_lines(&sys.cpu).into_iter();
     if let Some(headline) = lines.next() {
-        println!("{}", headline.green());
+        println!("{}", headline.name());
     }
     for line in lines {
         println!("{line}");
@@ -629,8 +623,8 @@ fn handle_output(result: purr_core::SyncTranscriptionResult, cli: &Cli) -> miett
         if cli.verbosity.is_verbose() {
             println!(
                 "{} Output written to: {}",
-                "Success:".green().bold(),
-                output_file.display()
+                "Success:".success(),
+                output_file.display().path()
             );
         }
     } else {
@@ -640,7 +634,7 @@ fn handle_output(result: purr_core::SyncTranscriptionResult, cli: &Cli) -> miett
     // Print statistics
     if cli.verbosity.is_verbose() {
         println!();
-        println!("{}", "Transcription Statistics:".green().bold());
+        println!("{}", "Transcription Statistics:".heading());
         println!("Audio duration: {:.2}s", result.stats.audio_duration);
         println!("Processing time: {:.2}s", result.stats.processing_time);
         println!("Real-time factor: {:.2}x", result.stats.real_time_factor());
