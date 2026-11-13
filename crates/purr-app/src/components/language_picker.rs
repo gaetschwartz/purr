@@ -4,6 +4,7 @@ use super::{
     pick_target::PickTarget,
     pill::Pill,
     popover::{OptionRole, PopoverOption},
+    presence::Presence,
 };
 use crate::utils::primary_key::use_primary_key_label;
 use crate::{
@@ -41,53 +42,37 @@ pub fn LanguagePill(
             settings.model.model_name.clone(),
         )
     });
-    let Some(selected) = saved else {
-        return rsx! {
-            Pill {
-                id: id.clone(),
-                icon: IconName::Globe,
-                label: "Spoken language",
-                value: "Last used",
-                detail: None::<String>,
-                hint: None::<String>,
-                expanded: open(),
-                disabled,
-                onclick: move |_| open.toggle(),
-            }
-            if open() {
-                LanguagePicker {
-                    anchor: id,
-                    selected: String::new(),
-                    english_only: false,
-                    target,
-                    on_close: move |()| open.set(false),
-                }
-            }
-        };
-    };
     let english_only = target == PickTarget::Current
         && models.find(&model).is_some_and(|info| {
             ModelEntry::from_info(&info).language == ModelLanguage::EnglishOnly
         });
-    let choice = LanguageChoice::from_setting(&selected).for_model(english_only);
-    let (detail, hint) = match (&choice, english_only) {
-        (_, true) => (Some("English only"), None),
-        (LanguageChoice::Automatic, false) => (None, Some(format!("Automatic · {AUTOMATIC_HINT}"))),
-        (LanguageChoice::Spoken(_), false) => (None, None),
+    let (value, detail, hint, selected, english_only) = match saved {
+        None => ("Last used".to_owned(), None, None, String::new(), false),
+        Some(selected) => {
+            let choice = LanguageChoice::from_setting(&selected).for_model(english_only);
+            let (detail, hint) = match (&choice, english_only) {
+                (_, true) => (Some("English only".to_owned()), None),
+                (LanguageChoice::Automatic, false) => {
+                    (None, Some(format!("Automatic · {AUTOMATIC_HINT}")))
+                }
+                (LanguageChoice::Spoken(_), false) => (None, None),
+            };
+            (choice.label(), detail, hint, selected, english_only)
+        }
     };
     rsx! {
         Pill {
             id: id.clone(),
             icon: IconName::Globe,
             label: "Spoken language",
-            value: choice.label(),
-            detail: detail.map(str::to_owned),
+            value,
+            detail,
             hint,
             expanded: open(),
             disabled,
             onclick: move |_| open.toggle(),
         }
-        if open() {
+        Presence { present: open(),
             LanguagePicker {
                 anchor: id,
                 selected,
@@ -101,7 +86,7 @@ pub fn LanguagePill(
 
 /// Whisper's languages in a [`ListPicker`] with a search field, anchored on `anchor`.
 ///
-/// Render it only while open. "Automatic" comes first; arrows move through the list from the
+/// Render it inside a [`Presence`] that follows whether it is open. "Automatic" comes first; arrows move through the list from the
 /// search field and Enter picks. Picking saves the setting with `set_language`. With
 /// `english_only` the list is locked to English, because the model knows no other language.
 #[component]

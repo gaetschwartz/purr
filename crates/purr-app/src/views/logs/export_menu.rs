@@ -5,6 +5,7 @@ use crate::{
         icon::{Icon, IconName, IconSize},
         layer::PopoverAlign,
         popover::{Popover, PopoverOption},
+        presence::Presence,
         toast::{Toasts, use_toasts},
     },
     platform::{
@@ -60,7 +61,7 @@ pub fn ExportMenu(entries: Entries) -> Element {
             onclick: move |_| open.toggle(),
             "Export"
         }
-        if open() {
+        Presence { present: open(),
             Popover {
                 anchor: "log-export",
                 label: "Export logs",

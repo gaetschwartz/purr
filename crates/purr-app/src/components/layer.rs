@@ -83,7 +83,11 @@ const root = document.getElementById(id);
 if (root) {{
   const openers = window.__purrLayerOpeners || (window.__purrLayerOpeners = new Map());
   const active = document.activeElement;
-  if (active && !root.contains(active)) openers.set(id, active);
+  if (active && !root.contains(active)) {{
+    const holder = active.closest('.layer');
+    const behind = holder && openers.get(holder.id);
+    openers.set(id, {{ el: active, fallback: behind && behind.el }});
+  }}
   const pop = root.querySelector('.popover');
   const frame = root.closest('.app');
   const anchor = anchorId ? document.getElementById(anchorId) : null;
@@ -134,27 +138,31 @@ if (root) {{
       }}
     }}
   }});
+  const usable = (el) => el && el.isConnected && !el.closest('[inert]');
+  const restoreFocus = (final) => {{
+    const entry = openers.get(id);
+    if (final) openers.delete(id);
+    const focus = document.activeElement;
+    const lost = !focus || focus === document.body || !focus.isConnected || root.contains(focus);
+    const target = entry && [entry.el, entry.fallback].find(usable);
+    if (target && lost) target.focus({{ preventScroll: true }});
+  }};
+  const closing = new MutationObserver(() => {{
+    if (root.hasAttribute('inert')) {{
+      restoreFocus(false);
+      return;
+    }}
+    const next = root.querySelector('[autofocus]') || focusables()[0] || root.querySelector('[role=dialog]');
+    if (next) next.focus({{ preventScroll: true }});
+  }});
+  closing.observe(root, {{ attributes: true, attributeFilter: ['inert'] }});
   const parent = root.parentNode;
   if (parent) {{
-    const watcher = new MutationObserver((records) => {{
+    const watcher = new MutationObserver(() => {{
       if (root.isConnected) return;
       watcher.disconnect();
-      if (records.some((record) => [...record.removedNodes].includes(root))) {{
-        const ghost = root.cloneNode(true);
-        for (const el of [ghost, ...ghost.querySelectorAll('[id],[data-dioxus-id]')]) {{
-          el.removeAttribute('id');
-          el.removeAttribute('data-dioxus-id');
-        }}
-        ghost.setAttribute('inert', '');
-        ghost.classList.add('exit');
-        parent.appendChild(ghost);
-        setTimeout(() => ghost.remove(), 240);
-      }}
-      const opener = openers.get(id);
-      openers.delete(id);
-      const focus = document.activeElement;
-      const lost = !focus || focus === document.body || !focus.isConnected;
-      if (opener && opener.isConnected && lost) opener.focus({{ preventScroll: true }});
+      closing.disconnect();
+      restoreFocus(true);
     }});
     watcher.observe(parent, {{ childList: true }});
   }}
@@ -164,6 +172,8 @@ if (root) {{
 }
 
 /// The scrim, focus trap, Escape handling and anchoring shared by popovers and sheets.
+///
+/// While `closing` it is inert and plays its exit animation.
 #[component]
 pub fn LayerFrame(
     dom_id: String,
@@ -171,17 +181,21 @@ pub fn LayerFrame(
     anchor: Option<String>,
     #[props(default)] align: PopoverAlign,
     on_close: EventHandler<()>,
+    #[props(default)] closing: bool,
     children: Element,
 ) -> Element {
-    let class = match kind {
-        LayerKind::Popover => "layer pop",
-        LayerKind::Sheet => "layer",
+    let class = match (kind, closing) {
+        (LayerKind::Popover, false) => "layer pop",
+        (LayerKind::Popover, true) => "layer pop exit",
+        (LayerKind::Sheet, false) => "layer",
+        (LayerKind::Sheet, true) => "layer exit",
     };
     let script = behaviour_script(&dom_id, anchor.as_deref(), align);
     rsx! {
         div {
             id: dom_id,
             class,
+            inert: closing.then_some("true"),
             onmounted: move |_| {
                 let script = script.clone();
                 spawn(async move {

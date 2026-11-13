@@ -10,6 +10,7 @@ use crate::{
         model_more::ModelMore,
         model_section::ModelSection,
         page::Page,
+        presence::Presence,
         spinner::Spinner,
     },
     hooks::use_models::{GpuSupport, ModelsHandle, use_models},
@@ -60,6 +61,9 @@ fn Catalog(models: ModelsHandle, rows: Vec<ModelRow>, selected: Option<String>) 
     let listing = build_listing(&rows, &query.read());
     let open_more = listing.shows_more(&query.read(), selected.as_deref());
     let nothing_matches = listing.is_empty();
+    let doomed = delete_target()
+        .and_then(|target| rows.iter().find(|row| row.entry.id == target))
+        .cloned();
     let Listing {
         in_progress,
         groups: sections,
@@ -121,15 +125,15 @@ fn Catalog(models: ModelsHandle, rows: Vec<ModelRow>, selected: Option<String>) 
                 on_delete: move |id| delete_target.set(Some(id)),
             }
         }
-        if let Some(target) = delete_target() {
-            if let Some(row) = rows.iter().find(|row| row.entry.id == target) {
+        Presence { present: doomed.is_some(),
+            if let Some(row) = doomed {
                 Dialog {
                     title: "Delete {row.entry.label}?",
                     confirm_label: "Delete model",
                     tone: DialogTone::Destructive,
                     on_cancel: move |()| delete_target.set(None),
                     on_confirm: {
-                        let id = target.clone();
+                        let id = row.entry.id.clone();
                         move |()| {
                             delete_target.set(None);
                             models.remove(&id);

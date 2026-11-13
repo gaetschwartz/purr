@@ -7,6 +7,7 @@ use super::{
     model_check::ModelCheck,
     model_download::ModelDownload,
     popover::{Popover, PopoverOption},
+    presence::Presence,
 };
 use crate::{
     components::toast::use_toasts,
@@ -62,64 +63,66 @@ pub fn ModelListRow(
             aria_expanded: "{menu_open()}",
             onclick: move |_| menu_open.set(!menu_open()),
         }
-        if menu_open() {
-            Popover {
-                anchor,
-                label: "Actions for {label}",
-                menu: true,
-                on_close: move |()| menu_open.set(false),
-                if !is_default && !disabled {
-                    PopoverOption {
-                        title: "Set as default",
-                        leading: rsx! {
-                            Icon { name: IconName::Check, size: IconSize::Small }
-                        },
-                        onselect: {
-                            let id = id.clone();
-                            let label = label.clone();
-                            move |()| {
-                                menu_open.set(false);
-                                match settings.set_default_model(Some(id.clone())) {
-                                    Ok(()) => {
-                                        toasts.success("Default model set", label.clone());
-                                    }
-                                    Err(error) => {
-                                        toasts.error("Couldn't set the default", error.to_string());
+        Presence { present: menu_open(),
+            if menu_open() {
+                Popover {
+                    anchor,
+                    label: "Actions for {label}",
+                    menu: true,
+                    on_close: move |()| menu_open.set(false),
+                    if !is_default && !disabled {
+                        PopoverOption {
+                            title: "Set as default",
+                            leading: rsx! {
+                                Icon { name: IconName::Check, size: IconSize::Small }
+                            },
+                            onselect: {
+                                let id = id.clone();
+                                let label = label.clone();
+                                move |()| {
+                                    menu_open.set(false);
+                                    match settings.set_default_model(Some(id.clone())) {
+                                        Ok(()) => {
+                                            toasts.success("Default model set", label.clone());
+                                        }
+                                        Err(error) => {
+                                            toasts.error("Couldn't set the default", error.to_string());
+                                        }
                                     }
                                 }
-                            }
-                        },
+                            },
+                        }
                     }
-                }
-                if can_verify {
+                    if can_verify {
+                        PopoverOption {
+                            title: "Check files",
+                            leading: rsx! {
+                                Icon { name: IconName::Shield, size: IconSize::Small }
+                            },
+                            onselect: {
+                                let id = id.clone();
+                                move |()| {
+                                    menu_open.set(false);
+                                    models.verify(&id);
+                                }
+                            },
+                        }
+                    }
                     PopoverOption {
-                        title: "Check files",
+                        title: "Delete…",
+                        trailing: "{size}",
+                        danger: true,
                         leading: rsx! {
-                            Icon { name: IconName::Shield, size: IconSize::Small }
+                            Icon { name: IconName::Trash, size: IconSize::Small }
                         },
                         onselect: {
                             let id = id.clone();
                             move |()| {
                                 menu_open.set(false);
-                                models.verify(&id);
+                                on_delete.call(id.clone());
                             }
                         },
                     }
-                }
-                PopoverOption {
-                    title: "Delete…",
-                    trailing: "{size}",
-                    danger: true,
-                    leading: rsx! {
-                        Icon { name: IconName::Trash, size: IconSize::Small }
-                    },
-                    onselect: {
-                        let id = id.clone();
-                        move |()| {
-                            menu_open.set(false);
-                            on_delete.call(id.clone());
-                        }
-                    },
                 }
             }
         }

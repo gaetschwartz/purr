@@ -374,7 +374,7 @@ document.addEventListener('keydown', (event) => {
     alt: event.altKey,
     editable: editable(event.target),
     control: control(event.target),
-    modal: !!document.querySelector('.app > .layer'),
+    modal: !!document.querySelector('.app > .layer:not(.exit)'),
   };
   if (press.modal) return;
   const key = event.key.toLowerCase();

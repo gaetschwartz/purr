@@ -5,6 +5,7 @@ use super::{
     pick_target::PickTarget,
     pill::Pill,
     popover::PopoverOption,
+    presence::Presence,
     segmented::{Segment, Segmented},
     spinner::Spinner,
 };
@@ -28,7 +29,7 @@ use purr_common::accel::AccelPolicy;
 
 /// Every model of `use_models()` in a [`ListPicker`], anchored on the element `anchor`.
 ///
-/// Render it only while open. Each model is one line whatever versions of it exist; its versions
+/// Render it inside a [`Presence`] that follows whether it is open. Each model is one line whatever versions of it exist; its versions
 /// (full precision and quantized) sit inside the line as small choices, each marked when it is on
 /// this device. A scope control switches between the downloaded models, where the picker opens
 /// once anything is stored, and all of them; models a newer family replaces wait behind a fold.
@@ -382,46 +383,27 @@ pub fn ModelPill(
         PickTarget::Current => Some(settings.model.model_name.clone()),
         PickTarget::Default => settings.model.default_model.clone(),
     });
-    let Some(saved) = saved else {
-        return rsx! {
-            Pill {
-                id: id.clone(),
-                icon: IconName::Cube,
-                label: "Model",
-                value: "Last used",
-                detail: None::<String>,
-                hint: None::<String>,
-                expanded: open(),
-                disabled,
-                onclick: move |_| open.toggle(),
+    let (value, detail, selected) = match saved {
+        None => ("Last used".to_owned(), None, String::new()),
+        Some(saved) => {
+            let selection = models.selection(&saved);
+            let row = selection
+                .as_ref()
+                .and_then(|selection| selection.row().cloned());
+            match (&selection, row) {
+                (_, Some(row)) => (
+                    if row.entry.speaker_turns {
+                        format!("{} · Speaker turns", row.entry.name)
+                    } else {
+                        row.entry.name.clone()
+                    },
+                    pill_detail(&row),
+                    row.entry.id,
+                ),
+                (None, None) => (saved.clone(), Some("loading…".to_owned()), saved),
+                (Some(_), None) => (saved.clone(), Some("not available".to_owned()), saved),
             }
-            if open() {
-                ModelPicker {
-                    anchor: id,
-                    selected: String::new(),
-                    target,
-                    on_close: move |()| open.set(false),
-                    on_pick,
-                }
-            }
-        };
-    };
-    let selection = models.selection(&saved);
-    let row = selection
-        .as_ref()
-        .and_then(|selection| selection.row().cloned());
-    let (value, detail, selected) = match (&selection, row) {
-        (_, Some(row)) => (
-            if row.entry.speaker_turns {
-                format!("{} · Speaker turns", row.entry.name)
-            } else {
-                row.entry.name.clone()
-            },
-            pill_detail(&row),
-            row.entry.id,
-        ),
-        (None, None) => (saved.clone(), Some("loading…".to_owned()), saved),
-        (Some(_), None) => (saved.clone(), Some("not available".to_owned()), saved),
+        }
     };
     rsx! {
         Pill {
@@ -435,7 +417,7 @@ pub fn ModelPill(
             disabled,
             onclick: move |_| open.toggle(),
         }
-        if open() {
+        Presence { present: open(),
             ModelPicker {
                 anchor: id,
                 selected,

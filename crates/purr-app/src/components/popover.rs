@@ -1,10 +1,11 @@
 use super::layer::{LayerFrame, LayerKind, PopoverAlign, use_layer};
+use super::presence::use_closing;
 use crate::utils::dom_id::use_dom_id;
 use dioxus::prelude::*;
 
 /// A glass popover anchored under the element whose id is `anchor`; a bottom sheet on phones.
 ///
-/// Render it only while open (`if open() { Popover { .. } }`). It traps focus, closes on Escape
+/// Render it inside a [`Presence`](super::presence::Presence) that follows whether it is open, so it can fade out. It traps focus, closes on Escape
 /// and outside clicks through `on_close`, and gives focus back to the opener when it unmounts.
 /// `menu` narrows it for action menus; fill it with [`PopoverOption`] rows. `header` and `footer`
 /// stay put while the children scroll between them. Handlers inside run in the popover's scope, so
@@ -23,6 +24,7 @@ pub fn Popover(
     children: Element,
 ) -> Element {
     let dom_id = use_dom_id("layer");
+    let closing = use_closing();
     let size = match (menu, wide) {
         (true, _) => "popover glass g3 menu",
         (false, true) => "popover glass g3 wide",
@@ -40,6 +42,7 @@ pub fn Popover(
             anchor: Some(anchor),
             align,
             on_close,
+            closing,
             div {
                 class,
                 role: "dialog",

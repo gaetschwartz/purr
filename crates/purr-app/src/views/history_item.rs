@@ -9,6 +9,7 @@ use crate::{
         empty_state::EmptyState,
         icon::IconName,
         page::Page,
+        presence::Presence,
         spinner::Spinner,
     },
     history::{export_source::export_source, store::use_history, wording::language_text},
@@ -202,14 +203,14 @@ fn Entry(record: HistoryRecord, audio: ResultAudio) -> Element {
                 MoreAction::RunAgain | MoreAction::NewTranscription => {}
             },
         }
-        if renaming() {
+        Presence { present: renaming(),
             RenameDialog {
                 id: entry.id.clone(),
                 title: title.clone(),
                 on_close: move |()| renaming.set(false),
             }
         }
-        if deleting() {
+        Presence { present: deleting(),
             DeleteDialog {
                 id: entry.id.clone(),
                 title,

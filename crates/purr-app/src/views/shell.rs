@@ -2,6 +2,7 @@ use crate::{
     components::{
         brand_mark::BrandMark,
         icon::{Icon, IconName},
+        presence::Presence,
     },
     main_app::{NavSection, Route},
     platform::IS_WEB,
@@ -204,13 +205,11 @@ pub fn Shell() -> Element {
                 }
             }
         }
-        if settings_dialog.is_open() {
-            SettingsDialogView {}
-        }
-        if about_open() {
+        Presence { present: settings_dialog.is_open(), SettingsDialogView {} }
+        Presence { present: about_open(),
             AboutSheet { on_close: move |()| about_open.set(false) }
         }
-        if keys_open() {
+        Presence { present: keys_open(),
             ShortcutsSheet { on_close: move |()| keys_open.set(false) }
         }
     }

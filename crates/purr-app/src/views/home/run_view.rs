@@ -14,6 +14,7 @@ use crate::{
         export_menu::ExportSource,
         icon::{Icon, IconName, IconSize},
         model_picker::ModelPicker,
+        presence::Presence,
     },
     history::save_state::SaveState,
     hooks::{use_models::use_models, use_system_probe::use_system_probe},
@@ -335,12 +336,14 @@ pub fn RunView(record: RunRecord) -> Element {
             },
         }
         GlideDriver { input, eta, arrived }
-        if let Some(anchor) = picking() {
-            ModelPicker {
-                anchor,
-                selected: record.model.id.clone(),
-                on_close: move |()| picking.set(None),
-                on_pick: move |entry| session.run_again(entry),
+        Presence { present: picking().is_some(),
+            if let Some(anchor) = picking() {
+                ModelPicker {
+                    anchor,
+                    selected: record.model.id.clone(),
+                    on_close: move |()| picking.set(None),
+                    on_pick: move |entry| session.run_again(entry),
+                }
             }
         }
     }

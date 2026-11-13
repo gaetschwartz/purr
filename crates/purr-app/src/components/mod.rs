@@ -25,6 +25,7 @@ pub mod pages_dialog;
 pub mod pick_target;
 pub mod pill;
 pub mod popover;
+pub mod presence;
 pub mod progress_bar;
 pub mod router_bridge;
 pub mod search_field;

@@ -33,7 +33,7 @@ fn step_for(key: &Key) -> Option<TabStep> {
     }
 }
 
-/// The Settings dialog: the page list and the selected page. Render it while the dialog is open.
+/// The Settings dialog: the page list and the selected page. Render it inside a [`Presence`](crate::components::presence::Presence) that follows whether the dialog is open.
 ///
 /// It closes itself when the route changes under it, as it does when a picker inside sends the
 /// user to another screen.

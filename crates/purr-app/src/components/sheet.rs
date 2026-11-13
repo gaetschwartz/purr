@@ -1,10 +1,11 @@
 use super::layer::{LayerFrame, LayerKind, use_layer};
+use super::presence::use_closing;
 use crate::utils::dom_id::use_dom_id;
 use dioxus::prelude::*;
 
 /// A modal glass sheet centred over the app (pinned to the bottom on phones).
 ///
-/// Render it only while open. It is labelled by its `title`, traps focus, closes on Escape and
+/// Render it inside a [`Presence`](super::presence::Presence) that follows whether it is open, so it can fade out. It is labelled by its `title`, traps focus, closes on Escape and
 /// scrim clicks through `on_close`, and returns focus to the opener. Put an `autofocus` attribute
 /// on the control that should take focus first; otherwise the first focusable one does. Handlers
 /// inside run in the sheet's scope, so work that outlives the sheet must use `spawn_forever`.
@@ -17,6 +18,7 @@ pub fn Sheet(
     children: Element,
 ) -> Element {
     let dom_id = use_dom_id("layer");
+    let closing = use_closing();
     let title_id = format!("{dom_id}-title");
     let class = if wide {
         "sheet glass g3 wide"
@@ -29,6 +31,7 @@ pub fn Sheet(
             kind: LayerKind::Sheet,
             anchor: None,
             on_close,
+            closing,
             div { class: "sheet-wrap",
                 div {
                     class,

@@ -14,6 +14,7 @@ use crate::{
         empty_state::EmptyState,
         icon::IconName,
         page::Page,
+        presence::Presence,
         search_field::SearchField,
         spinner::Spinner,
     },
@@ -78,8 +79,8 @@ pub fn History() -> Element {
     let shown = matching(&listing.summaries, &query());
     let searching = !query().trim().is_empty();
 
-    if total == 0 {
-        return rsx! {
+    let page = if total == 0 {
+        rsx! {
             Page { title: "History", wide: true,
                 UnreadableNotice { unreadable: listing.unreadable.clone() }
                 EmptyState {
@@ -98,57 +99,61 @@ pub fn History() -> Element {
                     },
                 }
             }
-        };
-    }
-
-    rsx! {
-        Page {
-            title: "History",
-            subtitle: transcriptions(total),
-            wide: true,
-            actions: rsx! {
-                div { class: "row wrap",
-                    SearchField {
-                        id: "h-search",
-                        value: query(),
-                        placeholder: "Search history",
-                        label: "Search history",
-                        described_by: "h-count",
-                        style: "width:240px;max-width:100%",
-                        oninput: move |value: String| query.set(value),
+        }
+    } else {
+        rsx! {
+            Page {
+                title: "History",
+                subtitle: transcriptions(total),
+                wide: true,
+                actions: rsx! {
+                    div { class: "row wrap",
+                        SearchField {
+                            id: "h-search",
+                            value: query(),
+                            placeholder: "Search history",
+                            label: "Search history",
+                            described_by: "h-count",
+                            style: "width:240px;max-width:100%",
+                            oninput: move |value: String| query.set(value),
+                        }
+                        Button {
+                            variant: ButtonVariant::Danger,
+                            icon: IconName::Trash,
+                            id: "history-clear",
+                            aria_haspopup: "dialog",
+                            onclick: move |_| clearing.set(true),
+                            "Clear all"
+                        }
                     }
-                    Button {
-                        variant: ButtonVariant::Danger,
-                        icon: IconName::Trash,
-                        id: "history-clear",
-                        aria_haspopup: "dialog",
-                        onclick: move |_| clearing.set(true),
-                        "Clear all"
+                },
+                UnreadableNotice { unreadable: listing.unreadable.clone() }
+                p { class: "sr", id: "h-count", role: "status", aria_live: "polite",
+                    if searching {
+                        "{shown.len()} of {transcriptions(total)} match."
                     }
                 }
-            },
-            UnreadableNotice { unreadable: listing.unreadable.clone() }
-            p { class: "sr", id: "h-count", role: "status", aria_live: "polite",
-                if searching {
-                    "{shown.len()} of {transcriptions(total)} match."
-                }
-            }
-            if shown.is_empty() {
-                EmptyState { icon: IconName::Search, title: "Nothing matches", inline: true,
-                    "No saved transcription has “{query().trim()}” in its name or text."
-                }
-            } else {
-                section {
-                    class: "group surface",
-                    id: "hlist",
-                    aria_label: "Transcriptions",
-                    for summary in shown {
-                        HistoryRow { key: "{summary.id}", summary: summary.clone(), now_ms: now }
+                if shown.is_empty() {
+                    EmptyState { icon: IconName::Search, title: "Nothing matches", inline: true,
+                        "No saved transcription has “{query().trim()}” in its name or text."
+                    }
+                } else {
+                    section {
+                        class: "group surface",
+                        id: "hlist",
+                        aria_label: "Transcriptions",
+                        for summary in shown {
+                            HistoryRow { key: "{summary.id}", summary: summary.clone(), now_ms: now }
+                        }
                     }
                 }
             }
         }
-        if clearing() {
+    };
+
+    rsx! {
+        {page}
+        Presence { present: clearing(),
             ClearDialog {
                 count: total,
                 unreadable: listing.unreadable.len(),

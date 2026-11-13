@@ -4,6 +4,7 @@ use crate::{
         button::{Button, ButtonVariant},
         dialog::{Dialog, DialogTone},
         icon::IconName,
+        presence::Presence,
         toast::use_toasts,
     },
     platform::logging::get_logs_storage,
@@ -30,7 +31,7 @@ pub fn ClearButton(total: usize, on_cleared: EventHandler<()>) -> Element {
             onclick: move |_| asking.set(true),
             "Clear"
         }
-        if asking() {
+        Presence { present: asking(),
             Dialog {
                 title: "Clear the log?",
                 confirm_label: "Clear log",

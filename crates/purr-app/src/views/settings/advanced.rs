@@ -3,6 +3,7 @@ use crate::{
     components::{
         dialog::{Dialog, DialogTone},
         group::{Group, Item, ItemAction},
+        presence::Presence,
         select::{Select, SelectOption},
         toast::{Toast, ToastKind, use_toasts},
     },
@@ -89,13 +90,13 @@ pub fn AdvancedPage() -> Element {
                 action: ItemAction::Press(EventHandler::new(move |_| reset_open.set(true))),
             }
         }
-        if keys_open() {
+        Presence { present: keys_open(),
             ShortcutsSheet { on_close: move |()| keys_open.set(false) }
         }
-        if about_open() {
+        Presence { present: about_open(),
             AboutSheet { on_close: move |()| about_open.set(false) }
         }
-        if reset_open() {
+        Presence { present: reset_open(),
             Dialog {
                 title: "Reset all settings?",
                 confirm_label: "Reset settings",

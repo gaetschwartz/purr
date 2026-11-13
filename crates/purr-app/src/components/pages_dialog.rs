@@ -2,6 +2,7 @@ use super::{
     icon::IconName,
     icon_button::IconButton,
     layer::{LayerFrame, LayerKind, use_layer},
+    presence::use_closing,
 };
 use crate::utils::dom_id::use_dom_id;
 use dioxus::prelude::*;
@@ -9,7 +10,7 @@ use dioxus::prelude::*;
 /// A large modal dialog: a header, a list of pages on the left (above the content on phones) and
 /// the selected page's content, which scrolls on its own.
 ///
-/// Render it only while open. Like [`super::sheet::Sheet`] it is labelled by its `title`, traps
+/// Render it inside a [`Presence`](super::presence::Presence) that follows whether it is open. Like [`super::sheet::Sheet`] it is labelled by its `title`, traps
 /// focus, closes on Escape and scrim clicks through `on_close`, and returns focus to the opener.
 /// Put an `autofocus` attribute on the control in `nav` that should take focus first.
 #[component]
@@ -21,6 +22,7 @@ pub fn PagesDialog(
     children: Element,
 ) -> Element {
     let dom_id = use_dom_id("layer");
+    let closing = use_closing();
     let title_id = format!("{dom_id}-title");
     let view = rsx! {
         LayerFrame {
@@ -28,6 +30,7 @@ pub fn PagesDialog(
             kind: LayerKind::Sheet,
             anchor: None,
             on_close,
+            closing,
             div { class: "pdlg-wrap",
                 div {
                     class: "pdlg glass g3",

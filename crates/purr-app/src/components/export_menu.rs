@@ -3,6 +3,7 @@ use super::{
     icon::{Icon, IconName, IconSize},
     layer::PopoverAlign,
     popover::{Popover, PopoverOption},
+    presence::Presence,
     segmented::{Segment, Segmented},
     sheet::Sheet,
     toast::{Toast, ToastKind, Toasts, use_toasts},
@@ -143,7 +144,7 @@ pub fn ExportMenu(
             span { class: "lbl", aria_hidden: "true", "Export" }
             Icon { name: IconName::ChevronDown, size: IconSize::Small, class: "chev" }
         }
-        if menu_open() {
+        Presence { present: menu_open(),
             Popover {
                 anchor: id,
                 label: "Export format",
@@ -169,18 +170,20 @@ pub fn ExportMenu(
                 }
             }
         }
-        if let Some(format) = sheet() {
-            ExportSheet {
-                source,
-                format,
-                on_format: move |next| sheet.set(Some(next)),
-                on_close: move |()| sheet.set(None),
+        Presence { present: sheet().is_some(),
+            if let Some(format) = sheet() {
+                ExportSheet {
+                    source,
+                    format,
+                    on_format: move |next| sheet.set(Some(next)),
+                    on_close: move |()| sheet.set(None),
+                }
             }
         }
     }
 }
 
-/// The export sheet: a format switch, a preview, Copy and Save. Render it only while open.
+/// The export sheet: a format switch, a preview, Copy and Save. Render it inside a [`Presence`].
 #[component]
 pub fn ExportSheet(
     source: ExportSource,

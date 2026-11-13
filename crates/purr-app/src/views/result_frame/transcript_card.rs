@@ -11,6 +11,7 @@ use crate::{
         export_menu::{ExportMenu, ExportSource, copy_export},
         icon::IconName,
         icon_button::IconButton,
+        presence::Presence,
         search_field::SearchField,
         toast::use_toasts,
     },
@@ -284,7 +285,7 @@ pub fn TranscriptCard(
                 }
             }
         }
-        if more_open() {
+        Presence { present: more_open(),
             MoreMenu {
                 facts,
                 actions: more,
