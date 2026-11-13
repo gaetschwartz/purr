@@ -1,14 +1,10 @@
 //! The read-only system panel as plain rows, made from what the platform reports.
 
-use crate::{
-    hooks::use_models::GpuSupport,
-    transcribe::engine::{routinely_skipped, why_passed_over},
-    utils::byte_size::ByteSize,
-};
+use crate::{hooks::use_models::GpuSupport, utils::byte_size::ByteSize};
 use purr_common::{
     accel::{
         AccelBackend, AccelSelection, BackendReport, BackendStatus, BackendUnavailable, CpuFeature,
-        CpuReport, LastRun, SystemReport,
+        CpuReport, SystemReport,
     },
     platform::DeviceInfo,
 };
@@ -18,7 +14,6 @@ use purr_common::{
 pub enum Badge {
     Available,
     BuiltUnavailable,
-    NotBuilt,
     Unavailable,
 }
 
@@ -29,7 +24,6 @@ impl Badge {
         match self {
             Self::Available => "Available",
             Self::BuiltUnavailable => "Built, unavailable",
-            Self::NotBuilt => "Not built",
             Self::Unavailable => "Not available",
         }
     }
@@ -117,36 +111,28 @@ fn missing_library_detail(searched: &[String]) -> String {
     }
 }
 
-fn unavailable_row(backend: AccelBackend, why: &BackendUnavailable) -> SystemRow {
-    let (name, detail, badge) = match why {
-        BackendUnavailable::NotBuilt => {
-            ("Not part of this build".to_owned(), None, Badge::NotBuilt)
-        }
+fn unavailable_row(backend: AccelBackend, why: &BackendUnavailable) -> Option<SystemRow> {
+    let (name, detail) = match why {
+        BackendUnavailable::NotBuilt | BackendUnavailable::NotBuiltOrNoDevice => return None,
         BackendUnavailable::NoDevice => (
             "No usable device found".to_owned(),
             Some("Purr supports it, but no device or driver responded.".to_owned()),
-            Badge::BuiltUnavailable,
         ),
         BackendUnavailable::RuntimeLibraryMissing { library, searched } => (
             format!("Missing {library}"),
             Some(missing_library_detail(searched)),
-            Badge::BuiltUnavailable,
-        ),
-        BackendUnavailable::NotBuiltOrNoDevice => (
-            "Not built in, or no device found".to_owned(),
-            None,
-            Badge::Unavailable,
         ),
     };
-    SystemRow {
+    Some(SystemRow {
         backend: backend.label(),
         name,
         detail,
-        badge,
-    }
+        badge: Badge::BuiltUnavailable,
+    })
 }
 
-/// The panel's rows: every backend in priority order, a row per device for the ones that run.
+/// The panel's rows: the backends this build can use, in priority order, a row per device for
+/// the ones that run. Backends the build does not include are left out.
 #[must_use]
 pub fn rows(report: &SystemReport) -> Vec<SystemRow> {
     report
@@ -154,7 +140,9 @@ pub fn rows(report: &SystemReport) -> Vec<SystemRow> {
         .iter()
         .flat_map(|entry| match &entry.status {
             BackendStatus::Available => available_rows(entry, &report.cpu),
-            BackendStatus::Unavailable(why) => vec![unavailable_row(entry.backend, why)],
+            BackendStatus::Unavailable(why) => {
+                unavailable_row(entry.backend, why).into_iter().collect()
+            }
         })
         .collect()
 }
@@ -191,53 +179,6 @@ pub fn browser_rows(gpu: &GpuSupport) -> Vec<SystemRow> {
     }]
 }
 
-/// What to say about the last transcription's backend.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LastRunNote {
-    pub fell_back: bool,
-    pub title: String,
-    pub detail: String,
-}
-
-/// The note under the panel for the last transcription; `None` when none ran yet.
-///
-/// A backend that is routinely skipped, because the build lacks it or the machine has no device
-/// for it, is mentioned only when the user asked for it by name (`requested`).
-///
-/// This is the same rule as the banner on a run, so the two never disagree.
-#[must_use]
-pub fn last_run_note(
-    last: Option<&LastRun>,
-    requested: Option<AccelBackend>,
-) -> Option<LastRunNote> {
-    let last = last?;
-    let used = last.device.as_ref().map_or_else(
-        || last.backend.label().to_owned(),
-        |device| format!("{} on {device}", last.backend.label()),
-    );
-    let skipped: Vec<_> = last
-        .passed_over
-        .iter()
-        .filter(|passed| !routinely_skipped(&passed.reason) || requested == Some(passed.backend))
-        .map(|passed| {
-            format!(
-                "{} was passed over: {}",
-                passed.backend.label(),
-                why_passed_over(&passed.reason)
-            )
-        })
-        .collect();
-    Some(LastRunNote {
-        fell_back: !skipped.is_empty(),
-        title: format!("The last transcription ran on {used}"),
-        detail: if skipped.is_empty() {
-            String::new()
-        } else {
-            format!("{}.", skipped.join("; "))
-        },
-    })
-}
-
 /// The entries of the backend menu, marking the ones this machine cannot run.
 #[must_use]
 pub fn backend_options(report: Option<&SystemReport>) -> Vec<(AccelSelection, String)> {
@@ -265,7 +206,7 @@ pub fn backend_options(report: Option<&SystemReport>) -> Vec<(AccelSelection, St
 #[cfg(test)]
 mod tests {
     use super::*;
-    use purr_common::accel::{CpuFeature, PassedOver, PassedReason};
+    use purr_common::accel::CpuFeature;
     use purr_common::platform::DeviceType;
 
     fn device(
@@ -404,7 +345,7 @@ mod tests {
     }
 
     #[test]
-    fn every_backend_gets_a_row_with_its_status_and_devices_get_their_own() {
+    fn built_in_backends_get_a_row_and_devices_get_their_own_while_absent_ones_are_left_out() {
         assert_eq!(
             rows(&report()),
             [
@@ -415,13 +356,6 @@ mod tests {
                         "Purr supports it, but the library it needs is not installed. Looked in /opt/purr/runtime, /opt/purr, then the system's library folders."
                     ),
                     Badge::BuiltUnavailable
-                ),
-                row("Metal", "Not part of this build", None, Badge::NotBuilt),
-                row(
-                    "SYCL",
-                    "Not built in, or no device found",
-                    None,
-                    Badge::Unavailable
                 ),
                 row(
                     "Vulkan",
@@ -545,135 +479,6 @@ mod tests {
         assert_eq!(
             rows.first().map(|row| row.name.as_str()),
             Some("No WebGPU adapter found")
-        );
-    }
-
-    #[test]
-    fn no_note_before_a_transcription_ran() {
-        assert_eq!(last_run_note(None, None), None);
-    }
-
-    #[test]
-    fn a_clean_run_names_the_backend_and_device() {
-        let note = last_run_note(
-            Some(&LastRun {
-                backend: AccelBackend::Vulkan,
-                device: Some("NVIDIA GeForce RTX 4070".to_owned()),
-                passed_over: vec![],
-            }),
-            None,
-        );
-        assert_eq!(
-            note,
-            Some(LastRunNote {
-                fell_back: false,
-                title: "The last transcription ran on Vulkan on NVIDIA GeForce RTX 4070".to_owned(),
-                detail: String::new(),
-            })
-        );
-    }
-
-    #[test]
-    fn a_run_that_passed_over_a_backend_says_why() {
-        let note = last_run_note(
-            Some(&LastRun {
-                backend: AccelBackend::Cpu,
-                device: None,
-                passed_over: vec![
-                    PassedOver {
-                        backend: AccelBackend::Cuda,
-                        reason: PassedReason::Unavailable(
-                            BackendUnavailable::RuntimeLibraryMissing {
-                                library: "cudart64_13.dll".to_owned(),
-                                searched: Vec::new(),
-                            },
-                        ),
-                    },
-                    PassedOver {
-                        backend: AccelBackend::Metal,
-                        reason: PassedReason::Unavailable(BackendUnavailable::NotBuilt),
-                    },
-                    PassedOver {
-                        backend: AccelBackend::Vulkan,
-                        reason: PassedReason::Failed("device 0 failed to initialise".to_owned()),
-                    },
-                ],
-            }),
-            None,
-        );
-        assert_eq!(
-            note,
-            Some(LastRunNote {
-                fell_back: true,
-                title: "The last transcription ran on CPU".to_owned(),
-                detail: "CUDA was passed over: cudart64_13.dll is missing; Vulkan was passed over: device 0 failed to initialise.".to_owned(),
-            })
-        );
-    }
-
-    #[test]
-    fn backends_that_are_not_part_of_the_build_are_not_news() {
-        let last = LastRun {
-            backend: AccelBackend::Cpu,
-            device: None,
-            passed_over: vec![PassedOver {
-                backend: AccelBackend::Metal,
-                reason: PassedReason::Unavailable(BackendUnavailable::NotBuilt),
-            }],
-        };
-        assert_eq!(
-            last_run_note(Some(&last), None).map(|note| note.fell_back),
-            Some(false)
-        );
-        assert_eq!(
-            last_run_note(Some(&last), Some(AccelBackend::Vulkan)).map(|note| note.fell_back),
-            Some(false)
-        );
-    }
-
-    #[test]
-    fn a_backend_the_user_asked_for_is_reported_even_when_it_is_not_in_the_build() {
-        let last = LastRun {
-            backend: AccelBackend::Cpu,
-            device: None,
-            passed_over: vec![
-                PassedOver {
-                    backend: AccelBackend::Cuda,
-                    reason: PassedReason::Unavailable(BackendUnavailable::NotBuilt),
-                },
-                PassedOver {
-                    backend: AccelBackend::Vulkan,
-                    reason: PassedReason::Unavailable(BackendUnavailable::NotBuilt),
-                },
-            ],
-        };
-        assert_eq!(
-            last_run_note(Some(&last), Some(AccelBackend::Vulkan)),
-            Some(LastRunNote {
-                fell_back: true,
-                title: "The last transcription ran on CPU".to_owned(),
-                detail: "Vulkan was passed over: it is not part of this build.".to_owned(),
-            })
-        );
-    }
-
-    #[test]
-    fn a_backend_without_a_device_is_not_news_unless_the_user_asked_for_it() {
-        let last = LastRun {
-            backend: AccelBackend::Cpu,
-            device: None,
-            passed_over: vec![PassedOver {
-                backend: AccelBackend::Cuda,
-                reason: PassedReason::Unavailable(BackendUnavailable::NoDevice),
-            }],
-        };
-        assert_eq!(
-            last_run_note(Some(&last), None).map(|note| note.fell_back),
-            Some(false)
-        );
-        assert_eq!(
-            last_run_note(Some(&last), Some(AccelBackend::Cuda)).map(|note| note.detail),
-            Some("CUDA was passed over: no usable device responded.".to_owned())
         );
     }
 }

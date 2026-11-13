@@ -9,7 +9,7 @@ const fn badge_tone(badge: Badge) -> ChipTone {
     match badge {
         Badge::Available => ChipTone::Ok,
         Badge::BuiltUnavailable => ChipTone::Warn,
-        Badge::NotBuilt | Badge::Unavailable => ChipTone::Neutral,
+        Badge::Unavailable => ChipTone::Neutral,
     }
 }
 
@@ -17,7 +17,7 @@ const fn badge_icon(badge: Badge) -> Option<IconName> {
     match badge {
         Badge::Available => Some(IconName::CheckCircle),
         Badge::BuiltUnavailable => Some(IconName::Warning),
-        Badge::NotBuilt | Badge::Unavailable => None,
+        Badge::Unavailable => None,
     }
 }
 
