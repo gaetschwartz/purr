@@ -7,7 +7,6 @@ use manganis::{Asset, AssetOptions, asset};
 pub mod audio;
 pub mod engine_choice;
 pub mod error;
-pub mod gpu_check;
 pub mod history_store;
 pub mod idb;
 pub mod integrity;
@@ -43,12 +42,12 @@ pub fn ort_urls() -> (String, String) {
     (ORT_MODULE.to_string(), ORT_WASM.to_string())
 }
 
-static CANARY: Asset = asset!("/assets/canary.pcm");
+static WARM_UP: Asset = asset!("/assets/warm_up.pcm");
 
-/// URL path of the recording the GPU check transcribes: 16 kHz mono signed 16-bit samples.
+/// URL path of the recording the worker transcribes to warm up a WebGPU model: 16 kHz mono signed 16-bit samples.
 #[must_use]
-pub fn canary_url() -> String {
-    CANARY.to_string()
+pub fn warm_up_url() -> String {
+    WARM_UP.to_string()
 }
 
 /// Absolute URL path of the bundled transcription worker script.

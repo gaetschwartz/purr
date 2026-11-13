@@ -1,10 +1,9 @@
 import "./console_filter.js";
-import { configureCanary, transcribeCanary, warmUp } from "./canary.js";
 import { useHuggingFaceToken } from "./hugging_face_auth.js";
 import { emit, emitFailure, FailureKind, WorkerFailure } from "./events.js";
-import { probeGpu } from "./gpu.js";
 import { asProviderFailure, configureRuntime, loadTranscriber, Provider } from "./model_loader.js";
 import { transcribe } from "./transcriber.js";
+import { configureWarmUp, warmUp } from "./warm_up.js";
 import { keepWebGpuPolled } from "./webgpu_polling.js";
 
 keepWebGpuPolled();
@@ -29,31 +28,12 @@ async function handle(message) {
     switch (message.type) {
         case "Configure":
             configureRuntime(message);
-            configureCanary(message.canary_url);
+            configureWarmUp(message.warm_up_url);
             return;
         case "LoadModel":
             useHuggingFaceToken(message.hugging_face_token);
             await loadTranscriber(message.model, message.provider, message.request_id);
             return;
-        case "ProbeGpu":
-            emit({ type: "GpuProbed", request_id: message.request_id, probe: await probeGpu() });
-            return;
-        case "TranscribeCanary": {
-            const transcriber = await readyTranscriber(message);
-            try {
-                const startedAt = performance.now();
-                const text = await transcribeCanary(transcriber, message.english_only);
-                emit({
-                    type: "CanaryTranscribed",
-                    request_id: message.request_id,
-                    text,
-                    elapsed_ms: performance.now() - startedAt,
-                });
-            } catch (error) {
-                throw asProviderFailure(message.provider, error);
-            }
-            return;
-        }
         case "Transcribe": {
             const transcriber = await readyTranscriber(message);
             emit({ type: "Transcribing", request_id: message.request_id });

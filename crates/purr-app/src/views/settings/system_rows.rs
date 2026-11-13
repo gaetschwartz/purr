@@ -150,7 +150,7 @@ pub fn browser_rows(gpu: &GpuSupport) -> Vec<SystemRow> {
         GpuSupport::Unavailable => (
             "No WebGPU adapter found".to_owned(),
             Some(
-                "Purr cannot transcribe here. Use a current Chrome, Edge or another browser with WebGPU enabled."
+                "Purr uses the CPU here, which is slower. Use a current Chrome, Edge or another browser with WebGPU enabled."
                     .to_owned(),
             ),
             Badge::Unavailable,

@@ -18,7 +18,7 @@ use crate::{
     accel::{AccelPolicy, LastRun, SystemReport},
     audio_overview::AudioOverview,
     beams::{BeamSnapshot, BeamSwitch},
-    browser_engine::{BrowserEngine, EnginePlan},
+    browser_engine::BrowserEngine,
     history::{
         entry::{HistoryEntry, HistoryId, HistoryRecord},
         listing::{HistoryListing, Saved},
@@ -1110,18 +1110,6 @@ pub trait Platform: Send + Sync + 'static {
     fn system_report(
         &self,
     ) -> impl std::future::Future<Output = Result<SystemReport, PlatformError>> + Send;
-
-    /// Where the next run of `model_id` under `accel` would go, from the browser's adapter and
-    /// the stored GPU check, without running the check
-    ///
-    /// # Platform Differences
-    /// - **Desktop**: Unsupported; see [`Self::system_report`]
-    /// - **Web**: Looks for the WebGPU adapter in the transcription worker
-    fn plan_browser_engine(
-        &self,
-        model_id: &str,
-        accel: AccelPolicy,
-    ) -> impl std::future::Future<Output = Result<EnginePlan, PlatformError>> + Send;
 
     // ========================================
     // Settings Persistence Operations

@@ -15,12 +15,12 @@ use purr_common::accel::{AccelPolicy, AccelSelection};
 /// Where browser transcriptions run.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum RunOn {
-    /// WebGPU when it works here, the CPU otherwise.
-    Automatic,
+    /// The browser's GPU, with the CPU as the way out when WebGPU cannot start.
+    WebGpu,
     Cpu,
 }
 
-/// What this browser offers for transcription, and whether to keep it on the CPU.
+/// What this browser offers for transcription, and whether to run on its GPU or its CPU.
 #[component]
 pub fn BrowserPanel() -> Element {
     let models = use_models();
@@ -32,7 +32,7 @@ pub fn BrowserPanel() -> Element {
         if settings.with(|settings| settings.performance.accel_policy()) == AccelPolicy::CPU_ONLY {
             RunOn::Cpu
         } else {
-            RunOn::Automatic
+            RunOn::WebGpu
         };
 
     rsx! {
@@ -42,13 +42,14 @@ pub fn BrowserPanel() -> Element {
             Group {
                 Item {
                     title: "Run on",
+                    subtitle: "WebGPU uses this browser's GPU. If it cannot start, Purr uses the slower CPU.",
                     stackable: true,
                     control: rsx! {
                         Segmented {
                             label: "Run on",
                             value: run_on,
                             segments: vec![
-                                Segment::new(RunOn::Automatic, "Automatic"),
+                                Segment::new(RunOn::WebGpu, "WebGPU"),
                                 Segment::new(RunOn::Cpu, "CPU"),
                             ],
                             onchange: move |choice| {
@@ -58,7 +59,7 @@ pub fn BrowserPanel() -> Element {
                                         .update(|s| {
                                             s.performance.gpu_acceleration = true;
                                             s.performance.accel_backend = match choice {
-                                                RunOn::Automatic => AccelSelection::Auto,
+                                                RunOn::WebGpu => AccelSelection::Auto,
                                                 RunOn::Cpu => AccelSelection::Cpu,
                                             };
                                         }),

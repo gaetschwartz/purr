@@ -3,7 +3,6 @@
 //! Both directions carry JSON text so the shapes are defined once, here, and covered by native
 //! tests. Audio samples travel beside the JSON as a transferred `Float32Array`.
 
-use crate::gpu_check::GpuProbe;
 use purr_common::hugging_face_token::HuggingFaceToken;
 use purr_common::platform::TranscriptSegment;
 use purr_common::web_model::attributes::OnnxDtype;
@@ -52,14 +51,14 @@ pub enum Provider {
     Cpu,
 }
 
-/// First message of a worker: where it finds the ONNX runtime files and the GPU check recording.
+/// First message of a worker: where it finds the ONNX runtime files and the warm-up recording.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum WorkerSetup {
     Configure {
         ort_module_url: String,
         ort_wasm_url: String,
-        canary_url: String,
+        warm_up_url: String,
     },
 }
 
@@ -72,18 +71,6 @@ pub enum WorkerRequest {
         request_id: RequestId,
         model: WorkerModel,
         provider: Provider,
-        #[serde(default, deserialize_with = "HuggingFaceToken::deserialize_optional")]
-        hugging_face_token: Option<HuggingFaceToken>,
-    },
-    /// Look for a WebGPU adapter.
-    ProbeGpu { request_id: RequestId },
-    /// Transcribe the check recording with `model` on `provider` and time it, leaving out the
-    /// one-off setup of a new model.
-    TranscribeCanary {
-        request_id: RequestId,
-        model: WorkerModel,
-        provider: Provider,
-        english_only: bool,
         #[serde(default, deserialize_with = "HuggingFaceToken::deserialize_optional")]
         hugging_face_token: Option<HuggingFaceToken>,
     },
@@ -104,10 +91,7 @@ impl WorkerRequest {
     #[must_use]
     pub const fn request_id(&self) -> RequestId {
         match self {
-            Self::LoadModel { request_id, .. }
-            | Self::ProbeGpu { request_id }
-            | Self::TranscribeCanary { request_id, .. }
-            | Self::Transcribe { request_id, .. } => *request_id,
+            Self::LoadModel { request_id, .. } | Self::Transcribe { request_id, .. } => *request_id,
         }
     }
 }
@@ -147,17 +131,6 @@ pub enum WorkerEvent {
     },
     ModelReady {
         request_id: RequestId,
-    },
-    /// The WebGPU adapter the worker found, `None` when there is none.
-    GpuProbed {
-        request_id: RequestId,
-        probe: Option<GpuProbe>,
-    },
-    /// The text written for the check recording, and how long the timed run took.
-    CanaryTranscribed {
-        request_id: RequestId,
-        text: String,
-        elapsed_ms: f64,
     },
     /// The model is loaded and speech decoding has started.
     Transcribing {
@@ -202,8 +175,6 @@ impl WorkerEvent {
             Self::ModelFile { request_id, .. }
             | Self::ModelFileDone { request_id, .. }
             | Self::ModelReady { request_id }
-            | Self::GpuProbed { request_id, .. }
-            | Self::CanaryTranscribed { request_id, .. }
             | Self::Transcribing { request_id }
             | Self::LanguageDetected { request_id, .. }
             | Self::Segment { request_id, .. }
@@ -218,8 +189,6 @@ impl WorkerEvent {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RequestKind {
     LoadModel,
-    ProbeGpu,
-    TranscribeCanary,
     Transcribe,
 }
 
@@ -228,8 +197,6 @@ impl WorkerRequest {
     pub const fn kind(&self) -> RequestKind {
         match self {
             Self::LoadModel { .. } => RequestKind::LoadModel,
-            Self::ProbeGpu { .. } => RequestKind::ProbeGpu,
-            Self::TranscribeCanary { .. } => RequestKind::TranscribeCanary,
             Self::Transcribe { .. } => RequestKind::Transcribe,
         }
     }
@@ -242,15 +209,11 @@ impl WorkerEvent {
         match (self, kind) {
             (Self::Failed { .. }, _)
             | (Self::ModelReady { .. }, RequestKind::LoadModel)
-            | (Self::GpuProbed { .. }, RequestKind::ProbeGpu)
-            | (Self::CanaryTranscribed { .. }, RequestKind::TranscribeCanary)
             | (Self::Completed { .. }, RequestKind::Transcribe) => true,
             (
                 Self::ModelFile { .. }
                 | Self::ModelFileDone { .. }
                 | Self::ModelReady { .. }
-                | Self::GpuProbed { .. }
-                | Self::CanaryTranscribed { .. }
                 | Self::Transcribing { .. }
                 | Self::LanguageDetected { .. }
                 | Self::Segment { .. }
@@ -356,22 +319,6 @@ mod tests {
              provider: WebGpu, language: None, translate: false, english_only: false, \
              hugging_face_token: Some(HuggingFaceToken(<redacted>)) }"
         );
-        let check = WorkerRequest::TranscribeCanary {
-            request_id: RequestId::new(2),
-            model: model(),
-            provider: Provider::WebGpu,
-            english_only: false,
-            hugging_face_token: HuggingFaceToken::new("hf_dummy"),
-        };
-        assert_eq!(
-            format!("{check:?}"),
-            "TranscribeCanary { request_id: RequestId(2), model: WorkerModel { \
-             repo: \"onnx-community/whisper-tiny\", \
-             revision: \"ff4177021cc41f7db950912b73ea4fdf7d01d8e7\", \
-             encoder_dtype: Fp32, decoder_dtype: Q4, requires_shader_f16: false }, \
-             provider: WebGpu, english_only: false, \
-             hugging_face_token: Some(HuggingFaceToken(<redacted>)) }"
-        );
     }
 
     #[test]
@@ -394,7 +341,7 @@ mod tests {
         let setup = WorkerSetup::Configure {
             ort_module_url: "/assets/ort.mjs".to_owned(),
             ort_wasm_url: "/assets/ort.wasm".to_owned(),
-            canary_url: "/assets/canary.pcm".to_owned(),
+            warm_up_url: "/assets/warm_up.pcm".to_owned(),
         };
         assert_eq!(
             serde_json::to_value(&setup)?,
@@ -402,80 +349,22 @@ mod tests {
                 "type": "Configure",
                 "ort_module_url": "/assets/ort.mjs",
                 "ort_wasm_url": "/assets/ort.wasm",
-                "canary_url": "/assets/canary.pcm",
+                "warm_up_url": "/assets/warm_up.pcm",
             })
         );
         Ok(())
     }
 
     #[test]
-    fn load_model_and_gpu_requests_round_trip() -> Result<(), serde_json::Error> {
-        for request in [
-            WorkerRequest::LoadModel {
-                request_id: RequestId::new(3),
-                model: model(),
-                provider: Provider::WebGpu,
-                hugging_face_token: None,
-            },
-            WorkerRequest::ProbeGpu {
-                request_id: RequestId::new(4),
-            },
-            WorkerRequest::TranscribeCanary {
-                request_id: RequestId::new(5),
-                model: model(),
-                provider: Provider::Cpu,
-                english_only: false,
-                hugging_face_token: HuggingFaceToken::new("hf_dummy"),
-            },
-        ] {
-            let decoded: WorkerRequest = serde_json::from_str(&serde_json::to_string(&request)?)?;
-            assert_eq!(decoded, request);
-        }
-        Ok(())
-    }
-
-    #[test]
-    fn parses_the_gpu_probe_and_check() -> Result<(), serde_json::Error> {
-        let probed = parse(&json!({
-            "type": "GpuProbed",
-            "request_id": 4,
-            "probe": {"fingerprint": "{\"vendor\":\"\"}", "shader_f16": true},
-        }))?;
-        assert_eq!(
-            probed,
-            WorkerEvent::GpuProbed {
-                request_id: RequestId::new(4),
-                probe: Some(GpuProbe {
-                    fingerprint: "{\"vendor\":\"\"}".to_owned(),
-                    shader_f16: true,
-                }),
-            }
-        );
-        assert!(probed.ends(RequestKind::ProbeGpu));
-        let none = parse(&json!({"type": "GpuProbed", "request_id": 4, "probe": null}))?;
-        assert_eq!(
-            none,
-            WorkerEvent::GpuProbed {
-                request_id: RequestId::new(4),
-                probe: None,
-            }
-        );
-        let checked = parse(&json!({
-            "type": "CanaryTranscribed",
-            "request_id": 5,
-            "text": " >>",
-            "elapsed_ms": 412.5,
-        }))?;
-        assert_eq!(
-            checked,
-            WorkerEvent::CanaryTranscribed {
-                request_id: RequestId::new(5),
-                text: " >>".to_owned(),
-                elapsed_ms: 412.5,
-            }
-        );
-        assert!(checked.ends(RequestKind::TranscribeCanary));
-        assert!(!checked.ends(RequestKind::Transcribe));
+    fn load_model_requests_round_trip() -> Result<(), serde_json::Error> {
+        let request = WorkerRequest::LoadModel {
+            request_id: RequestId::new(3),
+            model: model(),
+            provider: Provider::WebGpu,
+            hugging_face_token: None,
+        };
+        let decoded: WorkerRequest = serde_json::from_str(&serde_json::to_string(&request)?)?;
+        assert_eq!(decoded, request);
         Ok(())
     }
 

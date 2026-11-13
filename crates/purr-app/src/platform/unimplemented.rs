@@ -149,14 +149,6 @@ impl Platform for UnimplementedPlatformImpl {
         unsupported!()
     }
 
-    async fn plan_browser_engine(
-        &self,
-        _model_id: &str,
-        _accel: purr_common::accel::AccelPolicy,
-    ) -> Result<purr_common::browser_engine::EnginePlan, PlatformError> {
-        unsupported!()
-    }
-
     async fn load_settings(&self) -> Result<Settings, PlatformError> {
         unsupported!()
     }

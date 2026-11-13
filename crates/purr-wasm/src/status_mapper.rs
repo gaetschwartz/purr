@@ -86,9 +86,7 @@ impl TranscriptionMapper {
                 self.progress.finish(&file);
                 Some(self.loading())
             }
-            WorkerEvent::ModelReady { .. }
-            | WorkerEvent::GpuProbed { .. }
-            | WorkerEvent::CanaryTranscribed { .. } => None,
+            WorkerEvent::ModelReady { .. } => None,
             WorkerEvent::Transcribing { .. } => Some(TranscriptionStatus::Transcribing),
             WorkerEvent::LanguageDetected { language, .. } => {
                 Some(TranscriptionStatus::LanguageDetected { language })
@@ -175,9 +173,7 @@ impl PreloadMapper {
             }
             WorkerEvent::ModelReady { .. } => PreloadStep::Loaded,
             WorkerEvent::Failed { message, .. } => PreloadStep::Failed(message),
-            WorkerEvent::GpuProbed { .. }
-            | WorkerEvent::CanaryTranscribed { .. }
-            | WorkerEvent::Transcribing { .. }
+            WorkerEvent::Transcribing { .. }
             | WorkerEvent::LanguageDetected { .. }
             | WorkerEvent::Segment { .. }
             | WorkerEvent::Segments { .. }

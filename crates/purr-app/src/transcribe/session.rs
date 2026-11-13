@@ -37,7 +37,6 @@ use futures::{StreamExt as _, channel::oneshot};
 use purr_common::{
     accel::{AccelPolicy, EngineUsed},
     beams::{BeamSnapshot, BeamSwitch},
-    browser_engine::BrowserEngine,
     history::entry::{HistoryEntry, HistoryId, InvalidHistoryId, LanguageOrigin},
     platform::{
         EngineOptions, FileId, FileSource, ModelId, Platform as _, PlatformError,
@@ -117,7 +116,6 @@ pub struct TranscribeSession {
     record: Signal<Option<RunRecord>>,
     cancelled: Signal<Option<Cancelled>>,
     engine_memory: Signal<Option<RunMemory>>,
-    browser_engine: Signal<Option<BrowserEngine>>,
     task: Signal<Option<Task>>,
     /// The model the current run is downloading before it starts.
     fetching: Signal<Option<String>>,
@@ -182,12 +180,6 @@ impl TranscribeSession {
     #[must_use]
     pub fn engine_memory(&self) -> Option<RunMemory> {
         self.engine_memory.read().clone()
-    }
-
-    /// Where the last browser run settled (subscribes the caller).
-    #[must_use]
-    pub fn browser_engine(&self) -> Option<BrowserEngine> {
-        *self.browser_engine.read()
     }
 
     /// The length and waveform of `id`.
@@ -552,9 +544,6 @@ impl TranscribeSession {
                             ran: run.clone(),
                         }));
                     }
-                    if let TranscriptionStatus::BrowserEngine { engine } = &status {
-                        self.browser_engine.set(Some(*engine));
-                    }
                     if let Some(record) = self.record.write().as_mut() {
                         record.run.apply(&status, now_ms());
                     }
@@ -810,7 +799,6 @@ pub fn use_transcribe_session_provider() -> TranscribeSession {
             record: Signal::new(None),
             cancelled: Signal::new(None),
             engine_memory: Signal::new(None),
-            browser_engine: Signal::new(None),
             task: Signal::new(None),
             fetching: Signal::new(None),
             beam_switch: Signal::new(BeamSwitch::default()),

@@ -8,9 +8,8 @@ use super::{
 use bytes::Bytes;
 use futures::{SinkExt, Stream, StreamExt, channel::mpsc};
 use parking_lot::Mutex;
-use purr_common::accel::{AccelPolicy, LastRun, SystemReport};
+use purr_common::accel::{LastRun, SystemReport};
 use purr_common::audio_overview::{AudioOverview, PeakFold};
-use purr_common::browser_engine::EnginePlan;
 use purr_common::history::{
     entry::{HistoryEntry, HistoryId, HistoryRecord},
     listing::{HistoryListing, Saved},
@@ -378,16 +377,6 @@ impl Platform for DesktopPlatformImpl {
         tokio::task::spawn_blocking(move || probe(last))
             .await
             .map_err(PlatformError::device_detection)
-    }
-
-    fn plan_browser_engine(
-        &self,
-        _model_id: &str,
-        _accel: AccelPolicy,
-    ) -> impl std::future::Future<Output = Result<EnginePlan, PlatformError>> + Send {
-        std::future::ready(Err(PlatformError::unsupported(
-            "planning a browser engine on the desktop",
-        )))
     }
 
     // ========================================

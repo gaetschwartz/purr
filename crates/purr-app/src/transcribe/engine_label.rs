@@ -6,7 +6,7 @@ use purr_common::{
     accel::{
         AccelBackend, AccelPolicy, BackendReport, BackendStatus, EngineUsed, LastRun, SystemReport,
     },
-    browser_engine::{BrowserEngine, EnginePlan},
+    browser_engine::BrowserEngine,
     platform::{DeviceInfo, DeviceType},
 };
 use std::fmt;
@@ -37,15 +37,6 @@ impl fmt::Display for BackendLabel {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.text())
     }
-}
-
-/// The browser engine the next run is expected to use, as far as the platform has said.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PlannedEngine {
-    Pending,
-    Known(EnginePlan),
-    /// The platform could not say.
-    Unknown,
 }
 
 /// The backend and the hardware name that go with it, when one is known.
@@ -207,27 +198,7 @@ impl EngineLabel {
         )
     }
 
-    /// What the next browser run is expected to use: "Checking…" while the plan is worked out,
-    /// and "Automatic" while a GPU check has yet to decide or the plan could not be made.
-    #[must_use]
-    pub fn browser_plan(plan: PlannedEngine, gpu: &GpuSupport) -> Self {
-        match plan {
-            PlannedEngine::Pending => Self {
-                backend: BackendLabel::Checking,
-                hardware: None,
-            },
-            PlannedEngine::Known(EnginePlan::WebGpu) => Self::browser(BrowserEngine::WebGpu, gpu),
-            PlannedEngine::Known(EnginePlan::WebGpuAfterCheck) | PlannedEngine::Unknown => Self {
-                backend: BackendLabel::Automatic,
-                hardware: None,
-            },
-            PlannedEngine::Known(EnginePlan::Cpu(reason) | EnginePlan::CannotRun(reason)) => {
-                Self::browser(BrowserEngine::Cpu(reason), gpu)
-            }
-        }
-    }
-
-    /// What a browser run used: the WebGPU adapter, or the CPU.
+    /// What a browser run uses: the WebGPU adapter, or the CPU.
     #[must_use]
     pub fn browser(engine: BrowserEngine, gpu: &GpuSupport) -> Self {
         match engine {
@@ -511,7 +482,7 @@ mod tests {
     fn a_browser_run_on_the_cpu_says_cpu_and_nothing_else() {
         assert_eq!(
             EngineLabel::browser(
-                BrowserEngine::Cpu(CpuReason::WrongOutput),
+                BrowserEngine::Cpu(CpuReason::WebGpuFailed),
                 &adapter(Some("NVIDIA (Ampere)"))
             ),
             EngineLabel {
@@ -521,51 +492,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn the_planned_browser_engine_is_never_webgpu_before_it_is_known() {
-        let gpu = adapter(Some("NVIDIA (Ampere)"));
-        let cpu = EngineLabel {
-            backend: BackendLabel::Accel(AccelBackend::Cpu),
-            hardware: None,
-        };
-        assert_eq!(
-            EngineLabel::browser_plan(PlannedEngine::Pending, &gpu),
-            EngineLabel {
-                backend: BackendLabel::Checking,
-                hardware: None
-            }
-        );
-        assert_eq!(
-            EngineLabel::browser_plan(PlannedEngine::Known(EnginePlan::WebGpuAfterCheck), &gpu),
-            EngineLabel {
-                backend: BackendLabel::Automatic,
-                hardware: None
-            }
-        );
-        assert_eq!(
-            EngineLabel::browser_plan(PlannedEngine::Known(EnginePlan::WebGpu), &gpu),
-            EngineLabel {
-                backend: BackendLabel::WebGpu,
-                hardware: Some("NVIDIA (Ampere)".to_owned())
-            }
-        );
-        assert_eq!(
-            EngineLabel::browser_plan(PlannedEngine::Unknown, &gpu),
-            EngineLabel {
-                backend: BackendLabel::Automatic,
-                hardware: None
-            }
-        );
-        for plan in [
-            EnginePlan::Cpu(CpuReason::WrongOutput),
-            EnginePlan::CannotRun(CpuReason::Chosen),
-        ] {
-            assert_eq!(
-                EngineLabel::browser_plan(PlannedEngine::Known(plan), &gpu),
-                cpu
-            );
-        }
-    }
     #[test]
     fn the_text_is_the_backend_then_the_hardware() {
         assert_eq!(

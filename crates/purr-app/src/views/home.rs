@@ -18,17 +18,15 @@ use crate::{
         model_picker::ModelPill,
         page::Page,
     },
-    hooks::{
-        use_engine_plan::use_engine_plan, use_models::use_models,
-        use_system_probe::use_system_probe,
-    },
+    hooks::{use_models::use_models, use_system_probe::use_system_probe},
     main_app::Route,
     platform::{IS_WEB, Platform as _, get_platform},
     settings_store::use_settings,
     shortcuts::{Key, KeyChord, Shortcut, use_shortcut},
     transcribe::{
         chosen_file::OverviewState,
-        engine_label::{EngineLabel, PlannedEngine},
+        engine_label::EngineLabel,
+        expected_browser_engine::expected_browser_engine,
         language_choice::LanguageChoice,
         session::use_transcribe_session,
         start_plan::{FileReadiness, ModelChoice, StartPlan, plan_start},
@@ -39,7 +37,7 @@ use crate::{
 use cancelled_notice::CancelledNotice;
 use dioxus::{html::HasFileData, prelude::*};
 use model_notice::ModelNotice;
-use purr_common::browser_engine::EnginePlan;
+use purr_common::browser_engine::BrowserEngine;
 use recent::Recent;
 use run_link::RunLink;
 
@@ -99,19 +97,22 @@ pub fn Home() -> Element {
     let running = running_id();
     let can_start = matches!(plan, StartPlan::Start(_)) && running.is_none();
     let policy = settings.with(|settings| settings.performance.accel_policy());
-    let engine_plan = use_engine_plan(selected.as_ref().map(|row| row.entry.id.clone()), policy);
-    let engine = if IS_WEB {
-        EngineLabel::browser_plan(engine_plan, &models.gpu.read())
-    } else {
-        EngineLabel::planned(policy, session.engine_memory().as_ref(), &probe.read())
-    };
-    let cpu_notice = match engine_plan {
-        PlannedEngine::Known(EnginePlan::Cpu(reason)) => reason.notice(),
-        PlannedEngine::Known(
-            EnginePlan::WebGpu | EnginePlan::WebGpuAfterCheck | EnginePlan::CannotRun(_),
+    let browser_engine = IS_WEB.then(|| {
+        expected_browser_engine(
+            policy,
+            &models.gpu.read(),
+            selected
+                .as_ref()
+                .is_some_and(|row| row.entry.requires_shader_f16),
         )
-        | PlannedEngine::Pending
-        | PlannedEngine::Unknown => None,
+    });
+    let engine = match browser_engine {
+        Some(browser) => EngineLabel::browser(browser, &models.gpu.read()),
+        None => EngineLabel::planned(policy, session.engine_memory().as_ref(), &probe.read()),
+    };
+    let cpu_notice = match browser_engine {
+        Some(BrowserEngine::Cpu(reason)) => reason.notice(),
+        Some(BrowserEngine::WebGpu) | None => None,
     };
 
     let start = move |_| {

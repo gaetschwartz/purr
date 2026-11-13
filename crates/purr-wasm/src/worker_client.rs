@@ -180,7 +180,7 @@ impl LiveWorker {
         let setup = serde_json::to_string(&WorkerSetup::Configure {
             ort_module_url,
             ort_wasm_url,
-            canary_url: crate::canary_url(),
+            warm_up_url: crate::warm_up_url(),
         })
         .map_err(|e| e.to_string())?;
         let message = Object::new();
@@ -367,19 +367,14 @@ impl Router {
     }
 
     fn cancel(&mut self, id: RequestId) {
-        let Some(pending) = self.pending.remove(&id) else {
+        if self.pending.remove(&id).is_none() {
             return;
-        };
-        match pending.kind {
-            RequestKind::ProbeGpu => {}
-            RequestKind::LoadModel | RequestKind::TranscribeCanary | RequestKind::Transcribe => {
-                tracing::info!("Cancelling request {id:?} by restarting the worker");
-                self.restart(
-                    FailureKind::WorkerRestarted,
-                    "The transcription worker was restarted to cancel another request",
-                );
-            }
         }
+        tracing::info!("Cancelling request {id:?} by restarting the worker");
+        self.restart(
+            FailureKind::WorkerRestarted,
+            "The transcription worker was restarted to cancel another request",
+        );
     }
 
     fn deliver(&mut self, event: WorkerEvent) {

@@ -1,14 +1,14 @@
 //! Web platform implementation of the Platform trait
 
 use crate::audio;
-use crate::engine_choice::{self, CheckMode};
+use crate::engine_choice::{self, GpuFailure};
 use crate::error::{IntegrityError, WebError, WebResult};
 use crate::history_store;
 use crate::local::run_local;
 use crate::model::WebModelManager;
 use crate::model_cache;
 use crate::model_info::model_info;
-use crate::protocol::{FailureKind, WorkerEvent, WorkerModel, WorkerRequest};
+use crate::protocol::{WorkerEvent, WorkerModel, WorkerRequest};
 use crate::status_mapper::{PreloadMapper, PreloadStep, TranscriptionMapper};
 use crate::storage::WebStorage;
 use crate::storage_space;
@@ -19,7 +19,7 @@ use purr_common::accel::AccelPolicy;
 use purr_common::accel::SystemReport;
 use purr_common::adapter_name::{AdapterStrings, adapter_name};
 use purr_common::audio_overview::{AudioOverview, peaks};
-use purr_common::browser_engine::{CpuReason, EnginePlan};
+use purr_common::browser_engine::CpuReason;
 use purr_common::history::{
     entry::{HistoryEntry, HistoryId, HistoryRecord},
     listing::{HistoryListing, Saved},
@@ -45,6 +45,7 @@ use web_sys::{DomException, Storage};
 pub type PlatformImpl = WasmPlatformImpl;
 
 const SETTINGS_KEY: &str = "purr-settings";
+const RETIRED_GPU_CHECKS_KEY: &str = "purr-gpu-checks";
 const UPLOAD_RETENTION_MS: f64 = 24.0 * 60.0 * 60.0 * 1000.0;
 
 /// Web platform implementation using WebAssembly and browser APIs
@@ -71,10 +72,25 @@ impl WasmPlatformImpl {
 
         self.storage.initialize().await?;
         self.storage.purge_older_than(UPLOAD_RETENTION_MS).await?;
+        Self::remove_retired_gpu_checks();
 
         tracing::info!("Platform initialized");
         *self.initialized.write().await = true;
         Ok(())
+    }
+
+    fn remove_retired_gpu_checks() {
+        let removed = Self::get_local_storage().and_then(|storage| {
+            storage.remove_item(RETIRED_GPU_CHECKS_KEY).map_err(|e| {
+                PlatformError::settings_persistence(format!(
+                    "Failed to remove item '{RETIRED_GPU_CHECKS_KEY}' from localStorage: {}",
+                    crate::error::format_js_error(e)
+                ))
+            })
+        });
+        if let Err(error) = removed {
+            tracing::warn!("The retired GPU checks stay in localStorage: {error}");
+        }
     }
 
     fn get_local_storage() -> Result<Storage, PlatformError> {
@@ -256,19 +272,7 @@ async fn run_transcription(
     );
 
     let mut mapper = TranscriptionMapper::new(&spec, model_cached);
-    let mut forward = |event: WorkerEvent| {
-        if let Some(status) = mapper.map(event) {
-            send_status(&tx, status);
-        }
-    };
-    let choice = tokio::select! {
-        () = tx.closed() => {
-            tracing::info!("Transcription stream dropped while choosing the engine; cancelling");
-            return;
-        }
-        choice = engine_choice::choose(&worker, &spec, policy, CheckMode::Run, hugging_face_token.as_ref(), &mut forward) => choice,
-    };
-    let mut choice = match choice {
+    let mut choice = match engine_choice::choose(&spec, policy) {
         Ok(choice) => choice,
         Err(reason) => {
             send_status(&tx, cannot_run(reason));
@@ -317,15 +321,21 @@ async fn run_transcription(
                 }
                 next = events.next() => {
                     let Some(event) = next else { return };
-                    if let WorkerEvent::Failed { kind, message, .. } = &event
-                        && let Some(cpu) = choice.after_gpu_failure(*kind)
-                    {
-                        tracing::warn!("WebGPU failed, moving to the CPU: {message}");
-                        if *kind == FailureKind::WebGpuFailed {
-                            choice.remember_gpu_failure();
+                    if let WorkerEvent::Failed { kind, message, .. } = &event {
+                        match choice.after_failure(*kind) {
+                            GpuFailure::MoveToCpu(cpu) => {
+                                tracing::warn!("WebGPU failed, moving to the CPU: {message}");
+                                worker.release_idle();
+                                break cpu;
+                            }
+                            GpuFailure::CannotRun(reason) => {
+                                tracing::warn!("WebGPU failed and {} cannot run on the CPU: {message}", spec.id);
+                                worker.release_idle();
+                                send_status(&tx, cannot_run(reason));
+                                return;
+                            }
+                            GpuFailure::Unrelated => {}
                         }
-                        worker.release_idle();
-                        break cpu;
                     }
                     if let Some(status) = mapper.map(event) && !send_status(&tx, status) {
                         return;
@@ -364,6 +374,7 @@ async fn run_preload(
     worker: Arc<WorkerClient>,
     spec: WebModelSpec,
     hugging_face_token: Option<HuggingFaceToken>,
+    policy: AccelPolicy,
     tx: mpsc::UnboundedSender<Result<ModelOperationProgress, PlatformError>>,
 ) {
     let model_id = spec.id.clone();
@@ -425,12 +436,7 @@ async fn run_preload(
         }
     };
 
-    let mut ignore = |_: WorkerEvent| {};
-    let chosen = tokio::select! {
-        () = tx.closed() => return,
-        choice = engine_choice::choose(&worker, &spec, AccelPolicy::Auto, CheckMode::Skip, hugging_face_token.as_ref(), &mut ignore) => choice,
-    };
-    let mut choice = match chosen {
+    let mut choice = match engine_choice::choose(&spec, policy) {
         Ok(choice) => choice,
         Err(reason) => {
             if tx
@@ -469,23 +475,33 @@ async fn run_preload(
             }
             next = events.next() => {
                 let Some(event) = next else { return };
-                if let WorkerEvent::Failed { kind, message, .. } = &event
-                    && let Some(cpu) = choice.after_gpu_failure(*kind)
-                {
-                    tracing::warn!("WebGPU could not load {model_id}, loading it for the CPU: {message}");
-                    choice = cpu;
-                    worker.release_idle();
-                    match worker.submit(load_request(&worker, &spec, &choice, hugging_face_token.as_ref()), None) {
-                        Ok(retry) => {
-                            events = retry;
-                            continue;
+                if let WorkerEvent::Failed { kind, message, .. } = &event {
+                    match choice.after_failure(*kind) {
+                        GpuFailure::MoveToCpu(cpu) => {
+                            tracing::warn!("WebGPU could not load {model_id}, loading it for the CPU: {message}");
+                            choice = cpu;
+                            worker.release_idle();
+                            match worker.submit(load_request(&worker, &spec, &choice, hugging_face_token.as_ref()), None) {
+                                Ok(retry) => {
+                                    events = retry;
+                                    continue;
+                                }
+                                Err(error) => {
+                                    if tx.send(Ok(fail("download", error.to_string(), ModelFailureKind::Other))).is_err() {
+                                        tracing::warn!("Preload of {model_id} failed after its listener left");
+                                    }
+                                    return;
+                                }
+                            }
                         }
-                        Err(error) => {
-                            if tx.send(Ok(fail("download", error.to_string(), ModelFailureKind::Other))).is_err() {
+                        GpuFailure::CannotRun(reason) => {
+                            worker.release_idle();
+                            if tx.send(Ok(fail("download", reason.gpu_only_refusal().to_owned(), ModelFailureKind::Other))).is_err() {
                                 tracing::warn!("Preload of {model_id} failed after its listener left");
                             }
                             return;
                         }
+                        GpuFailure::Unrelated => {}
                     }
                 }
                 let outcome = match mapper.map(event, now_ms()) {
@@ -717,8 +733,15 @@ impl Platform for WasmPlatformImpl {
         self.ensure_initialized().await?;
 
         let spec = self.model_manager.model(model_id)?.clone();
+        let policy = self.load_settings().await?.performance.accel_policy();
         let (tx, rx) = mpsc::unbounded_channel();
-        spawn_local(run_preload(Arc::clone(&self.worker), spec, token, tx));
+        spawn_local(run_preload(
+            Arc::clone(&self.worker),
+            spec,
+            token,
+            policy,
+            tx,
+        ));
         Ok(Box::pin(UnboundedReceiverStream::new(rx)))
     }
 
@@ -785,15 +808,6 @@ impl Platform for WasmPlatformImpl {
 
     async fn system_report(&self) -> Result<SystemReport, PlatformError> {
         Err(PlatformError::unsupported("a system report in the browser"))
-    }
-
-    async fn plan_browser_engine(
-        &self,
-        model_id: &str,
-        accel: AccelPolicy,
-    ) -> Result<EnginePlan, PlatformError> {
-        let spec = self.model_manager.model(model_id)?.clone();
-        Ok(engine_choice::preview(&self.worker, &spec, accel).await)
     }
 
     async fn load_settings(&self) -> Result<Settings, PlatformError> {

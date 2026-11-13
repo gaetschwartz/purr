@@ -2,9 +2,8 @@ use ambassador::Delegate;
 use bytes::Bytes;
 pub use purr_common::platform::*;
 use purr_common::{
-    accel::{AccelPolicy, SystemReport},
+    accel::SystemReport,
     audio_overview::AudioOverview,
-    browser_engine::EnginePlan,
     history::{
         entry::{HistoryEntry, HistoryId, HistoryRecord},
         listing::{HistoryListing, Saved},

@@ -1,4 +1,3 @@
-import { env } from "@huggingface/transformers";
 import { FailureKind, WorkerFailure } from "./events.js";
 
 async function requestAdapter() {
@@ -6,34 +5,6 @@ async function requestAdapter() {
         return null;
     }
     return navigator.gpu.requestAdapter({ powerPreference: "high-performance" });
-}
-
-function limits(adapter) {
-    const values = {};
-    for (const key in adapter.limits) {
-        values[key] = adapter.limits[key];
-    }
-    return values;
-}
-
-export async function probeGpu() {
-    const adapter = await requestAdapter();
-    if (!adapter) {
-        return null;
-    }
-    const info = adapter.info ?? {};
-    const fingerprint = JSON.stringify({
-        vendor: info.vendor ?? null,
-        architecture: info.architecture ?? null,
-        device: info.device ?? null,
-        description: info.description ?? null,
-        features: [...adapter.features].sort(),
-        limits: limits(adapter),
-        browser: navigator.userAgent,
-        runtime: env.backends.onnx.versions ?? null,
-        transformers: env.version,
-    });
-    return { fingerprint, shader_f16: adapter.features.has("shader-f16") };
 }
 
 export async function requireWebGpu(model) {
