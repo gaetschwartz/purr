@@ -58,3 +58,25 @@ pub async fn estimate() -> WebResult<StorageEstimate> {
         quota: number(&result, "quota")?,
     })
 }
+
+/// Asks the browser not to evict this site's storage under pressure, and tells whether it agreed.
+pub async fn request_persistence() -> WebResult<bool> {
+    let navigator = web_sys::window()
+        .ok_or_else(|| WebError::web_api("StorageManager", JsValue::from_str("no window")))?
+        .navigator();
+    let storage = Reflect::get(&navigator, &JsValue::from_str("storage"))
+        .map_err(|e| WebError::web_api("StorageManager", e))?;
+    let persist: Function = Reflect::get(&storage, &JsValue::from_str("persist"))
+        .map_err(|e| WebError::web_api("StorageManager.persist", e))?
+        .dyn_into()
+        .map_err(|value| WebError::web_api("StorageManager.persist", value))?;
+    let promise: Promise = persist
+        .call0(&storage)
+        .map_err(|e| WebError::web_api("StorageManager.persist", e))?
+        .dyn_into()
+        .map_err(|value| WebError::web_api("StorageManager.persist", value))?;
+    let granted = JsFuture::from(promise)
+        .await
+        .map_err(|e| WebError::web_api("StorageManager.persist", e))?;
+    Ok(granted.as_bool() == Some(true))
+}

@@ -9,6 +9,7 @@ mod general;
 mod hardware;
 mod hugging_face_token;
 mod run_on;
+mod saved_audio;
 mod saved_tick;
 pub mod settings_page;
 mod system_list;

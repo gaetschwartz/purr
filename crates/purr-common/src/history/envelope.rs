@@ -155,6 +155,30 @@ mod tests {
     }
 
     #[test]
+    fn audio_stored_in_the_browser_survives_the_round_trip() {
+        let mut stored_in_browser = entry();
+        stored_in_browser.source = HistorySource::StoredInBrowser;
+        let stored = encode(&stored_in_browser).unwrap_or_default();
+        assert_eq!(
+            stored
+                .split_once("\"source\":")
+                .and_then(|(_, rest)| rest.split_once('}'))
+                .map(|(source, _)| source),
+            Some("{\"kind\":\"stored_in_browser\"")
+        );
+        assert_eq!(decode(&stored), Ok(stored_in_browser));
+    }
+
+    #[test]
+    fn an_entry_whose_audio_was_not_kept_still_reads() {
+        let stored = "{\"version\":2,\"entry\":{\"id\":\"abc-1\",\"title\":\"memo.ogg\",\"file_name\":\"memo.ogg\",\"created_at_ms\":1762848000000,\"audio_seconds\":12.5,\"language\":\"fr\",\"language_origin\":\"detected\",\"model_id\":\"tiny\",\"model_label\":\"Tiny\",\"processing_seconds\":2.0,\"preview\":\"Bonjour\",\"segments\":[],\"peaks\":[],\"source\":{\"kind\":\"not_kept\"}}}";
+        assert_eq!(
+            decode(stored).map(|entry| entry.source),
+            Ok(HistorySource::NotKept)
+        );
+    }
+
+    #[test]
     fn a_newer_version_is_named_not_guessed_at() {
         assert_eq!(
             decode("{\"version\":9,\"entry\":{\"future\":true}}"),

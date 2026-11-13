@@ -294,6 +294,10 @@ pub enum WebError {
     #[diagnostic(code(purr::web::indexeddb::operation_failed))]
     IndexedDb { operation: String, js_error: String },
 
+    #[error("The browser has no storage left for {operation}")]
+    #[diagnostic(code(purr::web::indexeddb::storage_full))]
+    StorageFull { operation: String },
+
     #[error("Web API error: {api} call failed, {js_error}")]
     #[diagnostic(code(purr::web::api::call_failed))]
     WebApi { api: String, js_error: String },
@@ -428,6 +432,7 @@ impl WebError {
             Self::ModelNotFound { model_id, .. } => PlatformError::model_not_found(model_id),
             Self::Storage { .. }
             | Self::IndexedDb { .. }
+            | Self::StorageFull { .. }
             | Self::WebApi { .. }
             | Self::JavaScript { .. }
             | Self::NetworkError { .. } => PlatformError::io(Box::new(self)),

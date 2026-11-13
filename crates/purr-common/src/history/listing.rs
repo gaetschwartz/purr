@@ -61,13 +61,6 @@ impl HistoryListing {
     }
 }
 
-/// What saving an entry did besides storing it.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct Saved {
-    /// The entries dropped to stay within the retention limits, oldest first.
-    pub evicted: Vec<HistoryId>,
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -25,7 +25,10 @@ use crate::{
     },
 };
 use dioxus::prelude::*;
-use purr_common::history::entry::{AudioAvailability, HistoryId, HistoryRecord, HistorySource};
+use purr_common::history::{
+    audio::HistoryAudio,
+    entry::{AudioAvailability, HistoryId, HistoryRecord, HistorySource},
+};
 use std::{path::PathBuf, rc::Rc};
 
 /// Why a saved transcription could not be opened.
@@ -43,6 +46,46 @@ fn load_failure(error: &PlatformError) -> Unopened {
     }
 }
 
+/// The audio the browser stores for a saved transcription, once looked up.
+#[derive(Debug, Clone, PartialEq)]
+enum StoredAudio {
+    /// There is none to look up: the entry does not have audio stored in the browser.
+    NotApplicable,
+    Found(HistoryAudio),
+    Unreadable(String),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct Loaded {
+    record: HistoryRecord,
+    stored: StoredAudio,
+}
+
+async fn load(id: &HistoryId) -> Result<Loaded, Unopened> {
+    let platform = platform::get_platform();
+    let record = platform
+        .get_history_entry(id)
+        .await
+        .map_err(|error| load_failure(&error))?;
+    let stored = match (&record.entry.source, record.audio) {
+        (HistorySource::StoredInBrowser, AudioAvailability::Available) => {
+            match platform.history_audio(id).await {
+                Ok(Some(audio)) => StoredAudio::Found(audio),
+                Ok(None) => StoredAudio::Unreadable("it is no longer in the browser".to_owned()),
+                Err(error) => {
+                    tracing::error!("Could not read the stored audio of {id}: {error}");
+                    StoredAudio::Unreadable(error.to_string())
+                }
+            }
+        }
+        (
+            HistorySource::StoredInBrowser | HistorySource::Path { .. } | HistorySource::NotKept,
+            AudioAvailability::Available | AudioAvailability::Missing | AudioAvailability::NotKept,
+        ) => StoredAudio::NotApplicable,
+    };
+    Ok(Loaded { record, stored })
+}
+
 /// The saved transcription `id` with its stored segments; the player only when the audio is there.
 #[component]
 pub fn SavedTranscription(id: HistoryId) -> Element {
@@ -56,14 +99,9 @@ fn Opening(id: HistoryId) -> Element {
     let navigator = use_navigator();
     let record = use_resource(move || {
         let id = id.clone();
-        async move {
-            platform::get_platform()
-                .get_history_entry(&id)
-                .await
-                .map_err(|error| load_failure(&error))
-        }
+        async move { load(&id).await }
     });
-    let loaded: Option<Result<HistoryRecord, Unopened>> = record.read().clone();
+    let loaded: Option<Result<Loaded, Unopened>> = record.read().clone();
 
     match loaded {
         None => rsx! {
@@ -75,7 +113,7 @@ fn Opening(id: HistoryId) -> Element {
             }
         },
         Some(Ok(found)) => rsx! {
-            Opened { record: found }
+            Opened { loaded: found }
         },
         Some(Err(Unopened::Missing)) => rsx! {
             Page { title: "History",
@@ -117,27 +155,72 @@ fn Opening(id: HistoryId) -> Element {
     }
 }
 
-fn audio_note(audio: AudioAvailability) -> &'static str {
+fn audio_note(source: &HistorySource, audio: AudioAvailability) -> &'static str {
     match audio {
         AudioAvailability::Available => "",
-        AudioAvailability::Missing => "The original audio file was moved or deleted.",
-        AudioAvailability::NotKept if IS_WEB => "The browser doesn't keep the audio.",
+        AudioAvailability::Missing => match source {
+            HistorySource::StoredInBrowser => {
+                "The audio stored for this transcription is gone from this browser."
+            }
+            HistorySource::Path { .. } | HistorySource::NotKept => {
+                "The original audio file was moved or deleted."
+            }
+        },
+        AudioAvailability::NotKept if IS_WEB => "This audio isn't stored.",
         AudioAvailability::NotKept => "Where this audio came from wasn't recorded.",
     }
 }
 
 #[component]
-fn Opened(record: HistoryRecord) -> Element {
-    match (&record.entry.source, record.audio) {
-        (HistorySource::Path { path }, AudioAvailability::Available) => rsx! {
+fn Opened(loaded: Loaded) -> Element {
+    let Loaded { record, stored } = loaded;
+    match (&record.entry.source, record.audio, stored) {
+        (HistorySource::Path { path }, AudioAvailability::Available, _) => rsx! {
             Playable { record: record.clone(), path: path.clone() }
         },
-        (HistorySource::Path { .. } | HistorySource::NotKept, audio) => {
-            let audio = ResultAudio::Unavailable(audio_note(audio).to_owned());
+        (
+            HistorySource::StoredInBrowser,
+            AudioAvailability::Available,
+            StoredAudio::Found(audio),
+        ) => {
+            rsx! {
+                PlayableStored { record: record.clone(), audio }
+            }
+        }
+        (
+            HistorySource::StoredInBrowser,
+            AudioAvailability::Available,
+            StoredAudio::Unreadable(reason),
+        ) => {
+            let audio =
+                ResultAudio::Unavailable(format!("The stored audio can't be read: {reason}."));
             rsx! {
                 Entry { record: record.clone(), audio }
             }
         }
+        (
+            source,
+            audio,
+            StoredAudio::NotApplicable | StoredAudio::Found(_) | StoredAudio::Unreadable(_),
+        ) => {
+            let audio = ResultAudio::Unavailable(audio_note(source, audio).to_owned());
+            rsx! {
+                Entry { record: record.clone(), audio }
+            }
+        }
+    }
+}
+
+#[component]
+fn PlayableStored(record: HistoryRecord, audio: HistoryAudio) -> Element {
+    let player = use_audio_player(&AudioSource::Kept(audio));
+    let peaks = Rc::new(record.entry.waveform());
+    let audio = ResultAudio::Player {
+        player,
+        peaks: (!peaks.is_empty()).then_some(peaks),
+    };
+    rsx! {
+        Entry { record, audio }
     }
 }
 

@@ -6,14 +6,15 @@ use std::{cell::Cell, cell::RefCell, rc::Rc};
 use tokio::sync::oneshot;
 use wasm_bindgen::{JsCast as _, JsValue, closure::Closure};
 use web_sys::{
-    Event, IdbDatabase, IdbOpenDbRequest, IdbRequest, IdbTransaction, IdbVersionChangeEvent,
+    DomException, Event, IdbDatabase, IdbOpenDbRequest, IdbRequest, IdbTransaction,
+    IdbVersionChangeEvent,
 };
 
 /// The name of the database.
 pub const DB_NAME: &str = "PurrWebStorage";
 
-/// The schema version: 1 held `files` and `metadata`, 2 adds `history`.
-pub const DB_VERSION: u32 = 2;
+/// The schema version: 1 held `files` and `metadata`, 2 added `history`, 3 adds `history_audio`.
+pub const DB_VERSION: u32 = 3;
 
 /// Uploaded audio, by file id.
 pub const FILES: &str = "files";
@@ -24,7 +25,11 @@ pub const METADATA: &str = "metadata";
 /// Saved transcriptions as JSON text, by history id.
 pub const HISTORY: &str = "history";
 
-const STORES: [&str; 3] = [FILES, METADATA, HISTORY];
+/// The audio of saved transcriptions, by history id; apart from `files`, which holds uploads that
+/// are purged after a day.
+pub const HISTORY_AUDIO: &str = "history_audio";
+
+const STORES: [&str; 4] = [FILES, METADATA, HISTORY, HISTORY_AUDIO];
 
 thread_local! {
     static CONNECTION: RefCell<Option<IdbDatabase>> = const { RefCell::new(None) };
@@ -166,6 +171,25 @@ impl<F: Fn()> Drop for Detach<F> {
     }
 }
 
+const QUOTA_EXCEEDED: &str = "QuotaExceededError";
+
+/// The error of a failed request or transaction: running out of storage is told apart.
+fn failure(action: &'static str, exception: Option<DomException>, fallback: &str) -> WebError {
+    match exception {
+        Some(exception) if exception.name() == QUOTA_EXCEEDED => WebError::StorageFull {
+            operation: action.to_owned(),
+        },
+        Some(exception) => WebError::IndexedDb {
+            operation: action.to_owned(),
+            js_error: exception.message(),
+        },
+        None => WebError::IndexedDb {
+            operation: action.to_owned(),
+            js_error: fallback.to_owned(),
+        },
+    }
+}
+
 /// Waits for `request` and returns its result.
 pub async fn settle(request: &IdbRequest, action: &'static str) -> WebResult<JsValue> {
     let (tx, rx) = oneshot::channel::<WebResult<JsValue>>();
@@ -186,15 +210,11 @@ pub async fn settle(request: &IdbRequest, action: &'static str) -> WebResult<JsV
         let failed = request.clone();
         Closure::once(move |_: Event| {
             if let Some(tx) = sender.take() {
-                let detail = failed
-                    .error()
-                    .ok()
-                    .flatten()
-                    .map_or_else(|| "unknown error".to_owned(), |error| error.message());
-                let outcome = Err(WebError::IndexedDb {
-                    operation: action.to_owned(),
-                    js_error: detail,
-                });
+                let outcome = Err(failure(
+                    action,
+                    failed.error().ok().flatten(),
+                    "unknown error",
+                ));
                 if tx.send(outcome).is_err() {
                     tracing::debug!("{action} failed after its caller left");
                 }
@@ -229,14 +249,11 @@ pub async fn committed(transaction: &IdbTransaction, action: &'static str) -> We
         let aborted = transaction.clone();
         Closure::<dyn FnMut(Event)>::new(move |_| {
             if let Some(tx) = sender.take() {
-                let detail = aborted.error().map_or_else(
-                    || "the transaction was aborted".to_owned(),
-                    |error| error.message(),
-                );
-                let outcome = Err(WebError::IndexedDb {
-                    operation: action.to_owned(),
-                    js_error: detail,
-                });
+                let outcome = Err(failure(
+                    action,
+                    aborted.error(),
+                    "the transaction was aborted",
+                ));
                 if tx.send(outcome).is_err() {
                     tracing::debug!("{action} aborted after its caller left");
                 }

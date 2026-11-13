@@ -20,8 +20,9 @@ use crate::{
     beams::{BeamSnapshot, BeamSwitch},
     browser_engine::BrowserEngine,
     history::{
+        audio::{AudioOutcome, HistoryAudio},
         entry::{HistoryEntry, HistoryId, HistoryRecord},
-        listing::{HistoryListing, Saved},
+        listing::HistoryListing,
     },
     hugging_face_token::HuggingFaceToken,
     progress::ProgressFrame,
@@ -914,7 +915,7 @@ pub trait Platform: Send + Sync + 'static {
     ///
     /// # Platform Differences
     /// - **Desktop**: One JSON file per entry in the app's data directory
-    /// - **Web**: One JSON string per entry in an `IndexedDB` object store
+    /// - **Web**: One JSON string per entry in an `IndexedDB` object store, the audio apart
     fn list_history(
         &self,
     ) -> impl std::future::Future<Output = Result<HistoryListing, PlatformError>> + Send;
@@ -928,15 +929,47 @@ pub trait Platform: Send + Sync + 'static {
         id: &HistoryId,
     ) -> impl std::future::Future<Output = Result<HistoryRecord, PlatformError>> + Send;
 
-    /// Store an entry, replacing one with the same id, then enforce the retention limits
+    /// Store an entry, replacing one with the same id
+    ///
+    /// # Arguments
+    /// * `audio` - The audio to keep with the entry, when the platform stores audio itself
     ///
     /// # Returns
-    /// The entries dropped to stay within the limits, which can include `entry` itself when it
-    /// is older than everything that is kept
+    /// What became of `audio`. The transcript is saved whatever happens to it.
+    ///
+    /// # Platform Differences
+    /// - **Desktop**: Ignores `audio`; the entry points at the original file
+    /// - **Web**: Stores `audio` in `IndexedDB` under the entry's id and sets the entry's source
+    ///   to match, dropping the audio of the oldest entries first when the budget is reached
     fn save_history_entry(
         &self,
         entry: &HistoryEntry,
-    ) -> impl std::future::Future<Output = Result<Saved, PlatformError>> + Send;
+        audio: Option<HistoryAudio>,
+    ) -> impl std::future::Future<Output = Result<AudioOutcome, PlatformError>> + Send;
+
+    /// The audio the platform stores for a saved transcription, when it has some
+    ///
+    /// # Platform Differences
+    /// - **Desktop**: Always `None`; the original file is played from its path
+    /// - **Web**: The bytes stored when the entry was saved
+    fn history_audio(
+        &self,
+        id: &HistoryId,
+    ) -> impl std::future::Future<Output = Result<Option<HistoryAudio>, PlatformError>> + Send;
+
+    /// How many bytes of audio the platform stores for the history (0 on the desktop)
+    fn history_audio_bytes(
+        &self,
+    ) -> impl std::future::Future<Output = Result<u64, PlatformError>> + Send;
+
+    /// Delete all the audio the platform stores for the history; the entries stay, marked as
+    /// not kept
+    ///
+    /// # Returns
+    /// How many bytes were freed
+    fn clear_history_audio(
+        &self,
+    ) -> impl std::future::Future<Output = Result<u64, PlatformError>> + Send;
 
     /// Change the title of a saved transcription; `title` must already be a valid one
     fn rename_history_entry(
@@ -945,13 +978,14 @@ pub trait Platform: Send + Sync + 'static {
         title: &str,
     ) -> impl std::future::Future<Output = Result<(), PlatformError>> + Send;
 
-    /// Delete a saved transcription; the audio file it points at is not touched
+    /// Delete a saved transcription, with the audio the platform stores for it; an original
+    /// file it points at is not touched
     fn delete_history_entry(
         &self,
         id: &HistoryId,
     ) -> impl std::future::Future<Output = Result<(), PlatformError>> + Send;
 
-    /// Delete every saved transcription, including unreadable ones
+    /// Delete every saved transcription, including unreadable ones, and the audio stored for them
     ///
     /// # Returns
     /// How many stored entries were removed

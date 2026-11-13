@@ -1,6 +1,9 @@
 //! Whether the result on screen has been saved to History.
 
-use purr_common::history::entry::{HistoryEntry, HistoryId};
+use purr_common::history::{
+    audio::HistoryAudio,
+    entry::{HistoryEntry, HistoryId},
+};
 use std::rc::Rc;
 
 /// Where saving the last finished run stands.
@@ -14,5 +17,6 @@ pub enum SaveState {
     Failed {
         message: String,
         entry: Rc<HistoryEntry>,
+        audio: Option<HistoryAudio>,
     },
 }

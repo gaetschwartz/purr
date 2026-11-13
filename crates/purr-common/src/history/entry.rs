@@ -69,8 +69,10 @@ impl fmt::Display for HistoryId {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum HistorySource {
-    /// The audio was not kept: the browser does not copy it into history.
+    /// The history holds no copy of the audio and does not know where it came from.
     NotKept,
+    /// A copy of the audio held by the platform itself, in the browser's storage.
+    StoredInBrowser,
     /// The original file on the computer.
     Path { path: PathBuf },
 }
@@ -79,7 +81,7 @@ pub enum HistorySource {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AudioAvailability {
     Available,
-    /// The original file moved or was deleted.
+    /// The original file moved or was deleted, or the copy kept in the browser is gone.
     Missing,
     NotKept,
 }

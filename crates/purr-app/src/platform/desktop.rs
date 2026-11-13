@@ -11,9 +11,9 @@ use parking_lot::Mutex;
 use purr_common::accel::{LastRun, SystemReport};
 use purr_common::audio_overview::{AudioOverview, PeakFold};
 use purr_common::history::{
+    audio::{AudioOutcome, HistoryAudio},
     entry::{HistoryEntry, HistoryId, HistoryRecord},
-    listing::{HistoryListing, Saved},
-    retention::Limits,
+    listing::HistoryListing,
 };
 use purr_common::hugging_face_token::HuggingFaceToken;
 use purr_common::platform::{
@@ -231,9 +231,27 @@ impl Platform for DesktopPlatformImpl {
         self.history_task(move |history| history.get(&id)).await
     }
 
-    async fn save_history_entry(&self, entry: &HistoryEntry) -> Result<Saved, PlatformError> {
+    async fn save_history_entry(
+        &self,
+        entry: &HistoryEntry,
+        _audio: Option<HistoryAudio>,
+    ) -> Result<AudioOutcome, PlatformError> {
         let entry = entry.clone();
-        self.history_task(move |history| history.save(&entry)).await
+        self.history_task(move |history| history.save(&entry))
+            .await?;
+        Ok(AudioOutcome::NotOffered)
+    }
+
+    async fn history_audio(&self, _id: &HistoryId) -> Result<Option<HistoryAudio>, PlatformError> {
+        Ok(None)
+    }
+
+    async fn history_audio_bytes(&self) -> Result<u64, PlatformError> {
+        Ok(0)
+    }
+
+    async fn clear_history_audio(&self) -> Result<u64, PlatformError> {
+        Ok(0)
     }
 
     async fn rename_history_entry(&self, id: &HistoryId, title: &str) -> Result<(), PlatformError> {
@@ -881,10 +899,7 @@ impl DesktopPlatformImpl {
                 "Could not determine the data directory",
             ))
         })?;
-        Ok(HistoryDir::new(
-            dirs.data_dir().join("history"),
-            Limits::STANDARD,
-        ))
+        Ok(HistoryDir::new(dirs.data_dir().join("history")))
     }
 
     async fn history_task<T, E>(

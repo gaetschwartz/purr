@@ -1,8 +1,9 @@
-//! Saved transcriptions: the entry, how it is stored, how much is kept and how it is named.
+//! Saved transcriptions: the entry, how it is stored, the audio kept with it and how it is named.
 
+pub mod audio;
+pub mod audio_budget;
 pub mod entry;
 pub mod envelope;
 pub mod listing;
 pub mod preview;
-pub mod retention;
 pub mod title;

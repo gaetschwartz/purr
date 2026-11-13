@@ -1,7 +1,7 @@
 //! The URL the player loads audio from.
 
 use crate::transcribe::chosen_file::ChosenFile;
-use purr_common::history::entry::HistoryId;
+use purr_common::history::{audio::HistoryAudio, entry::HistoryId};
 use std::path::PathBuf;
 
 /// Audio the player can load.
@@ -11,6 +11,8 @@ pub enum AudioSource {
     Upload(ChosenFile),
     /// The original file of a saved transcription, still on the computer.
     Original { id: HistoryId, path: PathBuf },
+    /// The copy of the audio of a saved transcription that the browser keeps.
+    Kept(HistoryAudio),
 }
 
 /// A URL the page can `fetch` the audio of `source` from; release it with [`release`].
@@ -19,17 +21,21 @@ pub fn url(source: &AudioSource) -> miette::Result<String> {
     use miette::miette;
     use web_sys::{Blob, BlobPropertyBag, Url};
 
-    let AudioSource::Upload(file) = source else {
-        return Err(miette!(
-            "the browser does not keep the original audio of a saved transcription"
-        ));
+    let (bytes, content_type) = match source {
+        AudioSource::Upload(file) => (file.bytes.as_ref(), file.content_type.as_deref()),
+        AudioSource::Kept(audio) => (audio.bytes.as_ref(), audio.content_type.as_deref()),
+        AudioSource::Original { .. } => {
+            return Err(miette!(
+                "the browser has no original file to play for a saved transcription"
+            ));
+        }
     };
     let options = BlobPropertyBag::new();
-    if let Some(content_type) = &file.content_type {
+    if let Some(content_type) = content_type {
         options.set_type(content_type);
     }
     let parts = js_sys::Array::new();
-    parts.push(&js_sys::Uint8Array::from(file.bytes.as_ref()));
+    parts.push(&js_sys::Uint8Array::from(bytes));
     let blob = Blob::new_with_u8_array_sequence_and_options(&parts, &options)
         .map_err(|e| miette!("Could not hand the audio to the player: {e:?}"))?;
     Url::create_object_url_with_blob(&blob)
@@ -51,10 +57,13 @@ pub const AUDIO_ROUTE: &str = "purr-audio";
 /// A URL the page can `fetch` the audio of `source` from, served by [`use_audio_route`].
 #[cfg(all(feature = "desktop", not(purr_web)))]
 pub fn url(source: &AudioSource) -> miette::Result<String> {
-    Ok(match source {
-        AudioSource::Upload(file) => format!("/{AUDIO_ROUTE}/{}", file.id),
-        AudioSource::Original { id, .. } => format!("/{AUDIO_ROUTE}/{id}"),
-    })
+    match source {
+        AudioSource::Upload(file) => Ok(format!("/{AUDIO_ROUTE}/{}", file.id)),
+        AudioSource::Original { id, .. } => Ok(format!("/{AUDIO_ROUTE}/{id}")),
+        AudioSource::Kept(_) => Err(miette::miette!(
+            "the desktop plays the original file, not a stored copy"
+        )),
+    }
 }
 
 /// Nothing to free on the desktop: the route serves the files.

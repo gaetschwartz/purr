@@ -12,6 +12,7 @@ use super::{
 use crate::{
     components::toast::{Toasts, use_toasts},
     history::{
+        audio_notice,
         entry_builder::{self, Finished},
         save_state::SaveState,
         store::{HistoryStore, use_history},
@@ -37,7 +38,10 @@ use futures::{StreamExt as _, channel::oneshot};
 use purr_common::{
     accel::{AccelPolicy, EngineUsed},
     beams::{BeamSnapshot, BeamSwitch},
-    history::entry::{HistoryEntry, HistoryId, InvalidHistoryId, LanguageOrigin},
+    history::{
+        audio::HistoryAudio,
+        entry::{HistoryEntry, HistoryId, InvalidHistoryId, LanguageOrigin},
+    },
     platform::{
         EngineOptions, FileId, FileSource, ModelId, Platform as _, PlatformError,
         TranscriptionRequest, TranscriptionStatus,
@@ -611,17 +615,21 @@ impl TranscribeSession {
             engine,
             unix_ms(),
         ));
-        self.write_to_history(Rc::new(entry));
+        let audio = IS_WEB.then(|| HistoryAudio {
+            bytes: record.file.bytes.clone(),
+            content_type: record.file.content_type.clone(),
+        });
+        self.write_to_history(Rc::new(entry), audio);
     }
 
-    fn write_to_history(mut self, entry: Rc<HistoryEntry>) {
+    fn write_to_history(mut self, entry: Rc<HistoryEntry>, audio: Option<HistoryAudio>) {
         self.saved.set(SaveState::Saving);
         spawn_forever(async move {
-            let outcome = match self.history.save(&entry).await {
-                Ok(saved) if saved.evicted.contains(&entry.id) => Err(
-                    "History is full of newer transcriptions, so this one was dropped.".to_owned(),
-                ),
-                Ok(_) => Ok(()),
+            let outcome = match self.history.save(&entry, audio.clone()).await {
+                Ok(outcome) => {
+                    audio_notice::announce(self.toasts, &outcome);
+                    Ok(())
+                }
                 Err(error) => {
                     tracing::error!("Could not save {} to History: {error}", entry.file_name);
                     Err(error.to_string())
@@ -635,7 +643,11 @@ impl TranscribeSession {
                 Err(message) => {
                     self.toasts
                         .error("Couldn't save to History", message.clone());
-                    self.saved.set(SaveState::Failed { message, entry });
+                    self.saved.set(SaveState::Failed {
+                        message,
+                        entry,
+                        audio,
+                    });
                 }
             }
         });
@@ -644,8 +656,8 @@ impl TranscribeSession {
     /// Writes the last finished run to History again after a failed save.
     pub fn retry_save(self) {
         let state = self.saved.peek().clone();
-        if let SaveState::Failed { entry, .. } = state {
-            self.write_to_history(entry);
+        if let SaveState::Failed { entry, audio, .. } = state {
+            self.write_to_history(entry, audio);
         }
     }
 

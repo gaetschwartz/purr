@@ -6,8 +6,9 @@ use purr_common::settings::Settings;
 use purr_common::{
     audio_overview::AudioOverview,
     history::{
+        audio::{AudioOutcome, HistoryAudio},
         entry::{HistoryEntry, HistoryId, HistoryRecord},
-        listing::{HistoryListing, Saved},
+        listing::HistoryListing,
     },
     platform::{FileId, TranscriptionStream},
 };
@@ -76,7 +77,23 @@ impl Platform for UnimplementedPlatformImpl {
         unsupported!()
     }
 
-    async fn save_history_entry(&self, entry: &HistoryEntry) -> Result<Saved, PlatformError> {
+    async fn save_history_entry(
+        &self,
+        entry: &HistoryEntry,
+        audio: Option<HistoryAudio>,
+    ) -> Result<AudioOutcome, PlatformError> {
+        unsupported!()
+    }
+
+    async fn history_audio(&self, id: &HistoryId) -> Result<Option<HistoryAudio>, PlatformError> {
+        unsupported!()
+    }
+
+    async fn history_audio_bytes(&self) -> Result<u64, PlatformError> {
+        unsupported!()
+    }
+
+    async fn clear_history_audio(&self) -> Result<u64, PlatformError> {
         unsupported!()
     }
 

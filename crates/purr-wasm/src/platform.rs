@@ -3,7 +3,6 @@
 use crate::audio;
 use crate::engine_choice::{self, GpuFailure};
 use crate::error::{IntegrityError, WebError, WebResult};
-use crate::history_store;
 use crate::local::run_local;
 use crate::model::WebModelManager;
 use crate::model_cache;
@@ -13,6 +12,7 @@ use crate::status_mapper::{PreloadMapper, PreloadStep, TranscriptionMapper};
 use crate::storage::WebStorage;
 use crate::storage_space;
 use crate::worker_client::WorkerClient;
+use crate::{history_audio, history_store};
 use bytes::Bytes;
 use futures::StreamExt as _;
 use purr_common::accel::AccelPolicy;
@@ -21,9 +21,9 @@ use purr_common::adapter_name::{AdapterStrings, adapter_name};
 use purr_common::audio_overview::{AudioOverview, peaks};
 use purr_common::browser_engine::CpuReason;
 use purr_common::history::{
+    audio::{AudioOutcome, HistoryAudio},
     entry::{HistoryEntry, HistoryId, HistoryRecord},
-    listing::{HistoryListing, Saved},
-    retention::Limits,
+    listing::HistoryListing,
 };
 use purr_common::hugging_face_token::HuggingFaceToken;
 use purr_common::platform::{
@@ -73,6 +73,11 @@ impl WasmPlatformImpl {
         self.storage.initialize().await?;
         self.storage.purge_older_than(UPLOAD_RETENTION_MS).await?;
         Self::remove_retired_gpu_checks();
+        match history_audio::sweep().await {
+            Ok(0) => {}
+            Ok(removed) => tracing::info!("Removed {removed} stored audio files without an entry"),
+            Err(error) => tracing::warn!("Could not remove orphaned stored audio: {error}"),
+        }
 
         tracing::info!("Platform initialized");
         *self.initialized.write().await = true;
@@ -678,10 +683,32 @@ impl Platform for WasmPlatformImpl {
         Ok(history_store::get(id).await?)
     }
 
-    async fn save_history_entry(&self, entry: &HistoryEntry) -> Result<Saved, PlatformError> {
+    async fn save_history_entry(
+        &self,
+        entry: &HistoryEntry,
+        audio: Option<HistoryAudio>,
+    ) -> Result<AudioOutcome, PlatformError> {
         self.ensure_initialized().await?;
         let _one_at_a_time = self.history_lock.lock().await;
-        Ok(history_store::save(entry, Limits::STANDARD).await?)
+        Ok(history_store::save(entry, audio).await?)
+    }
+
+    async fn history_audio(&self, id: &HistoryId) -> Result<Option<HistoryAudio>, PlatformError> {
+        self.ensure_initialized().await?;
+        let _one_at_a_time = self.history_lock.lock().await;
+        Ok(history_audio::read(id).await?)
+    }
+
+    async fn history_audio_bytes(&self) -> Result<u64, PlatformError> {
+        self.ensure_initialized().await?;
+        let _one_at_a_time = self.history_lock.lock().await;
+        Ok(history_audio::used_bytes().await?)
+    }
+
+    async fn clear_history_audio(&self) -> Result<u64, PlatformError> {
+        self.ensure_initialized().await?;
+        let _one_at_a_time = self.history_lock.lock().await;
+        Ok(history_audio::clear().await?)
     }
 
     async fn rename_history_entry(&self, id: &HistoryId, title: &str) -> Result<(), PlatformError> {

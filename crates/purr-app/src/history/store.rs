@@ -1,10 +1,12 @@
 //! The saved transcriptions, kept at the root so every screen and toast action can reach them.
 
+use crate::utils::byte_size::ByteSize;
 use crate::{
     components::{
         icon::IconName,
         toast::{Toast, ToastKind, Toasts, use_toasts},
     },
+    history::audio_notice,
     platform::{self, Platform as _, PlatformError},
 };
 use dioxus::{
@@ -12,8 +14,9 @@ use dioxus::{
     prelude::*,
 };
 use purr_common::history::{
+    audio::{AudioOutcome, HistoryAudio},
     entry::{HistoryEntry, HistoryId},
-    listing::{HistoryListing, Saved},
+    listing::HistoryListing,
 };
 use std::rc::Rc;
 
@@ -71,12 +74,18 @@ impl HistoryStore {
         }
     }
 
-    /// Stores `entry`, then refreshes the list; the entries dropped to stay within the retention
-    /// limits are reported in the result.
-    pub async fn save(self, entry: &HistoryEntry) -> Result<Saved, PlatformError> {
-        let saved = platform::get_platform().save_history_entry(entry).await?;
+    /// Stores `entry` with the `audio` to keep for it, then refreshes the list; the result says
+    /// what became of the audio.
+    pub async fn save(
+        self,
+        entry: &HistoryEntry,
+        audio: Option<HistoryAudio>,
+    ) -> Result<AudioOutcome, PlatformError> {
+        let outcome = platform::get_platform()
+            .save_history_entry(entry, audio)
+            .await?;
         self.reload();
-        Ok(saved)
+        Ok(outcome)
     }
 
     /// Gives the entry `id` the title `title`, which must already be a valid one.
@@ -114,6 +123,13 @@ impl HistoryStore {
                     return;
                 }
             };
+            let audio = match platform.history_audio(&id).await {
+                Ok(audio) => audio,
+                Err(error) => {
+                    tracing::error!("Could not read the audio of {id} before deleting it: {error}");
+                    None
+                }
+            };
             if let Err(error) = platform.delete_history_entry(&id).await {
                 tracing::error!("Could not delete {id}: {error}");
                 self.toasts
@@ -127,28 +143,43 @@ impl HistoryStore {
                 Toast::new(ToastKind::Info, "Transcription deleted")
                     .with_detail(title)
                     .with_icon(IconName::Trash)
-                    .with_action("Undo", move || self.restore(Rc::clone(&entry))),
+                    .with_action("Undo", move || {
+                        self.restore(Rc::clone(&entry), audio.clone());
+                    }),
             );
         });
     }
 
-    fn restore(self, entry: Rc<HistoryEntry>) {
+    fn restore(self, entry: Rc<HistoryEntry>, audio: Option<HistoryAudio>) {
         spawn_forever(async move {
-            match self.save(&entry).await {
-                Ok(saved) if saved.evicted.contains(&entry.id) => {
-                    self.toasts.warning(
-                        "Couldn't restore the transcription",
-                        "History is full of newer transcriptions, so it was dropped again.",
-                    );
-                }
-                Ok(_) => {
+            match self.save(&entry, audio).await {
+                Ok(outcome) => {
                     self.toasts
                         .success("Transcription restored", entry.title.clone());
+                    audio_notice::announce(self.toasts, &outcome);
                 }
                 Err(error) => {
                     tracing::error!("Could not restore {}: {error}", entry.id);
                     self.toasts
                         .error("Couldn't restore the transcription", error.to_string());
+                }
+            }
+        });
+    }
+
+    /// Deletes all the audio stored for the history; the entries stay, marked as not kept.
+    pub fn clear_audio(self) {
+        spawn_forever(async move {
+            match platform::get_platform().clear_history_audio().await {
+                Ok(freed) => {
+                    self.reload();
+                    self.toasts
+                        .success("Saved audio cleared", format!("{} freed.", ByteSize(freed)));
+                }
+                Err(error) => {
+                    tracing::error!("Could not clear the saved audio: {error}");
+                    self.toasts
+                        .error("Couldn't clear the saved audio", error.to_string());
                 }
             }
         });

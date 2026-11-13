@@ -5,8 +5,9 @@ use purr_common::{
     accel::SystemReport,
     audio_overview::AudioOverview,
     history::{
+        audio::{AudioOutcome, HistoryAudio},
         entry::{HistoryEntry, HistoryId, HistoryRecord},
-        listing::{HistoryListing, Saved},
+        listing::HistoryListing,
     },
     hugging_face_token::HuggingFaceToken,
     settings::Settings,

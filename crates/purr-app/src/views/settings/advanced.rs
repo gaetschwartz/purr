@@ -1,4 +1,4 @@
-use super::{changes::report, dialog_handle::use_settings_dialog};
+use super::{changes::report, dialog_handle::use_settings_dialog, saved_audio::SavedAudioGroup};
 use crate::{
     components::{
         dialog::{Dialog, DialogTone},
@@ -8,6 +8,7 @@ use crate::{
         toast::{Toast, ToastKind, use_toasts},
     },
     main_app::Route,
+    platform::IS_WEB,
     settings_store::use_settings,
     views::{
         about::{AboutSheet, PLATFORM, version},
@@ -81,6 +82,9 @@ pub fn AdvancedPage() -> Element {
                 title: "Purr {version} · {PLATFORM}",
                 action: ItemAction::Press(EventHandler::new(move |_| about_open.set(true))),
             }
+        }
+        if IS_WEB {
+            SavedAudioGroup {}
         }
         Group {
             Item {

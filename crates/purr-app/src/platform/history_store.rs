@@ -4,8 +4,7 @@ use purr_common::{
     history::{
         entry::{AudioAvailability, HistoryEntry, HistoryId, HistoryRecord, HistorySource},
         envelope::{self, UnreadableReason},
-        listing::{HistoryListing, Saved, UnreadableEntry},
-        retention::{Limits, Stored, evictions},
+        listing::{HistoryListing, UnreadableEntry},
         title::{TitleProblem, clean_title},
     },
     platform::PlatformError,
@@ -75,13 +74,12 @@ fn replace_file(partial: &Path, target: &Path, content: &[u8]) -> io::Result<()>
 #[derive(Debug, Clone)]
 pub struct HistoryDir {
     dir: PathBuf,
-    limits: Limits,
 }
 
 impl HistoryDir {
     #[must_use]
-    pub const fn new(dir: PathBuf, limits: Limits) -> Self {
-        Self { dir, limits }
+    pub const fn new(dir: PathBuf) -> Self {
+        Self { dir }
     }
 
     fn entry_path(&self, id: &HistoryId) -> PathBuf {
@@ -129,7 +127,9 @@ impl HistoryDir {
         match &entry.source {
             HistorySource::NotKept => AudioAvailability::NotKept,
             HistorySource::Path { path } if path.is_file() => AudioAvailability::Available,
-            HistorySource::Path { .. } => AudioAvailability::Missing,
+            HistorySource::Path { .. } | HistorySource::StoredInBrowser => {
+                AudioAvailability::Missing
+            }
         }
     }
 
@@ -182,29 +182,9 @@ impl HistoryDir {
         Ok(())
     }
 
-    /// Stores `entry`, then drops the oldest entries beyond the limits.
-    pub fn save(&self, entry: &HistoryEntry) -> Result<Saved, HistoryDirError> {
-        self.write(entry)?;
-        let mut stored = Vec::new();
-        for path in self.files(ENTRY_EXTENSION)? {
-            let Ok(read) = Self::read(&path) else {
-                continue;
-            };
-            let bytes = fs::metadata(&path)
-                .map_err(io_error("Could not measure", &path))?
-                .len();
-            stored.push(Stored {
-                id: read.id,
-                created_at_ms: read.created_at_ms,
-                bytes,
-            });
-        }
-        let evicted = evictions(&stored, self.limits);
-        for id in &evicted {
-            let path = self.entry_path(id);
-            fs::remove_file(&path).map_err(io_error("Could not remove", &path))?;
-        }
-        Ok(Saved { evicted })
+    /// Stores `entry`, replacing the one with the same id.
+    pub fn save(&self, entry: &HistoryEntry) -> Result<(), HistoryDirError> {
+        self.write(entry)
     }
 
     /// Gives the entry `id` the title `title`.
@@ -241,11 +221,6 @@ mod tests {
     use super::*;
     use purr_common::{history::entry::LanguageOrigin, platform::TranscriptSegment, word::Word};
 
-    const SMALL: Limits = Limits {
-        max_entries: 3,
-        max_bytes: 1_000_000,
-    };
-
     fn entry(name: &str, created_at_ms: i64) -> HistoryEntry {
         HistoryEntry {
             id: HistoryId::parse(name).unwrap(),
@@ -276,9 +251,9 @@ mod tests {
         }
     }
 
-    fn dir(limits: Limits) -> (tempfile::TempDir, HistoryDir) {
+    fn dir() -> (tempfile::TempDir, HistoryDir) {
         let temp = tempfile::tempdir().unwrap();
-        let history = HistoryDir::new(temp.path().join("history"), limits);
+        let history = HistoryDir::new(temp.path().join("history"));
         (temp, history)
     }
 
@@ -292,13 +267,13 @@ mod tests {
 
     #[test]
     fn a_directory_that_does_not_exist_yet_is_an_empty_history() {
-        let (_temp, history) = dir(SMALL);
+        let (_temp, history) = dir();
         assert_eq!(history.list().unwrap(), HistoryListing::default());
     }
 
     #[test]
     fn saved_entries_come_back_newest_first_and_whole() {
-        let (_temp, history) = dir(SMALL);
+        let (_temp, history) = dir();
         history.save(&entry("a", 1)).unwrap();
         history.save(&entry("b", 2)).unwrap();
         let listing = history.list().unwrap();
@@ -310,7 +285,7 @@ mod tests {
 
     #[test]
     fn saving_the_same_id_replaces_it() {
-        let (_temp, history) = dir(SMALL);
+        let (_temp, history) = dir();
         history.save(&entry("a", 1)).unwrap();
         let mut changed = entry("a", 1);
         changed.title = "Changed".to_owned();
@@ -320,7 +295,7 @@ mod tests {
 
     #[test]
     fn a_save_leaves_no_partial_file_behind() {
-        let (_temp, history) = dir(SMALL);
+        let (_temp, history) = dir();
         history.save(&entry("a", 1)).unwrap();
         assert_eq!(
             history.files(PARTIAL_EXTENSION).unwrap(),
@@ -330,7 +305,7 @@ mod tests {
 
     #[test]
     fn a_partial_file_is_not_an_entry_and_is_not_reported() {
-        let (_temp, history) = dir(SMALL);
+        let (_temp, history) = dir();
         history.save(&entry("a", 1)).unwrap();
         fs::write(history.dir.join("b.json.tmp"), "{\"vers").unwrap();
         let listing = history.list().unwrap();
@@ -340,7 +315,7 @@ mod tests {
 
     #[test]
     fn a_damaged_file_is_reported_and_the_rest_still_lists() {
-        let (_temp, history) = dir(SMALL);
+        let (_temp, history) = dir();
         history.save(&entry("a", 1)).unwrap();
         fs::write(history.dir.join("broken.json"), "not json").unwrap();
         fs::write(
@@ -366,7 +341,7 @@ mod tests {
 
     #[test]
     fn an_entry_whose_id_differs_from_its_file_name_is_unreadable() {
-        let (_temp, history) = dir(SMALL);
+        let (_temp, history) = dir();
         history.save(&entry("a", 1)).unwrap();
         fs::copy(history.dir.join("a.json"), history.dir.join("b.json")).unwrap();
         let listing = history.list().unwrap();
@@ -375,46 +350,17 @@ mod tests {
     }
 
     #[test]
-    fn the_count_cap_drops_the_oldest_on_save() {
-        let (_temp, history) = dir(SMALL);
-        for (name, at) in [("a", 1), ("b", 2), ("c", 3)] {
-            assert_eq!(history.save(&entry(name, at)).unwrap().evicted, Vec::new());
+    fn history_has_no_size_or_count_limit() {
+        let (_temp, history) = dir();
+        for at in 0..250 {
+            history.save(&entry(&format!("e{at:03}"), at)).unwrap();
         }
-        let saved = history.save(&entry("d", 4)).unwrap();
-        assert_eq!(saved.evicted, vec![entry("a", 1).id]);
-        assert_eq!(
-            titles(&history.list().unwrap()),
-            vec!["d.ogg", "c.ogg", "b.ogg"]
-        );
-    }
-
-    #[test]
-    fn the_size_cap_drops_the_oldest_on_save() {
-        let one = envelope::encode(&entry("a", 1)).unwrap().len() as u64;
-        let (_temp, history) = dir(Limits {
-            max_entries: 100,
-            max_bytes: one * 2 + one / 2,
-        });
-        history.save(&entry("a", 1)).unwrap();
-        history.save(&entry("b", 2)).unwrap();
-        let saved = history.save(&entry("c", 3)).unwrap();
-        assert_eq!(saved.evicted, vec![entry("a", 1).id]);
-        assert_eq!(titles(&history.list().unwrap()), vec!["c.ogg", "b.ogg"]);
-    }
-
-    #[test]
-    fn restoring_an_older_entry_into_a_full_history_evicts_it_again() {
-        let (_temp, history) = dir(SMALL);
-        for (name, at) in [("b", 2), ("c", 3), ("d", 4)] {
-            history.save(&entry(name, at)).unwrap();
-        }
-        let saved = history.save(&entry("a", 1)).unwrap();
-        assert_eq!(saved.evicted, vec![entry("a", 1).id]);
+        assert_eq!(history.list().unwrap().summaries.len(), 250);
     }
 
     #[test]
     fn rename_validates_and_keeps_the_rest_words_included() {
-        let (_temp, history) = dir(SMALL);
+        let (_temp, history) = dir();
         history.save(&entry("a", 1)).unwrap();
         let id = entry("a", 1).id;
         history.rename(&id, "  Réunion   du lundi ").unwrap();
@@ -430,7 +376,7 @@ mod tests {
 
     #[test]
     fn delete_removes_one_and_reports_a_missing_one() {
-        let (_temp, history) = dir(SMALL);
+        let (_temp, history) = dir();
         history.save(&entry("a", 1)).unwrap();
         history.save(&entry("b", 2)).unwrap();
         history.delete(&entry("a", 1).id).unwrap();
@@ -447,7 +393,7 @@ mod tests {
 
     #[test]
     fn an_undone_delete_puts_the_entry_back_where_it_was() {
-        let (_temp, history) = dir(SMALL);
+        let (_temp, history) = dir();
         for (name, at) in [("a", 1), ("b", 2), ("c", 3)] {
             history.save(&entry(name, at)).unwrap();
         }
@@ -462,7 +408,7 @@ mod tests {
 
     #[test]
     fn clear_removes_unreadable_files_too() {
-        let (_temp, history) = dir(SMALL);
+        let (_temp, history) = dir();
         history.save(&entry("a", 1)).unwrap();
         fs::write(history.dir.join("broken.json"), "x").unwrap();
         assert_eq!(history.clear().unwrap(), 2);
@@ -471,7 +417,7 @@ mod tests {
 
     #[test]
     fn audio_is_available_only_while_the_original_file_exists() {
-        let (temp, history) = dir(SMALL);
+        let (temp, history) = dir();
         let audio = temp.path().join("memo.ogg");
         fs::write(&audio, b"audio").unwrap();
         let mut kept = entry("a", 1);
