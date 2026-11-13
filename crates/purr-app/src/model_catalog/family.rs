@@ -112,20 +112,6 @@ impl ModelGroup {
             Self::Other => "Other models",
         }
     }
-
-    /// How the section's models trade speed for accuracy; unknown for other models.
-    #[must_use]
-    pub const fn trade_off(self) -> Option<&'static str> {
-        match self {
-            Self::Turbo => Some("Near Large accuracy, much faster"),
-            Self::Large => Some("Most accurate, slowest"),
-            Self::Medium => Some("Accurate, slower"),
-            Self::Small => Some("Balanced"),
-            Self::Base => Some("Very fast"),
-            Self::Tiny => Some("Fastest, least accurate"),
-            Self::Other => None,
-        }
-    }
 }
 
 #[cfg(test)]

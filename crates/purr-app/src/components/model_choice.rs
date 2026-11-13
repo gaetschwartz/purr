@@ -6,7 +6,7 @@ use crate::{
     model_catalog::{
         clusters::ModelCluster,
         copy,
-        entry::{ModelEntry, Precision},
+        entry::Precision,
         format::{check_percent, percent},
         listing::ModelRow,
         picker::stored_here,
@@ -37,25 +37,17 @@ pub fn download_size(row: &ModelRow) -> Option<String> {
     }
 }
 
-fn facts(entry: &ModelEntry) -> String {
-    let language = entry.language.label();
-    entry.group.trade_off().map_or_else(
-        || language.to_owned(),
-        |trade| format!("{language} · {trade}"),
-    )
-}
-
-fn subtitle(row: &ModelRow) -> String {
+fn subtitle(row: &ModelRow) -> Option<String> {
     match &row.state {
-        ModelState::Unavailable { reason, .. } => copy::unavailable(*reason).1.to_owned(),
-        ModelState::Downloading(_) => "Downloading…".to_owned(),
-        ModelState::Verifying(progress) => check_percent(progress).map_or_else(
+        ModelState::Unavailable { reason, .. } => Some(copy::unavailable(*reason).1.to_owned()),
+        ModelState::Downloading(_) => Some("Downloading…".to_owned()),
+        ModelState::Verifying(progress) => Some(check_percent(progress).map_or_else(
             || "Checking files…".to_owned(),
             |done| format!("Checking files… {done}%"),
-        ),
-        ModelState::Failed(_) => "Last download failed".to_owned(),
-        ModelState::NeedsRepair(_) => "Files damaged".to_owned(),
-        ModelState::NotDownloaded | ModelState::Downloaded => facts(&row.entry),
+        )),
+        ModelState::Failed(_) => Some("Last download failed".to_owned()),
+        ModelState::NeedsRepair(_) => Some("Files damaged".to_owned()),
+        ModelState::NotDownloaded | ModelState::Downloaded => None,
     }
 }
 
@@ -84,8 +76,8 @@ fn choose(
     }
 }
 
-/// One model of the model picker: a check when selected, the name, what it is good at or what is
-/// happening to it, and its download size when it is not on this device.
+/// One model of the model picker: a check when selected, the name, what is happening to it, if
+/// anything, and its download size when it is not on this device.
 #[component]
 pub fn ModelChoice(
     row: ModelRow,
@@ -121,7 +113,9 @@ pub fn ModelChoice(
             }
             span { class: "t",
                 b { "{title}" }
-                span { "{detail}" }
+                if let Some(detail) = detail {
+                    span { "{detail}" }
+                }
             }
             if let Some(size) = size {
                 span { class: "r",
