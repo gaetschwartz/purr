@@ -169,9 +169,9 @@ h1[tabindex="-1"]:focus{outline:none}
 .nav-item:hover{background:var(--fill-hover)}
 .nav-item[aria-current="page"]{background:var(--accent-soft-2);color:var(--accent-text)}
 .nav-item[aria-current="page"] svg{color:var(--accent-text)}
-.side-foot{margin-top:auto;display:flex;flex-direction:column;gap:2px}
-.side-keys{display:flex;gap:10px;align-items:center;height:36px;padding:0 10px;border-radius:10px;font-size:12.5px;color:var(--fg-2);margin-top:6px;width:100%;text-align:left;transition:background .2s}
-.side-keys:hover{background:var(--fill-hover)}
+.side-foot{margin-top:auto;display:flex;justify-content:flex-end;padding-top:6px}
+.side-cog{display:grid;place-items:center;width:36px;height:36px;border-radius:10px;color:var(--fg-2);transition:background .2s}
+.side-cog:hover{background:var(--fill-hover)}
 
 .main{position:relative;min-width:0;min-height:0;display:flex;flex-direction:column}
 .scroller{flex:1;overflow-y:auto;overflow-x:hidden;min-height:0;scroll-behavior:smooth;overscroll-behavior:contain}
@@ -420,22 +420,21 @@ details>.preview{margin:8px 0 0;font-family:var(--font)}
   .shell{grid-template-columns:76px minmax(0,1fr)}
   .sidebar{padding:14px 8px 10px;align-items:center}
   .side-brand{padding:4px 0 16px}
-  .side-brand b,.nav-item .nav-text,.side-keys .nav-text{position:absolute!important;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+  .side-brand b,.nav-item .nav-text{position:absolute!important;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
   .nav-item{width:44px;height:40px;padding:0;justify-content:center}
-  .side-keys{width:44px;height:40px;padding:0;justify-content:center}
+  .side-foot{justify-content:center}
+  .side-cog{width:44px;height:40px}
   .content{padding:24px 24px 40px}
 }
 @container app (max-width:720px){
   .shell{grid-template-columns:minmax(0,1fr)}
-  .sidebar{position:absolute;z-index:30;top:10px;right:10px;margin:0;padding:0;border-radius:999px}
-  .sidebar>:not(.side-foot),.side-foot>:not(.side-keys){display:none}
-  .side-keys{width:36px;height:36px;margin:0;border-radius:999px}
-  .topbar{padding-right:40px}
+  .sidebar{display:none}
   .content{padding:18px 16px 112px;gap:16px}
   h1.lt{font-size:28px;line-height:34px}
   .topbar .titles{flex-basis:100%}
   .tabbar{display:flex;position:absolute;z-index:30;left:12px;right:12px;bottom:12px;border-radius:999px;padding:6px;justify-content:space-around;background:var(--glass-1)}
-  .tabbar a{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:10.5px;font-weight:600;color:var(--fg-2);padding:6px 0;border-radius:999px;text-decoration:none}
+  .tabbar a,.tabbar button{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:10.5px;font-weight:600;color:var(--fg-2);padding:6px 0;border-radius:999px;text-decoration:none}
+  .tabbar button{border:0;background:none}
   .tabbar a[aria-current="page"]{color:var(--accent-text);background:var(--accent-soft)}
   .item{gap:12px;padding:10px 14px}
   .item.stackable{flex-wrap:wrap}
@@ -448,15 +447,15 @@ details>.preview{margin:8px 0 0;font-family:var(--font)}
   .popover,.popover.menu{left:8px!important;right:8px!important;width:auto;max-width:none;top:auto!important;bottom:8px;max-height:70%;transform-origin:bottom center}
   .layer.pop .scrim{background:var(--scrim);animation:fadein .25s ease}
   .toasts{bottom:88px}
-  .btn,.seg button,.sect-nav button,.icon-btn,.stepper button,.field .clear,.seg-row.split .ts{position:relative}
-  .btn::after,.seg button::after,.sect-nav button::after,.icon-btn::after,.stepper button::after,.field .clear::after,.seg-row.split .ts::after,.switch::before{content:"";position:absolute;left:50%;top:50%;width:max(100%,44px);height:max(100%,44px);transform:translate(-50%,-50%)}
+  .btn,.seg button,.icon-btn,.stepper button,.field .clear,.seg-row.split .ts{position:relative}
+  .btn::after,.seg button::after,.icon-btn::after,.stepper button::after,.field .clear::after,.seg-row.split .ts::after,.switch::before{content:"";position:absolute;left:50%;top:50%;width:max(100%,44px);height:max(100%,44px);transform:translate(-50%,-50%)}
   .field,.select select,.text-input{height:44px}
   .skip-link{padding:13px 16px}
 }
 
 /* ---------- Forced colours: shapes drawn only with backgrounds get system-colour borders and fills ---------- */
 @media (forced-colors:active){
-  .btn,.icon-btn,.pill,.field,.select select,.text-input,.seg,.stepper,.sect-nav button,.chip,.recent button,.player,.opt{border:1px solid ButtonText}
+  .btn,.icon-btn,.pill,.field,.select select,.text-input,.seg,.stepper,.chip,.recent button,.player,.opt{border:1px solid ButtonText}
   .btn[disabled],.pill[disabled]{border-color:GrayText}
   .seg button[aria-checked="true"],.nav-item[aria-current="page"],.tabbar a[aria-current="page"]{forced-color-adjust:none;background:Highlight;color:HighlightText}
   .nav-item[aria-current="page"] svg,.nav-item[aria-current="page"] .count,.seg button[aria-checked="true"] svg{color:HighlightText}

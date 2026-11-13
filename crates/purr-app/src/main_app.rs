@@ -4,7 +4,7 @@ use crate::platform::logging::apply_saved_log_level;
 use crate::settings_store::use_settings;
 use crate::views::{
     history::History, history_item::HistoryItem, home::Home, licenses::Licenses, logs::Logs,
-    models::Models, not_found::NotFound, settings::Settings, shell::Shell,
+    models::Models, not_found::NotFound, shell::Shell,
 };
 use dioxus::prelude::*;
 use purr_common::history::entry::HistoryId;
@@ -22,8 +22,6 @@ pub enum Route {
         HistoryItem { id: HistoryId },
         #[route("/models")]
         Models {},
-        #[route("/settings")]
-        Settings {},
         #[route("/settings/licenses")]
         Licenses {},
         #[route("/settings/logs")]
@@ -38,8 +36,6 @@ pub enum NavSection {
     Transcribe,
     History,
     Models,
-    Settings,
-    Logs,
 }
 
 impl NavSection {
@@ -50,9 +46,7 @@ impl NavSection {
             Route::Home {} => Some(Self::Transcribe),
             Route::History {} | Route::HistoryItem { .. } => Some(Self::History),
             Route::Models {} => Some(Self::Models),
-            Route::Settings {} | Route::Licenses {} => Some(Self::Settings),
-            Route::Logs {} => Some(Self::Logs),
-            Route::NotFound { .. } => None,
+            Route::Licenses {} | Route::Logs {} | Route::NotFound { .. } => None,
         }
     }
 }
@@ -74,25 +68,19 @@ mod tests {
     use super::*;
 
     #[test]
-    fn detail_and_log_routes_light_up_their_section() {
+    fn detail_routes_light_up_their_section_and_standalone_pages_do_not() {
         assert_eq!(
             NavSection::of(&Route::Home {}),
             Some(NavSection::Transcribe)
         );
-        assert_eq!(NavSection::of(&Route::Logs {}), Some(NavSection::Logs));
+        assert_eq!(NavSection::of(&Route::Models {}), Some(NavSection::Models));
+        assert_eq!(NavSection::of(&Route::Logs {}), None);
         let saved = HistoryId::parse("0d6c-41af").unwrap();
         assert_eq!(
             NavSection::of(&Route::HistoryItem { id: saved }),
             Some(NavSection::History)
         );
-        assert_eq!(
-            NavSection::of(&Route::Settings {}),
-            Some(NavSection::Settings)
-        );
-        assert_eq!(
-            NavSection::of(&Route::Licenses {}),
-            Some(NavSection::Settings)
-        );
+        assert_eq!(NavSection::of(&Route::Licenses {}), None);
         assert_eq!(NavSection::of(&Route::NotFound { segments: vec![] }), None);
     }
 

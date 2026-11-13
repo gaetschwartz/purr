@@ -13,11 +13,14 @@ mod toolbar;
 mod window;
 
 use crate::{
-    components::page::Page,
-    main_app::Route,
+    components::{
+        button::{Button, ButtonSize, ButtonVariant},
+        page::Page,
+    },
     platform::logging::{env_overrides_log_level, get_logs_storage},
     settings_store::use_settings,
     utils::delay::sleep,
+    views::settings::{dialog_handle::use_settings_dialog, settings_page::SettingsPage},
 };
 use announce::{Announcer, POLL_MS};
 use clear_button::ClearButton;
@@ -67,6 +70,7 @@ pub fn Logs() -> Element {
     let mut follow = use_signal(FollowMode::default);
     let mut announcement = use_signal(String::new);
     let settings = use_settings();
+    let dialog = use_settings_dialog();
     let level = use_memo(move || settings.with(|s| s.logging.level.clone()));
     let watcher = use_hook(|| document::eval(WATCHER));
 
@@ -196,7 +200,12 @@ pub fn Logs() -> Element {
             }
             p { class: "foot", style: "padding-left:16px",
                 "{summary} "
-                Link { to: Route::Settings {}, "Change the level" }
+                Button {
+                    variant: ButtonVariant::Plain,
+                    size: ButtonSize::Small,
+                    onclick: move |_| dialog.open(SettingsPage::Advanced),
+                    "Change the level"
+                }
             }
             div {
                 class: "sr",

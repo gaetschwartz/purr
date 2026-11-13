@@ -12,6 +12,7 @@ use crate::{
         search_field::SearchField,
     },
     main_app::Route,
+    views::settings::{dialog_handle::use_settings_dialog, settings_page::SettingsPage},
 };
 use catalog::Licence;
 use dioxus::prelude::*;
@@ -22,6 +23,7 @@ use std::rc::Rc;
 #[component]
 pub fn Licenses() -> Element {
     let navigator = use_navigator();
+    let dialog = use_settings_dialog();
     let licences = use_hook(|| {
         catalog::generated()
             .map(Rc::new)
@@ -35,7 +37,8 @@ pub fn Licenses() -> Element {
             size: ButtonSize::Small,
             icon: IconName::Back,
             onclick: move |_| {
-                navigator.push(Route::Settings {});
+                navigator.push(Route::Home {});
+                dialog.open(SettingsPage::Advanced);
             },
             "Settings"
         }

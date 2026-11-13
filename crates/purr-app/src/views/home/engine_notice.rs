@@ -5,7 +5,7 @@ use crate::{
         icon::IconName,
     },
     transcribe::{engine::fallback_notice, session::RunRecord},
-    views::settings::{jump::open_section, sections::SettingsSection},
+    views::settings::{dialog_handle::use_settings_dialog, settings_page::SettingsPage},
 };
 use dioxus::prelude::*;
 use purr_common::browser_engine::BrowserEngine;
@@ -13,7 +13,7 @@ use purr_common::browser_engine::BrowserEngine;
 /// Says, without blocking the run, that it used other hardware than the one asked for.
 #[component]
 pub fn EngineNotice(record: RunRecord) -> Element {
-    let navigator = use_navigator();
+    let dialog = use_settings_dialog();
     if let Some(BrowserEngine::Cpu(reason)) = record.run.browser_engine {
         return rsx! {
             if let Some(notice) = reason.notice() {
@@ -42,8 +42,8 @@ pub fn EngineNotice(record: RunRecord) -> Element {
             actions: rsx! {
                 Button {
                     size: ButtonSize::Small,
-                    onclick: move |_| open_section(navigator, SettingsSection::Performance),
-                    "Open Performance settings"
+                    onclick: move |_| dialog.open(SettingsPage::Hardware),
+                    "Open Hardware settings"
                 }
             },
             "{notice.detail}"

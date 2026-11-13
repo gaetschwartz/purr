@@ -6,7 +6,7 @@ pub enum IconName {
     Wave,
     Clock,
     Cube,
-    Sliders,
+    Cog,
     Logs,
     Lock,
     Shield,
@@ -70,8 +70,8 @@ impl IconName {
             Self::Cube => {
                 r#"<path d="M12 3.5l7.5 4.2v8.6L12 20.5l-7.5-4.2V7.7z"/><path d="M4.7 7.8L12 12l7.3-4.2M12 12v8.3"/>"#
             }
-            Self::Sliders => {
-                r#"<path d="M4 7h8.5M16.5 7H20M4 17h3.5M11.5 17H20"/><circle cx="14.5" cy="7" r="2"/><circle cx="9.5" cy="17" r="2"/>"#
+            Self::Cog => {
+                r#"<path d="M10.4 5.6L10.6 3.3H13.4L13.6 5.6L15.4 6.3L17.2 4.9L19.1 6.8L17.7 8.6L18.4 10.4L20.7 10.6V13.4L18.4 13.6L17.7 15.4L19.1 17.2L17.2 19.1L15.4 17.7L13.6 18.4L13.4 20.7H10.6L10.4 18.4L8.6 17.7L6.8 19.1L4.9 17.2L6.3 15.4L5.6 13.6L3.3 13.4V10.6L5.6 10.4L6.3 8.6L4.9 6.8L6.8 4.9L8.6 6.3z"/><circle cx="12" cy="12" r="2.8"/>"#
             }
             Self::Logs => {
                 r#"<rect x="5" y="3.5" width="14" height="17" rx="3"/><path d="M9 8.5h6M9 12h6M9 15.5h3.5"/>"#

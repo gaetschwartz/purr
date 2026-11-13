@@ -1,13 +1,17 @@
 use crate::{
     components::{
         brand_mark::BrandMark,
-        icon::{Icon, IconName, IconSize},
+        icon::{Icon, IconName},
     },
     main_app::{NavSection, Route},
     platform::IS_WEB,
     shortcuts::{Key, KeyChord, Shortcut, use_shortcut},
     transcribe::session::use_transcribe_session,
-    views::{settings_load_banner::SettingsLoadBanner, shortcuts_sheet::ShortcutsSheet},
+    views::{
+        settings::{dialog::SettingsDialogView, dialog_handle::use_settings_dialog},
+        settings_load_banner::SettingsLoadBanner,
+        shortcuts_sheet::ShortcutsSheet,
+    },
 };
 use dioxus::{
     html::{PointerInteraction as _, input_data::MouseButton},
@@ -42,20 +46,10 @@ const fn entry(section: NavSection) -> NavEntry {
             icon: IconName::Cube,
             label: "Models",
         },
-        NavSection::Settings => NavEntry {
-            section,
-            to: Route::Settings {},
-            icon: IconName::Sliders,
-            label: "Settings",
-        },
-        NavSection::Logs => NavEntry {
-            section,
-            to: Route::Logs {},
-            icon: IconName::Logs,
-            label: "Logs",
-        },
     }
 }
+
+const OPEN_SETTINGS: Shortcut = Shortcut::new(KeyChord::primary(Key::Char(',')), "Open Settings");
 
 /// The chord that opens the screen numbered `digit`; browsers keep Ctrl+digit for their own tabs.
 const fn screen_chord(web: bool, digit: char) -> KeyChord {
@@ -63,24 +57,6 @@ const fn screen_chord(web: bool, digit: char) -> KeyChord {
         KeyChord::key(Key::Char(digit)).with_alt()
     } else {
         KeyChord::primary(Key::Char(digit))
-    }
-}
-
-/// The tab bar has no Logs tab; Logs is reached from Settings, so Settings stays lit there.
-const fn tab_is_current(tab: NavSection, current: Option<NavSection>) -> bool {
-    match (tab, current) {
-        (NavSection::Settings, Some(NavSection::Settings | NavSection::Logs))
-        | (NavSection::Transcribe, Some(NavSection::Transcribe))
-        | (NavSection::History, Some(NavSection::History))
-        | (NavSection::Models, Some(NavSection::Models)) => true,
-        (
-            NavSection::Transcribe
-            | NavSection::History
-            | NavSection::Models
-            | NavSection::Settings
-            | NavSection::Logs,
-            _,
-        ) => false,
     }
 }
 
@@ -94,14 +70,7 @@ fn on_activate(
         (NavSection::Transcribe, Some(NavSection::Transcribe)) => {
             Some(EventHandler::new(move |_| session.start_over()))
         }
-        (
-            NavSection::Transcribe
-            | NavSection::History
-            | NavSection::Models
-            | NavSection::Settings
-            | NavSection::Logs,
-            _,
-        ) => None,
+        (NavSection::Transcribe | NavSection::History | NavSection::Models, _) => None,
     }
 }
 
@@ -111,6 +80,7 @@ pub fn Shell() -> Element {
     let route = use_route::<Route>();
     let current = NavSection::of(&route);
     let navigator = use_navigator();
+    let settings_dialog = use_settings_dialog();
     let mut keys_open = use_signal(|| false);
     let mut main_area = use_signal(|| None::<Rc<MountedData>>);
 
@@ -140,12 +110,7 @@ pub fn Shell() -> Element {
             navigator.push(Route::Models {});
         },
     );
-    use_shortcut(
-        Shortcut::new(KeyChord::primary(Key::Char(',')), "Open Settings").in_inputs(),
-        move || {
-            navigator.push(Route::Settings {});
-        },
-    );
+    use_shortcut(OPEN_SETTINGS.in_inputs(), move || settings_dialog.reopen());
     use_shortcut(
         Shortcut::new(KeyChord::key(Key::Char('?')), "Show the keyboard shortcuts"),
         move || keys_open.set(true),
@@ -193,15 +158,14 @@ pub fn Shell() -> Element {
                     NavLink { key: "{section:?}", section, current }
                 }
                 div { class: "side-foot",
-                    NavLink { section: NavSection::Settings, current }
                     button {
-                        class: "side-keys",
+                        class: "side-cog",
                         r#type: "button",
-                        title: "Keyboard shortcuts",
+                        aria_label: "Settings",
+                        title: "Settings",
                         aria_haspopup: "dialog",
-                        onclick: move |_| keys_open.set(true),
-                        Icon { name: IconName::Keyboard, size: IconSize::Small }
-                        span { class: "nav-text", "Keyboard shortcuts" }
+                        onclick: move |_| settings_dialog.reopen(),
+                        Icon { name: IconName::Cog }
                     }
                 }
             }
@@ -215,17 +179,21 @@ pub fn Shell() -> Element {
                     Outlet::<Route> {}
                 }
                 nav { class: "tabbar glass g1", aria_label: "Sections",
-                    for section in [
-                        NavSection::Transcribe,
-                        NavSection::History,
-                        NavSection::Models,
-                        NavSection::Settings,
-                    ]
-                    {
+                    for section in [NavSection::Transcribe, NavSection::History, NavSection::Models] {
                         TabLink { key: "{section:?}", section, current }
+                    }
+                    button {
+                        r#type: "button",
+                        aria_haspopup: "dialog",
+                        onclick: move |_| settings_dialog.reopen(),
+                        Icon { name: IconName::Cog }
+                        "Settings"
                     }
                 }
             }
+        }
+        if settings_dialog.is_open() {
+            SettingsDialogView {}
         }
         if keys_open() {
             ShortcutsSheet { on_close: move |()| keys_open.set(false) }
@@ -266,7 +234,7 @@ fn TabLink(section: NavSection, current: Option<NavSection>) -> Element {
         Link {
             to,
             onclick,
-            aria_current: tab_is_current(section, current).then_some("page"),
+            aria_current: (current == Some(section)).then_some("page"),
             Icon { name: icon }
             "{label}"
         }
@@ -276,6 +244,7 @@ fn TabLink(section: NavSection, current: Option<NavSection>) -> Element {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::shortcuts::{KeyPress, matches};
 
     #[test]
     fn browsers_get_alt_for_the_screen_shortcuts() {
@@ -287,12 +256,20 @@ mod tests {
     }
 
     #[test]
-    fn the_settings_tab_stays_lit_on_the_logs_page() {
-        assert!(tab_is_current(NavSection::Settings, Some(NavSection::Logs)));
-        assert!(!tab_is_current(
-            NavSection::Transcribe,
-            Some(NavSection::Logs)
+    fn the_settings_chord_works_with_the_primary_key_only() {
+        let press = |chord| KeyPress {
+            chord,
+            in_editable: false,
+            on_control: false,
+            modal_open: false,
+        };
+        assert!(matches(
+            &OPEN_SETTINGS,
+            &press(KeyChord::primary(Key::Char(',')))
         ));
-        assert!(!tab_is_current(NavSection::History, None));
+        assert!(!matches(
+            &OPEN_SETTINGS,
+            &press(KeyChord::key(Key::Char(',')))
+        ));
     }
 }

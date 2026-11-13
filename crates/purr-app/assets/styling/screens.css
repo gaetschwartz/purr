@@ -213,12 +213,6 @@ mark.cur{background:var(--accent);color:#fff}
 .hrow .mt{display:block;font-size:12px;color:var(--fg-3);margin-top:3px;font-variant-numeric:tabular-nums}
 
 /* ---------- Settings ---------- */
-.sect-nav{display:flex;gap:6px;flex-wrap:wrap}
-@container app (max-width:720px){.sect-nav{row-gap:14px}}
-.sect-nav button{height:30px;padding:0 12px;border-radius:999px;background:var(--fill);font-size:13px;font-weight:500}
-.sect-nav button:hover{background:var(--fill-2)}
-.settings{display:flex;flex-direction:column;gap:28px}
-.settings .sect{display:flex;flex-direction:column;gap:14px;scroll-margin-top:20px}
 .saved.warn svg{color:var(--warning)}
 .item .ctl .pill,.item .ctl .pill .grow{min-width:0}.item .ctl .pill .val{display:block;color:inherit}
 .sys{display:flex;flex-direction:column}
@@ -283,6 +277,31 @@ mark.cur{background:var(--accent);color:#fff}
   .loglist{max-height:none}
   .log{grid-template-columns:98px minmax(0,1fr);gap:4px 10px;padding:8px 14px} .log .lv{grid-row:1;grid-column:2} .log .m{grid-column:1/-1}
   .filecard{padding:14px;gap:12px}
+}
+/* ---------- Settings dialog ---------- */
+.pdlg-wrap{position:absolute;inset:0;display:grid;place-items:center;padding:24px;pointer-events:none}
+.pdlg{pointer-events:auto;width:min(860px,100%);height:min(600px,100%);overflow:hidden;border-radius:28px;display:flex;flex-direction:column;animation:sheetin .45s var(--ease-spring)}
+.pdlg.glass::before{inset:0}
+.pdlg-head{flex:none;display:flex;align-items:center;gap:12px;padding:14px 16px 8px 24px}
+.pdlg-head h2{flex:1;min-width:0;font-family:var(--font-display);font-size:20px;font-weight:650;letter-spacing:-.015em;margin:0}
+.pdlg-main{flex:1 1 auto;min-height:0;display:grid;grid-template-columns:200px minmax(0,1fr);grid-template-rows:minmax(0,1fr)}
+.pdlg-nav{display:flex;flex-direction:column;gap:2px;padding:8px 10px 14px 14px;overflow-y:auto}
+.pdlg-tab{display:flex;align-items:center;height:36px;padding:0 12px;border-radius:10px;font-size:14px;font-weight:500;text-align:left;white-space:nowrap;transition:background .2s}
+.pdlg-tab:hover{background:var(--fill-hover)}
+.pdlg-tab[aria-selected="true"]{background:var(--accent-soft-2);color:var(--accent-text)}
+.pdlg-scroll{min-height:0;overflow-y:auto;overflow-x:hidden;padding:8px 14px 24px 8px;scrollbar-gutter:stable both-edges}
+.pdlg-panel{display:flex;flex-direction:column;gap:20px}
+.pdlg .group{background:var(--fill-hover)}
+@container app (max-width:720px){
+  .pdlg-wrap{padding:10px;place-items:stretch}
+  .pdlg{width:100%;height:100%;border-radius:30px}
+  .pdlg-main{grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr)}
+  .pdlg-nav{flex-direction:row;gap:6px;padding:4px 16px 8px;overflow-x:auto;overflow-y:hidden}
+  .pdlg-tab{height:40px;padding:0 14px;flex:none}
+  .pdlg-scroll{padding:4px 8px 24px 8px}
+}
+@media (forced-colors:active){
+  .pdlg-tab[aria-selected="true"]{forced-color-adjust:none;background:Highlight;color:HighlightText}
 }
 @media (prefers-reduced-motion:reduce){.runview.detecting .gwave .layer-bars{animation:none!important}}
 @media (forced-colors:active){

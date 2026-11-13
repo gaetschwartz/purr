@@ -3,8 +3,8 @@
 use crate::{hooks::use_models::GpuSupport, utils::byte_size::ByteSize};
 use purr_common::{
     accel::{
-        AccelBackend, AccelSelection, BackendReport, BackendStatus, BackendUnavailable, CpuFeature,
-        CpuReport, SystemReport,
+        AccelBackend, BackendReport, BackendStatus, BackendUnavailable, CpuFeature, CpuReport,
+        SystemReport,
     },
     platform::DeviceInfo,
 };
@@ -37,7 +37,7 @@ pub struct SystemRow {
     pub badge: Badge,
 }
 
-fn device_name(device: &DeviceInfo) -> String {
+pub(super) fn device_name(device: &DeviceInfo) -> String {
     match device.description.as_deref().map(str::trim) {
         Some(description) if !description.is_empty() => description.to_owned(),
         Some(_) | None => device.name.clone(),
@@ -172,30 +172,6 @@ pub fn browser_rows(gpu: &GpuSupport) -> Vec<SystemRow> {
         detail,
         badge,
     }]
-}
-
-/// The entries of the backend menu, marking the ones this machine cannot run.
-#[must_use]
-pub fn backend_options(report: Option<&SystemReport>) -> Vec<(AccelSelection, String)> {
-    AccelSelection::ALL
-        .into_iter()
-        .map(|selection| {
-            let unavailable = selection
-                .backend()
-                .zip(report)
-                .is_some_and(|(backend, report)| {
-                    report.backends.iter().any(|entry| {
-                        entry.backend == backend && entry.status != BackendStatus::Available
-                    })
-                });
-            let label = if unavailable {
-                format!("{} (unavailable)", selection.label())
-            } else {
-                selection.label().to_owned()
-            };
-            (selection, label)
-        })
-        .collect()
 }
 
 #[cfg(test)]
@@ -399,40 +375,6 @@ mod tests {
                 None,
                 Badge::Available
             )]
-        );
-    }
-
-    #[test]
-    fn the_menu_marks_the_backends_the_machine_cannot_run() {
-        let options = backend_options(Some(&report()));
-        let marked: Vec<_> = options
-            .iter()
-            .filter(|(_, label)| label.ends_with("(unavailable)"))
-            .map(|(selection, _)| *selection)
-            .collect();
-        assert_eq!(
-            marked,
-            [
-                AccelSelection::Cuda,
-                AccelSelection::Hip,
-                AccelSelection::Metal,
-                AccelSelection::Sycl
-            ]
-        );
-        assert_eq!(
-            options.first().map(|(_, label)| label.as_str()),
-            Some("Automatic")
-        );
-    }
-
-    #[test]
-    fn the_menu_marks_nothing_before_the_probe_finished() {
-        let options = backend_options(None);
-        assert_eq!(options.len(), AccelSelection::ALL.len());
-        assert!(
-            options
-                .iter()
-                .all(|(selection, label)| label == selection.label())
         );
     }
 

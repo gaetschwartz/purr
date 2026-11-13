@@ -40,6 +40,7 @@ use hooks::use_system_probe::use_system_probe_provider;
 use main_app::MainApp;
 use settings_store::{status::LoadState, use_settings_store_provider};
 use shortcuts::use_shortcut_provider;
+use views::settings::dialog_handle::use_settings_dialog_provider;
 
 const FAVICON: Asset = asset!("/assets/icons/purr-mark.svg");
 // unminified: the minifier strips the -webkit- prefixed glass fallbacks older Safari needs
@@ -105,6 +106,7 @@ pub fn App() -> Element {
     platform::playback_source::use_audio_route(session);
     hooks::leave_guard::use_leave_guard_during_runs();
     use_layer_host_provider();
+    use_settings_dialog_provider();
     use_shortcut_provider();
     let loading = settings.load_state() == LoadState::Loading;
 
