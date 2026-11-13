@@ -10,6 +10,10 @@
   "dependencies": {
     "@huggingface/transformers": "^4.3.2"
   },
+  "overrides": {
+    "onnxruntime-web": "1.33.0-dev.20261112-74f861c52",
+    "onnxruntime-common": "1.33.0-dev.20261112-74f861c52"
+  },
   "devDependencies": {
     "@rollup/plugin-commonjs": "^25.0.7",
     "@rollup/plugin-node-resolve": "^15.2.3",
