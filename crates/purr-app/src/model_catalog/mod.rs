@@ -7,7 +7,7 @@ pub mod entry;
 pub mod family;
 pub mod format;
 pub mod listing;
-pub mod picker_filter;
+pub mod picker;
 pub mod recommend;
 pub mod selection;
 pub mod state;

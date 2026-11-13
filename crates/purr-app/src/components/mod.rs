@@ -19,6 +19,7 @@ pub mod icon_button;
 pub mod kbd;
 pub mod language_picker;
 pub mod layer;
+pub mod list_picker;
 pub mod page;
 pub mod pages_dialog;
 pub mod pick_target;
@@ -37,6 +38,7 @@ pub mod switch;
 pub mod toast;
 
 pub mod model_check;
+pub mod model_choice;
 pub mod model_cluster;
 pub mod model_download;
 pub mod model_filters;

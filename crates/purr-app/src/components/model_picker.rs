@@ -1,10 +1,12 @@
 use super::{
     icon::{Icon, IconName, IconSize},
+    list_picker::{
+        LAST_USED_KEY, LastUsedOption, ListPicker, PickerEmpty, PickerSection, use_list_nav,
+    },
+    model_choice::{ClusterChoice, ModelChoice, download_size},
     pick_target::PickTarget,
     pill::Pill,
-    popover::{OptionRole, Popover, PopoverOption},
-    search_field::SearchField,
-    segmented::{Segment, Segmented},
+    popover::PopoverOption,
     spinner::Spinner,
 };
 use crate::utils::primary_key::use_primary_key_label;
@@ -13,60 +15,21 @@ use crate::{
     hooks::use_models::{GpuSupport, use_models},
     main_app::Route,
     model_catalog::{
-        clusters::{ModelCluster, cluster},
-        copy,
-        entry::{ModelEntry, Precision},
-        format::{check_percent, percent},
-        listing::ModelRow,
-        picker_filter::{PickerPrecision, PickerQuery, PickerStorage, opening_storage, pick_rows},
-        state::ModelState,
+        entry::ModelEntry, listing::ModelRow, picker::picker_sections, state::ModelState,
     },
     platform::IS_WEB,
     settings_store::use_settings,
-    utils::byte_size::ByteSize,
 };
 use dioxus::prelude::*;
 use purr_common::accel::AccelPolicy;
 
-fn subtitle(row: &ModelRow) -> Option<String> {
-    match &row.state {
-        ModelState::Unavailable { reason, .. } => Some(copy::unavailable(*reason).1.to_owned()),
-        ModelState::Downloading(_) => Some("Downloading…".to_owned()),
-        ModelState::Verifying(progress) => Some(check_percent(progress).map_or_else(
-            || "Checking files…".to_owned(),
-            |done| format!("Checking files… {done}%"),
-        )),
-        ModelState::Failed(_) => Some("Last download failed".to_owned()),
-        ModelState::NeedsRepair(_) => Some("Files damaged".to_owned()),
-        ModelState::NotDownloaded | ModelState::Downloaded => None,
-    }
-}
-
-/// The size of a model that would have to be downloaded, or how far its download is.
-fn download_size(row: &ModelRow) -> Option<String> {
-    match &row.state {
-        ModelState::Downloading(progress) => {
-            Some(percent(progress).map_or_else(|| "…".to_owned(), |done| format!("{done}%")))
-        }
-        ModelState::Downloaded
-        | ModelState::Unavailable {
-            installed: true, ..
-        } => None,
-        ModelState::NotDownloaded
-        | ModelState::Verifying(_)
-        | ModelState::Failed(_)
-        | ModelState::NeedsRepair(_)
-        | ModelState::Unavailable {
-            installed: false, ..
-        } => Some(ByteSize(row.entry.size_bytes).to_string()),
-    }
-}
-
-/// Every model of `use_models()` in a popover (a sheet on phones), anchored on the element `anchor`.
+/// Every model of `use_models()` in a [`ListPicker`], anchored on the element `anchor`.
 ///
-/// Render it only while open. Picking a model that can run here saves it with `set_model` and
-/// calls `on_pick`, whether or not it is downloaded; a run downloads it first. Models that would
-/// need a download show their size.
+/// Render it only while open. Models on this device come first, each version on its own row;
+/// the rest follow with their download size, quantized versions as small choices under their
+/// model, and the models a newer family replaces behind a fold. Picking a model that can run
+/// here saves it with `set_model` and calls `on_pick`, whether or not it is downloaded; a run
+/// downloads it first.
 #[component]
 pub fn ModelPicker(
     /// The id of the element the popover hangs from.
@@ -84,10 +47,9 @@ pub fn ModelPicker(
     let settings = use_settings();
     let toasts = use_toasts();
     let navigator = use_navigator();
-    let mut storage = use_signal(|| None::<PickerStorage>);
-    let mut precision = use_signal(PickerPrecision::default);
+    let nav = use_list_nav();
     let mut search = use_signal(String::new);
-    let mut more_open = use_signal(|| false);
+    let mut older_toggled = use_signal(|| false);
     let primary_key = use_primary_key_label();
     let default_hint = (target == PickTarget::Current)
         .then(|| format!("{}+Click to set as default", primary_key()));
@@ -137,112 +99,70 @@ pub fn ModelPicker(
     };
     let alt = (target == PickTarget::Current).then_some(EventHandler::new(pick_default));
 
-    let body = match models.rows() {
-        None => rsx! {
-            div { class: "row", role: "status", style: "padding:12px",
-                Spinner {}
-                span { class: "muted", "Loading models…" }
-            }
-        },
-        Some(Err(error)) => rsx! {
-            p { class: "muted", role: "alert", style: "padding:10px;margin:0",
-                "Couldn't list the models: {error}"
-            }
-        },
-        Some(Ok(rows)) => {
-            let query = PickerQuery {
-                storage: storage().unwrap_or_else(|| opening_storage(&rows)),
-                precision: precision(),
-                search: search(),
-            };
-            let shown = pick_rows(&rows, &query);
-            let on_device_only = query.storage == PickerStorage::OnDevice;
-            let empty = shown.is_empty();
-            let (older, current): (Vec<ModelCluster>, Vec<ModelCluster>) = cluster(&shown)
-                .into_iter()
-                .partition(ModelCluster::superseded);
-            let older_count = older.len();
-            let older_holds_selected = older
-                .iter()
-                .any(|cluster| cluster.rows().any(|row| row.entry.id == selected));
-            let older_open = more_open() || !query.search.trim().is_empty() || older_holds_selected;
-            rsx! {
-                SearchField {
-                    value: query.search.clone(),
-                    placeholder: "Search models",
-                    label: "Search models",
-                    oninput: move |value: String| search.set(value),
+    let pick_last_used = move || match settings.set_default_model(None) {
+        Ok(()) => on_close.call(()),
+        Err(error) => {
+            toasts.error("That model can't be used", error.to_string());
+        }
+    };
+    let last_used = target == PickTarget::Default;
+
+    let query = search();
+    let searching = !query.trim().is_empty();
+    let (status, sections) = match models.rows() {
+        None => (
+            Some(rsx! {
+                div { class: "pempty row", role: "status",
+                    Spinner {}
+                    span { "Loading models…" }
                 }
-                div { class: "pfilters",
-                    Segmented {
-                        segments: vec![
-                            Segment::new(PickerStorage::OnDevice, "Downloaded"),
-                            Segment::new(PickerStorage::All, "All"),
-                        ],
-                        value: query.storage,
-                        label: "Which models to list",
-                        onchange: move |value| storage.set(Some(value)),
-                    }
-                    Segmented {
-                        segments: vec![
-                            Segment::new(PickerPrecision::All, "Any"),
-                            Segment::new(PickerPrecision::Full, "Full"),
-                            Segment::new(PickerPrecision::Quantized, "Quantized"),
-                        ],
-                        value: query.precision,
-                        label: "Which precisions to list",
-                        onchange: move |value| precision.set(value),
+            }),
+            None,
+        ),
+        Some(Err(error)) => (
+            Some(rsx! {
+                div { class: "pempty", role: "alert",
+                    p { "Couldn't list the models: {error}" }
+                }
+            }),
+            None,
+        ),
+        Some(Ok(rows)) => (None, Some(picker_sections(&rows, &query))),
+    };
+    let sections = sections.unwrap_or_default();
+    let older_open = older_toggled() || sections.older_opens(&query, &selected);
+    let choices: Vec<ModelRow> = sections.choices(older_open).into_iter().cloned().collect();
+    let status = status.or_else(|| {
+        (sections.is_empty()).then(|| {
+            if searching {
+                rsx! {
+                    PickerEmpty {
+                        text: format!("No model matches “{}”.", query.trim()),
+                        on_clear: move |()| search.set(String::new()),
                     }
                 }
-                if empty {
+            } else {
+                rsx! {
                     div { class: "pempty", role: "status",
-                        if on_device_only {
-                            p { "No downloaded model matches." }
-                            button {
-                                class: "btn plain sm",
-                                r#type: "button",
-                                onclick: move |_| storage.set(Some(PickerStorage::All)),
-                                "Show all models"
-                            }
-                        } else {
-                            p { "No model matches." }
-                        }
-                    }
-                }
-                div { class: "plist", role: "listbox", aria_label: "Models",
-                    for cluster in current {
-                        ClusterOption {
-                            key: "{cluster.primary.entry.id}",
-                            cluster: cluster.clone(),
-                            selected: selected.clone(),
-                            hint: default_hint.clone(),
-                            onselect: pick,
-                            on_alt: alt,
-                        }
-                    }
-                    if older_count > 0 {
-                        button {
-                            class: "btn plain sm pmore",
-                            r#type: "button",
-                            aria_expanded: older_open,
-                            onclick: move |_| more_open.toggle(),
-                            "More models ({older_count})"
-                        }
-                        if older_open {
-                            for cluster in older {
-                                ClusterOption {
-                                    key: "{cluster.primary.entry.id}",
-                                    cluster: cluster.clone(),
-                                    selected: selected.clone(),
-                                    hint: default_hint.clone(),
-                                    onselect: pick,
-                                    on_alt: alt,
-                                }
-                            }
-                        }
+                        p { "No models are available here." }
                     }
                 }
             }
+        })
+    });
+
+    let keys: Vec<String> = last_used
+        .then(|| LAST_USED_KEY.to_owned())
+        .into_iter()
+        .chain(choices.iter().map(|row| row.entry.id.clone()))
+        .collect();
+    let active = nav.active(&keys, searching);
+    let is_active = |key: &str| active.as_deref() == Some(key);
+    let on_enter = move |key: String| {
+        if key == LAST_USED_KEY {
+            pick_last_used();
+        } else if let Some(row) = choices.iter().find(|row| row.entry.id == key) {
+            pick(row.clone());
         }
     };
 
@@ -250,86 +170,104 @@ pub fn ModelPicker(
         && (*models.gpu.read() == GpuSupport::Unavailable
             || settings.with(|settings| settings.performance.accel_policy())
                 == AccelPolicy::CPU_ONLY);
+    let older_count = sections.older.len();
 
     rsx! {
-        Popover { anchor, label: "Choose a model", on_close, wide: true,
-            if on_cpu {
-                p { class: "foot", role: "note", style: "padding:8px 12px;margin:0",
-                    "Models run on the CPU here. Smaller ones are faster."
-                }
-            }
-            if target == PickTarget::Default {
-                div { class: "plist", role: "listbox", aria_label: "Default model",
+        ListPicker {
+            anchor,
+            label: "Choose a model",
+            list_label: "Models",
+            on_close,
+            wide: true,
+            nav,
+            keys,
+            on_enter,
+            search: "Search models",
+            query,
+            on_query: move |value: String| search.set(value),
+            note: on_cpu.then(|| rsx! { "Models run on the CPU here. Smaller ones are faster." }),
+            status,
+            footer: rsx! {
+                div { class: "plist", role: "menu", aria_label: "Models",
                     PopoverOption {
-                        title: "Last used",
-                        subtitle: "Start with the model you picked last".to_owned(),
-                        role: OptionRole::Option,
-                        selected: selected.is_empty(),
+                        title: "Manage models…",
                         leading: rsx! {
-                            if selected.is_empty() {
-                                Icon { name: IconName::Check, size: IconSize::Small }
-                            }
+                            Icon { name: IconName::Cube, size: IconSize::Small }
                         },
                         onselect: move |()| {
-                            match settings.set_default_model(None) {
-                                Ok(()) => on_close.call(()),
-                                Err(error) => {
-                                    toasts.error("That model can't be used", error.to_string());
-                                }
-                            }
+                            on_close.call(());
+                            navigator.push(Route::Models {});
                         },
                     }
                 }
-                hr {}
-            }
-            {body}
-            hr {}
-            div { class: "plist", role: "menu", aria_label: "Models",
-                PopoverOption {
-                    title: "Manage models…",
-                    leading: rsx! {
-                        Icon { name: IconName::Cube, size: IconSize::Small }
-                    },
-                    onselect: move |()| {
-                        on_close.call(());
-                        navigator.push(Route::Models {});
-                    },
+            },
+            if last_used {
+                LastUsedOption {
+                    nav,
+                    highlighted: is_active(LAST_USED_KEY),
+                    selected: selected.is_empty(),
+                    subtitle: "Start with the model you picked last",
+                    onselect: move |()| pick_last_used(),
                 }
             }
-        }
-    }
-}
-
-#[component]
-fn ClusterOption(
-    cluster: ModelCluster,
-    selected: String,
-    hint: Option<String>,
-    onselect: EventHandler<ModelRow>,
-    on_alt: Option<EventHandler<ModelRow>>,
-) -> Element {
-    let name = cluster.primary.entry.name.clone();
-    rsx! {
-        ModelOption {
-            row: cluster.primary.clone(),
-            selected: cluster.primary.entry.id == selected,
-            hint: hint.clone(),
-            onselect,
-            on_alt,
-        }
-        if !cluster.variants.is_empty() {
-            div {
-                class: "pvars",
-                role: "group",
-                aria_label: "Other versions of {name}",
-                for row in cluster.variants.clone() {
-                    VariantOption {
-                        key: "{row.entry.id}",
-                        selected: row.entry.id == selected,
-                        row,
-                        hint: hint.clone(),
-                        onselect,
-                        on_alt,
+            if !sections.on_device.is_empty() {
+                PickerSection { title: "On this device",
+                    for row in sections.on_device {
+                        ModelChoice {
+                            key: "{row.entry.id}",
+                            selected: row.entry.id == selected,
+                            highlighted: is_active(&row.entry.id),
+                            row,
+                            nav,
+                            hint: default_hint.clone(),
+                            onselect: pick,
+                            on_alt: alt,
+                        }
+                    }
+                }
+            }
+            if !sections.download.is_empty() {
+                PickerSection { title: "Download",
+                    for cluster in sections.download {
+                        ClusterChoice {
+                            key: "{cluster.primary.entry.id}",
+                            cluster,
+                            nav,
+                            selected: selected.clone(),
+                            active: active.clone(),
+                            hint: default_hint.clone(),
+                            onselect: pick,
+                            on_alt: alt,
+                        }
+                    }
+                }
+            }
+            if older_count > 0 {
+                div { role: "group", aria_label: "Older models",
+                    button {
+                        class: "ph pfold",
+                        r#type: "button",
+                        aria_expanded: older_open,
+                        onclick: move |_| older_toggled.set(!older_open),
+                        Icon {
+                            name: if older_open { IconName::ChevronDown } else { IconName::ChevronRight },
+                            size: IconSize::Small,
+                        }
+                        "Older models ({older_count})"
+                    }
+                    if older_open {
+                        for cluster in sections.older {
+                            ClusterChoice {
+                                key: "{cluster.primary.entry.id}",
+                                cluster,
+                                nav,
+                                selected: selected.clone(),
+                                active: active.clone(),
+                                hint: default_hint.clone(),
+                                onselect: pick,
+                                on_alt: alt,
+                            }
+                        }
                     }
                 }
             }
@@ -337,100 +275,7 @@ fn ClusterOption(
     }
 }
 
-#[component]
-fn VariantOption(
-    row: ModelRow,
-    selected: bool,
-    hint: Option<String>,
-    onselect: EventHandler<ModelRow>,
-    on_alt: Option<EventHandler<ModelRow>>,
-) -> Element {
-    let disabled = matches!(row.state, ModelState::Unavailable { .. });
-    let tag = match &row.entry.precision {
-        Precision::Quantized { bits } => format!("Q{bits}"),
-        Precision::Other(raw) => raw.clone(),
-        Precision::Full | Precision::Mixed => "Full".to_owned(),
-    };
-    let size = download_size(&row);
-    let on_device = row.state.is_on_device();
-    rsx! {
-        button {
-            class: if selected { "pvar sel" } else { "pvar" },
-            r#type: "button",
-            role: "option",
-            title: hint,
-            aria_selected: selected,
-            aria_disabled: disabled.then_some("true"),
-            onclick: move |event: MouseEvent| {
-                if disabled {
-                    return;
-                }
-                let modifiers = event.modifiers();
-                match on_alt {
-                    Some(alt) if modifiers.ctrl() || modifiers.meta() => alt.call(row.clone()),
-                    Some(_) | None => onselect.call(row.clone()),
-                }
-            },
-            b { "{tag}" }
-            if on_device {
-                Icon { name: IconName::CheckCircle, size: IconSize::Small }
-                span { class: "sr", "Downloaded" }
-            } else if let Some(size) = size {
-                span { "{size}" }
-            }
-        }
-    }
-}
-
-#[component]
-fn ModelOption(
-    row: ModelRow,
-    selected: bool,
-    hint: Option<String>,
-    onselect: EventHandler<ModelRow>,
-    on_alt: Option<EventHandler<ModelRow>>,
-) -> Element {
-    let disabled = matches!(row.state, ModelState::Unavailable { .. });
-    let size = download_size(&row);
-    let on_device = row.state.is_on_device();
-    let prefix = match row.state {
-        ModelState::Downloading(_) => "downloaded",
-        ModelState::NotDownloaded
-        | ModelState::Downloaded
-        | ModelState::Verifying(_)
-        | ModelState::Failed(_)
-        | ModelState::NeedsRepair(_)
-        | ModelState::Unavailable { .. } => "download size",
-    };
-    rsx! {
-        PopoverOption {
-            title: row.entry.label.clone(),
-            subtitle: subtitle(&row),
-            trailing: size.clone(),
-            trailing_prefix: size.map(|_| prefix.to_owned()),
-            role: OptionRole::Option,
-            selected,
-            disabled,
-            leading: rsx! {
-                if selected {
-                    Icon { name: IconName::Check, size: IconSize::Small }
-                }
-            },
-            status: on_device.then(|| rsx! {
-                Icon { name: IconName::CheckCircle, size: IconSize::Small }
-                span { class: "sr", "Downloaded" }
-            }),
-            hint,
-            on_alt: on_alt.map(|alt| {
-                let row = row.clone();
-                EventHandler::new(move |()| alt.call(row.clone()))
-            }),
-            onselect: move |()| onselect.call(row.clone()),
-        }
-    }
-}
-
-/// The run-bar pill showing the model new transcriptions use; it opens a [`ModelPicker`].
+// The run-bar pill showing the model new transcriptions use; it opens a [`ModelPicker`].
 ///
 /// A model that is not downloaded yet shows its download size.
 #[component]

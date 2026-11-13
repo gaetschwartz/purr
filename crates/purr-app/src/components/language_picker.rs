@@ -1,9 +1,9 @@
 use super::{
     icon::{Icon, IconName, IconSize},
+    list_picker::{LAST_USED_KEY, LastUsedOption, ListPicker, PickerEmpty, use_list_nav},
     pick_target::PickTarget,
     pill::Pill,
-    popover::{OptionRole, Popover, PopoverOption},
-    search_field::SearchField,
+    popover::{OptionRole, PopoverOption},
 };
 use crate::utils::primary_key::use_primary_key_label;
 use crate::{
@@ -11,11 +11,7 @@ use crate::{
     hooks::use_models::use_models,
     model_catalog::entry::{Language as ModelLanguage, ModelEntry},
     settings_store::use_settings,
-    transcribe::{
-        language_choice::{LanguageChoice, options},
-        search::{next, previous},
-    },
-    utils::dom_id::use_dom_id,
+    transcribe::language_choice::{LanguageChoice, options},
 };
 use dioxus::prelude::*;
 use purr_common::Language;
@@ -103,7 +99,7 @@ pub fn LanguagePill(
     }
 }
 
-/// Whisper's languages in a popover (a sheet on phones) with a search field, anchored on `anchor`.
+/// Whisper's languages in a [`ListPicker`] with a search field, anchored on `anchor`.
 ///
 /// Render it only while open. "Automatic" comes first; arrows move through the list from the
 /// search field and Enter picks. Picking saves the setting with `set_language`. With
@@ -124,24 +120,25 @@ pub fn LanguagePicker(
 ) -> Element {
     let settings = use_settings();
     let toasts = use_toasts();
-    let list_id = use_dom_id("languages");
+    let nav = use_list_nav();
     let mut query = use_signal(String::new);
-    let mut highlight = use_signal(|| 0_usize);
 
     let none_selected = selected.is_empty();
-    let current = LanguageChoice::from_setting(&selected).for_model(english_only);
+    let current =
+        (!none_selected).then(|| LanguageChoice::from_setting(&selected).for_model(english_only));
     let choices = if english_only {
         vec![LanguageChoice::Spoken(Language::En)]
     } else {
         options(&query())
     };
-    let count = choices.len();
-    let active = highlight().min(count.saturating_sub(1));
-    let row_id = {
-        let list_id = list_id.clone();
-        move |index: usize| format!("{list_id}-{index}")
-    };
-    let active_id = (count > 0).then(|| row_id(active));
+    let last_used = target == PickTarget::Default;
+    let keys: Vec<String> = last_used
+        .then(|| LAST_USED_KEY.to_owned())
+        .into_iter()
+        .chain(choices.iter().map(|choice| choice.setting().to_owned()))
+        .collect();
+    let active = nav.active(&keys, !query().trim().is_empty());
+    let is_active = |key: &str| active.as_deref() == Some(key);
 
     let choose = move |choice: LanguageChoice| {
         if english_only {
@@ -157,6 +154,12 @@ pub fn LanguagePicker(
             Err(error) => {
                 toasts.error("That language can't be used", error.to_string());
             }
+        }
+    };
+    let choose_last_used = move || match settings.set_default_language(None) {
+        Ok(()) => on_close.call(()),
+        Err(error) => {
+            toasts.error("That language can't be used", error.to_string());
         }
     };
 
@@ -180,103 +183,75 @@ pub fn LanguagePicker(
         }
     };
 
-    let keyboard_choices = choices.clone();
-    let reveal_id = row_id.clone();
-    let on_key = move |event: KeyboardEvent| {
-        let moved = match event.key() {
-            Key::Named(NamedKey::ArrowDown) => Some(next(active, count)),
-            Key::Named(NamedKey::ArrowUp) => Some(previous(active, count)),
-            Key::Named(NamedKey::Enter) => {
-                event.prevent_default();
-                if let Some(choice) = keyboard_choices.get(active) {
-                    choose(choice.clone());
-                }
-                None
-            }
-            Key::Named(_) | Key::Character(_) => None,
-        };
-        if let Some(index) = moved {
-            event.prevent_default();
-            highlight.set(index);
-            let script = format!(
-                "document.getElementById({:?})?.scrollIntoView({{block:'nearest'}})",
-                reveal_id(index)
-            );
-            document::eval(&script);
+    let enter_choices = choices.clone();
+    let on_enter = move |key: String| {
+        if key == LAST_USED_KEY {
+            choose_last_used();
+        } else if let Some(choice) = enter_choices.iter().find(|choice| choice.setting() == key) {
+            choose(choice.clone());
         }
     };
 
+    let status = choices.is_empty().then(|| {
+        rsx! {
+            PickerEmpty {
+                text: format!("No language called “{}”.", query().trim()),
+                on_clear: move |()| query.set(String::new()),
+            }
+        }
+    });
+
     rsx! {
-        Popover { anchor, label: "Spoken language", on_close,
-            if english_only {
-                p { class: "foot", style: "margin:6px 10px",
-                    "This model only transcribes English."
+        ListPicker {
+            anchor,
+            label: "Spoken language",
+            list_label: "Languages",
+            on_close,
+            nav,
+            keys,
+            on_enter,
+            search: (!english_only).then(|| format!("Search {} languages", Language::VARIANTS.len() - 1)),
+            query: query(),
+            on_query: move |value: String| query.set(value),
+            note: english_only.then(|| rsx! { "This model only transcribes English." }),
+            status,
+            if last_used {
+                LastUsedOption {
+                    nav,
+                    highlighted: is_active(LAST_USED_KEY),
+                    selected: none_selected,
+                    subtitle: "Start with the language you picked last",
+                    onselect: move |()| choose_last_used(),
                 }
-            } else {
-                SearchField {
-                    value: query(),
-                    placeholder: format!("Search {} languages", Language::VARIANTS.len() - 1),
-                    label: "Search languages",
-                    controls: list_id.clone(),
-                    active_descendant: active_id,
-                    oninput: move |value: String| {
-                        query.set(value);
-                        highlight.set(0);
+            }
+            for choice in choices {
+                PopoverOption {
+                    key: "{choice.setting()}",
+                    id: nav.row_id(choice.setting()),
+                    title: choice.label(),
+                    subtitle: (choice == LanguageChoice::Automatic).then(|| AUTOMATIC_HINT.to_owned()),
+                    role: OptionRole::Option,
+                    selected: current.as_ref() == Some(&choice),
+                    highlighted: is_active(choice.setting()),
+                    hint: default_hint.clone(),
+                    on_alt: alt_enabled
+                        .then(|| {
+                            let choice = choice.clone();
+                            EventHandler::new(move |()| choose_default(choice.clone()))
+                        }),
+                    on_hover: {
+                        let key = choice.setting();
+                        move |()| nav.point(key)
                     },
-                    onkeydown: on_key,
-                }
-            }
-            if target == PickTarget::Default {
-                div { class: "plist", role: "listbox", aria_label: "Default language",
-                    PopoverOption {
-                        title: "Last used",
-                        subtitle: "Start with the language you picked last".to_owned(),
-                        role: OptionRole::Option,
-                        selected: none_selected,
-                        leading: rsx! {
-                            if none_selected {
-                                Icon { name: IconName::Check, size: IconSize::Small }
-                            }
-                        },
-                        onselect: move |()| {
-                            match settings.set_default_language(None) {
-                                Ok(()) => on_close.call(()),
-                                Err(error) => {
-                                    toasts.error("That language can't be used", error.to_string());
-                                }
-                            }
-                        },
-                    }
-                }
-            }
-            div { class: "plist", role: "listbox", id: list_id, aria_label: "Languages",
-                if choices.is_empty() {
-                    p { class: "faint", style: "padding:10px;margin:0;font-size:14px",
-                        "No language called “{query}”."
-                    }
-                }
-                for (index , choice) in choices.into_iter().enumerate() {
-                    PopoverOption {
-                        key: "{choice.setting()}",
-                        id: row_id(index),
-                        title: choice.label(),
-                        subtitle: (choice == LanguageChoice::Automatic).then(|| AUTOMATIC_HINT.to_owned()),
-                        role: OptionRole::Option,
-                        selected: choice == current && !none_selected,
-                        highlighted: index == active,
-                        hint: default_hint.clone(),
-                        on_alt: alt_enabled
-                            .then(|| {
-                                let choice = choice.clone();
-                                EventHandler::new(move |()| choose_default(choice.clone()))
-                            }),
-                        leading: rsx! {
-                            if choice == current && !none_selected {
-                                Icon { name: IconName::Check, size: IconSize::Small }
-                            }
-                        },
-                        onselect: move |()| choose(choice.clone()),
-                    }
+                    leading: rsx! {
+                        if current.as_ref() == Some(&choice) {
+                            Icon { name: IconName::Check, size: IconSize::Small }
+                        }
+                    },
+                    onselect: {
+                        let choice = choice.clone();
+                        move |()| choose(choice.clone())
+                    },
                 }
             }
         }

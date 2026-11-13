@@ -6,8 +6,9 @@ use dioxus::prelude::*;
 ///
 /// Render it only while open (`if open() { Popover { .. } }`). It traps focus, closes on Escape
 /// and outside clicks through `on_close`, and gives focus back to the opener when it unmounts.
-/// `menu` narrows it for action menus; fill it with [`PopoverOption`] rows. Handlers inside run in
-/// the popover's scope, so work that outlives the popover must use `spawn_forever`.
+/// `menu` narrows it for action menus; fill it with [`PopoverOption`] rows. `header` and `footer`
+/// stay put while the children scroll between them. Handlers inside run in the popover's scope, so
+/// work that outlives the popover must use `spawn_forever`.
 #[component]
 pub fn Popover(
     #[props(into)] anchor: String,
@@ -16,13 +17,21 @@ pub fn Popover(
     #[props(default)] align: PopoverAlign,
     #[props(default)] menu: bool,
     #[props(default)] wide: bool,
+    #[props(into, default)] class: String,
+    header: Option<Element>,
+    footer: Option<Element>,
     children: Element,
 ) -> Element {
     let dom_id = use_dom_id("layer");
-    let class = match (menu, wide) {
+    let size = match (menu, wide) {
         (true, _) => "popover glass g3 menu",
         (false, true) => "popover glass g3 wide",
         (false, false) => "popover glass g3",
+    };
+    let class = if class.is_empty() {
+        size.to_owned()
+    } else {
+        format!("{size} {class}")
     };
     let view = rsx! {
         LayerFrame {
@@ -37,7 +46,13 @@ pub fn Popover(
                 aria_modal: "true",
                 aria_label: label,
                 tabindex: "-1",
+                if let Some(header) = header {
+                    div { class: "phead", {header} }
+                }
                 div { class: "pscroll", {children} }
+                if let Some(footer) = footer {
+                    div { class: "pfoot", {footer} }
+                }
             }
         }
     };
@@ -78,6 +93,8 @@ pub fn PopoverOption(
     hint: Option<String>,
     /// Runs instead of `onselect` when the row is clicked with Ctrl or Cmd held.
     on_alt: Option<EventHandler<()>>,
+    /// Runs when the pointer enters the row.
+    on_hover: Option<EventHandler<()>>,
     onselect: EventHandler<()>,
 ) -> Element {
     let class = match (danger, highlighted) {
@@ -99,6 +116,11 @@ pub fn PopoverOption(
             title: hint,
             aria_selected,
             aria_disabled: disabled.then_some("true"),
+            onmouseenter: move |_| {
+                if let Some(hover) = on_hover {
+                    hover.call(());
+                }
+            },
             onclick: move |event: MouseEvent| {
                 if disabled {
                     return;

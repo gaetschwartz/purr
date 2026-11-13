@@ -360,23 +360,35 @@ kbd{font-family:var(--font);font-size:12px;font-weight:600;padding:2px 7px;borde
   overflow:hidden;transform-origin:top left;animation:popin .38s var(--ease-spring)}
 .popover:not([data-placed]){visibility:hidden;animation:none}
 @keyframes popin{from{opacity:0;transform:scale(.94) translateY(-4px)}to{opacity:1;transform:none}}
-.popover>.pscroll{flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;padding:6px 0;scrollbar-gutter:stable both-edges;display:flex;flex-direction:column}
+.popover>.pscroll{flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;padding:6px;display:flex;flex-direction:column}
 .popover>.pscroll>*{flex:none}
-.popover.menu>.pscroll{padding:6px;scrollbar-gutter:auto}
+.popover>.pscroll::-webkit-scrollbar{width:10px}
+.popover>.phead{flex:none;display:flex;flex-direction:column;gap:6px;padding:8px 8px 2px}
+.popover>.phead .field{margin:0}
+.popover>.pfoot{flex:none;padding:6px;border-top:1px solid var(--separator)}
 .popover.glass::before,.sheet.glass::before{inset:0}
 .popover.menu{width:220px}
 .popover.wide{width:400px}
-.pfilters{display:flex;gap:8px;flex-wrap:wrap;padding:2px 8px 8px}
+/* list pickers: checks, titles, section heads, versions and the search text share one left edge */
+.pnote{margin:0;padding:0 4px;font-size:12.5px;line-height:1.4;color:var(--fg-2)}
+.popover.picker .plist{padding:0}
+.popover.picker .ph{padding:12px 10px 4px 38px}
+.popover.picker .pfold{display:flex;align-items:center;gap:11px;width:100%;padding-left:11px;text-align:left;border-radius:12px}
+.popover.picker .pfold:hover{color:var(--fg)}
+.popover.picker .opt[role="option"]:hover:not(.kb){background:none}
+.popover.picker .opt[aria-selected="true"] .t b{color:var(--accent-text)}
+.psep{height:1px;background:var(--separator);margin:6px 10px}
 .pvars{display:flex;flex-wrap:wrap;gap:6px;padding:0 10px 8px 38px}
-.pvar{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 10px;border-radius:999px;background:var(--fill);font-size:12.5px;color:var(--fg-2)}
-.pvar:hover{background:var(--fill-2)}
+.pvar{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 10px;border-radius:999px;background:var(--fill);font-size:12.5px;color:var(--fg-2);font-variant-numeric:tabular-nums}
+.pvar.kb{background:var(--fill-2)}
+.pvar:focus-visible{border-radius:999px}
 .pvar b{font-weight:600;color:var(--fg)}
-.pvar svg{width:14px;height:14px;color:var(--success)}
+.pvar svg{width:14px;height:14px}
 .pvar.sel{background:var(--accent-soft-2);color:var(--accent-text)}
 .pvar.sel b{color:var(--accent-text)}
 .pvar[aria-disabled="true"]{opacity:.5;cursor:not-allowed}
-.pmore{align-self:flex-start;margin:4px 6px}
-.pempty{display:flex;flex-direction:column;align-items:flex-start;gap:4px;padding:8px 12px;color:var(--fg-2);font-size:14px}
+.pempty{display:flex;flex-direction:column;align-items:flex-start;gap:4px;padding:8px 10px 8px 38px;color:var(--fg-2);font-size:14px}
+.pempty.row{flex-direction:row;align-items:center;gap:10px;padding-left:16px}
 .popover .ph{padding:8px 10px 6px;font-size:12px;font-weight:600;color:var(--fg-3);letter-spacing:.04em;text-transform:uppercase}
 .popover .plist{display:flex;flex-direction:column;padding:2px}
 .popover hr{border:0;height:1px;background:var(--separator);margin:6px 8px}
@@ -389,7 +401,8 @@ kbd{font-family:var(--font);font-size:12px;font-weight:600;padding:2px 7px;borde
 .opt .t b{display:block;font-weight:500}
 .opt .t span{display:block;font-size:12px;color:var(--fg-3)}
 .opt[aria-disabled="true"]{opacity:.5;cursor:not-allowed}
-.opt .r{font-size:12.5px;color:var(--fg-3);white-space:nowrap}
+.opt .r{display:inline-flex;align-items:center;gap:4px;font-size:12.5px;color:var(--fg-3);white-space:nowrap;font-variant-numeric:tabular-nums}
+.opt .r svg{width:14px;height:14px}
 .opt .st{display:grid;place-items:center;color:var(--success);flex:none}
 .opt.danger{color:var(--danger)}
 .opt.danger .ck{color:var(--danger)}
@@ -445,6 +458,8 @@ details>.preview{margin:8px 0 0;font-family:var(--font)}
   .sheet-wrap{place-items:end center;padding:10px}
   .sheet{border-radius:30px}
   .popover,.popover.menu{left:8px!important;right:8px!important;width:auto;max-width:none;top:auto!important;bottom:8px;max-height:70%;transform-origin:bottom center}
+  .opt{min-height:44px}
+  .pvar{height:34px;padding:0 12px}
   .layer.pop .scrim{background:var(--scrim);animation:fadein .25s ease}
   .toasts{bottom:88px}
   .btn,.seg button,.icon-btn,.stepper button,.field .clear,.seg-row.split .ts{position:relative}
@@ -455,7 +470,11 @@ details>.preview{margin:8px 0 0;font-family:var(--font)}
 
 /* ---------- Forced colours: shapes drawn only with backgrounds get system-colour borders and fills ---------- */
 @media (forced-colors:active){
-  .btn,.icon-btn,.pill,.field,.select select,.text-input,.seg,.stepper,.chip,.recent button,.player,.opt{border:1px solid ButtonText}
+  .btn,.icon-btn,.pill,.field,.select select,.text-input,.seg,.stepper,.chip,.recent button,.player,.opt,.pvar{border:1px solid ButtonText}
+  .psep{forced-color-adjust:none;background:GrayText}
+  .pvar.sel{forced-color-adjust:none;background:Highlight;color:HighlightText}
+  .pvar.sel b{color:HighlightText}
+  .pvar.kb{outline:2px solid Highlight;outline-offset:-2px}
   .btn[disabled],.pill[disabled]{border-color:GrayText}
   .seg button[aria-checked="true"],.nav-item[aria-current="page"],.tabbar a[aria-current="page"]{forced-color-adjust:none;background:Highlight;color:HighlightText}
   .nav-item[aria-current="page"] svg,.nav-item[aria-current="page"] .count,.seg button[aria-checked="true"] svg{color:HighlightText}
