@@ -5,6 +5,7 @@ use crate::integrity::FileChecker;
 use crate::local::run_local;
 use gloo_timers::future::TimeoutFuture;
 use js_sys::Uint8Array;
+use purr_common::platform::{ModelCheckProgress, ModelCheckSender};
 use purr_common::web_model::registry::{WebModelFile, WebModelSpec};
 use wasm_bindgen::{JsCast as _, JsValue};
 use wasm_bindgen_futures::JsFuture;
@@ -81,7 +82,33 @@ async fn delete_all(urls: Vec<String>) -> WebResult<()> {
     Ok(())
 }
 
-async fn hash_cached_file(cache: &Cache, url: &str, file: &WebModelFile) -> WebResult<()> {
+struct CheckReporter {
+    sender: Option<ModelCheckSender>,
+    total_bytes: u64,
+}
+
+impl CheckReporter {
+    fn report(&self, checked_bytes: u64) {
+        let Some(sender) = &self.sender else {
+            return;
+        };
+        let progress = ModelCheckProgress {
+            checked_bytes,
+            total_bytes: self.total_bytes,
+        };
+        if sender.unbounded_send(progress).is_err() {
+            tracing::debug!("Nobody follows the model check any more");
+        }
+    }
+}
+
+async fn hash_cached_file(
+    cache: &Cache,
+    url: &str,
+    file: &WebModelFile,
+    checked_before: u64,
+    reporter: &CheckReporter,
+) -> WebResult<()> {
     let response = cached_response(cache, url)
         .await?
         .ok_or_else(|| IntegrityError::Missing {
@@ -123,22 +150,34 @@ async fn hash_cached_file(cache: &Cache, url: &str, file: &WebModelFile) -> WebR
         checker.update(&bytes);
         unyielded += bytes.len();
         if unyielded >= YIELD_EVERY_BYTES {
+            reporter.report(checked_before.saturating_add(checker.received_bytes()));
             TimeoutFuture::new(0).await;
             unyielded = 0;
         }
     }
     checker.finish()?;
+    reporter.report(checked_before.saturating_add(file.size_bytes));
     Ok(())
 }
 
-async fn verify_all(files: Vec<(String, WebModelFile)>) -> WebResult<()> {
+async fn verify_all(
+    files: Vec<(String, WebModelFile)>,
+    progress: Option<ModelCheckSender>,
+) -> WebResult<()> {
     let cache = open_existing()
         .await?
         .ok_or_else(|| IntegrityError::Missing {
             path: CACHE_NAME.to_owned(),
         })?;
+    let reporter = CheckReporter {
+        sender: progress,
+        total_bytes: files.iter().map(|(_, file)| file.size_bytes).sum(),
+    };
+    reporter.report(0);
+    let mut checked_before = 0_u64;
     for (url, file) in &files {
-        hash_cached_file(&cache, url, file).await?;
+        hash_cached_file(&cache, url, file, checked_before, &reporter).await?;
+        checked_before = checked_before.saturating_add(file.size_bytes);
     }
     Ok(())
 }
@@ -162,12 +201,27 @@ pub async fn remove(spec: &WebModelSpec, files: &[&WebModelFile]) -> WebResult<(
 /// Hashes every cached file against the manifest. Files that fail the check are evicted so the
 /// next use downloads them again.
 pub async fn verify(spec: &WebModelSpec) -> WebResult<()> {
+    verify_reporting(spec, None).await
+}
+
+/// Like [`verify`], telling `progress` how many bytes are hashed.
+pub async fn verify_with_progress(
+    spec: &WebModelSpec,
+    progress: ModelCheckSender,
+) -> WebResult<()> {
+    verify_reporting(spec, Some(progress)).await
+}
+
+async fn verify_reporting(
+    spec: &WebModelSpec,
+    progress: Option<ModelCheckSender>,
+) -> WebResult<()> {
     let files: Vec<(String, WebModelFile)> = spec
         .files
         .iter()
         .map(|file| (spec.file_url(file), file.clone()))
         .collect();
-    let outcome = run_local(move || verify_all(files)).await;
+    let outcome = run_local(move || verify_all(files, progress)).await;
     if matches!(outcome, Err(WebError::Integrity(_))) {
         let everything: Vec<&WebModelFile> = spec.files.iter().collect();
         remove(spec, &everything).await?;

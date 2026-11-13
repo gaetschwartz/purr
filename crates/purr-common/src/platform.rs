@@ -2,7 +2,7 @@ use ambassador::delegatable_trait;
 /// Platform abstraction layer for client-only architecture
 /// This module provides a unified interface for platform-specific functionality
 use bytes::Bytes;
-use futures::Stream;
+use futures::{Stream, channel::mpsc::UnboundedSender};
 use miette::Diagnostic;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -34,6 +34,9 @@ pub type TranscriptionStream =
 
 pub type ModelProgressStream =
     Pin<Box<dyn Stream<Item = Result<ModelOperationProgress, PlatformError>> + Send>>;
+
+/// Where a platform reports how far a model check has come.
+pub type ModelCheckSender = UnboundedSender<ModelCheckProgress>;
 
 /// Platform-specific error types
 #[derive(Debug, thiserror::Error, Diagnostic)]
@@ -748,6 +751,15 @@ pub enum ModelFailureKind {
     Other,
 }
 
+/// How far the hashing of an installed model's files has come.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ModelCheckProgress {
+    /// Bytes hashed so far, across all files of the model.
+    pub checked_bytes: u64,
+    /// Bytes to hash in all.
+    pub total_bytes: u64,
+}
+
 /// How a stored model file differs from its published description.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum IntegrityProblem {
@@ -1029,6 +1041,8 @@ pub trait Platform: Send + Sync + 'static {
     ///
     /// # Arguments
     /// * `model_id` - Unique identifier of the model to check
+    /// * `progress` - Receives how many bytes are hashed while the check runs; dropped when it
+    ///   ends. A receiver that went away is not an error.
     ///
     /// # Returns
     /// `ModelIntegrity::Damaged` when a file does not match; `Err` only when the check itself
@@ -1041,6 +1055,7 @@ pub trait Platform: Send + Sync + 'static {
     fn verify_model(
         &self,
         model_id: &str,
+        progress: ModelCheckSender,
     ) -> impl std::future::Future<Output = Result<ModelIntegrity, PlatformError>> + Send;
 
     /// Check if a specific model is currently installed

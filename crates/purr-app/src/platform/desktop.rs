@@ -18,9 +18,9 @@ use purr_common::history::{
 };
 use purr_common::hugging_face_token::HuggingFaceToken;
 use purr_common::platform::{
-    ChunkKind, DeviceInfo, FileId, FileSource, IntegrityProblem, ModelFailureKind, ModelInfo,
-    ModelIntegrity, ModelMetadata, ModelOperationProgress, ModelProgressStream,
-    TranscriptionStream, model_flag,
+    ChunkKind, DeviceInfo, FileId, FileSource, IntegrityProblem, ModelCheckProgress,
+    ModelCheckSender, ModelFailureKind, ModelInfo, ModelIntegrity, ModelMetadata,
+    ModelOperationProgress, ModelProgressStream, TranscriptionStream, model_flag,
 };
 use purr_common::settings::Settings;
 use purr_core::WhisperError;
@@ -314,11 +314,25 @@ impl Platform for DesktopPlatformImpl {
         Ok(())
     }
 
-    async fn verify_model(&self, model_id: &str) -> Result<ModelIntegrity, PlatformError> {
+    async fn verify_model(
+        &self,
+        model_id: &str,
+        progress: ModelCheckSender,
+    ) -> Result<ModelIntegrity, PlatformError> {
         let manager = &self.model_manager;
         let model = lookup(manager, model_id)?;
         let integrity = manager
-            .verify_model(model)
+            .verify_model_with_progress(model, move |checked_bytes, total_bytes| {
+                if progress
+                    .unbounded_send(ModelCheckProgress {
+                        checked_bytes,
+                        total_bytes,
+                    })
+                    .is_err()
+                {
+                    debug!("Nobody follows the model check any more");
+                }
+            })
             .await
             .map_err(PlatformError::model_management)?;
         Ok(match integrity {

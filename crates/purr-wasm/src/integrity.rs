@@ -27,6 +27,11 @@ impl<'a> FileChecker<'a> {
         self.received_bytes = self.received_bytes.saturating_add(chunk.len() as u64);
     }
 
+    #[must_use]
+    pub const fn received_bytes(&self) -> u64 {
+        self.received_bytes
+    }
+
     pub fn finish(self) -> Result<(), IntegrityError> {
         if self.received_bytes != self.file.size_bytes {
             return Err(IntegrityError::SizeMismatch {

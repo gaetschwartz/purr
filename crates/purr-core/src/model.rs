@@ -15,13 +15,15 @@ use crate::model::registry::{ModelSpec, Registry};
 use crate::model::status::{ModelFileStatus, ModelIntegrity};
 use directories::ProjectDirs;
 use purr_common::hugging_face_token::HuggingFaceToken;
-use std::io::{self, BufReader};
+use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 use tokio::fs;
 use tracing::{debug, info, warn};
 
 const HASH_BUFFER_BYTES: usize = 1 << 20;
+const HASH_REPORT_INTERVAL: Duration = Duration::from_millis(100);
 
 /// Model manager for downloading and managing Whisper models
 pub struct ModelManager {
@@ -98,7 +100,19 @@ impl ModelManager {
 
     /// Hash the model file on disk and compare it against the manifest
     pub async fn verify_model(&self, model: &ModelSpec) -> Result<ModelIntegrity> {
-        integrity_of(&self.get_model_path(model), &model.file).await
+        self.verify_model_with_progress(model, |_, _| {}).await
+    }
+
+    /// Like [`Self::verify_model`], reporting `(bytes_hashed, total_bytes)` while the file is read
+    pub async fn verify_model_with_progress<F>(
+        &self,
+        model: &ModelSpec,
+        progress: F,
+    ) -> Result<ModelIntegrity>
+    where
+        F: FnMut(u64, u64) + Send + 'static,
+    {
+        integrity_of(&self.get_model_path(model), &model.file, progress).await
     }
 
     /// Where the voice activity model lives, whether or not it is there yet
@@ -111,7 +125,7 @@ impl ModelManager {
     pub async fn vad_model_path(&self) -> Result<Option<PathBuf>> {
         let path = self.get_vad_path();
         Ok(
-            match integrity_of(&path, &self.registry.vad().file).await? {
+            match integrity_of(&path, &self.registry.vad().file, |_, _| {}).await? {
                 ModelIntegrity::Verified => Some(path),
                 ModelIntegrity::Missing
                 | ModelIntegrity::SizeMismatch { .. }
@@ -276,14 +290,17 @@ async fn status_of(path: &Path, file: &PinnedFile) -> Result<ModelFileStatus> {
     }
 }
 
-async fn integrity_of(path: &Path, file: &PinnedFile) -> Result<ModelIntegrity> {
+async fn integrity_of<F>(path: &Path, file: &PinnedFile, progress: F) -> Result<ModelIntegrity>
+where
+    F: FnMut(u64, u64) + Send + 'static,
+{
     match status_of(path, file).await? {
         ModelFileStatus::Missing => Ok(ModelIntegrity::Missing),
         ModelFileStatus::SizeMismatch { expected, actual } => {
             Ok(ModelIntegrity::SizeMismatch { expected, actual })
         }
         ModelFileStatus::Present => {
-            let actual = hash_file(path.to_path_buf()).await?;
+            let actual = hash_file(path.to_path_buf(), file.size_bytes, progress).await?;
             Ok(if actual == file.sha256 {
                 ModelIntegrity::Verified
             } else {
@@ -296,14 +313,93 @@ async fn integrity_of(path: &Path, file: &PinnedFile) -> Result<ModelIntegrity> 
     }
 }
 
-async fn hash_file(path: PathBuf) -> Result<digest::Sha256Digest> {
+async fn hash_file<F>(path: PathBuf, total: u64, progress: F) -> Result<digest::Sha256Digest>
+where
+    F: FnMut(u64, u64) + Send + 'static,
+{
     tokio::task::spawn_blocking(move || {
         let file = std::fs::File::open(path)?;
-        let mut reader = BufReader::with_capacity(HASH_BUFFER_BYTES, file);
-        let mut hasher = Sha256Hasher::new();
-        io::copy(&mut reader, &mut hasher)?;
-        Ok::<_, io::Error>(hasher.finalize())
+        hash_reader(file, total, HASH_REPORT_INTERVAL, progress)
     })
     .await?
     .map_err(WhisperError::from)
+}
+
+fn hash_reader<R: Read>(
+    mut reader: R,
+    total: u64,
+    interval: Duration,
+    mut progress: impl FnMut(u64, u64),
+) -> io::Result<digest::Sha256Digest> {
+    let mut hasher = Sha256Hasher::new();
+    let mut buffer = vec![0u8; HASH_BUFFER_BYTES];
+    let mut hashed = 0u64;
+    let mut reported = 0u64;
+    let mut last_report = Instant::now();
+    progress(0, total);
+    loop {
+        let read = match reader.read(&mut buffer) {
+            Ok(0) => break,
+            Ok(read) => read,
+            Err(err) if err.kind() == io::ErrorKind::Interrupted => continue,
+            Err(err) => return Err(err),
+        };
+        hasher.write_all(&buffer[..read])?;
+        hashed += read as u64;
+        if last_report.elapsed() >= interval {
+            progress(hashed, total);
+            reported = hashed;
+            last_report = Instant::now();
+        }
+    }
+    if reported != hashed {
+        progress(hashed, total);
+    }
+    Ok(hasher.finalize())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Cursor;
+
+    #[test]
+    fn hashing_reports_every_chunk_ending_at_the_total() -> io::Result<()> {
+        let data = vec![7u8; HASH_BUFFER_BYTES * 3 + 5];
+        let total = data.len() as u64;
+        let mut seen = Vec::new();
+        let digest = hash_reader(Cursor::new(&data), total, Duration::ZERO, |hashed, of| {
+            seen.push((hashed, of));
+        })?;
+        let chunk = HASH_BUFFER_BYTES as u64;
+        assert_eq!(
+            seen,
+            [
+                (0, total),
+                (chunk, total),
+                (chunk * 2, total),
+                (chunk * 3, total),
+                (total, total)
+            ]
+        );
+        let mut plain = Sha256Hasher::new();
+        plain.write_all(&data)?;
+        assert_eq!(digest, plain.finalize());
+        Ok(())
+    }
+
+    #[test]
+    fn throttled_hashing_still_reports_the_start_and_the_end() -> io::Result<()> {
+        let data = vec![1u8; HASH_BUFFER_BYTES + 1];
+        let total = data.len() as u64;
+        let mut seen = Vec::new();
+        hash_reader(
+            Cursor::new(&data),
+            total,
+            Duration::from_secs(3600),
+            |hashed, of| seen.push((hashed, of)),
+        )?;
+        assert_eq!(seen, [(0, total), (total, total)]);
+        Ok(())
+    }
 }

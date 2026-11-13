@@ -126,6 +126,7 @@ impl Platform for UnimplementedPlatformImpl {
     async fn verify_model(
         &self,
         model_id: &str,
+        progress: purr_common::platform::ModelCheckSender,
     ) -> Result<purr_common::platform::ModelIntegrity, PlatformError> {
         unsupported!()
     }

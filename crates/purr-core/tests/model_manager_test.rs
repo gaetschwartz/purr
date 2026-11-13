@@ -1,9 +1,11 @@
+use parking_lot::Mutex;
 use purr_core::error::ConfigurationError;
 use purr_core::model::status::{ModelFileStatus, ModelIntegrity};
 use purr_core::model::vad_or_none;
 use purr_core::{ModelManager, WhisperError};
 use std::error::Error;
 use std::path::PathBuf;
+use std::sync::Arc;
 use tempfile::TempDir;
 
 mod common;
@@ -128,6 +130,31 @@ async fn same_size_corruption_is_found_only_by_full_verification() -> Result<(),
             actual: digest_of(&corrupt),
         }
     );
+    Ok(())
+}
+
+#[tokio::test]
+async fn verification_reports_non_decreasing_progress_ending_at_the_file_size()
+-> Result<(), Box<dyn Error>> {
+    let fx = fixture()?;
+    let model = fx.manager.model("fixture")?;
+    std::fs::write(fx.manager.get_model_path(model), &fx.content)?;
+    let total = fx.content.len() as u64;
+    let seen = Arc::new(Mutex::new(Vec::new()));
+
+    let sink = Arc::clone(&seen);
+    let integrity = fx
+        .manager
+        .verify_model_with_progress(model, move |hashed, of| {
+            sink.lock().push((hashed, of));
+        })
+        .await?;
+
+    assert_eq!(integrity, ModelIntegrity::Verified);
+    let seen = seen.lock().clone();
+    assert!(seen.windows(2).all(|pair| pair[0].0 <= pair[1].0));
+    assert_eq!(seen.first(), Some(&(0, total)));
+    assert_eq!(seen.last(), Some(&(total, total)));
     Ok(())
 }
 

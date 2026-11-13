@@ -27,9 +27,9 @@ use purr_common::history::{
 };
 use purr_common::hugging_face_token::HuggingFaceToken;
 use purr_common::platform::{
-    DeviceInfo, DeviceType, FileId, FileSource, ModelFailureKind, ModelInfo, ModelIntegrity,
-    ModelOperationProgress, ModelProgressStream, Platform, PlatformError, TranscriptionRequest,
-    TranscriptionStatus, TranscriptionStream,
+    DeviceInfo, DeviceType, FileId, FileSource, ModelCheckSender, ModelFailureKind, ModelInfo,
+    ModelIntegrity, ModelOperationProgress, ModelProgressStream, Platform, PlatformError,
+    TranscriptionRequest, TranscriptionStatus, TranscriptionStream,
 };
 use purr_common::settings::Settings;
 use purr_common::web_model::registry::WebModelSpec;
@@ -737,11 +737,15 @@ impl Platform for WasmPlatformImpl {
         Ok(())
     }
 
-    async fn verify_model(&self, model_id: &str) -> Result<ModelIntegrity, PlatformError> {
+    async fn verify_model(
+        &self,
+        model_id: &str,
+        progress: ModelCheckSender,
+    ) -> Result<ModelIntegrity, PlatformError> {
         self.ensure_initialized().await?;
 
         let spec = self.model_manager.model(model_id)?;
-        match model_cache::verify(spec).await {
+        match model_cache::verify_with_progress(spec, progress).await {
             Ok(()) => Ok(ModelIntegrity::Verified),
             Err(WebError::Integrity(problem)) => Ok(problem.into()),
             Err(error) => Err(error.into()),
