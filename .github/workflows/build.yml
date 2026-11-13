@@ -109,9 +109,7 @@ jobs:
         uses: ./.github/actions/setup-vulkan
         with:
           version: ${{ env.VULKAN_SDK_VERSION }}
-      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
-        with:
-          toolchain: stable
+      - uses: ./.github/actions/setup-rust
       - uses: Swatinem/rust-cache@v2.9.3
         with:
           # whisper-rs-sys does not rebuild ggml when GGML_* or the GPU SDKs change, so each configuration needs its own cache
@@ -206,9 +204,8 @@ jobs:
       - uses: ./.github/actions/setup-vulkan
         with:
           version: ${{ env.VULKAN_SDK_VERSION }}
-      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - uses: ./.github/actions/setup-rust
         with:
-          toolchain: stable
           targets: x86_64-unknown-linux-gnu, wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2.9.3
         with:
@@ -312,9 +309,8 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - uses: ./.github/actions/setup-rust
         with:
-          toolchain: stable
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2.9.3
         with:
@@ -356,9 +352,7 @@ jobs:
       - uses: ./.github/actions/setup-ffmpeg
         with:
           triplet: arm64-osx
-      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
-        with:
-          toolchain: stable
+      - uses: ./.github/actions/setup-rust
       - uses: Swatinem/rust-cache@v2.9.3
         with:
           # whisper-rs-sys does not rebuild ggml when GGML_* changes, so each ggml configuration needs its own cache
@@ -397,9 +391,8 @@ jobs:
       - uses: ./.github/actions/setup-ffmpeg
         with:
           triplet: arm64-osx
-      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - uses: ./.github/actions/setup-rust
         with:
-          toolchain: stable
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2.9.3
         with:
@@ -460,10 +453,7 @@ jobs:
         uses: ./.github/actions/setup-vulkan
         with:
           version: ${{ env.VULKAN_SDK_VERSION }}
-      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
-        with:
-          toolchain: stable
-          components: rustfmt
+      - uses: ./.github/actions/setup-rust
       - uses: Swatinem/rust-cache@v2.9.3
         with:
           # rust-cache joins the target onto the workspace path, and CARGO_TARGET_DIR is D:\t
@@ -536,11 +526,9 @@ jobs:
       - uses: ./.github/actions/setup-vulkan
         with:
           version: ${{ env.VULKAN_SDK_VERSION }}
-      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - uses: ./.github/actions/setup-rust
         with:
-          toolchain: stable
           targets: wasm32-unknown-unknown
-          components: rustfmt
       - uses: Swatinem/rust-cache@v2.9.3
         with:
           # rust-cache joins the target onto the workspace path, and CARGO_TARGET_DIR is D:\t

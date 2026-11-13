@@ -1,0 +1,44 @@
+name: Set up Rust
+description: >
+  Install the Rust toolchain that CI is pinned to, and make it the only one installed.
+  The version is bumped here and nowhere else.
+inputs:
+  toolchain:
+    description: Full Rust version (X.Y.Z). rust-cache hashes every installed toolchain into its keys, so a change here starts every Rust cache over.
+    required: false
+    default: 1.100.0
+  targets:
+    description: Comma-separated target triples to add
+    required: false
+  components:
+    description: Comma-separated components to add. The hosted images ship both defaults with their own toolchain, which the pinned install replaces.
+    required: false
+    default: clippy,rustfmt
+runs:
+  using: composite
+  steps:
+    - name: Install the toolchain
+      uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      with:
+        toolchain: ${{ inputs.toolchain }}
+        targets: ${{ inputs.targets }}
+        components: ${{ inputs.components }}
+
+    - name: Keep only the pinned toolchain
+      shell: bash
+      env:
+        TOOLCHAIN: ${{ inputs.toolchain }}
+      run: |
+        set -euo pipefail
+        active="$(rustc --version)"
+        case "$active" in
+          "rustc $TOOLCHAIN "*) ;;
+          *) echo "::error::rustc reports '$active', not the pinned $TOOLCHAIN"; exit 1 ;;
+        esac
+        rustup toolchain list --quiet | tr -d '\r' | while read -r installed; do
+          case "$installed" in
+            "$TOOLCHAIN"-*) ;;
+            *) rustup toolchain uninstall "$installed" ;;
+          esac
+        done
+        rustup toolchain list

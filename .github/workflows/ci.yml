@@ -19,10 +19,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
-        with:
-          toolchain: stable
-          components: rustfmt
+      - uses: ./.github/actions/setup-rust
       - run: cargo fmt --all --check
 
   test:
@@ -40,10 +37,7 @@ jobs:
       - uses: ./.github/actions/setup-ffmpeg
         with:
           triplet: x64-linux
-      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
-        with:
-          toolchain: stable
-          components: clippy
+      - uses: ./.github/actions/setup-rust
       - uses: Swatinem/rust-cache@v2.9.3
         with:
           save-if: ${{ github.ref == 'refs/heads/develop' }}
