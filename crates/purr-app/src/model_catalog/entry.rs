@@ -105,7 +105,6 @@ pub struct ModelEntry {
     pub webgpu_only: bool,
     pub size_bytes: u64,
     pub installed: bool,
-    description: String,
 }
 
 impl ModelEntry {
@@ -150,32 +149,6 @@ impl ModelEntry {
             webgpu_only: metadata.has_flag(model_flag::WEBGPU_ONLY),
             size_bytes: info.size_bytes,
             installed: info.is_installed,
-            description: info.description.clone(),
-        }
-    }
-
-    /// One plain sentence on what sets this variant apart, when its tags don't say it already.
-    #[must_use]
-    pub fn hint(&self) -> Option<String> {
-        if let Some(note) = self.family.and_then(ModelFamily::note) {
-            return Some(note.to_owned());
-        }
-        if self.speaker_turns {
-            return Some("Marks where the speaker changes.".to_owned());
-        }
-        let described = Some(self.description.clone()).filter(|text| !text.trim().is_empty());
-        if self.family.is_none() {
-            return described;
-        }
-        match (&self.precision, self.language) {
-            (Precision::Other(_), _) => described,
-            (Precision::Quantized { .. }, _) => {
-                Some("Quantized: a smaller download, slightly less accurate.".to_owned())
-            }
-            (Precision::Mixed | Precision::Full, Language::EnglishOnly) => {
-                Some("A little more accurate on English speech.".to_owned())
-            }
-            (Precision::Mixed | Precision::Full, Language::Multilingual) => None,
         }
     }
 
@@ -272,30 +245,6 @@ mod tests {
         let entry = ModelEntry::from_info(&info("mystery", "mystery", "fp16", false));
         assert_eq!(entry.name, "mystery");
         assert_eq!(entry.group, ModelGroup::Other);
-        assert_eq!(entry.hint().as_deref(), Some("A model"));
-    }
-
-    #[test]
-    fn hints_follow_the_variant() {
-        let full = ModelEntry::from_info(&info("small", "small", "fp16", false));
-        assert_eq!(full.hint(), None);
-        let english = ModelEntry::from_info(&info("small.en", "small", "fp16", true));
-        assert_eq!(
-            english.hint().as_deref(),
-            Some("A little more accurate on English speech.")
-        );
-        let quantized = ModelEntry::from_info(&info("small-q5_1", "small", "q5_1", false));
-        assert_eq!(
-            quantized.hint().as_deref(),
-            Some("Quantized: a smaller download, slightly less accurate.")
-        );
-        let eight_bit = ModelEntry::from_info(&info("small-q8_0", "small", "q8_0", false));
-        assert_eq!(eight_bit.hint(), quantized.hint());
-        let old = ModelEntry::from_info(&info("large-v1", "large-v1", "fp16", false));
-        assert_eq!(
-            old.hint().as_deref(),
-            Some("First large model, superseded by v3.")
-        );
     }
 
     #[test]

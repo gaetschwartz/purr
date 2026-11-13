@@ -5,8 +5,9 @@ use crate::{
         dialog::{Dialog, DialogTone},
         empty_state::EmptyState,
         icon::IconName,
+        model_cluster::ModelClusterRow,
         model_filters::ModelFilters,
-        model_row::ModelListRow,
+        model_more::ModelMore,
         model_section::ModelSection,
         page::Page,
         spinner::Spinner,
@@ -56,13 +57,14 @@ fn Catalog(models: ModelsHandle, rows: Vec<ModelRow>, selected: Option<String>) 
         .collect();
     let notice = gpu_notice(&models.gpu.read(), &rows);
     let offline = !*models.online.read();
+    let listing = build_listing(&rows, &query.read());
+    let open_more = listing.shows_more(&query.read(), selected.as_deref());
+    let nothing_matches = listing.is_empty();
     let Listing {
         in_progress,
         groups: sections,
-    } = build_listing(rows.clone(), &query.read());
-    let nothing_matches =
-        in_progress.is_empty() && sections.iter().all(|section| section.rows.is_empty());
-    let in_use = |id: &str| selected.as_deref() == Some(id);
+        more,
+    } = listing;
 
     rsx! {
         if offline {
@@ -84,11 +86,11 @@ fn Catalog(models: ModelsHandle, rows: Vec<ModelRow>, selected: Option<String>) 
         }
         if !in_progress.is_empty() {
             ModelSection { title: IN_PROGRESS,
-                for row in in_progress {
-                    ModelListRow {
-                        key: "{row.entry.id}",
-                        in_use: in_use(&row.entry.id),
-                        row,
+                for cluster in in_progress {
+                    ModelClusterRow {
+                        key: "{cluster.primary.entry.id}",
+                        in_use: selected.clone(),
+                        cluster,
                         on_delete: move |id| delete_target.set(Some(id)),
                     }
                 }
@@ -101,15 +103,22 @@ fn Catalog(models: ModelsHandle, rows: Vec<ModelRow>, selected: Option<String>) 
             ModelSection {
                 key: "{section.group.label()}",
                 title: section.group.label(),
-                hint: section.group.hint(),
-                for row in section.rows {
-                    ModelListRow {
-                        key: "{row.entry.id}",
-                        in_use: in_use(&row.entry.id),
-                        row,
+                for cluster in section.clusters {
+                    ModelClusterRow {
+                        key: "{cluster.primary.entry.id}",
+                        in_use: selected.clone(),
+                        cluster,
                         on_delete: move |id| delete_target.set(Some(id)),
                     }
                 }
+            }
+        }
+        if !more.is_empty() {
+            ModelMore {
+                clusters: more,
+                open_by_default: open_more,
+                in_use: selected.clone(),
+                on_delete: move |id| delete_target.set(Some(id)),
             }
         }
         if let Some(target) = delete_target() {

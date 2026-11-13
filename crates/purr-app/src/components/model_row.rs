@@ -17,7 +17,7 @@ use dioxus::prelude::*;
 
 const COMPACT_BANNER: &str = "margin-top:10px;padding:10px 12px";
 
-/// One model of the list: name, hint, tags and the controls that fit its state.
+/// One model of the list: name, tags and the controls that fit its state.
 ///
 /// `in_use` marks the model transcriptions use; `on_delete` asks the screen to confirm deleting it.
 #[component]
@@ -37,15 +37,13 @@ pub fn ModelListRow(
         models.is_downloading() && !matches!(state, ModelState::Downloading(_));
 
     let (disabled, hint) = match &state {
-        ModelState::Unavailable { reason, .. } => {
-            (true, Some(copy::unavailable(*reason).1.to_owned()))
-        }
+        ModelState::Unavailable { reason, .. } => (true, Some(copy::unavailable(*reason).1)),
         ModelState::NotDownloaded
         | ModelState::Downloaded
         | ModelState::Downloading(_)
         | ModelState::Verifying(_)
         | ModelState::Failed(_)
-        | ModelState::NeedsRepair(_) => (false, entry.hint()),
+        | ModelState::NeedsRepair(_) => (false, None),
     };
     let can_verify = !matches!(state, ModelState::NeedsRepair(_));
 

@@ -1,4 +1,5 @@
 use super::{
+    clusters::{ModelCluster, cluster},
     entry::{Language, ModelEntry},
     family::ModelGroup,
     state::ModelState,
@@ -71,49 +72,78 @@ impl ModelQuery {
     }
 }
 
-/// The rows of one list section.
+/// The models of one list section, each with its quantized versions folded in.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GroupListing {
     pub group: ModelGroup,
-    pub rows: Vec<ModelRow>,
+    pub clusters: Vec<ModelCluster>,
 }
 
 /// The list the Models screen shows.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Listing {
     /// Downloads, checks and failures, shown first when nothing is filtered.
-    pub in_progress: Vec<ModelRow>,
+    pub in_progress: Vec<ModelCluster>,
     pub groups: Vec<GroupListing>,
+    /// Models a newer family replaces, kept out of the sections.
+    pub more: Vec<ModelCluster>,
 }
 
 impl Listing {
     /// Whether nothing matches.
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.in_progress.is_empty() && self.groups.iter().all(|group| group.rows.is_empty())
+        self.in_progress.is_empty() && self.groups.is_empty() && self.more.is_empty()
+    }
+
+    /// Whether the older models should be shown without being asked: a search reached them, or one
+    /// of them is stored, busy or in use.
+    #[must_use]
+    pub fn shows_more(&self, query: &ModelQuery, in_use: Option<&str>) -> bool {
+        !self.more.is_empty()
+            && (!query.search.trim().is_empty()
+                || self.more.iter().any(|cluster| {
+                    in_use.is_some_and(|id| cluster.holds(id))
+                        || cluster
+                            .rows()
+                            .any(|row| row.state.is_on_device() || row.state.is_active())
+                }))
     }
 }
 
-/// Filters `rows` and sorts them into sections, keeping the platform's order inside each.
+fn is_busy(cluster: &ModelCluster) -> bool {
+    cluster.rows().any(|row| row.state.is_active())
+}
+
+/// Filters `rows`, folds quantized versions into their model and sorts the result into sections,
+/// keeping the platform's order inside each.
 #[must_use]
-pub fn build_listing(rows: Vec<ModelRow>, query: &ModelQuery) -> Listing {
+pub fn build_listing(rows: &[ModelRow], query: &ModelQuery) -> Listing {
     let pin_active = query.is_unfiltered();
+    let kept: Vec<ModelRow> = rows
+        .iter()
+        .filter(|row| query.keeps(row))
+        .cloned()
+        .collect();
     let mut listing = Listing::default();
-    for row in rows.into_iter().filter(|row| query.keeps(row)) {
-        if pin_active && row.state.is_active() {
-            listing.in_progress.push(row);
-            continue;
-        }
-        match listing
-            .groups
-            .iter_mut()
-            .find(|section| section.group == row.entry.group)
-        {
-            Some(section) => section.rows.push(row),
-            None => listing.groups.push(GroupListing {
-                group: row.entry.group,
-                rows: vec![row],
-            }),
+    for cluster in cluster(&kept) {
+        if pin_active && is_busy(&cluster) {
+            listing.in_progress.push(cluster);
+        } else if cluster.superseded() {
+            listing.more.push(cluster);
+        } else {
+            let group = cluster.primary.entry.group;
+            match listing
+                .groups
+                .iter_mut()
+                .find(|section| section.group == group)
+            {
+                Some(section) => section.clusters.push(cluster),
+                None => listing.groups.push(GroupListing {
+                    group,
+                    clusters: vec![cluster],
+                }),
+            }
         }
     }
     listing.groups.sort_by_key(|section| {
@@ -149,8 +179,14 @@ mod tests {
     use crate::model_catalog::activity::{DownloadFailure, DownloadProgress};
     use purr_common::platform::{ModelFailureKind, ModelInfo, ModelMetadata, model_flag};
 
-    fn row(id: &str, family: &str, english: bool, installed: bool, state: ModelState) -> ModelRow {
-        let metadata = ModelMetadata::new(
+    fn row(
+        id: &str,
+        family: &str,
+        english: bool,
+        quantization: Option<&str>,
+        state: ModelState,
+    ) -> ModelRow {
+        let mut metadata = ModelMetadata::new(
             "ggml".to_owned(),
             "whisper".to_owned(),
             "multilingual".to_owned(),
@@ -158,64 +194,99 @@ mod tests {
         )
         .with_platform_attribute("family".to_owned(), family.to_owned())
         .with_platform_attribute(model_flag::ENGLISH_ONLY.to_owned(), english.to_string());
+        if let Some(quantization) = quantization {
+            metadata = metadata.with_quantization(quantization.to_owned());
+        }
         ModelRow {
             entry: ModelEntry::from_info(&ModelInfo::new(
                 id.to_owned(),
                 id.to_owned(),
                 String::new(),
                 100,
-                installed,
+                state.is_on_device(),
                 metadata,
             )),
             state,
         }
     }
 
+    fn plain(id: &str, family: &str, state: ModelState) -> ModelRow {
+        row(id, family, false, None, state)
+    }
+
+    fn failed() -> ModelState {
+        ModelState::Failed(DownloadFailure {
+            kind: ModelFailureKind::Other,
+            message: String::new(),
+        })
+    }
+
     fn rows() -> Vec<ModelRow> {
         vec![
-            row("tiny", "tiny", false, true, ModelState::Downloaded),
-            row("tiny.en", "tiny", true, false, ModelState::NotDownloaded),
+            plain("tiny", "tiny", ModelState::Downloaded),
             row(
+                "tiny-q5",
+                "tiny",
+                false,
+                Some("q5_1"),
+                ModelState::NotDownloaded,
+            ),
+            row("tiny.en", "tiny", true, None, ModelState::NotDownloaded),
+            plain(
                 "small",
                 "small",
-                false,
-                false,
                 ModelState::Downloading(DownloadProgress::default()),
             ),
-            row(
-                "base",
-                "base",
-                false,
-                false,
-                ModelState::Failed(DownloadFailure {
-                    kind: ModelFailureKind::Other,
-                    message: String::new(),
-                }),
-            ),
-            row(
-                "large-v3",
-                "large-v3",
-                false,
-                false,
-                ModelState::NotDownloaded,
-            ),
-            row(
-                "mystery",
-                "mystery",
-                false,
-                false,
-                ModelState::NotDownloaded,
-            ),
+            plain("base", "base", failed()),
+            plain("large-v3", "large-v3", ModelState::NotDownloaded),
+            plain("large-v2", "large-v2", ModelState::NotDownloaded),
+            plain("large-v1", "large-v1", ModelState::Downloaded),
+            plain("mystery", "mystery", ModelState::NotDownloaded),
         ]
     }
 
-    fn ids(rows: &[ModelRow]) -> Vec<&str> {
-        rows.iter().map(|row| row.entry.id.as_str()).collect()
+    fn shape(clusters: &[ModelCluster]) -> Vec<(&str, Vec<&str>)> {
+        clusters
+            .iter()
+            .map(|cluster| {
+                (
+                    cluster.primary.entry.id.as_str(),
+                    cluster
+                        .variants
+                        .iter()
+                        .map(|row| row.entry.id.as_str())
+                        .collect(),
+                )
+            })
+            .collect()
+    }
+
+    fn section(listing: &Listing, group: ModelGroup) -> Vec<(&str, Vec<&str>)> {
+        listing
+            .groups
+            .iter()
+            .find(|section| section.group == group)
+            .map(|section| shape(&section.clusters))
+            .unwrap_or_default()
+    }
+
+    fn query(filter: ModelFilter) -> ModelQuery {
+        ModelQuery {
+            filter,
+            ..ModelQuery::default()
+        }
+    }
+
+    fn search(text: &str) -> ModelQuery {
+        ModelQuery {
+            search: text.to_owned(),
+            ..ModelQuery::default()
+        }
     }
 
     #[test]
     fn sections_follow_the_prototype_order_and_other_comes_last() {
-        let listing = build_listing(rows(), &ModelQuery::default());
+        let listing = build_listing(&rows(), &ModelQuery::default());
         let order: Vec<ModelGroup> = listing.groups.iter().map(|section| section.group).collect();
         assert_eq!(
             order,
@@ -224,35 +295,84 @@ mod tests {
     }
 
     #[test]
+    fn quantized_versions_fold_under_their_model() {
+        let listing = build_listing(&rows(), &ModelQuery::default());
+        assert_eq!(
+            section(&listing, ModelGroup::Tiny),
+            [("tiny", vec!["tiny-q5"]), ("tiny.en", vec![])]
+        );
+    }
+
+    #[test]
     fn active_models_move_to_the_top_when_nothing_is_filtered() {
-        let listing = build_listing(rows(), &ModelQuery::default());
-        assert_eq!(ids(&listing.in_progress), ["small", "base"]);
-        let tiny = listing.groups.iter().find(|s| s.group == ModelGroup::Tiny);
-        assert_eq!(tiny.map(|s| ids(&s.rows)), Some(vec!["tiny", "tiny.en"]));
+        let listing = build_listing(&rows(), &ModelQuery::default());
+        assert_eq!(
+            shape(&listing.in_progress),
+            [("small", vec![]), ("base", vec![])]
+        );
+    }
+
+    #[test]
+    fn a_busy_variant_pulls_its_whole_model_to_the_top() {
+        let mut rows = rows();
+        rows[1].state = ModelState::Downloading(DownloadProgress::default());
+        let listing = build_listing(&rows, &ModelQuery::default());
+        assert_eq!(shape(&listing.in_progress)[0], ("tiny", vec!["tiny-q5"]));
+        assert_eq!(section(&listing, ModelGroup::Tiny), [("tiny.en", vec![])]);
+    }
+
+    #[test]
+    fn superseded_models_leave_the_sections_for_more_models() {
+        let listing = build_listing(&rows(), &ModelQuery::default());
+        assert_eq!(section(&listing, ModelGroup::Large), [("large-v3", vec![])]);
+        assert_eq!(
+            shape(&listing.more),
+            [("large-v2", vec![]), ("large-v1", vec![])]
+        );
     }
 
     #[test]
     fn a_filter_keeps_active_models_in_their_sections() {
-        let query = ModelQuery {
-            filter: ModelFilter::Multilingual,
-            ..ModelQuery::default()
-        };
-        let listing = build_listing(rows(), &query);
+        let listing = build_listing(&rows(), &query(ModelFilter::Multilingual));
         assert_eq!(listing.in_progress, []);
-        assert_eq!(listing.groups.len(), 5);
+        let order: Vec<ModelGroup> = listing.groups.iter().map(|section| section.group).collect();
+        assert_eq!(
+            order,
+            [
+                ModelGroup::Large,
+                ModelGroup::Small,
+                ModelGroup::Base,
+                ModelGroup::Tiny,
+                ModelGroup::Other
+            ]
+        );
     }
 
     #[test]
     fn on_device_keeps_only_stored_models() {
-        let query = ModelQuery {
-            filter: ModelFilter::OnDevice,
-            ..ModelQuery::default()
-        };
-        let listing = build_listing(rows(), &query);
+        let listing = build_listing(&rows(), &query(ModelFilter::OnDevice));
         assert_eq!(listing.groups.len(), 1);
+        assert_eq!(section(&listing, ModelGroup::Tiny), [("tiny", vec![])]);
+        assert_eq!(shape(&listing.more), [("large-v1", vec![])]);
+    }
+
+    #[test]
+    fn on_device_still_shows_a_model_whose_only_stored_version_is_quantized() {
+        let mut rows = rows();
+        rows[0].state = ModelState::NotDownloaded;
+        rows[1].state = ModelState::Downloaded;
+        let listing = build_listing(&rows, &query(ModelFilter::OnDevice));
+        assert_eq!(section(&listing, ModelGroup::Tiny), [("tiny-q5", vec![])]);
+    }
+
+    #[test]
+    fn on_device_keeps_stored_variants_with_their_stored_model() {
+        let mut rows = rows();
+        rows[1].state = ModelState::Downloaded;
+        let listing = build_listing(&rows, &query(ModelFilter::OnDevice));
         assert_eq!(
-            listing.groups.first().map(|s| ids(&s.rows)),
-            Some(vec!["tiny"])
+            section(&listing, ModelGroup::Tiny),
+            [("tiny", vec!["tiny-q5"])]
         );
     }
 
@@ -263,33 +383,55 @@ mod tests {
             group: Some(ModelGroup::Tiny),
             search: String::new(),
         };
-        let listing = build_listing(rows(), &query);
+        let listing = build_listing(&rows(), &query);
         assert_eq!(listing.groups.len(), 1);
-        assert_eq!(
-            listing.groups.first().map(|s| ids(&s.rows)),
-            Some(vec!["tiny.en"])
-        );
+        assert_eq!(section(&listing, ModelGroup::Tiny), [("tiny.en", vec![])]);
     }
 
     #[test]
-    fn search_narrows_and_can_leave_nothing() {
-        let query = ModelQuery {
-            search: "  large ".to_owned(),
-            ..ModelQuery::default()
-        };
-        assert_eq!(build_listing(rows(), &query).groups.len(), 1);
-        let nothing = ModelQuery {
-            search: "zzz".to_owned(),
-            ..ModelQuery::default()
-        };
-        assert!(build_listing(rows(), &nothing).is_empty());
+    fn search_reaches_the_older_models_and_a_lone_variant() {
+        let listing = build_listing(&rows(), &search("  large "));
+        assert_eq!(section(&listing, ModelGroup::Large), [("large-v3", vec![])]);
+        assert_eq!(
+            shape(&listing.more),
+            [("large-v2", vec![]), ("large-v1", vec![])]
+        );
+        let variant = build_listing(&rows(), &search("q5"));
+        assert_eq!(section(&variant, ModelGroup::Tiny), [("tiny-q5", vec![])]);
+    }
+
+    #[test]
+    fn search_can_leave_nothing() {
+        assert!(build_listing(&rows(), &search("zzz")).is_empty());
+    }
+
+    #[test]
+    fn the_older_models_open_for_a_search_a_stored_model_or_the_one_in_use() {
+        let listing = build_listing(&rows(), &ModelQuery::default());
+        assert!(listing.shows_more(&ModelQuery::default(), None));
+
+        let mut none_stored = rows();
+        none_stored[7].state = ModelState::NotDownloaded;
+        let listing = build_listing(&none_stored, &ModelQuery::default());
+        assert!(!listing.shows_more(&ModelQuery::default(), None));
+        assert!(listing.shows_more(&ModelQuery::default(), Some("large-v2")));
+        assert!(!listing.shows_more(&ModelQuery::default(), Some("tiny")));
+
+        let found = build_listing(&none_stored, &search("large"));
+        assert!(found.shows_more(&search("large"), None));
+    }
+
+    #[test]
+    fn the_older_models_stay_closed_when_there_are_none() {
+        let listing = build_listing(&rows(), &search("tiny"));
+        assert!(!listing.shows_more(&search("tiny"), None));
     }
 
     #[test]
     fn summary_counts_stored_models_and_their_space() {
         let summary = summarize(&rows());
-        assert_eq!(summary.installed, 1);
-        assert_eq!(summary.total, 6);
-        assert_eq!(summary.used_bytes, 100);
+        assert_eq!(summary.installed, 2);
+        assert_eq!(summary.total, 9);
+        assert_eq!(summary.used_bytes, 200);
     }
 }

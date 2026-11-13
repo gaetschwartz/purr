@@ -1,7 +1,9 @@
 use super::{
     entry::{Language, Precision},
     listing::ModelRow,
+    state::ModelState,
 };
+use crate::utils::counted::counted;
 
 /// A model together with its quantized versions, which share its name and language.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -22,6 +24,34 @@ impl ModelCluster {
     #[must_use]
     pub fn on_device(&self) -> bool {
         self.rows().any(|row| row.state.is_on_device())
+    }
+
+    /// Whether a download, a check, a failure or a damaged install sits among the variants.
+    #[must_use]
+    pub fn variants_need_attention(&self) -> bool {
+        self.variants
+            .iter()
+            .any(|row| row.state.is_active() || matches!(row.state, ModelState::NeedsRepair(_)))
+    }
+
+    /// Whether the row of model `id` belongs to the cluster.
+    #[must_use]
+    pub fn holds(&self, id: &str) -> bool {
+        self.rows().any(|row| row.entry.id == id)
+    }
+
+    /// What the fold under the primary says, such as "2 quantized versions".
+    #[must_use]
+    pub fn variants_label(&self) -> String {
+        if self.variants.iter().all(is_quantized) {
+            counted(
+                self.variants.len(),
+                "quantized version",
+                "quantized versions",
+            )
+        } else {
+            counted(self.variants.len(), "more version", "more versions")
+        }
     }
 
     /// Whether the models of the cluster are superseded by a newer family.
@@ -82,8 +112,13 @@ pub fn cluster(rows: &[ModelRow]) -> Vec<ModelCluster> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model_catalog::{entry::ModelEntry, family::ModelFamily, state::ModelState};
-    use purr_common::platform::{ModelInfo, ModelMetadata, model_flag};
+    use crate::model_catalog::{
+        activity::{DownloadFailure, DownloadProgress},
+        entry::ModelEntry,
+        family::ModelFamily,
+        state::ModelState,
+    };
+    use purr_common::platform::{ModelFailureKind, ModelInfo, ModelMetadata, model_flag};
 
     fn row(
         id: &str,
@@ -161,6 +196,55 @@ mod tests {
         assert_eq!(
             shape(&cluster(&rows)),
             vec![("small-q5".to_owned(), vec!["small-q8".to_owned()])]
+        );
+    }
+
+    #[test]
+    fn the_fold_is_named_after_what_it_holds() {
+        let rows = [
+            row("base", "base", 140, None, false),
+            row("base-q5", "base", 60, Some("q5_1"), false),
+        ];
+        assert_eq!(cluster(&rows)[0].variants_label(), "1 quantized version");
+        let rows = [
+            row("base", "base", 140, None, false),
+            row("base-q5", "base", 60, Some("q5_1"), false),
+            row("base-q8", "base", 80, Some("q8_0"), false),
+        ];
+        assert_eq!(cluster(&rows)[0].variants_label(), "2 quantized versions");
+        let rows = [
+            row("base", "base", 140, None, false),
+            row("base-alt", "base", 150, None, false),
+        ];
+        assert_eq!(cluster(&rows)[0].variants_label(), "1 more version");
+    }
+
+    #[test]
+    fn a_busy_or_damaged_variant_needs_attention_but_the_primary_does_not() {
+        let mut rows = [
+            row("base", "base", 140, None, false),
+            row("base-q5", "base", 60, Some("q5_1"), false),
+        ];
+        assert!(!cluster(&rows)[0].variants_need_attention());
+        rows[0].state = ModelState::Failed(DownloadFailure {
+            kind: ModelFailureKind::Other,
+            message: String::new(),
+        });
+        assert!(!cluster(&rows)[0].variants_need_attention());
+        rows[1].state = ModelState::Downloading(DownloadProgress::default());
+        assert!(cluster(&rows)[0].variants_need_attention());
+    }
+
+    #[test]
+    fn a_cluster_holds_the_ids_of_all_its_rows() {
+        let rows = [
+            row("base", "base", 140, None, false),
+            row("base-q5", "base", 60, Some("q5_1"), false),
+        ];
+        let clusters = cluster(&rows);
+        assert_eq!(
+            (clusters[0].holds("base-q5"), clusters[0].holds("tiny")),
+            (true, false)
         );
     }
 

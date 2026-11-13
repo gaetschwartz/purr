@@ -72,21 +72,6 @@ impl ModelFamily {
             | Self::LargeV3Turbo => false,
         }
     }
-
-    /// A caveat that only applies to this family, if any.
-    #[must_use]
-    pub const fn note(self) -> Option<&'static str> {
-        match self {
-            Self::LargeV1 => Some("First large model, superseded by v3."),
-            Self::LargeV2 => Some("Previous large model. Use it to match older transcripts."),
-            Self::Tiny
-            | Self::Base
-            | Self::Small
-            | Self::Medium
-            | Self::LargeV3
-            | Self::LargeV3Turbo => None,
-        }
-    }
 }
 
 /// A section of the model list: related families shown together.
@@ -125,20 +110,6 @@ impl ModelGroup {
             Self::Base => "Base",
             Self::Tiny => "Tiny",
             Self::Other => "Other models",
-        }
-    }
-
-    /// What the group trades off, in plain words.
-    #[must_use]
-    pub const fn hint(self) -> &'static str {
-        match self {
-            Self::Turbo => "Nearly Large v3 accuracy at several times the speed.",
-            Self::Large => "Most accurate. Slow without a GPU.",
-            Self::Medium => "Accurate but slower. Best with a GPU.",
-            Self::Small => "Balanced. Copes better with accents and background noise.",
-            Self::Base => "Very fast. Handles everyday recordings well.",
-            Self::Tiny => "Fastest. Good for clear speech and quick drafts.",
-            Self::Other => "Models this version of Purr has no description for.",
         }
     }
 }

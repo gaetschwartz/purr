@@ -35,8 +35,10 @@ pub mod switch;
 pub mod toast;
 
 pub mod model_check;
+pub mod model_cluster;
 pub mod model_download;
 pub mod model_filters;
+pub mod model_more;
 pub mod model_picker;
 pub mod model_row;
 pub mod model_section;
