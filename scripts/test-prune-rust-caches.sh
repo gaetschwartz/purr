@@ -55,7 +55,14 @@ $(entry 16 "v0-rust-$mac-cli-macos-Darwin-arm64-60948658-3390f3d2" 2026-11-13T09
 $(entry 17 "v0-rust-$mac-desktop-macos-Darwin-arm64-60948658-313822ff" 2026-11-13T10:05:00Z),
 $(entry 18 "v0-rust-test-Linux-x64-2fd77104-313822ff" 2026-11-13T10:03:00Z),
 $(entry 10 "vcpkg-ffmpeg-Linux-efecf268f3a3ec78f4bf1f0c36759bdb23c6f653" 2026-11-11T10:10:00Z),
-$(entry 11 "dioxus-cli-Linux-0.8.0-alpha.3" 2026-11-13T09:24:00Z)
+$(entry 11 "dioxus-cli-Linux-0.8.0-alpha.3" 2026-11-13T09:24:00Z),
+$(entry 20 "ccache-Linux-v1-100-1" 2026-11-13T09:00:00Z),
+$(entry 21 "ccache-Linux-v1-101-1" 2026-11-13T10:00:00Z),
+$(entry 22 "ccache-Linux-v1-102-1" 2026-11-13T11:00:00Z refs/heads/feature),
+$(entry 23 "ccache-Linux-v2-5-1" 2026-11-13T08:00:00Z),
+$(entry 24 "ccache-Windows-v1-100-1" 2026-11-13T09:00:00Z),
+$(entry 25 "ccache-Windows-v1-100-2" 2026-11-13T09:30:00Z),
+$(entry 26 "ccache-Linux-v1-extra-103-1" 2026-11-13T09:45:00Z)
 ]
 EOF
 
@@ -88,7 +95,7 @@ prune="$here/prune-rust-caches.sh"
 own() { env PURR_RUST_CACHE_SAVE=true PURR_RUST_CACHE_KEY="$1" GITHUB_JOB="$2" CACHE_HIT="${3-false}" "$prune" own-family; }
 
 run "$prune" superseded
-check "superseded keeps the newest of each family and ignores other refs" "1 12 16 3"
+check "superseded keeps the newest of each family and ignores other refs" "1 12 16 20 24 3"
 
 run own "$linux_all" cli-linux
 check "fallback hit deletes the whole family" "1 12 2"
@@ -133,6 +140,24 @@ check "no key input" "18"
 run env FAIL_IDS=12 PURR_RUST_CACHE_SAVE=true PURR_RUST_CACHE_KEY="$linux_all" GITHUB_JOB=cli-linux CACHE_HIT=false "$prune" own-family
 check "a failed deletion does not stop the others and fails the script" "1 12 2" 1
 case "$output" in *"::warning::could not delete the cache entry 12"*) echo "ok   the failed deletion is annotated" ;; *) echo "FAIL no warning annotation"; failures=$((failures + 1)) ;; esac
+
+compiler() { env PURR_COMPILER_CACHE_PREFIX="$1" PURR_COMPILER_CACHE_KEEP_KEY="$2" "$prune" compiler-cache; }
+
+run compiler "ccache-Linux-v1-" "ccache-Linux-v1-101-1"
+check "compiler cache: the saved entry stays, the older ones of the family go" "20"
+
+run compiler "ccache-Windows-v1-" "ccache-Windows-v1-100-2"
+check "compiler cache: another OS" "24"
+
+run compiler "ccache-Linux-v1-" "ccache-Linux-v1-999-1"
+check "compiler cache: an unlisted saved entry deletes nothing" ""
+case "$output" in *"is not listed"*) echo "ok   the missing entry is reported" ;; *) echo "FAIL no message for a missing entry"; failures=$((failures + 1)) ;; esac
+
+run compiler "ccache-Linux-v1-" "ccache-Linux-v1-102-1"
+check "compiler cache: an entry of another ref does not count as saved" ""
+
+run env PURR_COMPILER_CACHE_PREFIX="ccache-Linux-v1-" "$prune" compiler-cache
+check "compiler cache: the saved key is required" "" 1
 
 run env LIST_FAIL=1 "$prune" superseded
 check "a failed listing deletes nothing and fails" "" 1
