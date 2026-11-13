@@ -60,6 +60,11 @@ fn inter_font_face() -> String {
 
 #[component]
 fn Head() -> Element {
+    // document::Style compares its children by node identity, so a fresh node per render warns
+    let font_face = use_hook(|| {
+        let css = inter_font_face();
+        rsx! { "{css}" }
+    });
     rsx! {
         document::Title { {document_title("Transcribe")} }
         document::Link { rel: "icon", r#type: "image/svg+xml", href: FAVICON }
@@ -70,7 +75,7 @@ fn Head() -> Element {
             r#type: "font/woff2",
             crossorigin: "anonymous",
         }
-        document::Style { {inter_font_face()} }
+        document::Style { children: font_face }
         document::Link { rel: "stylesheet", href: DESIGN_CSS }
         document::Link { rel: "stylesheet", href: SCREENS_CSS }
     }
