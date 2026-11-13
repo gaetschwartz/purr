@@ -27,7 +27,6 @@ use crate::{
         timing,
     },
     utils::{byte_size::ByteSize, file_kind::kind_label},
-    views::settings::{jump::open_section, sections::SettingsSection},
 };
 use dioxus::{html::HasFileData, prelude::*};
 use purr_common::browser_engine::EnginePlan;
@@ -49,7 +48,6 @@ pub fn Start() -> Element {
     let models = use_models();
     let settings = use_settings();
     let probe = use_system_probe();
-    let navigator = use_navigator();
 
     use_shortcut(
         Shortcut::new(KeyChord::primary(Key::Char('o')), "Choose an audio file").in_inputs(),
@@ -101,11 +99,6 @@ pub fn Start() -> Element {
         )
         | PlannedEngine::Pending
         | PlannedEngine::Unknown => None,
-    };
-    let engine_settings = if IS_WEB {
-        SettingsSection::Transcription
-    } else {
-        SettingsSection::Performance
     };
 
     let start = move |_| {
@@ -185,17 +178,12 @@ pub fn Start() -> Element {
                     }
                 }
                 div {
-                    class: "runbar glass",
+                    class: "runbar surface",
                     role: "group",
                     aria_label: "Transcription options",
                     ModelPill { id: "pick-model" }
                     LanguagePill { id: "pick-lang" }
-                    EngineChip {
-                        id: "engine-chip",
-                        label: engine,
-                        onclick: move |_| open_section(navigator, engine_settings),
-                    }
-                    span { class: "rb-spacer" }
+                    EngineChip { id: "engine-chip", label: engine }
                     Button {
                         variant: ButtonVariant::Primary,
                         size: ButtonSize::Large,
@@ -206,7 +194,7 @@ pub fn Start() -> Element {
                         "Transcribe"
                     }
                 }
-                ModelNotice { selection, saved: model_id, plan }
+                ModelNotice { selection, plan }
                 if let Some(notice) = cpu_notice {
                     p { class: "foot", role: "status", id: "cpu-notice", style: "margin:0",
                         "{notice}"

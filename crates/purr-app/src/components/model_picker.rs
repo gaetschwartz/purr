@@ -257,6 +257,7 @@ pub fn ModelPill(
             label: "Model",
             value,
             detail,
+            hint: None::<String>,
             expanded: open(),
             disabled,
             onclick: move |_| open.toggle(),

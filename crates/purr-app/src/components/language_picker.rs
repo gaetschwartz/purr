@@ -43,10 +43,10 @@ pub fn LanguagePill(
         .find(&model)
         .is_some_and(|info| ModelEntry::from_info(&info).language == ModelLanguage::EnglishOnly);
     let choice = LanguageChoice::from_setting(&selected).for_model(english_only);
-    let detail = match (&choice, english_only) {
-        (_, true) => Some("model is English only"),
-        (LanguageChoice::Automatic, false) => Some("detect"),
-        (LanguageChoice::Spoken(_), false) => None,
+    let (detail, hint) = match (&choice, english_only) {
+        (_, true) => (Some("English only"), None),
+        (LanguageChoice::Automatic, false) => (None, Some(format!("Automatic · {AUTOMATIC_HINT}"))),
+        (LanguageChoice::Spoken(_), false) => (None, None),
     };
     rsx! {
         Pill {
@@ -55,6 +55,7 @@ pub fn LanguagePill(
             label: "Spoken language",
             value: choice.label(),
             detail: detail.map(str::to_owned),
+            hint,
             expanded: open(),
             disabled,
             onclick: move |_| open.toggle(),

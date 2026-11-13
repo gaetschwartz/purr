@@ -16,11 +16,10 @@ use crate::{
     transcribe::start_plan::{Blocker, StartPlan, blocked_text},
 };
 use dioxus::prelude::*;
-use purr_common::settings::ModelSettings;
 
 /// What stands between the selected model and a run, when it is worth saying; nothing otherwise.
 #[component]
-pub fn ModelNotice(selection: Option<Selection>, saved: String, plan: StartPlan) -> Element {
+pub fn ModelNotice(selection: Option<Selection>, plan: StartPlan) -> Element {
     let models = use_models();
 
     if let Some(Err(error)) = models.rows() {
@@ -49,14 +48,12 @@ pub fn ModelNotice(selection: Option<Selection>, saved: String, plan: StartPlan)
             Banner { tone: BannerTone::Warn, title: "No model is available", role: "alert" }
         };
     };
-    let substituted = matches!(selection, Selection::Substitute(_))
-        && saved != ModelSettings::default().model_name;
     let label = row.entry.label.clone();
     let id = row.entry.id.clone();
     let state_notice = match row.state {
         ModelState::Downloaded | ModelState::NotDownloaded => rsx! {},
         ModelState::Downloading(progress) => rsx! {
-            div { class: "card glass stack", role: "status", style: "gap:10px",
+            div { class: "card surface stack", role: "status", style: "gap:10px",
                 div { class: "row",
                     b { class: "grow", "Downloading {label}" }
                     Button {
@@ -100,11 +97,6 @@ pub fn ModelNotice(selection: Option<Selection>, saved: String, plan: StartPlan)
     };
 
     rsx! {
-        if substituted {
-            p { class: "foot", role: "status", style: "margin:0",
-                "“{saved}” isn't available here, so {label} is used."
-            }
-        }
         {state_notice}
         if plan == StartPlan::Blocked(Blocker::OtherDownload) {
             p { class: "foot", role: "status", style: "margin:0",

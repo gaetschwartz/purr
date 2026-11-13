@@ -10,31 +10,21 @@ const fn icon(backend: BackendLabel) -> IconName {
     }
 }
 
-/// The backend and hardware a transcription will run on; activating it opens the settings
-/// that change them.
+/// The backend a transcription will run on; the hardware name is in the tooltip.
 #[component]
-pub fn EngineChip(
-    #[props(into)] id: String,
-    label: EngineLabel,
-    onclick: EventHandler<MouseEvent>,
-) -> Element {
+pub fn EngineChip(#[props(into)] id: String, label: EngineLabel) -> Element {
     let checking = label.backend == BackendLabel::Checking;
     rsx! {
-        button {
+        span {
             id,
             class: if checking { "engine-chip checking" } else { "engine-chip" },
-            title: "{label}. Change it in Settings.",
-            r#type: "button",
+            title: "{label}",
             aria_busy: checking,
-            onclick: move |event| onclick.call(event),
             Icon { name: icon(label.backend), size: IconSize::Small }
-            span { class: "et",
-                span { class: "eb", "{label.backend}" }
-                if let Some(hardware) = &label.hardware {
-                    span { class: "eh", " · {hardware}" }
-                }
+            span { "{label.backend}" }
+            if let Some(hardware) = &label.hardware {
+                span { class: "sr", ", {hardware}" }
             }
-            span { class: "sr", ", change in Settings" }
         }
     }
 }

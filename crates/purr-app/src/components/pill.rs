@@ -9,13 +9,16 @@ pub fn Pill(
     #[props(into)] label: String,
     #[props(into)] value: String,
     #[props(into)] detail: Option<String>,
+    #[props(into)] hint: Option<String>,
     #[props(default)] expanded: bool,
     #[props(default)] disabled: bool,
     onclick: EventHandler<MouseEvent>,
 ) -> Element {
-    let full = detail
-        .as_ref()
-        .map_or_else(|| value.clone(), |detail| format!("{value} · {detail}"));
+    let full = hint.unwrap_or_else(|| {
+        detail
+            .as_ref()
+            .map_or_else(|| value.clone(), |detail| format!("{value} · {detail}"))
+    });
     rsx! {
         button {
             id,
@@ -30,13 +33,13 @@ pub fn Pill(
                 Icon { name: icon, size: IconSize::Small }
             }
             span { class: "grow",
-                span { class: "lbl", "{label}" }
-                span { class: "val",
-                    "{value}"
+                span { class: "lbl",
+                    "{label}"
                     if let Some(detail) = &detail {
-                        span { class: "faint", " · {detail}" }
+                        " · {detail}"
                     }
                 }
+                span { class: "val", "{value}" }
             }
             Icon {
                 name: IconName::ChevronDown,
