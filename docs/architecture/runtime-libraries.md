@@ -48,6 +48,11 @@ before `main`, through the `$ORIGIN/lib` rpath, `LD_LIBRARY_PATH` or `ld.so.conf
 supply them, so the CUDA runtime stays bundled in `lib` next to the binary. The search order applies
 to what Purr opens itself: `libcuda.so.1` and `libvulkan.so.1`.
 
+The Vulkan loader found this way is also what `purr sys` uses to read each device's driver name, driver
+version string and Vulkan API version (`purr_core::accel::vulkan_probe`, which loads it at run time
+without linking it). It creates one Vulkan instance, only when ggml has a Vulkan device, and
+is never run for a transcription.
+
 ## Runtime pack (Windows)
 
 `purr-runtime-cuda-windows-x64.zip` holds `cublas64_*.dll` and `cublasLt64_*.dll` at its root and is
