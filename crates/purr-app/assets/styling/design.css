@@ -362,6 +362,7 @@ kbd{font-family:var(--font);font-size:12px;font-weight:600;padding:2px 7px;borde
 @keyframes popin{from{opacity:0;transform:scale(.94) translateY(-4px)}to{opacity:1;transform:none}}
 .popover>.pscroll{flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;padding:6px 0;scrollbar-gutter:stable both-edges;display:flex;flex-direction:column}
 .popover>.pscroll>*{flex:none}
+.popover.menu>.pscroll{padding:6px;scrollbar-gutter:auto}
 .popover.glass::before,.sheet.glass::before{inset:0}
 .popover.menu{width:220px}
 .popover.wide{width:400px}

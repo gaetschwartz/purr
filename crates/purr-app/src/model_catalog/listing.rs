@@ -12,6 +12,14 @@ pub struct ModelRow {
     pub state: ModelState,
 }
 
+impl ModelRow {
+    /// Whether the lists offer the model: speaker-turn models are hidden until one is on the device.
+    #[must_use]
+    pub const fn is_listed(&self) -> bool {
+        !self.entry.speaker_turns || self.state.is_on_device()
+    }
+}
+
 /// Which models the filter control keeps.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ModelFilter {
@@ -208,6 +216,19 @@ mod tests {
             )),
             state,
         }
+    }
+
+    fn speaker_turns(state: ModelState) -> ModelRow {
+        let mut model = row("small.en-tdrz", "small", true, None, state);
+        model.entry.speaker_turns = true;
+        model
+    }
+
+    #[test]
+    fn speaker_turn_models_are_listed_only_once_they_are_on_the_device() {
+        assert!(!speaker_turns(ModelState::NotDownloaded).is_listed());
+        assert!(speaker_turns(ModelState::Downloaded).is_listed());
+        assert!(plain("tiny", "tiny", ModelState::NotDownloaded).is_listed());
     }
 
     fn plain(id: &str, family: &str, state: ModelState) -> ModelRow {

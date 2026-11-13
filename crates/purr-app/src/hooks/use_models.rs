@@ -116,6 +116,7 @@ impl ModelsHandle {
                     let state = model_state(&entry, activity.get(&info.id), &gpu, cpu_chosen);
                     ModelRow { entry, state }
                 })
+                .filter(ModelRow::is_listed)
                 .collect()),
             Err(error) => Err(error.clone()),
         })
