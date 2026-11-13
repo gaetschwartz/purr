@@ -189,10 +189,17 @@ impl PickerModel {
         self.versions.iter().any(stored_here)
     }
 
+    /// Whether a version is arriving or its stored files are being checked or need repair.
     fn busy(&self) -> bool {
-        self.versions
-            .iter()
-            .any(|row| row.state.is_active() || matches!(row.state, ModelState::NeedsRepair(_)))
+        self.versions.iter().any(|row| match row.state {
+            ModelState::Downloading(_) | ModelState::Verifying(_) | ModelState::NeedsRepair(_) => {
+                true
+            }
+            ModelState::NotDownloaded
+            | ModelState::Downloaded
+            | ModelState::Failed(_)
+            | ModelState::Unavailable { .. } => false,
+        })
     }
 
     /// The version picking the model takes among those the search matched: the selected one, else
@@ -225,13 +232,80 @@ impl PickerModel {
             .or_else(|| self.versions.first().map(Mark::of))
             .unwrap_or(Mark::Download { bytes: 0 })
     }
+
+    /// What the line says beside its versions: a download or problem on any version, else what the
+    /// version picking would take still needs; nothing when it is stored, as its version shows.
+    #[must_use]
+    pub fn status(&self, selected: &str) -> Option<Mark> {
+        self.versions
+            .iter()
+            .map(Mark::of)
+            .filter(|mark| mark.rank() < Mark::Stored.rank())
+            .min_by_key(|mark| mark.rank())
+            .or_else(|| self.preferred(selected).map(Mark::of))
+            .or_else(|| self.versions.first().map(Mark::of))
+            .filter(|mark| *mark != Mark::Stored)
+    }
+
+    /// The versions laid out under `columns`, each in the first free column with its tag.
+    #[must_use]
+    pub fn slots(&self, columns: &[String]) -> Vec<Option<&ModelRow>> {
+        let mut left: Vec<&ModelRow> = self.versions.iter().collect();
+        columns
+            .iter()
+            .map(|tag| {
+                let at = left
+                    .iter()
+                    .position(|row| version_tag(&row.entry.precision) == *tag)?;
+                Some(left.remove(at))
+            })
+            .collect()
+    }
+}
+
+/// Orders version columns: full precision first, then fewer bits further right.
+fn column_rank(precision: &Precision) -> u16 {
+    match precision {
+        Precision::Full | Precision::Mixed => 0,
+        Precision::Quantized { bits } => 256 - u16::from(*bits),
+        Precision::Other(_) => 512,
+    }
+}
+
+/// The version columns that fit every model of `models`, in the order the lines show them.
+fn columns<'a>(models: impl Iterator<Item = &'a PickerModel>) -> Vec<String> {
+    let mut all: Vec<(u16, String, usize)> = Vec::new();
+    for model in models {
+        let mut own: Vec<(u16, String, usize)> = Vec::new();
+        for row in &model.versions {
+            let tag = version_tag(&row.entry.precision);
+            match own.iter_mut().find(|column| column.1 == tag) {
+                Some(column) => column.2 += 1,
+                None => own.push((column_rank(&row.entry.precision), tag, 1)),
+            }
+        }
+        for (rank, tag, count) in own {
+            match all.iter_mut().find(|column| column.1 == tag) {
+                Some(column) => column.2 = column.2.max(count),
+                None => all.push((rank, tag, count)),
+            }
+        }
+    }
+    all.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
+    all.into_iter()
+        .flat_map(|(_, tag, count)| std::iter::repeat_n(tag, count))
+        .collect()
 }
 
 /// The model picker's list for one scope and search.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct PickerList {
-    pub models: Vec<PickerModel>,
-    /// Models a newer family replaces, behind a fold; only All has them.
+    /// Models with a version on this device or being downloaded or checked; in
+    /// [`PickerScope::Downloaded`] also the selected model.
+    pub downloaded: Vec<PickerModel>,
+    /// The other models; only [`PickerScope::All`] has them.
+    pub available: Vec<PickerModel>,
+    /// Models a newer family replaces, behind a fold; only [`PickerScope::All`] has them.
     pub older: Vec<PickerModel>,
     /// How many models matching the search the scope leaves out.
     pub hidden: usize,
@@ -241,7 +315,7 @@ impl PickerList {
     /// Whether nothing is listed.
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.models.is_empty() && self.older.is_empty()
+        self.downloaded.is_empty() && self.available.is_empty() && self.older.is_empty()
     }
 
     /// Whether the older models show without being asked: a search reached them or one is selected.
@@ -250,10 +324,21 @@ impl PickerList {
         !self.older.is_empty()
             && (!search.trim().is_empty() || self.older.iter().any(|model| model.holds(selected)))
     }
+
+    /// The version columns shared by every line, so equal versions line up from line to line.
+    #[must_use]
+    pub fn columns(&self) -> Vec<String> {
+        columns(
+            self.downloaded
+                .iter()
+                .chain(&self.available)
+                .chain(&self.older),
+        )
+    }
 }
 
 /// Groups `rows` into one entry per model, keeps those `scope` and `search` let through, and orders
-/// them the way the Models screen does.
+/// them the way the Models screen does, the downloaded ones first.
 #[must_use]
 pub fn picker_list(
     rows: &[ModelRow],
@@ -274,12 +359,14 @@ pub fn picker_list(
     });
     let mut list = PickerList::default();
     for model in models {
-        let mine = model.stored() || model.busy() || model.holds(selected);
+        let here = model.stored() || model.busy();
+        let chosen = model.holds(selected);
         match scope {
-            PickerScope::Downloaded if !mine => list.hidden += 1,
-            PickerScope::Downloaded => list.models.push(model),
-            PickerScope::All if model.superseded() && !mine => list.older.push(model),
-            PickerScope::All => list.models.push(model),
+            PickerScope::Downloaded if here || chosen => list.downloaded.push(model),
+            PickerScope::Downloaded => list.hidden += 1,
+            PickerScope::All if here => list.downloaded.push(model),
+            PickerScope::All if model.superseded() && !chosen => list.older.push(model),
+            PickerScope::All => list.available.push(model),
         }
     }
     list
@@ -362,31 +449,26 @@ mod tests {
     #[test]
     fn a_stored_quantized_version_lists_its_model_once_under_the_plain_name() {
         let list = picker_list(&catalog(), PickerScope::Downloaded, "", "");
-        assert_eq!(titles(&list.models), ["Large v3 Turbo", "Base"]);
+        assert_eq!(titles(&list.downloaded), ["Large v3 Turbo", "Base"]);
         assert_eq!(
-            versions(&list.models[0]),
+            versions(&list.downloaded[0]),
             [
                 "large-v3-turbo",
                 "large-v3-turbo-q8_0",
                 "large-v3-turbo-q5_0"
             ]
         );
-        assert_eq!(list.models[0].mark(""), Mark::Stored);
+        assert_eq!(list.downloaded[0].mark(""), Mark::Stored);
+        assert_eq!(list.downloaded[0].status(""), None);
     }
 
     #[test]
-    fn all_lists_every_model_once_in_the_models_screen_order() {
+    fn all_lists_every_model_once_the_downloaded_ones_first() {
         let list = picker_list(&catalog(), PickerScope::All, "", "");
+        assert_eq!(titles(&list.downloaded), ["Large v3 Turbo", "Base"]);
         assert_eq!(
-            titles(&list.models),
-            [
-                "Large v3 Turbo",
-                "Large v3",
-                "Small",
-                "Base",
-                "Base (English)",
-                "Tiny"
-            ]
+            titles(&list.available),
+            ["Large v3", "Small", "Base (English)", "Tiny"]
         );
         assert_eq!(titles(&list.older), ["Large v2"]);
         assert_eq!(list.hidden, 0);
@@ -405,7 +487,7 @@ mod tests {
         rows[4].state = ModelState::Downloading(DownloadProgress::default());
         let list = picker_list(&rows, PickerScope::Downloaded, "", "tiny-q5_1");
         assert_eq!(
-            titles(&list.models),
+            titles(&list.downloaded),
             ["Large v3 Turbo", "Small", "Base", "Tiny"]
         );
     }
@@ -417,21 +499,19 @@ mod tests {
         let list = picker_list(&rows, PickerScope::All, "", "");
         assert_eq!(list.older, []);
         assert_eq!(
-            titles(&list.models)[..3],
-            ["Large v3 Turbo", "Large v2", "Large v3"]
+            titles(&list.downloaded),
+            ["Large v3 Turbo", "Large v2", "Base"]
         );
         let list = picker_list(&catalog(), PickerScope::All, "", "large-v2-q5_0");
-        assert_eq!(
-            titles(&list.models)[..3],
-            ["Large v3 Turbo", "Large v2", "Large v3"]
-        );
+        assert_eq!(list.older, []);
+        assert_eq!(titles(&list.available)[..2], ["Large v2", "Large v3"]);
     }
 
     #[test]
     fn search_finds_a_model_through_any_version_and_keeps_it_whole() {
         let list = picker_list(&catalog(), PickerScope::All, " q8 ", "");
-        assert_eq!(titles(&list.models), ["Large v3 Turbo"]);
-        assert_eq!(list.models[0].versions.len(), 3);
+        assert_eq!(titles(&list.downloaded), ["Large v3 Turbo"]);
+        assert_eq!(list.downloaded[0].versions.len(), 3);
         let list = picker_list(&catalog(), PickerScope::Downloaded, "small", "");
         assert_eq!((list.is_empty(), list.hidden), (true, 1));
     }
@@ -448,7 +528,7 @@ mod tests {
     #[test]
     fn picking_a_model_takes_the_selected_then_a_stored_then_the_most_precise_version() {
         let list = picker_list(&catalog(), PickerScope::All, "", "");
-        let turbo = &list.models[0];
+        let turbo = &list.downloaded[0];
         let id = |row: Option<&ModelRow>| row.map(|row| row.entry.id.clone());
         assert_eq!(
             id(turbo.preferred("large-v3-turbo-q8_0")),
@@ -458,7 +538,7 @@ mod tests {
             id(turbo.preferred("")),
             Some("large-v3-turbo-q5_0".to_owned())
         );
-        let tiny = &list.models[5];
+        let tiny = &list.available[3];
         assert_eq!(id(tiny.preferred("")), Some("tiny".to_owned()));
     }
 
@@ -466,7 +546,7 @@ mod tests {
     fn picking_a_model_found_through_a_version_takes_that_version() {
         let list = picker_list(&catalog(), PickerScope::All, "turbo q8", "");
         assert_eq!(
-            list.models[0]
+            list.downloaded[0]
                 .preferred("")
                 .map(|row| row.entry.id.as_str()),
             Some("large-v3-turbo-q8_0")
@@ -481,9 +561,9 @@ mod tests {
             installed: false,
         };
         let list = picker_list(&rows, PickerScope::All, "", "");
-        assert_eq!(list.models[0].preferred(""), None);
+        assert_eq!(list.available[0].preferred(""), None);
         assert_eq!(
-            list.models[0].mark(""),
+            list.available[0].mark(""),
             Mark::Unavailable(UnavailableReason::NeedsWebGpu)
         );
     }
@@ -498,11 +578,14 @@ mod tests {
         });
         let list = picker_list(&rows, PickerScope::All, "tiny", "");
         assert_eq!(
-            list.models[0].mark(""),
+            list.downloaded[0].mark(""),
             Mark::Downloading { percent: Some(25) }
         );
         let list = picker_list(&catalog(), PickerScope::All, "small", "");
-        assert_eq!(list.models[0].mark(""), Mark::Download { bytes: 480 });
+        assert_eq!(
+            list.available[0].status(""),
+            Some(Mark::Download { bytes: 480 })
+        );
     }
 
     #[test]
@@ -511,7 +594,7 @@ mod tests {
         rows[2].state = ModelState::Verifying(VerifyProgress::default());
         assert_eq!(PickerScope::initial(&rows), PickerScope::Downloaded);
         let list = picker_list(&rows, PickerScope::Downloaded, "base", "");
-        assert_eq!(list.models[0].mark(""), Mark::Checking);
+        assert_eq!(list.downloaded[0].mark(""), Mark::Checking);
     }
 
     #[test]
@@ -538,10 +621,75 @@ mod tests {
     #[test]
     fn model_keys_never_collide_with_version_ids() {
         let list = picker_list(&catalog(), PickerScope::All, "", "");
-        let all: Vec<&PickerModel> = list.models.iter().chain(&list.older).collect();
+        let all: Vec<&PickerModel> = list
+            .downloaded
+            .iter()
+            .chain(&list.available)
+            .chain(&list.older)
+            .collect();
         assert_eq!(
             all.iter().filter(|model| model.holds(model.key())).count(),
             0
+        );
+    }
+
+    #[test]
+    fn every_line_shares_the_version_columns_full_precision_first() {
+        let list = picker_list(&catalog(), PickerScope::All, "", "");
+        let columns = list.columns();
+        assert_eq!(columns, ["Full", "Q8", "Q5"]);
+        let slot_ids = |model: &PickerModel| -> Vec<Option<String>> {
+            model
+                .slots(&columns)
+                .into_iter()
+                .map(|row| row.map(|row| row.entry.id.clone()))
+                .collect()
+        };
+        assert_eq!(
+            slot_ids(&list.older[0]),
+            [
+                Some("large-v2".to_owned()),
+                None,
+                Some("large-v2-q5_0".to_owned())
+            ]
+        );
+        assert_eq!(
+            slot_ids(&list.available[1]),
+            [Some("small".to_owned()), None, None]
+        );
+    }
+
+    #[test]
+    fn two_versions_with_one_tag_get_a_column_each() {
+        let rows = vec![
+            row("tiny", "tiny", 75, None),
+            row("tiny-fp16", "tiny", 70, Some("fp16")),
+            row("tiny-q4", "tiny", 20, Some("q4_0")),
+        ];
+        let list = picker_list(&rows, PickerScope::All, "", "");
+        assert_eq!(list.columns(), ["Full", "Full", "Q4"]);
+    }
+
+    #[test]
+    fn a_failed_download_is_not_listed_as_downloaded() {
+        let mut rows = catalog();
+        rows[7].state = ModelState::Failed(crate::model_catalog::activity::DownloadFailure {
+            kind: purr_common::platform::ModelFailureKind::Network,
+            message: String::new(),
+        });
+        let list = picker_list(&rows, PickerScope::All, "", "");
+        assert_eq!(titles(&list.available)[..1], ["Large v3"]);
+        assert_eq!(list.available[0].status(""), Some(Mark::Failed));
+        let list = picker_list(&rows, PickerScope::Downloaded, "", "");
+        assert_eq!(titles(&list.downloaded), ["Large v3 Turbo", "Base"]);
+    }
+
+    #[test]
+    fn a_search_for_a_missing_version_of_a_stored_model_shows_its_download() {
+        let list = picker_list(&catalog(), PickerScope::All, "turbo q8", "");
+        assert_eq!(
+            list.downloaded[0].status(""),
+            Some(Mark::Download { bytes: 870 })
         );
     }
 }

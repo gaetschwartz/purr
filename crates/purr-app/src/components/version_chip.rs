@@ -33,10 +33,10 @@ pub fn VersionChip(
     let label = format!("{model} {tag}, {state}");
     let tip = tooltip(format!("{tag} · {state}"), hint.as_ref());
     let class = match (stored, highlighted) {
-        (true, true) => "ver on kb",
-        (true, false) => "ver on",
-        (false, true) => "ver kb",
-        (false, false) => "ver",
+        (true, true) => "ml-ver on kb",
+        (true, false) => "ml-ver on",
+        (false, true) => "ml-ver kb",
+        (false, false) => "ml-ver",
     };
     let id = row.entry.id.clone();
     rsx! {

@@ -378,42 +378,50 @@ kbd{font-family:var(--font);font-size:12px;font-weight:600;padding:2px 7px;borde
 .popover.menu{width:220px}
 .popover.wide{width:400px}
 /* list pickers: checks, titles, folds and empty states share one left edge */
-.popover.picker.wide{width:440px}
+.popover.picker.wide{width:472px}
 .psearch{display:flex;align-items:center;gap:6px}
 .psearch .field{flex:1}
 .psearch .seg{flex:none}
-.pnote{margin:0;padding:0 4px;font-size:12.5px;line-height:1.4;color:var(--fg-2)}
+.pnote{margin:0;padding:2px 6px 6px;font-size:12.5px;line-height:1.4;color:var(--fg-2)}
 .popover.picker .plist{padding:0}
 .popover.picker .pfold{display:flex;align-items:center;gap:11px;width:100%;padding-left:11px;text-align:left;border-radius:12px}
 .popover.picker .pfold:hover{color:var(--fg)}
 .popover.picker .opt[role="option"]:hover:not(.kb){background:none}
 .popover.picker .opt[aria-selected="true"] .t b{color:var(--accent-text)}
 .psep{height:1px;background:var(--separator);margin:6px 10px}
-/* model lines: the hit button covers the line, the visible parts sit above it and only version chips take the pointer */
-.mrow{position:relative;display:flex;align-items:center;gap:10px;min-height:40px;padding:6px 10px;border-radius:12px;flex:none;font-size:14px}
-.mrow>.mhit{position:absolute;inset:0;width:100%;border-radius:inherit}
-.mrow>.mhit:focus-visible{outline-offset:-2px;border-radius:12px}
-.mrow>:not(.mhit){position:relative;pointer-events:none}
-.mrow.kb{background:var(--fill)}
-.mrow .ck{width:18px;color:var(--accent-text);flex:none;display:grid;place-items:center}
-.mrow .nm{flex:1;min-width:0;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.mrow.sel .nm{color:var(--accent-text)}
-.mrow.off .nm,.mrow.off .mk{opacity:.5}
-.mrow.off>.mhit{cursor:not-allowed}
-.vers{display:flex;gap:4px;flex:none}
-.ver{pointer-events:auto;display:inline-flex;align-items:center;gap:4px;height:24px;padding:0 8px;border-radius:999px;font-size:12px;font-weight:600;color:var(--fg-3);box-shadow:inset 0 0 0 1px var(--separator);font-variant-numeric:tabular-nums}
-.ver svg.i{width:13px;height:13px;color:var(--success)}
-.ver.on{color:var(--fg)}
-.ver.kb{background:var(--fill-2)}
-.ver[aria-selected="true"]{color:var(--accent-text);box-shadow:inset 0 0 0 1.5px var(--accent)}
-.ver[aria-disabled="true"]{opacity:.45;cursor:not-allowed}
-.ver:focus-visible{border-radius:999px;outline-offset:1px}
-.mk{flex:none;display:inline-flex;align-items:center;justify-content:flex-end;gap:4px;min-width:72px;font-size:12.5px;color:var(--fg-3);white-space:nowrap;font-variant-numeric:tabular-nums}
-.mk svg.i{width:15px;height:15px}
-.mk.ok{color:var(--success)}
-.mk.warn{color:var(--warning)}
-.mk.busy{color:var(--accent-text)}
-.mk .spinner{width:14px;height:14px}
+/* model lines: the hit button covers the line; only the version chips above it take the pointer */
+.popover.picker>.pscroll{container:picker/inline-size}
+.popover.picker div.ph{padding:10px 10px 4px 38px}
+.mline{position:relative;display:flex;align-items:center;gap:10px;min-height:40px;padding:4px 8px 4px 10px;border-radius:12px;font-size:14px}
+.mline>.ml-hit{position:absolute;inset:0;width:100%;border-radius:inherit}
+.mline>.ml-hit:focus-visible{outline-offset:-2px}
+.mline>:not(.ml-hit){position:relative;pointer-events:none}
+.mline.kb{background:var(--fill)}
+.mline .ml-ck{grid-area:ck;width:18px;color:var(--accent-text);flex:none;display:grid;place-items:center}
+.mline .ml-nm{grid-area:nm;flex:1;min-width:0;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mline.sel .ml-nm{color:var(--accent-text)}
+.mline.off .ml-nm,.mline.off .ml-mk{opacity:.5}
+.mline.off>.ml-hit{cursor:not-allowed}
+.ml-vers{grid-area:vers;display:flex;gap:2px;flex:none}
+.ml-ver{pointer-events:auto;display:inline-flex;align-items:center;gap:3px;min-width:52px;height:26px;padding:0 7px 0 6px;border-radius:8px;font-size:12px;font-weight:600;color:var(--fg-3);font-variant-numeric:tabular-nums}
+.ml-ver.gap{pointer-events:none}
+.ml-ver:not(.on)::before{content:"";width:12px;flex:none}
+.ml-ver svg.i{width:12px;height:12px;color:var(--success)}
+.ml-ver.on{color:var(--fg)}
+.ml-ver.kb{background:var(--fill-2)}
+.ml-ver[aria-selected="true"]{background:var(--accent-soft-2);color:var(--accent-text)}
+.ml-ver[aria-disabled="true"]{opacity:.45;cursor:not-allowed}
+.ml-ver:focus-visible{outline-offset:-2px}
+.ml-mk{grid-area:mk;flex:none;display:inline-flex;align-items:center;justify-content:flex-end;gap:5px;width:84px;font-size:12.5px;color:var(--fg-3);white-space:nowrap;font-variant-numeric:tabular-nums}
+.ml-mk svg.i{width:14px;height:14px}
+.ml-mk.warn{color:var(--warning)}
+.ml-mk.busy{color:var(--accent-text)}
+.ml-mk .spinner{width:14px;height:14px}
+@container picker (max-width:420px){
+  .mline{display:grid;grid-template-columns:18px minmax(0,1fr) auto;grid-template-rows:1fr auto;grid-template-areas:"ck nm vers" ". mk vers";gap:0 10px;padding:6px 6px 6px 10px}
+  .ml-mk{width:auto;justify-content:flex-start;font-size:12px}
+  .ml-mk:empty{display:none}
+}
 .pempty{display:flex;flex-direction:column;align-items:flex-start;gap:4px;padding:8px 10px 8px 38px;color:var(--fg-2);font-size:14px}
 .pempty.row{flex-direction:row;align-items:center;gap:10px;padding-left:16px}
 .popover .ph{padding:8px 10px 6px;font-size:12px;font-weight:600;color:var(--fg-3);letter-spacing:.04em;text-transform:uppercase}
@@ -485,11 +493,10 @@ details>.preview{margin:8px 0 0;font-family:var(--font)}
   .ctl{max-width:62%}
   .sheet-wrap{place-items:end center;padding:10px}
   .sheet{border-radius:30px}
-  .popover,.popover.menu{left:8px!important;right:8px!important;width:auto;max-width:none;top:auto!important;bottom:8px;max-height:70%;transform-origin:bottom center}
+  .popover,.popover.menu,.popover.wide,.popover.picker.wide{left:8px!important;right:8px!important;width:auto;max-width:none;top:auto!important;bottom:8px;max-height:70%;transform-origin:bottom center}
   .opt{min-height:44px}
-  .ver{height:32px;padding:0 11px}
-  .mrow{min-height:44px}
-  .mk{min-width:0}
+  .ml-ver{height:32px}
+  .mline{min-height:44px}
   .layer.pop .scrim{background:var(--scrim);animation:fadein .25s ease}
   .toasts{bottom:88px}
   .btn,.seg button,.icon-btn,.stepper button,.field .clear,.seg-row.split .ts{position:relative}
@@ -500,10 +507,10 @@ details>.preview{margin:8px 0 0;font-family:var(--font)}
 
 /* ---------- Forced colours: shapes drawn only with backgrounds get system-colour borders and fills ---------- */
 @media (forced-colors:active){
-  .btn,.icon-btn,.pill,.field,.select select,.text-input,.seg,.stepper,.chip,.recent button,.player,.opt,.ver{border:1px solid ButtonText}
+  .btn,.icon-btn,.pill,.field,.select select,.text-input,.seg,.stepper,.chip,.recent button,.player,.opt,.ml-ver:not(.gap){border:1px solid ButtonText}
   .psep{forced-color-adjust:none;background:GrayText}
-  .ver[aria-selected="true"]{forced-color-adjust:none;background:Highlight;color:HighlightText}
-  .ver.kb,.mrow.kb{outline:2px solid Highlight;outline-offset:-2px}
+  .ml-ver[aria-selected="true"]{forced-color-adjust:none;background:Highlight;color:HighlightText}
+  .ml-ver.kb,.mline.kb{outline:2px solid Highlight;outline-offset:-2px}
   .btn[disabled],.pill[disabled]{border-color:GrayText}
   .seg button[aria-checked="true"],.nav-item[aria-current="page"],.tabbar a[aria-current="page"]{forced-color-adjust:none;background:Highlight;color:HighlightText}
   .nav-item[aria-current="page"] svg,.nav-item[aria-current="page"] .count,.seg button[aria-checked="true"] svg{color:HighlightText}

@@ -29,10 +29,11 @@ use purr_common::accel::AccelPolicy;
 
 /// Every model of `use_models()` in a [`ListPicker`], anchored on the element `anchor`.
 ///
-/// Render it inside a [`Presence`] that follows whether it is open. Each model is one line whatever versions of it exist; its versions
-/// (full precision and quantized) sit inside the line as small choices, each marked when it is on
-/// this device. A scope control switches between the downloaded models, where the picker opens
-/// once anything is stored, and all of them; models a newer family replaces wait behind a fold.
+/// Render it inside a [`Presence`] that follows whether it is open. Each model is one line whatever
+/// versions of it exist; its versions (full precision and quantized) sit inside the line as small
+/// choices in columns shared by every line, each marked when it is on this device. A scope control
+/// switches between the downloaded models, where the picker opens once anything is stored, and all
+/// of them, the downloaded ones first; models a newer family replaces wait behind a fold.
 /// Picking a model that can run here saves it with `set_model` and calls `on_pick`, whether or not
 /// it is downloaded; a run downloads it first.
 #[component]
@@ -176,9 +177,12 @@ pub fn ModelPicker(
     };
     drop(loaded);
 
+    let columns = list.columns();
+    let sections = scope == PickerScope::All && !list.downloaded.is_empty();
     let shown: Vec<PickerModel> = list
-        .models
+        .downloaded
         .iter()
+        .chain(&list.available)
         .chain(list.older.iter().filter(|_| older_open))
         .cloned()
         .collect();
@@ -186,12 +190,12 @@ pub fn ModelPicker(
         .then(|| NavRow::single(LAST_USED_KEY))
         .into_iter()
         .chain(shown.iter().map(|model| {
-            let inner = model.versions.iter().map(|row| row.entry.id.clone());
-            if model.versions.len() > 1 {
-                NavRow::with_inner(model.key(), inner)
-            } else {
-                NavRow::single(model.key())
-            }
+            let inner = model
+                .slots(&columns)
+                .into_iter()
+                .flatten()
+                .map(|row| row.entry.id.clone());
+            NavRow::with_inner(model.key(), inner)
         }))
         .collect();
     let active = nav.active(&nav_rows, searching);
@@ -281,16 +285,44 @@ pub fn ModelPicker(
                     onselect: move |()| pick_last_used(),
                 }
             }
-            for model in list.models {
-                ModelPickRow {
-                    key: "{model.key()}",
-                    selected: selected_in(&model),
-                    highlighted: in_model(&model, active.as_ref()),
-                    model,
-                    nav,
-                    hint: default_hint.clone(),
-                    onselect: pick,
-                    on_alt: alt,
+            if !list.downloaded.is_empty() {
+                div { role: "group", aria_label: "Downloaded",
+                    if sections {
+                        div { class: "ph", aria_hidden: "true", "Downloaded" }
+                    }
+                    for model in list.downloaded {
+                        ModelPickRow {
+                            key: "{model.key()}",
+                            selected: selected_in(&model),
+                            highlighted: in_model(&model, active.as_ref()),
+                            model,
+                            columns: columns.clone(),
+                            nav,
+                            hint: default_hint.clone(),
+                            onselect: pick,
+                            on_alt: alt,
+                        }
+                    }
+                }
+            }
+            if !list.available.is_empty() {
+                div { role: "group", aria_label: "Available to download",
+                    if sections {
+                        div { class: "ph", aria_hidden: "true", "Available to download" }
+                    }
+                    for model in list.available {
+                        ModelPickRow {
+                            key: "{model.key()}",
+                            selected: selected_in(&model),
+                            highlighted: in_model(&model, active.as_ref()),
+                            model,
+                            columns: columns.clone(),
+                            nav,
+                            hint: default_hint.clone(),
+                            onselect: pick,
+                            on_alt: alt,
+                        }
+                    }
                 }
             }
             if scope == PickerScope::Downloaded && hidden > 0 && listed {
@@ -326,6 +358,7 @@ pub fn ModelPicker(
                                 selected: selected_in(&model),
                                 highlighted: in_model(&model, active.as_ref()),
                                 model,
+                                columns: columns.clone(),
                                 nav,
                                 hint: default_hint.clone(),
                                 onselect: pick,
