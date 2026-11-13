@@ -1,5 +1,8 @@
 use crate::utils::delay::sleep;
-use dioxus::{core::spawn_forever, prelude::*};
+use dioxus::{
+    core::{Runtime, ScopeId, spawn_forever},
+    prelude::*,
+};
 use std::time::Duration;
 
 /// How long a closed layer stays on screen to play its exit animation.
@@ -54,8 +57,10 @@ impl LayerHost {
 
 /// Provides the [`LayerHost`]; call once at the root, above [`LayerOutlet`].
 pub fn use_layer_host_provider() -> LayerHost {
-    use_context_provider(|| LayerHost {
-        layers: Signal::new(Vec::new()),
+    use_context_provider(|| {
+        Runtime::current().in_scope(ScopeId::ROOT, || LayerHost {
+            layers: Signal::new(Vec::new()),
+        })
     })
 }
 
