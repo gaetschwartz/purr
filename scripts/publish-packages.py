@@ -8,7 +8,7 @@ Asset names mirror scripts/package-release-assets.sh. Hashes come from the
 release's SHA256SUMS.txt. Every expected asset must be listed there, otherwise
 nothing is written.
 
-Usage: publish-packages.py --channel stable|nightly --tag TAG --sums SHA256SUMS.txt
+Usage: publish-packages.py --channel stable|canary --tag TAG --sums SHA256SUMS.txt
                            [--tap DIR] [--bucket DIR] [--repo OWNER/NAME]
 """
 
@@ -23,7 +23,7 @@ from string import Template
 from typing import Literal
 
 type Json = str | list[Json] | dict[str, Json]
-type ChannelName = Literal["stable", "nightly"]
+type ChannelName = Literal["stable", "canary"]
 
 TEMPLATES = Path(__file__).resolve().parent / "packaging"
 SCHEMA = "https://raw.githubusercontent.com/ScoopInstaller/Scoop/master/schema.json"
@@ -37,7 +37,8 @@ SIZE_NOTE = (
     "The Windows build bundles the CUDA runtime, so the download is about 500 MB. "
     "It uses an NVIDIA GPU when present, then Vulkan, then the CPU."
 )
-NIGHTLY_SKIP = "Rolling nightly, republished by CI on every build"
+CANARY_SKIP = "Rolling canary, republished by CI on every build"
+CANARY_VERSION = re.compile(r"^\d+\.\d+\.\d+-canary\.\d+$")
 SUMS_LINE = re.compile(r"^(?P<sha>[0-9a-f]{64}) [ *](?P<name>\S.*)$")
 
 
@@ -59,7 +60,7 @@ class Channel:
         return f"{self.tag_prefix}{version}"
 
     def asset(self, version: str, kind: str, platform: str, ext: str) -> str:
-        prefix = "purr" if self.name == "nightly" else f"purr-{self.tag(version)}"
+        prefix = "purr" if self.name == "canary" else f"purr-{self.tag(version)}"
         return f"{prefix}-{kind}-{platform}{ext}"
 
 
@@ -71,25 +72,25 @@ STABLE = Channel(
     cask="purr-app",
     scoop_cli="purr",
     scoop_app="purr-app",
-    conflict_formula="purr@nightly",
-    conflict_cask="purr-app@nightly",
+    conflict_formula="purr@canary",
+    conflict_cask="purr-app@canary",
     title_suffix="",
     description_note="",
 )
-NIGHTLY = Channel(
-    name="nightly",
-    tag_prefix="nightly-",
-    formula="purr@nightly",
-    formula_class="PurrATNightly",
-    cask="purr-app@nightly",
-    scoop_cli="purr-nightly",
-    scoop_app="purr-app-nightly",
+CANARY = Channel(
+    name="canary",
+    tag_prefix="canary-",
+    formula="purr@canary",
+    formula_class="PurrATCanary",
+    cask="purr-app@canary",
+    scoop_cli="purr-canary",
+    scoop_app="purr-app-canary",
     conflict_formula="purr",
     conflict_cask="purr-app",
-    title_suffix=" Nightly",
-    description_note=", nightly build",
+    title_suffix=" Canary",
+    description_note=", canary build",
 )
-CHANNELS: Mapping[str, Channel] = {c.name: c for c in (STABLE, NIGHTLY)}
+CHANNELS: Mapping[str, Channel] = {c.name: c for c in (STABLE, CANARY)}
 
 
 def parse_sums(path: Path) -> dict[str, str]:
@@ -110,6 +111,8 @@ def version_of(channel: Channel, tag: str) -> str:
     version = tag.removeprefix(channel.tag_prefix)
     if channel.name == "stable" and "-" in version:
         sys.exit(f"{tag!r} is a prerelease tag and is not published to the stable channel")
+    if channel.name == "canary" and CANARY_VERSION.match(version) is None:
+        sys.exit(f"{tag!r} is not canary-X.Y.Z-canary.N")
     return version
 
 
@@ -128,8 +131,8 @@ def render_ruby(template: str, **fields: str) -> str:
 
 
 def livecheck(channel: Channel, url: str) -> str:
-    if channel.name == "nightly":
-        return f'    skip "{NIGHTLY_SKIP}"'
+    if channel.name == "canary":
+        return f'    skip "{CANARY_SKIP}"'
     return f"    url {url}\n    strategy :github_latest"
 
 
@@ -178,7 +181,7 @@ def scoop_checkver(channel: Channel, repo: str) -> Json:
         return "github"
     return {
         "url": f"https://github.com/{repo}/releases",
-        "regex": r"releases/tag/nightly-(\d{4}\.\d{2}\.\d{2})",
+        "regex": r"releases/tag/canary-(\d+\.\d+\.\d+-canary\.\d+)",
     }
 
 

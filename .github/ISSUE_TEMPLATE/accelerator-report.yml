@@ -38,7 +38,7 @@ body:
     id: build
     attributes:
       label: Purr build
-      description: Release or nightly name, and which variant (cpu, vulkan, cuda, all).
+      description: Release or canary name, and which variant (cpu, vulkan, cuda, all).
     validations:
       required: true
   - type: textarea

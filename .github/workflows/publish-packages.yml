@@ -20,9 +20,9 @@ on:
         description: "Release channel"
         required: true
         type: choice
-        options: [nightly, stable]
+        options: [canary, stable]
       tag:
-        description: "Release tag to publish (nightly-YYYY.MM.DD or vX.Y.Z)"
+        description: "Release tag to publish (canary-X.Y.Z-canary.N or vX.Y.Z)"
         required: true
         type: string
 
