@@ -36,7 +36,7 @@ pub fn Popover(
                 aria_modal: "true",
                 aria_label: label,
                 tabindex: "-1",
-                {children}
+                div { class: "pscroll", {children} }
             }
         }
     };

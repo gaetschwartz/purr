@@ -36,10 +36,12 @@ pub fn Sheet(
                     aria_modal: "true",
                     aria_labelledby: title_id.clone(),
                     tabindex: "-1",
-                    h2 { id: title_id, "{title}" }
-                    {children}
-                    if let Some(actions) = actions {
-                        div { class: "acts", {actions} }
+                    div { class: "sscroll",
+                        h2 { id: title_id, "{title}" }
+                        {children}
+                        if let Some(actions) = actions {
+                            div { class: "acts", {actions} }
+                        }
                     }
                 }
             }
