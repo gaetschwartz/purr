@@ -114,7 +114,13 @@ jobs:
           git -C tap -c user.name=github-actions[bot] \
             -c user.email=41898282+github-actions[bot]@users.noreply.github.com \
             commit -m "chore(purr): publish $TAG"
-          git -C tap push
+          for attempt in 1 2 3; do
+            git -C tap -c user.name=github-actions[bot] \
+              -c user.email=41898282+github-actions[bot]@users.noreply.github.com \
+              pull --rebase --quiet
+            git -C tap push && exit 0
+          done
+          exit 1
 
       - name: Push the Scoop bucket
         if: ${{ !cancelled() && steps.render.outcome == 'success' && steps.keys.outputs.bucket == 'true' }}
@@ -129,4 +135,10 @@ jobs:
           git -C bucket -c user.name=github-actions[bot] \
             -c user.email=41898282+github-actions[bot]@users.noreply.github.com \
             commit -m "chore(purr): publish $TAG"
-          git -C bucket push
+          for attempt in 1 2 3; do
+            git -C bucket -c user.name=github-actions[bot] \
+              -c user.email=41898282+github-actions[bot]@users.noreply.github.com \
+              pull --rebase --quiet
+            git -C bucket push && exit 0
+          done
+          exit 1
