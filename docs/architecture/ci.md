@@ -9,7 +9,7 @@ Triggers: pushes to any branch, pull requests, manual runs. A newer run on the s
 | Job | Runner | What it does |
 |---|---|---|
 | `fmt` | ubuntu-24.04 | `cargo fmt --all --check` |
-| `scripts` | ubuntu-24.04 | `scripts/test-prune-rust-caches.sh`, the tests of the cache pruning script |
+| `scripts` | ubuntu-24.04 | `scripts/test-prune-rust-caches.sh` and `scripts/test-drop-ggml-build.sh`, the tests of the cache pruning script and of the ggml build tree removal |
 | `test (linux)` | ubuntu-24.04 | `cargo clippy` (reports warnings without failing on them), then `cargo nextest run --workspace` with static FFmpeg. Tests that need a model skip themselves. `.config/nextest.toml` filters out the `slow_` tests. No Rust cache: about 10 minutes, against 3 to 4 with one. |
 
 ## `build.yml`: artifacts and releases
@@ -74,8 +74,9 @@ All caches share the repository's 10 GB limit. Over the limit, GitHub evicts the
 | vcpkg FFmpeg binaries | `vcpkg-ffmpeg-<os>-<vcpkg commit>`, plus the triplet on Windows | `ffmpeg (<os>)` on a miss |
 | dx | `dioxus-cli-<os>-<version>` | the first job that misses |
 | Rust (`Swatinem/rust-cache`): registry and `target`, including the ggml build of whisper-rs-sys | `v0-rust-<cache-key>-<job id>-<os>-<arch>-<environment hash>-<lockfile hash>`. The cache key holds the variant, `GGML_*`, CUDA and Vulkan versions, `crt-static` and the CMake generator on Windows. The environment hash covers the installed Rust toolchains and `CARGO*` variables, the lockfile hash `Cargo.lock` and the manifests. | `develop` only, by the jobs in the table below. Jobs on other refs restore `develop`'s cache. |
+| Compiler cache (ccache): the C, C++ and CUDA objects of ggml | `ccache-<os>-v1-<run id>-<run attempt>`, one family per OS | the one writer job per OS, on `develop`, see [Compiler cache](#compiler-cache) |
 
-The vcpkg and dx keys are exact, so they never pile up. The Rust keys change with every lockfile or toolchain change; each change would leave a second entry next to the old one.
+The vcpkg and dx keys are exact, so they never pile up. The Rust keys change with every lockfile or toolchain change; each change would leave a second entry next to the old one. The compiler cache keys are unique per run on purpose: the writer saves the new entry first and then deletes the older ones of its family.
 
 ### Rust cache families
 
@@ -104,8 +105,8 @@ These jobs never save a Rust cache, because the cache costs more space than it s
 - It does nothing unless the job saves (`cache-save` of `setup-rust`, the same value rust-cache gets as `save-if`) and rust-cache reported no exact hit. An exact hit saves nothing, so its entry stays. It runs only when every earlier step succeeded, which is also when rust-cache saves.
 - A failed deletion marks the step failed but not the job: rust-cache saves only after a successful job, so failing it would lose the new entry too.
 - The old entry is gone before the new one exists. A cancelled run, or a failed save, in that window leaves the family empty until the next run on `develop` has rebuilt it. A cancelled or failed run before the last step deletes nothing.
-- `prune caches` in `build.yml` is the safety net, `scripts/prune-rust-caches.sh superseded`. After every `develop` run, even a partly failed one, it deletes all but the newest entry of each family, which clears any duplicate that slipped through, such as after a failed deletion. It never deletes the only entry of a family.
-- Both modes match families by their keys, ignoring the two trailing hashes, and only touch `refs/heads/develop`. `scripts/test-prune-rust-caches.sh` checks them against synthetic cache lists.
+- `prune caches` in `build.yml` is the safety net, `scripts/prune-rust-caches.sh superseded`. After every `develop` run, even a partly failed one, it deletes all but the newest entry of each Rust and compiler cache family, which clears any duplicate that slipped through, such as after a failed deletion. It never deletes the only entry of a family.
+- The modes match families by their keys, ignoring the two trailing hashes of a Rust key or the run id and attempt of a compiler cache key, and only touch `refs/heads/develop`. The `compiler-cache` mode is described under [Compiler cache](#compiler-cache). `scripts/test-prune-rust-caches.sh` checks all three against synthetic cache lists.
 - The jobs that prune have `actions: write` next to `contents: read`.
 
 ### Rust toolchain
@@ -122,9 +123,107 @@ CI is pinned to one Rust version, the `toolchain` default of `.github/actions/se
 - CUDA and the Vulkan SDK are downloaded on every run and not cached. They download in about a minute, and the cache space is worth more to the Rust caches.
 - `desktop (linux, all)` and `cli (linux, all)` are separate families although they share their features: one key would let whichever job saves first decide what the entry holds, and one is built with `dx`, the other with `cargo`.
 
+## Compiler cache
+
+Compiling ggml (C, C++ and CUDA, inside the `whisper-rs-sys` build script) is the only expensive part of a cold build. The Rust caches already hold the result, but only as a whole: a new `Cargo.lock` hash, a Rust bump or a changed key starts them over, and the Linux jobs each store their own copy of nearly the same objects. ccache stores the compiled objects by content in a local directory that `actions/cache` saves and restores, so the objects survive those changes and are shared between jobs.
+
+| Step | Where | What it does |
+|---|---|---|
+| `setup-compiler-cache` | after `setup-rust`, in every job that builds ggml | installs ccache, exports the configuration, restores the OS's newest entry |
+| `finish-compiler-cache` | `if: always()`, before `prune-rust-cache` | prints the statistics and the step summary table, and in the writer job saves the entry |
+
+### How cmake reaches ccache
+
+- `whisper-rs-sys` forwards every `CMAKE_*`, `GGML_*` and `WHISPER_*` environment variable to cmake as `-D`. cmake also initialises `CMAKE_<LANG>_COMPILER_LAUNCHER` from the environment. The action exports `CMAKE_C_COMPILER_LAUNCHER`, `CMAKE_CXX_COMPILER_LAUNCHER` and `CMAKE_CUDA_COMPILER_LAUNCHER` as `ccache`. No dependency is patched. Because cmake reads the environment itself, the nested `vulkan-shaders-gen` build inherits it too.
+- ggml's own hook (`GGML_CCACHE`) switches itself off when a launcher is set, so the explicit variables are the only mechanism. The hosted images ship neither ccache nor sccache.
+- The Makefile and Ninja generators honour the launchers, for all three languages. The Visual Studio generator does not, which is another reason the Windows jobs stay on Ninja.
+- Rust crates never go through ccache: there is no `RUSTC_WRAPPER`. `SCCACHE_DISABLE` in `.cargo/config.toml` is not read by anything (sccache has no such variable). Cargo's `[env]` does not override a variable that is already set unless `force = true`, and the switch does not rely on it.
+- The cache is turned on by environment variables of the CI job only. A developer build never sees them.
+
+### Why ccache and not sccache
+
+ccache rewrites the absolute paths under `CCACHE_BASEDIR` to paths relative to the compiler's working directory before it hashes them and runs the compiler. ggml's build tree and its source copy both sit under cargo's `OUT_DIR` (`target/<profile>/build/whisper-rs-sys-<hash>/out`). The `<hash>`, the profile directory (`release`, `r`) and any `--target` directory differ between jobs and change with `Cargo.lock` or Rust bumps, but the relative paths from the build directory do not, so the keys do not depend on them. `__FILE__` matters here: `GGML_ABORT` in `ggml.h` expands it into the preprocessed text of every file that asserts, and the CUDA error macros in `common.cuh` do too. sccache only strips a base directory prefix from what it hashes. A probe on this repository's toolchain (cmake, Ninja, `cl`, nvcc 13.5) hit across two different directories when the sources did not use `__FILE__` and missed all of them as soon as they did.
+
+| OS | Tool | Notes |
+|---|---|---|
+| Linux (gcc, nvcc) | ccache 4.14.2 | llama.cpp builds its CUDA 13.5 Linux releases with ccache |
+| macOS (AppleClang) | ccache 4.14.2 | `compiler_check` runs `cc --version`, because `/usr/bin/cc` is the same shim for every Xcode |
+| Windows (`cl`, nvcc, Ninja) | ccache 4.14.2 | llama.cpp builds Windows CUDA 13.5 with MSVC and ccache. Unproven for this repository: read the first Windows summary. |
+
+ccache is a pinned download from the release page, checked against a SHA-256 in the action. If the download, the checksum or the version check fails, the step warns and the job builds without the cache.
+
+### Configuration
+
+| Variable | Value | Why |
+|---|---|---|
+| `CCACHE_DIR` | `$RUNNER_TEMP/ccache` | the directory `actions/cache` saves |
+| `CCACHE_BASEDIR` | `$GITHUB_WORKSPACE` (Linux, macOS), `D:\t` (Windows) | covers every cmake build tree and source copy, and no toolchain or SDK |
+| `CCACHE_NOHASHDIR` | `1` | the working directory is `OUT_DIR/build`, whose name changes. Release builds carry no debug info, so nothing else records it. |
+| `CCACHE_COMPILERCHECK` | `content` (`%compiler% --version` on macOS) | tool installs have new modification times on every run, ccache's default compares them |
+| `CCACHE_MAXSIZE` | 2G Linux and Windows, 1G macOS | caps the entry. ccache evicts its least recently used objects beyond it. |
+
+### What is cached
+
+- Cached: every `.c`, `.cpp` and `.cu` compilation of ggml and whisper.cpp, including the generated `ggml-vulkan` shader sources (a compile of an array).
+- Not cached: linking and archiving, the `glslc` and `vulkan-shaders-gen` steps that generate those shader sources, the Metal library (embedded, not compiled at build time) and anything ccache calls uncacheable, which the statistics list.
+- Unproven for this repository: ccache with `cl` and with nvcc under MSVC on Windows, and the `/showIncludes` replay Ninja needs. If the Windows summary shows no hits, the cause is in that job's log, and nothing else is affected.
+
+### Which jobs share objects
+
+A key covers the compiler binary, the arguments (defines included), the preprocessed source and the relative paths. Jobs share an object when ggml is configured identically.
+
+| Objects | Shared by | Differ because |
+|---|---|---|
+| `ggml-base`, `ggml-cpu` | every job of one OS (Linux: cpu, vulkan, cuda, all, desktop) | expected identical: `GGML_NATIVE=OFF` and the same flags everywhere |
+| CUDA (`ggml-cuda`, about 160 files) | `cli (linux, all)` and `desktop (linux, all)`; `cli (windows, cuda-vulkan)`, `desktop (windows, cuda-vulkan)` and the manual `cuda` CLI | `cli (linux, cuda)` passes `GGML_CUDA_NO_VMM=OFF`, `all` and `desktop` pass `ON`, which is a define on every CUDA command line. The Linux `cuda` job restores the cache but gets no CUDA hits from it and adds none. |
+| Vulkan | every job with Vulkan | nothing |
+| `ggml` (backend registry), `whisper.cpp` | jobs with the same backend set | `GGML_USE_CUDA` and `GGML_USE_VULKAN` are public defines |
+| everything on macOS | `cli (macos, metal)` and `desktop (macos, metal)`; `ggml-base` and `ggml-cpu` also `cli (macos, cpu)` | `GGML_METAL` |
+
+`--profile r` on the Windows desktop job and the `dx` target directory only change `OUT_DIR`, which the base directory removes. Whether `dx` passes anything else to cmake is unproven, so check the hit rate of the desktop jobs in the first run.
+
+### Single writer
+
+- Exactly one job per OS saves: `cli (linux, all)`, `cli (macos, metal)`, `cli (windows, cuda-vulkan)`. Every other job restores only. One writer cannot overwrite another's objects, and the entry does not depend on which job finishes first.
+- Key: `ccache-<os>-v1-<run id>-<run attempt>`. The restore key is the prefix `ccache-<os>-v1-`, so a lockfile, Rust or configuration change never misses. Change `v1` in `setup-compiler-cache` to start the cache over.
+- The writer saves only on `develop`, when the job succeeded and the statistics show a miss, meaning something was added. A run that only hits keeps the existing entry and its age.
+- After the save, `scripts/prune-rust-caches.sh compiler-cache` deletes the other entries of the family, only if it can list the new one. `prune caches` (`superseded`) clears any leftover.
+- A run cold in ccache but warm in the Rust cache compiles no ggml at all, so it never fills the compiler cache. To seed it, delete the writer's Rust cache entry (`gh cache delete`) and re-run: that cold run compiles ggml and saves the first entry.
+
+### Switches
+
+- `PURR_COMPILER_CACHE` at the top of `build.yml`: `on` or `off`. With `off` no job installs, restores, saves or configures anything and the old behaviour is untouched. The literal after `||` in the expression is the default. A manual run can override it with the `compiler_cache` input (`default`, `on`, `off`).
+- `PURR_SHRINK_RUST_CACHE` and the `shrink_rust_cache` input, see [Shrinking the Rust caches](#shrinking-the-rust-caches). Default `off`.
+
+### Reading the statistics
+
+- Every job prints `ccache --show-stats --verbose` and a summary table (hits, misses, hit rate, cache size, files) in its step summary, with the key it restored and whether it saved. They are printed on failure too.
+- Expected: a cold first run is 0 % hits everywhere. When ggml is recompiled on a restored cache with the same configuration, nearly every file hits; the misses name what differs.
+- `ccache --show-stats` reports `Uncacheable` calls by reason. A nonzero count for `Unsupported compiler option` names the flag.
+
+### Budget
+
+| Entry | Expected | Cap |
+|---|---|---|
+| ccache linux | not measured, a few hundred MiB | 2 GiB |
+| ccache macos | not measured, under 100 MiB | 1 GiB |
+| ccache windows | not measured, a few hundred MiB | 2 GiB |
+
+With the Rust families at 6.6 GiB and about 1 GiB for the three entries (a guess), the steady state is about 7.5 GiB, under the 10 GiB limit. All three at their caps would be 11.6 GiB, so read `cache size` in the first summaries and lower a cap if it fills. While a writer saves, the old and the new entry of its OS exist together for a moment. Shrinking the Rust caches frees space; it is the only change that shrinks existing entries.
+
+### Shrinking the Rust caches
+
+Off by default. The Rust caches hold the ggml build tree a second time. With `PURR_SHRINK_RUST_CACHE: "on"`, the jobs marked `shrink` (the Linux `all` CLI and desktop, the macOS Metal CLI and desktop, the Windows `cuda-vulkan` CLI and desktop) delete the whole `target/**/build/whisper-rs-sys-*` and `target/**/.fingerprint/whisper-rs-sys-*` directories with `scripts/drop-ggml-build.sh` just before rust-cache saves, on `develop` after a successful job.
+
+- Both directories have to go. Cargo reads `.fingerprint/<package>-<hash>` to decide whether a build script is fresh, and a fresh one is not run: cargo replays `build/<package>-<hash>/output`. Removing only the build tree would link against missing libraries. With the fingerprint gone, cargo runs the build script again on the next run, whose cmake commands then hit ccache.
+- The cost is a cmake configure, bindgen, the link and a rebuild of `whisper-rs-sys` on every run, a few minutes per job, instead of a cold ggml build only when a Rust cache is lost.
+- It is only safe while the ccache entry holds those objects. Jobs whose objects the writer does not produce (the Linux `cuda` and `vulkan` CLIs) are not marked. If the ccache entry is lost, the next run of a shrunk job compiles ggml cold, as it did before any cache.
+- The job summary lists the removed directories and their uncompressed size. The saved cache space is what `gh cache list` shows for the families before and after.
+
 ## Running one variant by hand
 
 - Actions → build → Run workflow builds every job on the chosen ref.
+- `compiler_cache` and `shrink_rust_cache` override the two switches for that run.
 - A manual run builds everything but never publishes a release. To publish, re-run the failed jobs of the `develop` push.
 - `windows_single_backends`: also build the Windows CLI with CUDA only and with Vulkan only.
 - There is no input to run a single job. Re-run a failed job from the run page instead.
@@ -145,3 +244,8 @@ CI is pinned to one Rust version, the `toolchain` default of `.github/actions/se
 12. Every CLI job prints `purr --version` as `purr 0.1.0-canary.<run number> (<commit> <day>)` on `develop`. A `-dirty` suffix means the checkout changed during the build, for example an out-of-date `Cargo.lock`.
 13. `release (canary)`: `Read the version from the built CLI` passes, the release appears as a pre-release with all assets, and at most 5 `canary-*` releases remain.
 14. `publish packages (canary)`: the tap gains `purr-canary` and `purr-app-canary`, the bucket `purr-canary` and `purr-app-canary`.
+15. `setup-compiler-cache`: prints `ccache version 4.14.2` and the configuration with `base_dir`, `hash_dir = false` and `compiler_check`. A `::warning::` that ccache could not be set up means the job built without it.
+16. In the build log of a job that compiles ggml (`whisper-rs-sys` builds verbosely), the compile commands start with `ccache` for `.c`, `.cpp` and `.cu` files. `whisper-rs-sys` is `Fresh` on a warm Rust cache and compiles nothing, so the first meaningful statistics come from a run that rebuilds ggml (see Single writer).
+17. First run that compiles ggml: every compiler cache summary shows 0 % hits and the writer reports `saving a new entry`. `gh cache list` gains one `ccache-<os>-v1-...` entry per OS and no older one.
+18. Run after that, with the Rust cache lost or `PURR_SHRINK_RUST_CACHE` on: the writer's table shows hits for nearly all of its files. Compare the desktop jobs' hit rates with the writer's (Linux `all`, Windows, macOS): a low rate means the jobs do not compile ggml identically. The Linux `cuda` job is expected to hit only the CPU and Vulkan objects. A Windows table with no hits at all means ccache did not cache `cl` or nvcc there.
+19. A run with the `compiler_cache` input set to `off` shows no ccache step output and no `ccache-*` cache activity.
