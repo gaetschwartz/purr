@@ -35,7 +35,7 @@ pub fn HistoryRow(summary: HistorySummary, now_ms: i64) -> Element {
                 r#type: "button",
                 id: "ho-{summary.id}",
                 onclick: move |_| {
-                    navigator.push(Route::HistoryItem { id: open_id.clone() });
+                    navigator.push(Route::Transcription { id: open_id.clone() });
                 },
                 span { class: "badge", aria_hidden: "true", {kind_label(&summary.file_name)} }
                 span { class: "grow",
@@ -71,7 +71,7 @@ pub fn HistoryRow(summary: HistorySummary, now_ms: i64) -> Element {
                                 let id = summary.id.clone();
                                 move |()| {
                                     menu_open.set(false);
-                                    navigator.push(Route::HistoryItem { id: id.clone() });
+                                    navigator.push(Route::Transcription { id: id.clone() });
                                 }
                             },
                         }

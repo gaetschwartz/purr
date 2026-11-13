@@ -62,17 +62,13 @@ const fn screen_chord(web: bool, digit: char) -> KeyChord {
     }
 }
 
-/// Activating Transcribe while it is shown leaves an ended run for the start screen.
-fn on_activate(
-    section: NavSection,
-    current: Option<NavSection>,
-) -> Option<EventHandler<MouseEvent>> {
+/// Activating Transcribe from the live run's own page leaves an ended run for the start screen.
+fn on_activate(section: NavSection, on_run: bool) -> Option<EventHandler<MouseEvent>> {
     let session = use_transcribe_session();
-    match (section, current) {
-        (NavSection::Transcribe, Some(NavSection::Transcribe)) => {
-            Some(EventHandler::new(move |_| session.start_over()))
-        }
-        (NavSection::Transcribe | NavSection::History | NavSection::Models, _) => None,
+    match (section, on_run) {
+        (NavSection::Transcribe, true) => Some(EventHandler::new(move |_| session.start_over())),
+        (NavSection::Transcribe, false)
+        | (NavSection::History | NavSection::Models, true | false) => None,
     }
 }
 
@@ -80,7 +76,10 @@ fn on_activate(
 #[component]
 pub fn Shell() -> Element {
     let route = use_route::<Route>();
-    let current = NavSection::of(&route);
+    let session = use_transcribe_session();
+    let live_run = use_memo(move || session.run_id());
+    let current = NavSection::of(&route, live_run.read().as_ref());
+    let on_run = route.is_live_run(live_run.read().as_ref());
     let navigator = use_navigator();
     let settings_dialog = use_settings_dialog();
     let mut keys_open = use_signal(|| false);
@@ -158,7 +157,7 @@ pub fn Shell() -> Element {
                     b { "Purr" }
                 }
                 for section in [NavSection::Transcribe, NavSection::History, NavSection::Models] {
-                    NavLink { key: "{section:?}", section, current }
+                    NavLink { key: "{section:?}", section, current, on_run }
                 }
                 div { class: "side-foot",
                     span { class: "side-version", "{version()}" }
@@ -193,7 +192,7 @@ pub fn Shell() -> Element {
                 }
                 nav { class: "tabbar glass g1", aria_label: "Sections",
                     for section in [NavSection::Transcribe, NavSection::History, NavSection::Models] {
-                        TabLink { key: "{section:?}", section, current }
+                        TabLink { key: "{section:?}", section, current, on_run }
                     }
                     button {
                         r#type: "button",
@@ -216,7 +215,7 @@ pub fn Shell() -> Element {
 }
 
 #[component]
-fn NavLink(section: NavSection, current: Option<NavSection>) -> Element {
+fn NavLink(section: NavSection, current: Option<NavSection>, on_run: bool) -> Element {
     let NavEntry {
         section,
         to,
@@ -224,7 +223,7 @@ fn NavLink(section: NavSection, current: Option<NavSection>) -> Element {
         label,
     } = entry(section);
     let here = current == Some(section);
-    let onclick = on_activate(section, current);
+    let onclick = on_activate(section, on_run);
     rsx! {
         Link {
             class: "nav-item",
@@ -239,11 +238,11 @@ fn NavLink(section: NavSection, current: Option<NavSection>) -> Element {
 }
 
 #[component]
-fn TabLink(section: NavSection, current: Option<NavSection>) -> Element {
+fn TabLink(section: NavSection, current: Option<NavSection>, on_run: bool) -> Element {
     let NavEntry {
         to, icon, label, ..
     } = entry(section);
-    let onclick = on_activate(section, current);
+    let onclick = on_activate(section, on_run);
     rsx! {
         Link {
             to,

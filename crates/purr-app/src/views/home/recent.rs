@@ -49,7 +49,7 @@ pub fn Recent() -> Element {
                                 r#type: "button",
                                 id: "rc-{summary.id}",
                                 onclick: move |_| {
-                                    navigator.push(Route::HistoryItem { id: id.clone() });
+                                    navigator.push(Route::Transcription { id: id.clone() });
                                 },
                                 span { class: "nm", dir: "auto", title: "{summary.title}", "{summary.title}" }
                                 span { class: "pv", dir: "auto", "{preview_text(summary)}" }

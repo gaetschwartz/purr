@@ -38,10 +38,10 @@ use dioxus::{
 };
 use futures::{StreamExt as _, channel::oneshot};
 use purr_common::{
-    accel::AccelPolicy,
+    accel::{AccelPolicy, EngineUsed},
     beams::{BeamSnapshot, BeamSwitch},
     browser_engine::BrowserEngine,
-    history::entry::{HistoryEntry, HistoryId, LanguageOrigin},
+    history::entry::{HistoryEntry, HistoryId, InvalidHistoryId, LanguageOrigin},
     platform::{
         EngineOptions, FileId, FileSource, ModelId, Platform as _, PlatformError,
         TranscriptionRequest, TranscriptionStatus,
@@ -52,6 +52,8 @@ use std::{collections::HashMap, path::PathBuf, rc::Rc};
 /// A run with what it was started on.
 #[derive(Debug, Clone, PartialEq)]
 pub struct RunRecord {
+    /// The run's address, which the History entry saved from it keeps.
+    pub id: HistoryId,
     pub file: ChosenFile,
     pub model: ModelEntry,
     /// The language that applied, after the English-only lock.
@@ -79,6 +81,24 @@ const fn cancel_detail(web: bool, downloading: bool) -> Option<&'static str> {
 }
 
 impl RunRecord {
+    /// A run that starts now, named by a fresh id that lasts through saving.
+    pub fn begin(
+        file: ChosenFile,
+        model: ModelEntry,
+        language: LanguageChoice,
+        accel: AccelPolicy,
+        run: Run,
+    ) -> Result<Self, InvalidHistoryId> {
+        Ok(Self {
+            id: entry_builder::new_id()?,
+            file,
+            model,
+            language,
+            accel,
+            run,
+        })
+    }
+
     /// The spoken language to show: the detected one, else the one asked for.
     #[must_use]
     pub fn language_code(&self) -> Option<String> {
@@ -137,6 +157,22 @@ impl TranscribeSession {
     #[must_use]
     pub fn record(&self) -> Option<RunRecord> {
         self.record.read().clone()
+    }
+
+    /// The id of the current or last run (subscribes the caller).
+    #[must_use]
+    pub fn run_id(&self) -> Option<HistoryId> {
+        self.record.read().as_ref().map(|record| record.id.clone())
+    }
+
+    /// The id of the run in progress, if one is (subscribes the caller).
+    #[must_use]
+    pub fn running_id(&self) -> Option<HistoryId> {
+        self.record
+            .read()
+            .as_ref()
+            .filter(|record| record.run.outcome == RunOutcome::Running)
+            .map(|record| record.id.clone())
     }
 
     /// The run the user just stopped, until they start again or move on (subscribes the caller).
@@ -207,15 +243,12 @@ impl TranscribeSession {
         self.cancelled.set(None);
     }
 
-    /// Runs the stopped run again with the same file, model and language.
-    pub fn restart_cancelled(self) {
-        let cancelled = self.cancelled.peek().clone();
-        if let Some(cancelled) = cancelled {
-            let record = cancelled.record;
-            if self.file_by_id(&record.file.id).is_some() {
-                self.launch(record.file, record.model, record.language);
-            }
-        }
+    /// Runs the stopped run again with the same file, model and language; the new run's id.
+    pub fn restart_cancelled(self) -> Option<HistoryId> {
+        let cancelled = self.cancelled.peek().clone()?;
+        let record = cancelled.record;
+        self.file_by_id(&record.file.id)?;
+        self.launch(record.file, record.model, record.language)
     }
 
     /// Reads, checks and stores `data` as the file for the next run.
@@ -372,42 +405,51 @@ impl TranscribeSession {
     }
 
     /// Transcribes the chosen file with `model`, downloading the model first when it is not on
-    /// this device; the English-only lock applies to `language`.
-    pub fn start(self, model: ModelEntry, language: LanguageChoice) {
+    /// this device; the English-only lock applies to `language`. Returns the new run's id.
+    pub fn start(self, model: ModelEntry, language: LanguageChoice) -> Option<HistoryId> {
         let Some(file) = self.file.peek().clone() else {
             self.toasts.error(
                 "Choose a file first",
                 "There is no audio to transcribe yet.",
             );
-            return;
+            return None;
         };
-        self.launch(file, model, language);
+        let running = self
+            .record
+            .peek()
+            .as_ref()
+            .is_some_and(|record| record.run.outcome == RunOutcome::Running);
+        if running {
+            self.toasts.error(
+                "A transcription is already running",
+                "Wait for it to finish or stop it first.",
+            );
+            return None;
+        }
+        self.launch(file, model, language)
     }
 
-    /// Runs the file of the last run again with `model`.
-    pub fn run_again(self, model: ModelEntry) {
-        let Some(previous) = self.record.peek().clone() else {
-            return;
-        };
-        self.launch(previous.file, model, previous.language);
+    /// Runs the file of the last run again with `model`; the new run's id.
+    pub fn run_again(self, model: ModelEntry) -> Option<HistoryId> {
+        let previous = self.record.peek().clone()?;
+        self.launch(previous.file, model, previous.language)
     }
 
-    /// Tries the last run again with the same file, model and language.
-    pub fn retry(self) {
-        let Some(previous) = self.record.peek().clone() else {
-            return;
-        };
-        self.launch(previous.file, previous.model, previous.language);
+    /// Tries the last run again with the same file, model and language; the new run's id.
+    pub fn retry(self) -> Option<HistoryId> {
+        let previous = self.record.peek().clone()?;
+        self.launch(previous.file, previous.model, previous.language)
     }
 
-    fn launch(mut self, file: ChosenFile, model: ModelEntry, language: LanguageChoice) {
-        self.stop_task();
-        self.fetching.set(None);
-        self.cancelled.set(None);
+    fn launch(
+        mut self,
+        file: ChosenFile,
+        model: ModelEntry,
+        language: LanguageChoice,
+    ) -> Option<HistoryId> {
         let language = language.for_model(model.language == Language::EnglishOnly);
         let settings = self.settings.peek();
         let beam_switch = BeamSwitch::new(!IS_WEB && settings.ui.transcript.show_beams);
-        self.beam_switch.set(beam_switch.clone());
         let request = TranscriptionRequest {
             file: FileSource::Uploaded(file.id.clone()),
             model: ModelId::new(model.id.clone()),
@@ -415,27 +457,35 @@ impl TranscribeSession {
             translate: settings.model.translate,
             engine: EngineOptions::from_settings(&settings),
             hugging_face_token: settings.model.hugging_face_token.clone(),
-            beam_telemetry: beam_switch,
+            beam_telemetry: beam_switch.clone(),
         };
         let run = Run::new(language == LanguageChoice::Automatic, now_ms());
+        let model_id = model.id.clone();
+        let record =
+            match RunRecord::begin(file.clone(), model, language, request.engine.accel, run) {
+                Ok(record) => record,
+                Err(error) => {
+                    tracing::error!("Could not name the transcription: {error}");
+                    self.toasts
+                        .error("Couldn't start the transcription", error.to_string());
+                    return None;
+                }
+            };
+        let id = record.id.clone();
+        self.stop_task();
+        self.fetching.set(None);
+        self.cancelled.set(None);
+        self.beam_switch.set(beam_switch);
         tracing::info!(
-            "Transcribing {} with {} ({:?})",
+            "Transcribing {} with {model_id} ({:?}) as {id}",
             file.name,
-            model.id,
             request.language
         );
         let previous = self.record.peek().clone();
         self.saved.set(SaveState::Idle);
-        let other_download = self.models.is_downloading() && !self.models.is_busy(&model.id);
-        let preparation = prepare(&self.models.state(&model.id), other_download);
-        let model_id = model.id.clone();
-        self.record.set(Some(RunRecord {
-            file: file.clone(),
-            model,
-            language,
-            accel: request.engine.accel,
-            run,
-        }));
+        let other_download = self.models.is_downloading() && !self.models.is_busy(&model_id);
+        let preparation = prepare(&self.models.state(&model_id), other_download);
+        self.record.set(Some(record));
         if let Some(previous) = previous
             && previous.file.id != file.id
         {
@@ -454,6 +504,7 @@ impl TranscribeSession {
             }
         });
         self.task.set(Some(task));
+        Some(id)
     }
 
     /// Gets the model `id` onto this device as `preparation` says, or says why it could not.
@@ -566,51 +617,20 @@ impl TranscribeSession {
         }
     }
 
-    fn save_to_history(mut self, record: &RunRecord, completion: Completion) {
+    fn save_to_history(self, record: &RunRecord, completion: Completion) {
         let overview = self.overviews.peek().get(&record.file.id).cloned();
-        let (duration, peaks) = match overview {
-            Some(OverviewState::Ready {
-                duration_seconds,
-                peaks,
-            }) => (duration_seconds, peaks.as_ref().clone()),
-            Some(OverviewState::Reading | OverviewState::Undecodable(_)) | None => {
-                (completion.audio_seconds, Vec::new())
-            }
-        };
-        let id = match entry_builder::new_id() {
-            Ok(id) => id,
-            Err(error) => {
-                self.saved.set(SaveState::Idle);
-                tracing::error!("Could not name the history entry: {error}");
-                self.toasts
-                    .error("Couldn't save to History", error.to_string());
-                return;
-            }
-        };
-        let origin = if record.run.detected_language.is_some() {
-            LanguageOrigin::Detected
-        } else {
-            LanguageOrigin::Chosen
-        };
-        let entry = entry_builder::build(Finished {
-            id,
-            created_at_ms: unix_ms(),
-            file_name: record.file.name.clone(),
-            source_path: record.file.source_path.clone(),
-            model_id: record.model.id.clone(),
-            model_label: record.model.label.clone(),
-            language: record.language_code(),
-            language_origin: origin,
-            processing_seconds: completion.processing_seconds,
-            audio_seconds: duration,
-            segments: record.run.transcript.segments(),
-            peaks,
-            engine: record
-                .run
-                .engine
-                .as_ref()
-                .map(|last| EngineLabel::used(last, &self.probe.peek())),
-        });
+        let engine = record
+            .run
+            .engine
+            .as_ref()
+            .map(|last| EngineLabel::used(last, &self.probe.peek()));
+        let entry = entry_builder::build(finished(
+            record,
+            completion,
+            overview.as_ref(),
+            engine,
+            unix_ms(),
+        ));
         self.write_to_history(Rc::new(entry));
     }
 
@@ -723,6 +743,45 @@ impl TranscribeSession {
     }
 }
 
+/// What a completed `record` saves to History: under the id the run was started with.
+fn finished(
+    record: &RunRecord,
+    completion: Completion,
+    overview: Option<&OverviewState>,
+    engine: Option<EngineUsed>,
+    created_at_ms: i64,
+) -> Finished {
+    let (audio_seconds, peaks) = match overview {
+        Some(OverviewState::Ready {
+            duration_seconds,
+            peaks,
+        }) => (*duration_seconds, peaks.as_ref().clone()),
+        Some(OverviewState::Reading | OverviewState::Undecodable(_)) | None => {
+            (completion.audio_seconds, Vec::new())
+        }
+    };
+    let language_origin = if record.run.detected_language.is_some() {
+        LanguageOrigin::Detected
+    } else {
+        LanguageOrigin::Chosen
+    };
+    Finished {
+        id: record.id.clone(),
+        created_at_ms,
+        file_name: record.file.name.clone(),
+        source_path: record.file.source_path.clone(),
+        model_id: record.model.id.clone(),
+        model_label: record.model.label.clone(),
+        language: record.language_code(),
+        language_origin,
+        processing_seconds: completion.processing_seconds,
+        audio_seconds,
+        segments: record.run.transcript.segments(),
+        peaks,
+        engine,
+    }
+}
+
 /// Whether the Transcribe item leaves the run shown: a failed run, or a result saved to History.
 fn starts_over(outcome: Option<&RunOutcome>, saved: &SaveState) -> bool {
     match (outcome, saved) {
@@ -785,6 +844,86 @@ pub fn use_transcribe_session() -> TranscribeSession {
 mod tests {
     use super::*;
     use crate::transcribe::run::RunFailure;
+    use bytes::Bytes;
+    use purr_common::platform::{ModelInfo, ModelMetadata};
+
+    fn model() -> ModelEntry {
+        ModelEntry::from_info(&ModelInfo::new(
+            "tiny".to_owned(),
+            "tiny".to_owned(),
+            String::new(),
+            1,
+            true,
+            ModelMetadata::new(
+                "onnx".to_owned(),
+                "whisper".to_owned(),
+                "multilingual".to_owned(),
+                "1".to_owned(),
+            ),
+        ))
+    }
+
+    fn file() -> ChosenFile {
+        ChosenFile {
+            id: FileId::new("upload-1".to_owned()),
+            name: "speech.mp3".to_owned(),
+            size: 4,
+            content_type: None,
+            bytes: Bytes::from_static(b"riff"),
+            source_path: None,
+        }
+    }
+
+    fn begun() -> RunRecord {
+        RunRecord::begin(
+            file(),
+            model(),
+            LanguageChoice::Automatic,
+            AccelPolicy::Auto,
+            Run::new(true, 0.0),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn every_run_is_named_when_it_begins() {
+        let first = begun();
+        let second = begun();
+        assert_eq!(first.run.outcome, RunOutcome::Running);
+        assert_ne!(first.id, second.id);
+    }
+
+    #[test]
+    fn the_saved_entry_keeps_the_id_the_run_began_with() {
+        let record = begun();
+        let completion = Completion {
+            processing_seconds: 1.0,
+            audio_seconds: 2.0,
+            word_count: 3,
+        };
+        let finished = finished(&record, completion, None, None, 7);
+        assert_eq!(finished.id, record.id);
+        assert_eq!(entry_builder::build(finished).id, record.id);
+    }
+
+    #[test]
+    fn a_decoded_overview_gives_the_saved_length_and_waveform() {
+        let record = begun();
+        let completion = Completion {
+            processing_seconds: 1.0,
+            audio_seconds: 2.0,
+            word_count: 3,
+        };
+        let overview = OverviewState::Ready {
+            duration_seconds: 9.5,
+            peaks: Rc::new(vec![0.25, 0.5]),
+        };
+        let finished = finished(&record, completion, Some(&overview), None, 7);
+        assert_eq!(
+            (finished.audio_seconds, finished.peaks),
+            (9.5, vec![0.25, 0.5])
+        );
+    }
 
     #[test]
     fn the_transcribe_item_keeps_a_result_until_it_is_saved() {

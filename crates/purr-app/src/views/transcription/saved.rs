@@ -1,4 +1,4 @@
-//! A saved transcription opened from History, shown like a fresh result.
+//! A transcription that is not the live run, loaded from History and shown like a fresh result.
 
 use crate::{
     components::{
@@ -45,7 +45,7 @@ fn load_failure(error: &PlatformError) -> Unopened {
 
 /// The saved transcription `id` with its stored segments; the player only when the audio is there.
 #[component]
-pub fn HistoryItem(id: HistoryId) -> Element {
+pub fn SavedTranscription(id: HistoryId) -> Element {
     rsx! {
         Opening { key: "{id}", id }
     }

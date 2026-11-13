@@ -2,7 +2,6 @@
 
 pub mod about;
 pub mod history;
-pub mod history_item;
 pub mod home;
 pub mod licenses;
 pub mod logs;
@@ -13,3 +12,4 @@ pub mod settings;
 pub mod settings_load_banner;
 pub mod shell;
 pub mod shortcuts_sheet;
+pub mod transcription;

@@ -28,7 +28,7 @@ use crate::{
         eta::EtaText,
         language_choice::LanguageChoice,
         run::{RunOutcome, Stage},
-        session::{RunRecord, use_transcribe_session},
+        session::{RunRecord, TranscribeSession, use_transcribe_session},
         timing,
     },
     utils::language_label::language_label,
@@ -39,7 +39,7 @@ use crate::{
     },
 };
 use beam_feed::use_beam_feed;
-use dioxus::prelude::*;
+use dioxus::{prelude::*, router::Navigator};
 use glide_driver::{GlideDriver, GlideInput, GlidePhase};
 use status::RunStatus;
 use std::rc::Rc;
@@ -108,7 +108,19 @@ fn glide_input(record: &RunRecord, duration: f64) -> GlideInput {
     }
 }
 
-/// The run on the Transcribe screen: running, finished or failed, in the same elements.
+/// Leaves an ended run for the start screen. A saved result keeps its address in History; an
+/// unsaved one has none left, so the screen replaces it instead of leaving it behind in Back.
+fn leave(session: TranscribeSession, navigator: Navigator) {
+    let saved = matches!(session.save_state(), SaveState::Saved(_));
+    session.new_transcription();
+    if saved {
+        navigator.push(Route::Home {});
+    } else {
+        navigator.replace(Route::Home {});
+    }
+}
+
+/// The live run at its own address: running, finished or failed, in the same elements.
 #[component]
 pub fn RunView(record: RunRecord) -> Element {
     let session = use_transcribe_session();
@@ -141,7 +153,7 @@ pub fn RunView(record: RunRecord) -> Element {
                     .record()
                     .is_some_and(|record| record.run.outcome != RunOutcome::Running);
                 if ended {
-                    session.new_transcription();
+                    leave(session, navigator);
                 }
             },
         );
@@ -214,7 +226,10 @@ pub fn RunView(record: RunRecord) -> Element {
         }
     };
     let on_stop = match (&run.outcome, phase) {
-        (RunOutcome::Running, _) => Some(EventHandler::new(move |()| session.cancel())),
+        (RunOutcome::Running, _) => Some(EventHandler::new(move |()| {
+            navigator.replace(Route::Home {});
+            session.cancel();
+        })),
         (RunOutcome::Completed(_), ViewPhase::Transcribing) => {
             Some(EventHandler::new(move |()| {}))
         }
@@ -251,7 +266,11 @@ pub fn RunView(record: RunRecord) -> Element {
                                 size: ButtonSize::Small,
                                 icon: IconName::Retry,
                                 id: "retry-run",
-                                onclick: move |_| session.retry(),
+                                onclick: move |_| {
+                                    if let Some(id) = session.retry() {
+                                        navigator.push(Route::Transcription { id });
+                                    }
+                                },
                                 "Try again"
                             }
                             Button {
@@ -263,7 +282,7 @@ pub fn RunView(record: RunRecord) -> Element {
                             }
                             Button {
                                 size: ButtonSize::Small,
-                                onclick: move |_| session.new_transcription(),
+                                onclick: move |_| leave(session, navigator),
                                 "Choose another file"
                             }
                             Button {
@@ -294,7 +313,7 @@ pub fn RunView(record: RunRecord) -> Element {
                                 "Try again"
                             }
                         },
-                        "The transcript stays on this page until you leave it."
+                        "The transcript is kept until you start another transcription."
                     }
                 }
             },
@@ -331,7 +350,7 @@ pub fn RunView(record: RunRecord) -> Element {
             more,
             on_more: move |action| match action {
                 MoreAction::RunAgain => picking.set(Some(MORE_ID)),
-                MoreAction::NewTranscription => session.new_transcription(),
+                MoreAction::NewTranscription => leave(session, navigator),
                 MoreAction::Rename | MoreAction::Delete => {}
             },
         }
@@ -342,7 +361,11 @@ pub fn RunView(record: RunRecord) -> Element {
                     anchor,
                     selected: record.model.id.clone(),
                     on_close: move |()| picking.set(None),
-                    on_pick: move |entry| session.run_again(entry),
+                    on_pick: move |entry| {
+                        if let Some(id) = session.run_again(entry) {
+                            navigator.push(Route::Transcription { id });
+                        }
+                    },
                 }
             }
         }
