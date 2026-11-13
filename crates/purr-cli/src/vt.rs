@@ -17,12 +17,7 @@ mod sys {
 /// Turns on escape sequence processing for a terminal stream; `false` when the console refuses.
 #[cfg(windows)]
 pub fn enable(stream: Stream) -> bool {
-    use std::os::windows::io::AsRawHandle as _;
-
-    let handle = match stream {
-        Stream::Stdout => std::io::stdout().as_raw_handle(),
-        Stream::Stderr => std::io::stderr().as_raw_handle(),
-    };
+    let handle = crate::output::sink::raw_handle(stream);
     let mut mode = 0_u32;
     // SAFETY: the handle belongs to the standard stream and `mode` outlives both calls.
     unsafe {

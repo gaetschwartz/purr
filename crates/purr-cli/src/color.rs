@@ -1,6 +1,6 @@
 //! Whether the CLI colours its output: the `--color` flag, the environment and the stream.
 
-use std::io::IsTerminal as _;
+use crate::output::sink;
 
 /// Value of `--color`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, clap::ValueEnum)]
@@ -32,10 +32,14 @@ pub enum Stream {
 }
 
 impl Stream {
-    fn is_terminal(self) -> bool {
+    pub fn is_terminal(self) -> bool {
+        sink::is_terminal(self)
+    }
+
+    pub const fn name(self) -> &'static str {
         match self {
-            Self::Stdout => std::io::stdout().is_terminal(),
-            Self::Stderr => std::io::stderr().is_terminal(),
+            Self::Stdout => "stdout",
+            Self::Stderr => "stderr",
         }
     }
 }
