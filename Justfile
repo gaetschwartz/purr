@@ -157,10 +157,15 @@ fetch-model model *ARGS:
         echo "Model ${MODEL} already exists in $DEST_DIR, use -f to force re-download"
     fi
 
-trigger-nightly:
-    @echo "{{BLUE}}[INFO]{{NC}} Triggering nightly build workflow..."
-    gh workflow run build.yml -f nightly=true
-    @echo "{{GREEN}}[SUCCESS]{{NC}} Nightly build triggered!"
+# Run the full build matrix on develop without publishing anything
+trigger-build:
+    @echo "{{BLUE}}[INFO]{{NC}} Triggering the build workflow..."
+    gh workflow run build.yml --ref develop
+    @echo "{{GREEN}}[SUCCESS]{{NC}} Build triggered!"
+
+# Tag vVERSION on a commit of develop (default HEAD) and start the next development version; docs/architecture/releasing.md
+release version *ARGS:
+    uv run scripts/release.py {{version}} {{ARGS}}
 
 [macos]
 _cn *ARGS:
