@@ -40,6 +40,7 @@ miette = { version = "7.6.0", features = ["fancy"] }
 paste = { package = "pastey", version = "*" }
 phf = { version = "0.14.0", features = ["macros"] }
 serde = { version = "1.0.229", features = ["derive"] }
+thiserror = "2.0"
 
 [dev-dependencies]
 tempfile = "3.21"
@@ -47,6 +48,7 @@ assert_cmd = "2.0"
 rstest = "0.28"
 pretty_assertions = "1.4.1"
 strum = { version = "0.28.0", features = ["derive"] }
+parking_lot = "0.13.0"
 
 [features]
 cuda = ["purr-core/cuda"]

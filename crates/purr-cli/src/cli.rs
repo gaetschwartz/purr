@@ -1,6 +1,7 @@
 use crate::color::ColorChoice;
-use crate::fmt::Verbosity;
+use crate::logging::level::LogLevel;
 use crate::theme::CLAP_STYLES;
+use crate::verbosity::Verbosity;
 use clap::{
     CommandFactory as _, FromArgMatches as _, Parser, Subcommand,
     builder::{PossibleValue, TypedValueParser},
@@ -88,13 +89,16 @@ pub struct Cli {
     #[arg(long)]
     pub word_timestamps: bool,
 
-    /// While streaming, show on stderr how far the transcription has come, as position /
-    /// duration (`2:51 / 7:30`); the duration shows once the whole audio has been read
+    /// While streaming, show how far the transcription has come, as position / duration
+    /// (`2:51 / 7:30`; the duration shows once the whole audio has been read), in a line under
+    /// the text. Only on a terminal: with --plain or a redirected stdout there is no progress
+    /// and the text is not broken into lines
     #[arg(long)]
     pub progress: bool,
 
-    /// While streaming, print on stderr one line per decoding step (at most ten a second): the
-    /// window, the step, and each of the decoder's beams with its log probability and newest text
+    /// While streaming, print on stderr (in plain mode too) one line per decoding step (at most
+    /// ten a second): the window, the step, and each of the decoder's beams with its log
+    /// probability and newest text
     #[arg(long)]
     pub trace_beams: bool,
 
@@ -106,7 +110,6 @@ pub struct Cli {
     #[arg(long, default_value = "0.0")]
     pub temperature: f32,
 
-    /// Verbose output
     #[clap(flatten)]
     pub verbosity: Verbosity,
 
@@ -116,6 +119,28 @@ pub struct Cli {
     /// Standard output and standard error are decided separately
     #[arg(long, global = true, value_enum, default_value_t, value_name = "WHEN")]
     pub color: ColorChoice,
+
+    /// Print only the command's result on stdout: no banner, status lines or progress bars. This
+    /// is already the case whenever stdout is not a terminal (a pipe or a file); the flag
+    /// forces it on a terminal too
+    #[arg(long, global = true)]
+    pub plain: bool,
+
+    /// Append the diagnostic log to PATH as plain text, never coloured, whatever the terminal
+    /// shows. Each line is written as it happens, so nothing is lost if the run ends abruptly
+    #[arg(long, global = true, value_name = "PATH")]
+    pub log_file: Option<PathBuf>,
+
+    /// Level of what --log-file records: error, warn, info, debug or trace. It does not depend
+    /// on -v, which only controls the terminal [default: info]
+    #[arg(
+        long,
+        global = true,
+        value_enum,
+        value_name = "LEVEL",
+        requires = "log_file"
+    )]
+    pub log_level: Option<LogLevel>,
 
     /// Sample rate to use in Hz. 16'000 is the recommended and default value.
     #[arg(long, default_value = "16000")]
