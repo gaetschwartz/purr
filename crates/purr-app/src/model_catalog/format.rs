@@ -1,4 +1,8 @@
-use super::activity::{DownloadProgress, VerifyProgress};
+use super::{
+    activity::{DownloadProgress, VerifyProgress},
+    listing::ModelRow,
+    state::ModelState,
+};
 use crate::utils::byte_size::ByteSize;
 
 /// `1.2 MiB/s`.
@@ -40,6 +44,27 @@ pub fn rate_and_eta(progress: &DownloadProgress) -> String {
     .flatten()
     .collect();
     parts.join(" · ")
+}
+
+/// The size of a model that would have to be downloaded, or how far its download is.
+#[must_use]
+pub fn download_size(row: &ModelRow) -> Option<String> {
+    match &row.state {
+        ModelState::Downloading(progress) => {
+            Some(percent(progress).map_or_else(|| "…".to_owned(), |done| format!("{done}%")))
+        }
+        ModelState::Downloaded
+        | ModelState::Unavailable {
+            installed: true, ..
+        } => None,
+        ModelState::NotDownloaded
+        | ModelState::Verifying(_)
+        | ModelState::Failed(_)
+        | ModelState::NeedsRepair(_)
+        | ModelState::Unavailable {
+            installed: false, ..
+        } => Some(ByteSize(row.entry.size_bytes).to_string()),
+    }
 }
 
 /// The whole-number percentage, `None` while the total is unknown.

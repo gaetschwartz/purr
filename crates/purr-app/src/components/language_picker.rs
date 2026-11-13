@@ -1,6 +1,6 @@
 use super::{
     icon::{Icon, IconName, IconSize},
-    list_picker::{LAST_USED_KEY, LastUsedOption, ListPicker, PickerEmpty, use_list_nav},
+    list_picker::{LAST_USED_KEY, LastUsedOption, ListPicker, NavRow, PickerEmpty, use_list_nav},
     pick_target::PickTarget,
     pill::Pill,
     popover::{OptionRole, PopoverOption},
@@ -132,12 +132,16 @@ pub fn LanguagePicker(
         options(&query())
     };
     let last_used = target == PickTarget::Default;
-    let keys: Vec<String> = last_used
-        .then(|| LAST_USED_KEY.to_owned())
+    let rows: Vec<NavRow> = last_used
+        .then(|| NavRow::single(LAST_USED_KEY))
         .into_iter()
-        .chain(choices.iter().map(|choice| choice.setting().to_owned()))
+        .chain(
+            choices
+                .iter()
+                .map(|choice| NavRow::single(choice.setting())),
+        )
         .collect();
-    let active = nav.active(&keys, !query().trim().is_empty());
+    let active = nav.active(&rows, !query().trim().is_empty());
     let is_active = |key: &str| active.as_deref() == Some(key);
 
     let choose = move |choice: LanguageChoice| {
@@ -196,7 +200,8 @@ pub fn LanguagePicker(
         rsx! {
             PickerEmpty {
                 text: format!("No language called “{}”.", query().trim()),
-                on_clear: move |()| query.set(String::new()),
+                action: "Clear search",
+                on_action: move |()| query.set(String::new()),
             }
         }
     });
@@ -208,7 +213,7 @@ pub fn LanguagePicker(
             list_label: "Languages",
             on_close,
             nav,
-            keys,
+            rows,
             on_enter,
             search: (!english_only).then(|| format!("Search {} languages", Language::VARIANTS.len() - 1)),
             query: query(),

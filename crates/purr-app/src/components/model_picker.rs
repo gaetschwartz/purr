@@ -1,12 +1,11 @@
 use super::{
     icon::{Icon, IconName, IconSize},
-    list_picker::{
-        LAST_USED_KEY, LastUsedOption, ListPicker, PickerEmpty, PickerSection, use_list_nav,
-    },
-    model_choice::{ClusterChoice, ModelChoice, download_size},
+    list_picker::{LAST_USED_KEY, LastUsedOption, ListPicker, NavRow, PickerEmpty, use_list_nav},
+    model_pick_row::ModelPickRow,
     pick_target::PickTarget,
     pill::Pill,
     popover::PopoverOption,
+    segmented::{Segment, Segmented},
     spinner::Spinner,
 };
 use crate::utils::primary_key::use_primary_key_label;
@@ -15,7 +14,11 @@ use crate::{
     hooks::use_models::{GpuSupport, use_models},
     main_app::Route,
     model_catalog::{
-        entry::ModelEntry, listing::ModelRow, picker::picker_sections, state::ModelState,
+        entry::{ModelEntry, Precision},
+        format::download_size,
+        listing::ModelRow,
+        picker::{PickerModel, PickerScope, picker_list, version_tag},
+        state::ModelState,
     },
     platform::IS_WEB,
     settings_store::use_settings,
@@ -25,11 +28,12 @@ use purr_common::accel::AccelPolicy;
 
 /// Every model of `use_models()` in a [`ListPicker`], anchored on the element `anchor`.
 ///
-/// Render it only while open. Models on this device come first, each version on its own row;
-/// the rest follow with their download size, quantized versions as small choices under their
-/// model, and the models a newer family replaces behind a fold. Picking a model that can run
-/// here saves it with `set_model` and calls `on_pick`, whether or not it is downloaded; a run
-/// downloads it first.
+/// Render it only while open. Each model is one line whatever versions of it exist; its versions
+/// (full precision and quantized) sit inside the line as small choices, each marked when it is on
+/// this device. A scope control switches between the downloaded models, where the picker opens
+/// once anything is stored, and all of them; models a newer family replaces wait behind a fold.
+/// Picking a model that can run here saves it with `set_model` and calls `on_pick`, whether or not
+/// it is downloaded; a run downloads it first.
 #[component]
 pub fn ModelPicker(
     /// The id of the element the popover hangs from.
@@ -49,7 +53,9 @@ pub fn ModelPicker(
     let navigator = use_navigator();
     let nav = use_list_nav();
     let mut search = use_signal(String::new);
+    let mut scope_choice = use_signal(|| None::<PickerScope>);
     let mut older_toggled = use_signal(|| false);
+    let catalog = use_memo(move || models.rows());
     let primary_key = use_primary_key_label();
     let default_hint = (target == PickTarget::Current)
         .then(|| format!("{}+Click to set as default", primary_key()));
@@ -109,60 +115,110 @@ pub fn ModelPicker(
 
     let query = search();
     let searching = !query.trim().is_empty();
-    let (status, sections) = match models.rows() {
-        None => (
-            Some(rsx! {
-                div { class: "pempty row", role: "status",
-                    Spinner {}
-                    span { "Loading models…" }
-                }
-            }),
-            None,
-        ),
-        Some(Err(error)) => (
-            Some(rsx! {
-                div { class: "pempty", role: "alert",
-                    p { "Couldn't list the models: {error}" }
-                }
-            }),
-            None,
-        ),
-        Some(Ok(rows)) => (None, Some(picker_sections(&rows, &query))),
+    let loaded = catalog.read();
+    let rows: &[ModelRow] = match loaded.as_ref() {
+        Some(Ok(rows)) => rows,
+        Some(Err(_)) | None => &[],
     };
-    let sections = sections.unwrap_or_default();
-    let older_open = older_toggled() || sections.older_opens(&query, &selected);
-    let choices: Vec<ModelRow> = sections.choices(older_open).into_iter().cloned().collect();
-    let status = status.or_else(|| {
-        (sections.is_empty()).then(|| {
-            if searching {
-                rsx! {
-                    PickerEmpty {
-                        text: format!("No model matches “{}”.", query.trim()),
-                        on_clear: move |()| search.set(String::new()),
-                    }
-                }
-            } else {
-                rsx! {
-                    div { class: "pempty", role: "status",
-                        p { "No models are available here." }
-                    }
-                }
-            }
-        })
-    });
+    let scope = scope_choice().unwrap_or_else(|| PickerScope::initial(rows));
+    let list = picker_list(rows, scope, &query, &selected);
+    let older_open = older_toggled() || list.older_opens(&query, &selected);
+    let older_count = list.older.len();
+    let hidden = list.hidden;
+    let listed = !list.is_empty();
+    let mut show_all = move |()| {
+        nav.clear();
+        scope_choice.set(Some(PickerScope::All));
+    };
 
-    let keys: Vec<String> = last_used
-        .then(|| LAST_USED_KEY.to_owned())
-        .into_iter()
-        .chain(choices.iter().map(|row| row.entry.id.clone()))
+    let status = match loaded.as_ref() {
+        None => Some(rsx! {
+            div { class: "pempty row", role: "status",
+                Spinner {}
+                span { "Loading models…" }
+            }
+        }),
+        Some(Err(error)) => Some(rsx! {
+            div { class: "pempty", role: "alert",
+                p { "Couldn't list the models: {error}" }
+            }
+        }),
+        Some(Ok(_)) if listed => None,
+        Some(Ok(_)) => Some(match (scope, searching) {
+            (PickerScope::Downloaded, true) if hidden > 0 => rsx! {
+                PickerEmpty {
+                    text: format!("No downloaded model matches “{}”.", query.trim()),
+                    action: "Search all models",
+                    on_action: show_all,
+                }
+            },
+            (PickerScope::Downloaded | PickerScope::All, true) => rsx! {
+                PickerEmpty {
+                    text: format!("No model matches “{}”.", query.trim()),
+                    action: "Clear search",
+                    on_action: move |()| search.set(String::new()),
+                }
+            },
+            (PickerScope::Downloaded, false) => rsx! {
+                PickerEmpty {
+                    text: "No models downloaded yet.",
+                    action: "Show all models",
+                    on_action: show_all,
+                }
+            },
+            (PickerScope::All, false) => rsx! {
+                div { class: "pempty", role: "status",
+                    p { "No models are available here." }
+                }
+            },
+        }),
+    };
+    drop(loaded);
+
+    let shown: Vec<PickerModel> = list
+        .models
+        .iter()
+        .chain(list.older.iter().filter(|_| older_open))
+        .cloned()
         .collect();
-    let active = nav.active(&keys, searching);
-    let is_active = |key: &str| active.as_deref() == Some(key);
-    let on_enter = move |key: String| {
-        if key == LAST_USED_KEY {
-            pick_last_used();
-        } else if let Some(row) = choices.iter().find(|row| row.entry.id == key) {
-            pick(row.clone());
+    let nav_rows: Vec<NavRow> = last_used
+        .then(|| NavRow::single(LAST_USED_KEY))
+        .into_iter()
+        .chain(shown.iter().map(|model| {
+            let inner = model.versions.iter().map(|row| row.entry.id.clone());
+            if model.versions.len() > 1 {
+                NavRow::with_inner(model.key(), inner)
+            } else {
+                NavRow::single(model.key())
+            }
+        }))
+        .collect();
+    let active = nav.active(&nav_rows, searching);
+    let in_model = move |model: &PickerModel, key: Option<&String>| {
+        key.filter(|key| *key == model.key() || model.holds(key))
+            .cloned()
+    };
+    let selected_in = |model: &PickerModel| model.holds(&selected).then(|| selected.clone());
+    let on_enter = {
+        let selected = selected.clone();
+        move |key: String| {
+            if key == LAST_USED_KEY {
+                pick_last_used();
+                return;
+            }
+            let lead = shown
+                .iter()
+                .find(|model| model.key() == key)
+                .and_then(|model| model.preferred(&selected));
+            let inner = || {
+                shown
+                    .iter()
+                    .flat_map(|model| &model.versions)
+                    .find(|row| row.entry.id == key)
+            };
+            if let Some(row) = lead.or_else(inner) {
+                pick(row.clone());
+            }
         }
     };
 
@@ -170,7 +226,10 @@ pub fn ModelPicker(
         && (*models.gpu.read() == GpuSupport::Unavailable
             || settings.with(|settings| settings.performance.accel_policy())
                 == AccelPolicy::CPU_ONLY);
-    let older_count = sections.older.len();
+    let segments: Vec<Segment<PickerScope>> = PickerScope::ALL
+        .into_iter()
+        .map(|scope| Segment::new(scope, scope.label()))
+        .collect();
 
     rsx! {
         ListPicker {
@@ -180,11 +239,22 @@ pub fn ModelPicker(
             on_close,
             wide: true,
             nav,
-            keys,
+            rows: nav_rows,
             on_enter,
             search: "Search models",
             query,
             on_query: move |value: String| search.set(value),
+            filter: rsx! {
+                Segmented {
+                    segments,
+                    value: scope,
+                    label: "Show models",
+                    onchange: move |scope| {
+                        nav.clear();
+                        scope_choice.set(Some(scope));
+                    },
+                }
+            },
             note: on_cpu.then(|| rsx! { "Models run on the CPU here. Smaller ones are faster." }),
             status,
             footer: rsx! {
@@ -204,41 +274,34 @@ pub fn ModelPicker(
             if last_used {
                 LastUsedOption {
                     nav,
-                    highlighted: is_active(LAST_USED_KEY),
+                    highlighted: active.as_deref() == Some(LAST_USED_KEY),
                     selected: selected.is_empty(),
                     subtitle: "Start with the model you picked last",
                     onselect: move |()| pick_last_used(),
                 }
             }
-            if !sections.on_device.is_empty() {
-                PickerSection { title: "On this device",
-                    for row in sections.on_device {
-                        ModelChoice {
-                            key: "{row.entry.id}",
-                            selected: row.entry.id == selected,
-                            highlighted: is_active(&row.entry.id),
-                            row,
-                            nav,
-                            hint: default_hint.clone(),
-                            onselect: pick,
-                            on_alt: alt,
-                        }
-                    }
+            for model in list.models {
+                ModelPickRow {
+                    key: "{model.key()}",
+                    selected: selected_in(&model),
+                    highlighted: in_model(&model, active.as_ref()),
+                    model,
+                    nav,
+                    hint: default_hint.clone(),
+                    onselect: pick,
+                    on_alt: alt,
                 }
             }
-            if !sections.download.is_empty() {
-                PickerSection { title: "Download",
-                    for cluster in sections.download {
-                        ClusterChoice {
-                            key: "{cluster.primary.entry.id}",
-                            cluster,
-                            nav,
-                            selected: selected.clone(),
-                            active: active.clone(),
-                            hint: default_hint.clone(),
-                            onselect: pick,
-                            on_alt: alt,
-                        }
+            if scope == PickerScope::Downloaded && hidden > 0 && listed {
+                button {
+                    class: "ph pfold",
+                    r#type: "button",
+                    onclick: move |_| show_all(()),
+                    Icon { name: IconName::ChevronRight, size: IconSize::Small }
+                    if searching {
+                        "{hidden} more in all models"
+                    } else {
+                        "All models"
                     }
                 }
             }
@@ -256,13 +319,13 @@ pub fn ModelPicker(
                         "Older models ({older_count})"
                     }
                     if older_open {
-                        for cluster in sections.older {
-                            ClusterChoice {
-                                key: "{cluster.primary.entry.id}",
-                                cluster,
+                        for model in list.older {
+                            ModelPickRow {
+                                key: "{model.key()}",
+                                selected: selected_in(&model),
+                                highlighted: in_model(&model, active.as_ref()),
+                                model,
                                 nav,
-                                selected: selected.clone(),
-                                active: active.clone(),
                                 hint: default_hint.clone(),
                                 onselect: pick,
                                 on_alt: alt,
@@ -275,9 +338,33 @@ pub fn ModelPicker(
     }
 }
 
-// The run-bar pill showing the model new transcriptions use; it opens a [`ModelPicker`].
+/// What the pill says beside the model's name: the version when it is not full precision, and the
+/// download still needed.
+fn pill_detail(row: &ModelRow) -> Option<String> {
+    let version = match &row.entry.precision {
+        Precision::Full | Precision::Mixed => None,
+        precision @ (Precision::Quantized { .. } | Precision::Other(_)) => {
+            Some(version_tag(precision))
+        }
+    };
+    let size = download_size(row).map(|size| match row.state {
+        ModelState::Downloading(_) => format!("downloading, {size}"),
+        ModelState::NotDownloaded
+        | ModelState::Downloaded
+        | ModelState::Verifying(_)
+        | ModelState::Failed(_)
+        | ModelState::NeedsRepair(_)
+        | ModelState::Unavailable { .. } => format!("{size} download"),
+    });
+    match (version, size) {
+        (Some(version), Some(size)) => Some(format!("{version} · {size}")),
+        (version, size) => version.or(size),
+    }
+}
+
+/// The run-bar pill showing the model new transcriptions use; it opens a [`ModelPicker`].
 ///
-/// A model that is not downloaded yet shows its download size.
+/// The value is the model's name; its version and any download still needed follow the caption.
 #[component]
 pub fn ModelPill(
     /// The pill's DOM id, which the popover hangs from.
@@ -325,16 +412,12 @@ pub fn ModelPill(
         .and_then(|selection| selection.row().cloned());
     let (value, detail, selected) = match (&selection, row) {
         (_, Some(row)) => (
-            row.entry.label.clone(),
-            download_size(&row).map(|size| match row.state {
-                ModelState::Downloading(_) => format!("downloading, {size}"),
-                ModelState::NotDownloaded
-                | ModelState::Downloaded
-                | ModelState::Verifying(_)
-                | ModelState::Failed(_)
-                | ModelState::NeedsRepair(_)
-                | ModelState::Unavailable { .. } => format!("{size} download"),
-            }),
+            if row.entry.speaker_turns {
+                format!("{} · Speaker turns", row.entry.name)
+            } else {
+                row.entry.name.clone()
+            },
+            pill_detail(&row),
             row.entry.id,
         ),
         (None, None) => (saved.clone(), Some("loading…".to_owned()), saved),

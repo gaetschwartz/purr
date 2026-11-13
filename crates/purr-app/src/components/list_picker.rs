@@ -9,9 +9,9 @@ use dioxus::{
     prelude::*,
 };
 
-/// Which row of a [`ListPicker`] the keyboard and the pointer point at; there is only ever one.
+/// Which item of a [`ListPicker`] the keyboard and the pointer point at; there is only ever one.
 ///
-/// Rows are named by a key unique in the list, so the pointed row survives the list changing.
+/// Items are named by a key unique in the list, so the pointed item survives the list changing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ListNav {
     list_id: Signal<String>,
@@ -29,6 +29,68 @@ pub fn use_list_nav() -> ListNav {
     })
 }
 
+/// The keys of one line of a [`ListPicker`]: the line itself first, then any choices inside it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NavRow {
+    keys: Vec<String>,
+}
+
+impl NavRow {
+    /// A line that is a single choice.
+    pub fn single(key: impl Into<String>) -> Self {
+        Self {
+            keys: vec![key.into()],
+        }
+    }
+
+    /// A line with choices inside it, which Left and Right reach.
+    pub fn with_inner(key: impl Into<String>, inner: impl IntoIterator<Item = String>) -> Self {
+        Self {
+            keys: std::iter::once(key.into()).chain(inner).collect(),
+        }
+    }
+
+    fn lead(&self) -> Option<&String> {
+        self.keys.first()
+    }
+
+    fn position(&self, key: &str) -> Option<usize> {
+        self.keys.iter().position(|found| found == key)
+    }
+}
+
+/// An arrow key press inside a [`ListPicker`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Motion {
+    Up,
+    Down,
+    Left,
+    Right,
+}
+
+/// The key the mark moves to from `active`: Up and Down go line to line, wrapping at both ends;
+/// Left and Right move inside a line and stop at its ends.
+#[must_use]
+pub fn move_mark(rows: &[NavRow], active: Option<&str>, motion: Motion) -> Option<String> {
+    let line = active.and_then(|key| rows.iter().position(|row| row.position(key).is_some()));
+    match motion {
+        Motion::Up | Motion::Down => step(line, rows.len(), motion == Motion::Down)
+            .and_then(|index| rows.get(index))
+            .and_then(NavRow::lead)
+            .cloned(),
+        Motion::Left | Motion::Right => {
+            let row = rows.get(line?)?;
+            let at = row.position(active?)?;
+            let to = match motion {
+                Motion::Right => at + 1,
+                Motion::Left => at.checked_sub(1)?,
+                Motion::Up | Motion::Down => at,
+            };
+            row.keys.get(to).cloned()
+        }
+    }
+}
+
 impl ListNav {
     /// The DOM id of the list box.
     #[must_use]
@@ -36,25 +98,29 @@ impl ListNav {
         self.list_id.peek().clone()
     }
 
-    /// The DOM id of the row with `key`.
+    /// The DOM id of the item with `key`.
     #[must_use]
     pub fn row_id(&self, key: &str) -> String {
         format!("{}-{key}", self.list_id.peek())
     }
 
-    /// The key of the row to mark among `keys`: the pointed one, else the first while a search
-    /// narrows the list, so Enter picks the best match.
+    /// The key of the item to mark among `rows`: the pointed one, else the first line while a
+    /// search narrows the list, so Enter picks the best match.
     #[must_use]
-    pub fn active(&self, keys: &[String], searching: bool) -> Option<String> {
+    pub fn active(&self, rows: &[NavRow], searching: bool) -> Option<String> {
         let pointed = self.pointed.read();
         pointed
             .as_ref()
-            .filter(|key| keys.contains(key))
-            .or_else(|| keys.first().filter(|_| searching))
+            .filter(|key| rows.iter().any(|row| row.position(key).is_some()))
+            .or_else(|| rows.first().and_then(NavRow::lead).filter(|_| searching))
             .cloned()
     }
 
-    /// Points at the row with `key`.
+    fn is_pointing(&self) -> bool {
+        self.pointed.peek().is_some()
+    }
+
+    /// Points at the item with `key`.
     pub fn point(mut self, key: &str) {
         if self.pointed.peek().as_deref() != Some(key) {
             self.pointed.set(Some(key.to_owned()));
@@ -69,7 +135,7 @@ impl ListNav {
     }
 }
 
-/// The index an arrow press moves to among `count` rows from `current`, wrapping at both ends.
+/// The index an arrow press moves to among `count` lines from `current`, wrapping at both ends.
 #[must_use]
 pub const fn step(current: Option<usize>, count: usize, down: bool) -> Option<usize> {
     if count == 0 {
@@ -83,12 +149,14 @@ pub const fn step(current: Option<usize>, count: usize, down: bool) -> Option<us
     })
 }
 
-/// A popover (a sheet on phones) for choosing one row of a list, shared by the model and language
-/// pickers: an optional pinned search field and note, the scrolling list box, and a pinned footer.
+/// A popover (a sheet on phones) for choosing one item of a list, shared by the model and language
+/// pickers: a pinned search line with an optional `filter` beside the field, an optional note, the
+/// scrolling list box, and a pinned footer.
 ///
-/// `keys` names the rows in the order they show; arrows move through them from the search field
-/// and Enter calls `on_enter` with the marked key. Rows mark themselves with `nav.active(..)` and
-/// call `nav.point(..)` on pointer moves, so the pointer and the keyboard share one mark.
+/// `rows` names the lines in the order they show. Up and Down move between lines from the search
+/// field, Left and Right between the choices of a line once one is marked, and Enter calls
+/// `on_enter` with the marked key. Items mark themselves with `nav.active(..)` and call
+/// `nav.point(..)` on pointer moves, so the pointer and the keyboard share one mark.
 #[component]
 pub fn ListPicker(
     /// The id of the element the popover hangs from.
@@ -103,29 +171,33 @@ pub fn ListPicker(
     on_close: EventHandler<()>,
     #[props(default)] wide: bool,
     nav: ListNav,
-    keys: Vec<String>,
+    rows: Vec<NavRow>,
     on_enter: EventHandler<String>,
     /// The search field's placeholder; without one there is no search field.
     #[props(into)]
     search: Option<String>,
     #[props(into, default)] query: String,
     on_query: Option<EventHandler<String>>,
+    /// A control beside the search field that narrows the list.
+    filter: Option<Element>,
     /// A line under the search field.
     note: Option<Element>,
-    /// What shows instead of rows, such as a loading or empty state.
+    /// What shows instead of items, such as a loading or empty state.
     status: Option<Element>,
     footer: Option<Element>,
     children: Element,
 ) -> Element {
     let searching = !query.trim().is_empty();
-    let active = nav.active(&keys, searching);
+    let active = nav.active(&rows, searching);
     let active_id = active.as_deref().map(|key| nav.row_id(key));
     let list_id = nav.list_id();
 
     let on_key = move |event: KeyboardEvent| {
-        let down = match event.key() {
-            Key::Named(NamedKey::ArrowDown) => true,
-            Key::Named(NamedKey::ArrowUp) => false,
+        let motion = match event.key() {
+            Key::Named(NamedKey::ArrowDown) => Motion::Down,
+            Key::Named(NamedKey::ArrowUp) => Motion::Up,
+            Key::Named(NamedKey::ArrowLeft) if nav.is_pointing() => Motion::Left,
+            Key::Named(NamedKey::ArrowRight) if nav.is_pointing() => Motion::Right,
             Key::Named(NamedKey::Enter) => {
                 if let Some(key) = &active {
                     event.prevent_default();
@@ -135,37 +207,42 @@ pub fn ListPicker(
             }
             Key::Named(_) | Key::Character(_) => return,
         };
-        event.prevent_default();
-        let current = active
-            .as_ref()
-            .and_then(|key| keys.iter().position(|row| row == key));
-        let Some(key) = step(current, keys.len(), down).and_then(|index| keys.get(index)) else {
+        let Some(key) = move_mark(&rows, active.as_deref(), motion) else {
             return;
         };
-        nav.point(key);
+        event.prevent_default();
+        nav.point(&key);
         document::eval(&format!(
             "document.getElementById({:?})?.scrollIntoView({{block:'nearest'}})",
-            nav.row_id(key)
+            nav.row_id(&key)
         ));
     };
 
-    let header = match (&search, note) {
-        (None, None) => None,
-        (search, note) => Some(rsx! {
-            if let Some(placeholder) = search {
-                SearchField {
-                    value: query,
-                    placeholder: placeholder.clone(),
-                    label: placeholder.clone(),
-                    controls: list_id.clone(),
-                    active_descendant: active_id,
-                    oninput: move |value: String| {
-                        nav.clear();
-                        if let Some(handler) = on_query {
-                            handler.call(value);
-                        }
-                    },
-                    onkeydown: on_key,
+    let field = search.map(|placeholder| {
+        rsx! {
+            SearchField {
+                value: query,
+                placeholder: placeholder.clone(),
+                label: placeholder,
+                controls: list_id.clone(),
+                active_descendant: active_id,
+                oninput: move |value: String| {
+                    nav.clear();
+                    if let Some(handler) = on_query {
+                        handler.call(value);
+                    }
+                },
+                onkeydown: on_key,
+            }
+        }
+    });
+    let header = match (field, filter, note) {
+        (None, None, None) => None,
+        (field, filter, note) => Some(rsx! {
+            if field.is_some() || filter.is_some() {
+                div { class: "psearch",
+                    {field}
+                    {filter}
                 }
             }
             if let Some(note) = note {
@@ -196,10 +273,10 @@ pub fn ListPicker(
     }
 }
 
-/// The key of the [`LastUsedOption`] row.
+/// The key of the [`LastUsedOption`] line.
 pub const LAST_USED_KEY: &str = "last-used";
 
-/// The "Last used" row that leads a picker editing a default, set apart from the list below it.
+/// The "Last used" line that leads a picker editing a default, set apart from the list below it.
 #[component]
 pub fn LastUsedOption(
     nav: ListNav,
@@ -228,29 +305,21 @@ pub fn LastUsedOption(
     }
 }
 
-/// A titled run of rows inside a [`ListPicker`].
+/// What a [`ListPicker`] says when nothing is left to list, with one way out.
 #[component]
-pub fn PickerSection(#[props(into)] title: String, children: Element) -> Element {
-    let heading_id = use_dom_id("picker-section");
-    rsx! {
-        div { role: "group", aria_labelledby: "{heading_id}",
-            div { class: "ph", id: "{heading_id}", "{title}" }
-            {children}
-        }
-    }
-}
-
-/// What a [`ListPicker`] says when its search leaves nothing, with a way back to the full list.
-#[component]
-pub fn PickerEmpty(#[props(into)] text: String, on_clear: EventHandler<()>) -> Element {
+pub fn PickerEmpty(
+    #[props(into)] text: String,
+    #[props(into)] action: String,
+    on_action: EventHandler<()>,
+) -> Element {
     rsx! {
         div { class: "pempty", role: "status",
             p { "{text}" }
             button {
                 class: "btn plain sm",
                 r#type: "button",
-                onclick: move |_| on_clear.call(()),
-                "Clear search"
+                onclick: move |_| on_action.call(()),
+                "{action}"
             }
         }
     }
@@ -276,5 +345,46 @@ mod tests {
     #[test]
     fn an_empty_list_has_nowhere_to_go() {
         assert_eq!(step(None, 0, true), None);
+        assert_eq!(move_mark(&[], None, Motion::Down), None);
+    }
+
+    fn lines() -> Vec<NavRow> {
+        vec![
+            NavRow::single("a"),
+            NavRow::with_inner("b", ["b1".to_owned(), "b2".to_owned()]),
+            NavRow::single("c"),
+        ]
+    }
+
+    #[test]
+    fn up_and_down_land_on_the_line_itself_even_from_a_choice_inside_it() {
+        assert_eq!(
+            move_mark(&lines(), Some("b2"), Motion::Down),
+            Some("c".to_owned())
+        );
+        assert_eq!(
+            move_mark(&lines(), Some("b1"), Motion::Up),
+            Some("a".to_owned())
+        );
+        assert_eq!(
+            move_mark(&lines(), None, Motion::Down),
+            Some("a".to_owned())
+        );
+    }
+
+    #[test]
+    fn left_and_right_walk_a_line_and_stop_at_its_ends() {
+        assert_eq!(
+            move_mark(&lines(), Some("b"), Motion::Right),
+            Some("b1".to_owned())
+        );
+        assert_eq!(
+            move_mark(&lines(), Some("b1"), Motion::Left),
+            Some("b".to_owned())
+        );
+        assert_eq!(move_mark(&lines(), Some("b2"), Motion::Right), None);
+        assert_eq!(move_mark(&lines(), Some("b"), Motion::Left), None);
+        assert_eq!(move_mark(&lines(), Some("a"), Motion::Right), None);
+        assert_eq!(move_mark(&lines(), None, Motion::Right), None);
     }
 }
