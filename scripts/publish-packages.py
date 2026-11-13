@@ -240,7 +240,6 @@ def scoop_cli(
 def scoop_app(
     channel: Channel, repo: str, version: str, sums: Mapping[str, str]
 ) -> dict[str, Json]:
-    owner = repo.split("/")[0]
     return scoop_manifest(
         channel,
         repo,
@@ -248,11 +247,8 @@ def scoop_app(
         sums,
         kind="desktop",
         ext="-portable.zip",
-        description=f"{DESCRIPTION} (desktop app and command-line tool{channel.description_note})",
-        extra={
-            "depends": f"{owner}/{channel.scoop_cli}",
-            "shortcuts": [["purr-app.exe", f"Purr{channel.title_suffix}"]],
-        },
+        description=f"{DESCRIPTION} (desktop app{channel.description_note})",
+        extra={"shortcuts": [["purr-app.exe", f"Purr{channel.title_suffix}"]]},
     )
 
 
