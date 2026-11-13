@@ -79,7 +79,7 @@ cd purr
 # Build the project
 cargo build --release
 
-# The binary will be at target/release/purr-cli
+# The binary will be at target/release/purr
 ```
 
 ### Running Tests
@@ -104,54 +104,54 @@ cargo test -p purr-cli
 
 ```bash
 # Transcribe an audio file
-./target/release/purr-cli audio.wav
+./target/release/purr audio.wav
 
 # Specify a model
-./target/release/purr-cli audio.mp3 --model models/ggml-base.en.bin
+./target/release/purr audio.mp3 --model models/ggml-base.en.bin
 
 # Specify language
-./target/release/purr-cli audio.wav --language en
+./target/release/purr audio.wav --language en
 ```
 
 ### Advanced Usage
 
 ```bash
 # JSON output with timestamps
-./target/release/purr-cli audio.wav --output json --timestamps
+./target/release/purr audio.wav --output json --timestamps
 
 # SRT subtitle format
-./target/release/purr-cli audio.wav --output srt
+./target/release/purr audio.wav --output srt
 
 # JSON with every word: its text, start and end in seconds, and score (the probability of
 # its least certain token, 0 to 1)
-./target/release/purr-cli audio.wav --output json --word-timestamps
+./target/release/purr audio.wav --output json --word-timestamps
 
 # Show how far the transcription has come on stderr (2:51 / 7:30)
-./target/release/purr-cli audio.wav --progress
+./target/release/purr audio.wav --progress
 
 # Print the decoder's beams on stderr, one line per decoding step (at most ten a second)
-./target/release/purr-cli audio.wav --trace-beams
+./target/release/purr audio.wav --trace-beams
 
 # Disable GPU acceleration (same as --accel cpu)
-./target/release/purr-cli audio.wav --no-gpu
+./target/release/purr audio.wav --no-gpu
 
 # Force a backend: no fallback, an error if it is unavailable or fails
-./target/release/purr-cli audio.wav --accel cuda
+./target/release/purr audio.wav --accel cuda
 
 # Prefer a backend but fall back to the priority list (ending in the CPU)
-./target/release/purr-cli audio.wav --accel vulkan --accel-fallback
+./target/release/purr audio.wav --accel vulkan --accel-fallback
 
 # Change the priority list used by the default `--accel auto`
-./target/release/purr-cli audio.wav --accel-priority vulkan,cuda
+./target/release/purr audio.wav --accel-priority vulkan,cuda
 
 # Set number of threads
-./target/release/purr-cli audio.wav --threads 4
+./target/release/purr audio.wav --threads 4
 
 # Verbose output
-./target/release/purr-cli audio.wav --verbose
+./target/release/purr audio.wav --verbose
 
 # All options combined
-./target/release/purr-cli audio.wav \\
+./target/release/purr audio.wav \\
   --model models/ggml-base.en.bin \\
   --language en \\
   --output json \\
@@ -247,7 +247,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 Use the `--verbose` flag to see detailed performance information:
 
 ```bash
-./target/release/purr-cli audio.wav --verbose
+./target/release/purr audio.wav --verbose
 ```
 
 This shows:
