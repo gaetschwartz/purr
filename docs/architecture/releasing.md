@@ -8,7 +8,7 @@ Purr ships on two channels. Both install the same command, `purr`.
 | `purr --version` | `purr 0.3.0-canary.123 (abc1234 2026-11-13)` | `purr 0.3.0 (abc1234 2026-11-13)` |
 | GitHub release | pre-release `canary-0.3.0-canary.123`, titled `Canary 0.3.0-canary.123 (abc1234)` | release `vX.Y.Z` (a tag with a `-` is marked pre-release) |
 | Asset names | unversioned: `purr-cli-linux-x64-all.tar.gz` | `purr-vX.Y.Z-cli-linux-x64-all.tar.gz` |
-| Homebrew (`gaetschwartz/tap`) | formula `purr@canary`, cask `purr-app@canary` | formula `purr`, cask `purr-app` |
+| Homebrew (`gaetschwartz/tap`) | formula `purr-canary`, cask `purr-app-canary` | formula `purr`, cask `purr-app` |
 | Scoop (`scoop-gaetschwartz`) | `purr-canary`, `purr-app-canary` | `purr`, `purr-app` |
 
 A local build reports `purr 0.3.0-dev (abc1234 2026-11-13)`, with `abc1234-dirty` when the tree has uncommitted changes. Outside a git checkout the commit is left out.

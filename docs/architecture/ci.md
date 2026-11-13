@@ -144,4 +144,4 @@ CI is pinned to one Rust version, the `toolchain` default of `.github/actions/se
 11. `setup-rust`, step `Keep only the pinned toolchain`: `rustup toolchain list` shows the pinned version alone. In the rust-cache log, `Rust Versions` names that one version.
 12. Every CLI job prints `purr --version` as `purr 0.1.0-canary.<run number> (<commit> <day>)` on `develop`. A `-dirty` suffix means the checkout changed during the build, for example an out-of-date `Cargo.lock`.
 13. `release (canary)`: `Read the version from the built CLI` passes, the release appears as a pre-release with all assets, and at most 5 `canary-*` releases remain.
-14. `publish packages (canary)`: the tap gains `purr@canary` and `purr-app@canary`, the bucket `purr-canary` and `purr-app-canary`.
+14. `publish packages (canary)`: the tap gains `purr-canary` and `purr-app-canary`, the bucket `purr-canary` and `purr-app-canary`.
