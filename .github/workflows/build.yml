@@ -1,16 +1,10 @@
 name: build
 on:
   push:
-  schedule:
-    # Run nightly builds at 2 AM UTC
-    - cron: "0 2 * * *"
+    branches: [develop]
+    tags: ["v*"]
   workflow_dispatch:
     inputs:
-      nightly:
-        description: "Create nightly release"
-        required: false
-        default: false
-        type: boolean
       windows_single_backends:
         description: "Also build the Windows CLI with CUDA only and with Vulkan only"
         required: false
@@ -18,7 +12,6 @@ on:
         type: boolean
 
 concurrency:
-  # scheduled and manual runs get their own group so a push to develop never replaces a nightly
   group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'push' && github.ref_type == 'branch' }}
 
@@ -30,6 +23,8 @@ env:
   CUDA_VERSION: 13.5.0
   VULKAN_SDK_VERSION: 1.4.363.1
   GGML_NATIVE: "OFF"
+  PURR_CHANNEL: ${{ startsWith(github.ref, 'refs/tags/v') && 'stable' || github.ref == 'refs/heads/develop' && 'canary' || '' }}
+  PURR_CANARY_NUMBER: ${{ github.run_number }}
   # true: the release archives leave the Windows CUDA libraries out, and they ship as the runtime pack only
   PURR_SPLIT_CUDA_RUNTIME: "false"
 
@@ -135,7 +130,6 @@ jobs:
             mkdir -p artifacts/cli/lib
             ldd target/release/purr | awk '/lib(cudart|cublas|cublasLt)\.so/ { print $3 }' | xargs -r -I{} cp -L {} artifacts/cli/lib/
           fi
-          echo "$(git describe --tags --always --dirty)" > artifacts/cli/VERSION
           ls -lR artifacts/cli
       - name: Check the CLI does not need the deferred libraries
         if: matrix.deferred_libs
@@ -155,6 +149,7 @@ jobs:
       - name: Run the CLI on the runner
         if: matrix.portable
         run: |
+          artifacts/cli/purr --version
           artifacts/cli/purr sys || echo "::warning::purr sys failed on the runner"
       - name: Check the CLI starts on a bare Ubuntu without GPU runtimes
         if: matrix.portable
@@ -378,7 +373,7 @@ jobs:
         run: |
           mkdir -p artifacts/cli
           cp target/release/purr artifacts/cli/purr
-          echo "$(git describe --tags --always --dirty)" > artifacts/cli/VERSION
+          artifacts/cli/purr --version
       - name: Archive CLI
         uses: actions/upload-artifact@v7
         with:
@@ -495,7 +490,8 @@ jobs:
               $found | Copy-Item -Destination artifacts\cli\
             }
           }
-          git describe --tags --always --dirty | Out-File -FilePath artifacts\cli\VERSION.txt -Encoding utf8
+          & artifacts\cli\purr.exe --version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Check the CLI does not import the deferred libraries
         run: |
           ./scripts/check-windows-imports.ps1 -Exe artifacts\cli\purr.exe -Forbidden '^nvcuda\.dll$','^cudart64_','^cublas','^vulkan-1\.dll$'
@@ -622,37 +618,84 @@ jobs:
         run: |
           vercel --yes ${{ steps.setup-env.outputs.environment == 'production' && '--prod' || '' }} --token=${{ secrets.VERCEL_TOKEN }} --archive=tgz --prebuilt
 
-  nightly-release:
-    name: release (nightly)
+  canary-release:
+    name: release (canary)
     runs-on: ubuntu-24.04
-    # Only run for scheduled nightly builds or manual trigger with nightly input
-    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.nightly == true)
+    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
     needs: [cli-linux, desktop-linux, web, cli-macos, desktop-macos, cli-windows, desktop-windows]
     timeout-minutes: 30
     permissions:
       contents: write
       pull-requests: read
     outputs:
-      tag: nightly-${{ steps.date.outputs.date }}
+      tag: ${{ steps.version.outputs.tag }}
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v7
         with:
-          fetch-depth: 0 # Fetch all history for tags
+          fetch-depth: 0
 
-      - name: Get current date
-        id: date
-        run: echo "date=$(date +'%Y.%m.%d')" >> $GITHUB_OUTPUT
-
-      - name: Get previous nightly tag
-        id: prev_tag
+      - name: Stop when develop has moved on
         run: |
-          # Find the most recent nightly tag
-          PREV_TAG=$(git tag -l 'nightly-*' --sort=-version:refname | head -n 1)
-          if [ -z "$PREV_TAG" ]; then
-            # If no nightly tag exists, use the most recent tag
-            PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          tip="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/develop" --jq .object.sha)"
+          if [ "$tip" != "$GITHUB_SHA" ]; then
+            echo "::error::develop is at $tip but this run built $GITHUB_SHA, so it does not publish a stale canary"
+            exit 1
           fi
-          echo "tag=$PREV_TAG" >> $GITHUB_OUTPUT
+
+      - name: Download CLI Artifacts
+        uses: actions/download-artifact@v8
+        with:
+          pattern: purr-cli-*
+          path: ./release-artifacts
+
+      - name: Download Desktop Artifacts
+        uses: actions/download-artifact@v8
+        with:
+          pattern: purr-desktop-*
+          path: ./release-artifacts
+
+      - name: Download Web Artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: purr-web
+          path: ./release-artifacts/purr-web
+
+      - name: Read the version from the built CLI
+        id: version
+        env:
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          cli=release-artifacts/purr-cli-linux-x64-cpu/purr
+          chmod +x "$cli"
+          reported="$("$cli" --version)"
+          echo "$reported"
+          version="$(echo "$reported" | cut -d' ' -f2)"
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+-canary\.${RUN_NUMBER}$ ]]; then
+            echo "::error::the built CLI reports '$version', not a canary build number $RUN_NUMBER"
+            exit 1
+          fi
+          case "$reported" in
+            "purr $version (${GITHUB_SHA:0:7}-dirty "*) echo "::warning::the canary was built from a dirty tree: $reported" ;;
+            "purr $version (${GITHUB_SHA:0:7} "*) ;;
+            *) echo "::error::the built CLI does not report commit ${GITHUB_SHA:0:7}: $reported"; exit 1 ;;
+          esac
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=canary-$version" >> "$GITHUB_OUTPUT"
+          echo "short=${GITHUB_SHA:0:7}" >> "$GITHUB_OUTPUT"
+
+      - name: Get the previous release tag
+        id: prev_tag
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          prev="$(gh release list --limit 200 --json tagName,createdAt,isDraft \
+            | jq -r --arg tag "$TAG" '[.[] | select((.tagName | startswith("canary-")) and .tagName != $tag and (.isDraft | not))] | sort_by(.createdAt) | reverse | .[0].tagName // empty')"
+          if [ -z "$prev" ]; then
+            prev="$(git tag -l 'v*' --sort=-version:refname | head -n 1)"
+          fi
+          echo "tag=$prev" >> "$GITHUB_OUTPUT"
 
       - name: Generate Changelog
         id: changelog
@@ -690,7 +733,7 @@ jobs:
                   "labels": ["chore", "ci", "build", "deps"]
                 }
               ],
-              "template": "# Nightly Build - ${{ steps.date.outputs.date }}\n\n#{{CHANGELOG}}\n\n## 📊 Uncategorized Changes\n#{{UNCATEGORIZED}}\n\n---\n*This is an automated nightly build. It may be unstable.*\n\n## 📦 Build Information\n- Linux x64: CUDA + Vulkan backends in one build (falls back to CPU without a GPU runtime), plus CPU-only, Vulkan-only and CUDA-only builds\n- macOS Apple Silicon: Metal backend\n- Windows x64: CUDA + Vulkan backends (falls back to CPU without a GPU runtime)\n- Each platform ships the command-line tool and the desktop app separately",
+              "template": "# Canary Build - ${{ steps.version.outputs.version }}\n\n#{{CHANGELOG}}\n\n## 📊 Uncategorized Changes\n#{{UNCATEGORIZED}}\n\n---\n*This is an automated canary build of every push to develop. It may be unstable.*\n\n## 📦 Build Information\n- Linux x64: CUDA + Vulkan backends in one build (falls back to CPU without a GPU runtime), plus CPU-only, Vulkan-only and CUDA-only builds\n- macOS Apple Silicon: Metal backend\n- Windows x64: CUDA + Vulkan backends (falls back to CPU without a GPU runtime)\n- Each platform ships the command-line tool and the desktop app separately",
               "pr_template": "- #{{TITLE}} (#{{NUMBER}}) @#{{AUTHOR}}"
             }
           fromTag: ${{ steps.prev_tag.outputs.tag }}
@@ -698,32 +741,19 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Download CLI Artifacts
-        uses: actions/download-artifact@v8
-        with:
-          pattern: purr-cli-*
-          path: ./release-artifacts
-
-      - name: Download Desktop Artifacts
-        uses: actions/download-artifact@v8
-        with:
-          pattern: purr-desktop-*
-          path: ./release-artifacts
-
-      - name: Download Web Artifacts
-        uses: actions/download-artifact@v8
-        with:
-          name: purr-web
-          path: ./release-artifacts/purr-web
-
       - name: Package Release Assets
         run: bash scripts/package-release-assets.sh
 
-      - name: Create Nightly Release
+      - name: Create Canary Release
         uses: softprops/action-gh-release@v3.0.4
         with:
-          tag_name: nightly-${{ steps.date.outputs.date }}
-          name: Nightly Build - ${{ steps.date.outputs.date }}
+          tag_name: ${{ steps.version.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: Canary ${{ steps.version.outputs.version }} (${{ steps.version.outputs.short }})
+          draft: true
+          prerelease: true
+          make_latest: "false"
+          fail_on_unmatched_files: true
           body: |
             ${{ steps.changelog.outputs.changelog }}
 
@@ -749,25 +779,31 @@ jobs:
 
             ### Checksums
             Verify your download with `SHA256SUMS.txt`
-          prerelease: true
           files: |
             release-assets/*
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Clean up old nightly releases
-        run: |
-          # Keep only the last 7 nightly releases
-          NIGHTLY_TAGS=$(git tag -l 'nightly-*' --sort=-version:refname | tail -n +8)
-          if [ ! -z "$NIGHTLY_TAGS" ]; then
-            for tag in $NIGHTLY_TAGS; do
-              echo "Deleting old nightly release: $tag"
-              gh release delete "$tag" --yes || true
-              git push --delete origin "$tag" || true
-            done
-          fi
+      - name: Publish the release
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: gh release edit "$TAG" --draft=false --prerelease --latest=false
+
+      - name: Prune old canary releases
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          releases="$(gh release list --limit 200 --json tagName,createdAt,isDraft)"
+          stale="$(echo "$releases" | jq -r --arg tag "$TAG" '
+            [.[] | select(.tagName | startswith("canary-"))] as $canaries
+            | ([$canaries[] | select(.isDraft | not)] | sort_by(.createdAt) | reverse | .[5:][].tagName),
+              ($canaries[] | select(.isDraft and .tagName != $tag) | .tagName)')"
+          for tag in $stale; do
+            case "$tag" in
+              canary-*) ;;
+              *) echo "::error::refusing to delete $tag"; exit 1 ;;
+            esac
+            echo "deleting $tag"
+            gh release delete "$tag" --yes --cleanup-tag || echo "::warning::could not delete $tag"
+          done
 
   tagged-release:
     name: release (tag)
@@ -864,6 +900,19 @@ jobs:
           name: purr-web
           path: ./release-artifacts/purr-web
 
+      - name: Check the built CLI reports the tag
+        env:
+          TAG: ${{ steps.version.outputs.version }}
+        run: |
+          cli=release-artifacts/purr-cli-linux-x64-cpu/purr
+          chmod +x "$cli"
+          reported="$("$cli" --version)"
+          echo "$reported"
+          case "$reported" in
+            "purr ${TAG#v} ("*) ;;
+            *) echo "::error::the built CLI does not report ${TAG#v}: $reported"; exit 1 ;;
+          esac
+
       - name: Package Release Assets
         run: bash scripts/package-release-assets.sh "${{ steps.version.outputs.version }}"
 
@@ -904,15 +953,15 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  publish-nightly-packages:
-    name: publish packages (nightly)
-    needs: [nightly-release]
+  publish-canary-packages:
+    name: publish packages (canary)
+    needs: [canary-release]
     permissions:
       contents: read
     uses: ./.github/workflows/publish-packages.yml
     with:
-      channel: nightly
-      tag: ${{ needs.nightly-release.outputs.tag }}
+      channel: canary
+      tag: ${{ needs.canary-release.outputs.tag }}
     secrets:
       PURR_TAP_DEPLOY_KEY: ${{ secrets.PURR_TAP_DEPLOY_KEY }}
       PURR_BUCKET_DEPLOY_KEY: ${{ secrets.PURR_BUCKET_DEPLOY_KEY }}
