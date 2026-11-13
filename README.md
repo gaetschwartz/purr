@@ -135,14 +135,16 @@ cargo test -p purr-cli
 # Disable GPU acceleration (same as --accel cpu)
 ./target/release/purr audio.wav --no-gpu
 
-# Force a backend: no fallback, an error if it is unavailable or fails
-./target/release/purr audio.wav --accel cuda
+# Try a backend's devices first; the other devices and the CPU stay as fallbacks
+./target/release/purr audio.wav --accel vulkan
 
-# Prefer a backend but fall back to the priority list (ending in the CPU)
-./target/release/purr audio.wav --accel vulkan --accel-fallback
-
-# Change the priority list used by the default `--accel auto`
+# Change which backends are tried first
 ./target/release/purr audio.wav --accel-priority vulkan,cuda
+
+# Start on one device: the index `purr sys` prints, or backend, type and device id tokens
+./target/release/purr audio.wav --device 2
+./target/release/purr audio.wav --device vulkan/igpu
+./target/release/purr audio.wav --device cuda/0000:01:00.0
 
 # Set number of threads
 ./target/release/purr audio.wav --threads 4
@@ -176,12 +178,12 @@ Options:
   -m, --model <MODEL>              Path to the Whisper model file
   -l, --language <LANGUAGE>        Language code (e.g., en, es, fr)
       --accel <BACKEND>            auto (default), cuda, hip, coreml, metal, sycl, vulkan or cpu.
-                                   auto walks the priority list best to worst and falls back
-                                   when a backend is unavailable or fails; a named backend is
-                                   forced and is an error if it cannot be used
-      --accel-fallback             With --accel <BACKEND>: fall back to the priority list instead
-      --accel-priority <BACKENDS>  Priority list, best first, comma separated; cpu is appended when absent
-                                   [default: cuda,hip,coreml,metal,sycl,vulkan,cpu]
+                                   A named backend's devices are tried first, the other devices
+                                   and the CPU follow if one fails; cpu runs on the CPU alone
+      --accel-priority <BACKENDS>  Backends tried first, best first, comma separated
+      --device <DEVICE>            Start on one device: an index from `purr sys`, or tokens joined
+                                   by `/` (backend, type gpu/igpu/cpu/accel, device id such as
+                                   0000:01:00.0). It must match exactly one device
       --no-gpu                     Disable GPU acceleration (same as --accel cpu)
   -t, --threads <THREADS>          Number of threads to use
   -o, --output <OUTPUT>            Output format [default: text] [possible values: text, json, srt]

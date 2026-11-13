@@ -7,10 +7,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::accel::{
-    backend::AccelBackend,
-    config::{AccelConfig, AccelMode},
-};
+use purr_common::devices::DeviceOrder;
 
 /// The threads a transcription uses when none is asked for: every one the processor runs at once.
 pub fn auto_threads() -> std::io::Result<usize> {
@@ -29,8 +26,8 @@ pub struct TranscriptionConfig {
     /// Translate to English (like whisper.cpp --translate flag)
     pub translate: bool,
 
-    /// Acceleration backend selection and fallback
-    pub accel: AccelConfig,
+    /// The devices to try, first to last; the processor is the last resort
+    pub devices: DeviceOrder,
 
     /// Number of threads to use
     pub num_threads: Option<usize>,
@@ -112,7 +109,7 @@ impl Default for TranscriptionConfig {
             model_path: None, // Will use default model
             language: None,   // Auto-detect
             translate: false,
-            accel: AccelConfig::default(),
+            devices: DeviceOrder::automatic(),
             num_threads: None,  // Use system default
             sample_rate: 16000, // Whisper's preferred sample rate
             max_duration: None,
@@ -165,23 +162,20 @@ impl TranscriptionConfig {
         self
     }
 
-    /// Set the acceleration backend selection
+    /// Set the devices to try
     #[must_use]
-    pub fn with_accel(mut self, accel: AccelConfig) -> Self {
-        self.accel = accel;
+    pub fn with_devices(mut self, devices: DeviceOrder) -> Self {
+        self.devices = devices;
         self
     }
 
-    /// `true` selects automatic backend choice with fallback, `false` forces the CPU
+    /// `true` tries every device in the usual order, `false` the processor alone
     #[must_use]
     pub fn with_gpu(mut self, use_gpu: bool) -> Self {
-        self.accel.mode = if use_gpu {
-            AccelMode::Auto
+        self.devices = if use_gpu {
+            DeviceOrder::automatic()
         } else {
-            AccelMode::Force {
-                backend: AccelBackend::Cpu,
-                allow_fallback: false,
-            }
+            DeviceOrder::cpu_only()
         };
         self
     }
@@ -315,26 +309,23 @@ mod tests {
     use super::*;
 
     #[test]
-    fn accelerates_automatically_by_default() {
-        assert_eq!(TranscriptionConfig::new().accel.mode, AccelMode::Auto);
+    fn every_device_is_tried_by_default() {
+        assert_eq!(TranscriptionConfig::new().devices, DeviceOrder::automatic());
     }
 
     #[test]
-    fn disabling_gpu_forces_the_cpu_without_fallback() {
+    fn disabling_gpu_leaves_the_processor_alone() {
         assert_eq!(
-            TranscriptionConfig::new()
-                .with_gpu(false)
-                .accel
-                .attempt_order(),
-            [AccelBackend::Cpu]
+            TranscriptionConfig::new().with_gpu(false).devices,
+            DeviceOrder::cpu_only()
         );
     }
 
     #[test]
-    fn enabling_gpu_restores_automatic_mode_and_keeps_the_priority() {
-        let accel = AccelConfig::cpu_only().with_priority(vec![AccelBackend::Vulkan]);
-        let config = TranscriptionConfig::new().with_accel(accel).with_gpu(true);
-        assert_eq!(config.accel.mode, AccelMode::Auto);
-        assert_eq!(config.accel.priority, [AccelBackend::Vulkan]);
+    fn enabling_gpu_restores_the_usual_order() {
+        let config = TranscriptionConfig::new()
+            .with_devices(DeviceOrder::cpu_only())
+            .with_gpu(true);
+        assert_eq!(config.devices, DeviceOrder::automatic());
     }
 }

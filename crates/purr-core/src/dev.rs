@@ -2,15 +2,16 @@
 
 use std::{collections::HashMap, ffi::CStr, path::PathBuf};
 
-use purr_common::{accel::CpuReport, vulkan::VulkanDriverStatus};
+use purr_common::{accel::CpuReport, platform::DeviceType, vulkan::VulkanDriverStatus};
 use serde::{Deserialize, Serialize};
 use whisper_rs::whisper_rs_sys::{ggml_backend_dev_caps, ggml_backend_dev_count};
 
 use crate::{
     accel::{
         backend::AccelBackend,
+        devices::detect,
         inventory::Inventory,
-        plan::{Candidate, Target, locate},
+        plan::{Target, backend_status},
         report::UnavailableReason,
         vulkan_probe,
     },
@@ -63,6 +64,9 @@ pub struct SystemInfo {
     pub cpu: CpuReport,
     /// The ggml id of the GPU each usable GPU backend picks when the device is not chosen.
     pub picked_gpus: HashMap<AccelBackend, i32>,
+    /// The indexes of the devices transcription tries when nobody arranged them, first to last.
+    #[serde(default)]
+    pub default_order: Vec<i32>,
     pub devices: Vec<Device>,
 }
 
@@ -73,26 +77,30 @@ impl SystemInfo {
         let mut inventory = Inventory::detect();
         vulkan_probe::attach_drivers(&mut inventory.devices);
 
+        let detected = detect(&inventory);
+
         Self {
             picked_gpus: AccelBackend::ALL
                 .iter()
-                .filter_map(|backend| match locate(*backend, &inventory) {
-                    Ok(Candidate {
-                        target: Target::Gpu(gpu),
-                        ..
-                    }) => Some((*backend, gpu.device_id)),
-                    Ok(Candidate {
-                        target: Target::Cpu | Target::CoreMl,
-                        ..
-                    })
-                    | Err(_) => None,
+                .filter_map(|backend| {
+                    detected
+                        .iter()
+                        .find(|device| {
+                            device.backend == *backend && matches!(device.target, Target::Gpu(_))
+                        })
+                        .and_then(|device| device.ggml_id)
+                        .map(|id| (*backend, id))
                 })
+                .collect(),
+            default_order: detected
+                .iter()
+                .filter_map(|device| device.ggml_id)
                 .collect(),
             backends: AccelBackend::ALL
                 .iter()
                 .map(|backend| {
-                    let status = match locate(*backend, &inventory) {
-                        Ok(_) => FeatureStatus::Available(None),
+                    let status = match backend_status(*backend, &inventory, &detected) {
+                        Ok(()) => FeatureStatus::Available(None),
                         Err(UnavailableReason::RuntimeLibraryMissing { library, searched }) => {
                             FeatureStatus::RuntimeLibraryMissing { library, searched }
                         }
@@ -135,9 +143,7 @@ impl SystemInfo {
 
     /// Returns devices capable of GPU acceleration
     pub fn gpus(&self) -> impl Iterator<Item = &Device> {
-        self.devices
-            .iter()
-            .filter(|d| matches!(d.tpe, DeviceType::Gpu | DeviceType::Igpu))
+        self.devices.iter().filter(|d| d.tpe.is_gpu())
     }
 
     /// Returns Accelerator devices (e.g., TPU, NPU)
@@ -218,30 +224,6 @@ fn backend_of(device: whisper_rs::whisper_rs_sys::ggml_backend_dev_t) -> Option<
     }
     let name = unsafe { CStr::from_ptr(name) }.to_string_lossy();
     AccelBackend::from_ggml_registry_name(&name)
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, strum::FromRepr, PartialEq, Eq)]
-#[repr(u8)]
-pub enum DeviceType {
-    Cpu = 0,
-    Gpu = 1,
-    Igpu = 2,
-    Accel = 3,
-    Unknown = 255,
-}
-
-impl DeviceType {
-    /// What kind of device it is, in plain words.
-    #[must_use]
-    pub const fn label(self) -> &'static str {
-        match self {
-            Self::Cpu => "CPU",
-            Self::Gpu => "discrete GPU",
-            Self::Igpu => "integrated GPU",
-            Self::Accel => "accelerator",
-            Self::Unknown => "unknown",
-        }
-    }
 }
 
 #[cfg(test)]

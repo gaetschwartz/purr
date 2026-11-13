@@ -7,15 +7,15 @@ use whisper_rs::{WhisperContext, WhisperContextParameters, WhisperState};
 use crate::{
     ModelManager, TranscriptionConfig, WhisperError,
     accel::{
-        config::{AccelConfig, AccelMode},
         coreml,
         inventory::Inventory,
-        plan::{Candidate, Target, resolve},
+        plan::{Candidate, Step, Target, resolve},
         probe::probe_gpu,
-        report::{AccelAttempt, AccelReport, AttemptFailure, AttemptOutcome, UnavailableReason},
+        report::{AccelAttempt, AccelReport, AttemptFailure, AttemptOutcome},
     },
     error::{AccelerationError, Result},
 };
+use purr_common::devices::DeviceOrder;
 
 pub(crate) struct LoadedModel {
     pub state: WhisperState,
@@ -47,34 +47,38 @@ pub(crate) async fn load_model(
         info!("Loading model...");
     }
 
-    let accel = config.accel.clone();
-    task::spawn_blocking(move || load_with_acceleration(&model_path, &accel))
+    let devices = config.devices.clone();
+    task::spawn_blocking(move || load_with_acceleration(&model_path, &devices))
         .await
         .map_err(WhisperError::from)?
 }
 
-fn load_with_acceleration(model_path: &Path, config: &AccelConfig) -> Result<LoadedModel> {
+fn load_with_acceleration(model_path: &Path, order: &DeviceOrder) -> Result<LoadedModel> {
     std::fs::metadata(model_path)?;
     let inventory = Inventory::detect();
-    let plan = resolve(config, &inventory)?;
-    let order = config.attempt_order();
-    let rank = |backend| order.iter().position(|b| *b == backend);
+    let plan = resolve(order, &inventory);
 
-    let mut attempts = plan.skipped;
-    for candidate in &plan.candidates {
-        match try_candidate(candidate, model_path) {
+    let mut attempts = Vec::new();
+    for step in plan.steps {
+        let candidate = match step {
+            Step::Skip(attempt) => {
+                attempts.push(attempt);
+                continue;
+            }
+            Step::Try(candidate) => candidate,
+        };
+        match try_candidate(&candidate, model_path) {
             Ok((state, tokens)) => {
-                attempts.retain(|a| rank(a.backend) < rank(candidate.backend));
-                attempts.sort_by_key(|a| rank(a.backend));
                 let report = AccelReport {
                     selected: candidate.backend,
+                    key: candidate.key,
                     device: match &candidate.target {
                         Target::Gpu(gpu) => Some(gpu.name.clone()),
                         Target::Cpu | Target::CoreMl => None,
                     },
                     attempts,
                 };
-                log_selection(&report, config);
+                log_selection(&report);
                 return Ok(LoadedModel {
                     state,
                     tokens,
@@ -83,18 +87,18 @@ fn load_with_acceleration(model_path: &Path, config: &AccelConfig) -> Result<Loa
             }
             Err(failure) => {
                 warn!(
-                    "{} acceleration failed: {failure}",
-                    candidate.backend.pretty_name()
+                    "{} acceleration failed on {}: {failure}",
+                    candidate.backend.pretty_name(),
+                    candidate.name
                 );
-                attempts.push(AccelAttempt {
-                    backend: candidate.backend,
-                    outcome: AttemptOutcome::Failed(failure),
-                });
+                attempts.push(AccelAttempt::new(
+                    candidate.key,
+                    AttemptOutcome::Failed(failure),
+                ));
             }
         }
     }
 
-    attempts.sort_by_key(|a| rank(a.backend));
     Err(AccelerationError::Exhausted { attempts }.into())
 }
 
@@ -134,21 +138,16 @@ fn try_candidate(
     Ok((state, tokens))
 }
 
-fn log_selection(report: &AccelReport, config: &AccelConfig) {
-    let forced = match config.mode {
-        AccelMode::Auto => None,
-        AccelMode::Force { backend, .. } => Some(backend),
-    };
+fn log_selection(report: &AccelReport) {
     for attempt in &report.attempts {
         let AttemptOutcome::Unavailable(reason) = &attempt.outcome else {
             continue;
         };
-        let expected = Some(attempt.backend) != forced && *reason != UnavailableReason::NoDevice;
-        if expected {
-            debug!("{} not used: {reason}", attempt.backend.pretty_name());
-        } else {
-            warn!("{} not used: {reason}", attempt.backend.pretty_name());
-        }
+        warn!(
+            "{} {} not used: {reason}",
+            attempt.backend.pretty_name(),
+            attempt.key.name
+        );
     }
     let device = report
         .device

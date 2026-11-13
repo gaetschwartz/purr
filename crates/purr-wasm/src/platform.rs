@@ -15,11 +15,11 @@ use crate::worker_client::WorkerClient;
 use crate::{history_audio, history_store};
 use bytes::Bytes;
 use futures::StreamExt as _;
-use purr_common::accel::AccelPolicy;
 use purr_common::accel::SystemReport;
 use purr_common::adapter_name::{AdapterStrings, adapter_name};
 use purr_common::audio_overview::{AudioOverview, peaks};
 use purr_common::browser_engine::CpuReason;
+use purr_common::devices::DeviceOrder;
 use purr_common::history::{
     audio::{AudioOutcome, HistoryAudio},
     entry::{HistoryEntry, HistoryId, HistoryRecord},
@@ -230,7 +230,7 @@ struct Transcription {
     language: Option<String>,
     translate: bool,
     hugging_face_token: Option<HuggingFaceToken>,
-    policy: AccelPolicy,
+    devices: DeviceOrder,
 }
 
 async fn run_transcription(
@@ -246,7 +246,7 @@ async fn run_transcription(
         language,
         translate,
         hugging_face_token,
-        policy,
+        devices,
     } = job;
     if !send_status(&tx, TranscriptionStatus::Starting)
         || !send_status(&tx, TranscriptionStatus::ProcessingAudio)
@@ -277,7 +277,7 @@ async fn run_transcription(
     );
 
     let mut mapper = TranscriptionMapper::new(&spec, model_cached);
-    let mut choice = match engine_choice::choose(&spec, policy) {
+    let mut choice = match engine_choice::choose(&spec, &devices) {
         Ok(choice) => choice,
         Err(reason) => {
             send_status(&tx, cannot_run(reason));
@@ -379,7 +379,7 @@ async fn run_preload(
     worker: Arc<WorkerClient>,
     spec: WebModelSpec,
     hugging_face_token: Option<HuggingFaceToken>,
-    policy: AccelPolicy,
+    devices: DeviceOrder,
     tx: mpsc::UnboundedSender<Result<ModelOperationProgress, PlatformError>>,
 ) {
     let model_id = spec.id.clone();
@@ -441,7 +441,7 @@ async fn run_preload(
         }
     };
 
-    let mut choice = match engine_choice::choose(&spec, policy) {
+    let mut choice = match engine_choice::choose(&spec, &devices) {
         Ok(choice) => choice,
         Err(reason) => {
             if tx
@@ -635,7 +635,7 @@ impl Platform for WasmPlatformImpl {
                 language,
                 translate: request.translate,
                 hugging_face_token: request.hugging_face_token,
-                policy: request.engine.accel,
+                devices: request.engine.devices,
             },
             tx,
         ));
@@ -760,13 +760,13 @@ impl Platform for WasmPlatformImpl {
         self.ensure_initialized().await?;
 
         let spec = self.model_manager.model(model_id)?.clone();
-        let policy = self.load_settings().await?.performance.accel_policy();
+        let devices = self.load_settings().await?.performance.device_order();
         let (tx, rx) = mpsc::unbounded_channel();
         spawn_local(run_preload(
             Arc::clone(&self.worker),
             spec,
             token,
-            policy,
+            devices,
             tx,
         ));
         Ok(Box::pin(UnboundedReceiverStream::new(rx)))
@@ -826,6 +826,7 @@ impl Platform for WasmPlatformImpl {
             memory_free: None,
             memory_total: None,
             capabilities: None,
+            key: None,
         }];
         if let Some(gpu) = run_local(detect_webgpu).await? {
             devices.push(gpu);
@@ -922,5 +923,6 @@ async fn detect_webgpu() -> WebResult<Option<DeviceInfo>> {
         memory_free: None,
         memory_total: None,
         capabilities: Some(capabilities),
+        key: None,
     }))
 }

@@ -1,6 +1,6 @@
 //! Which hardware transcription runs on: what the user may choose and what a machine reports.
 
-use crate::platform::DeviceInfo;
+use crate::{devices::DeviceKey, platform::DeviceInfo};
 use serde::{Deserialize, Serialize};
 
 /// A hardware backend a transcription can run on.
@@ -42,10 +42,9 @@ impl AccelBackend {
     }
 }
 
-/// The backend setting: let Purr pick, or one backend by name.
+/// The backend setting of version 2 settings files: let Purr pick, or one backend by name.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum AccelSelection {
-    /// The best backend that works, from the priority list.
     #[default]
     Auto,
     Cuda,
@@ -58,18 +57,6 @@ pub enum AccelSelection {
 }
 
 impl AccelSelection {
-    /// Every choice, in the order a menu lists them.
-    pub const ALL: [Self; 8] = [
-        Self::Auto,
-        Self::Cuda,
-        Self::Hip,
-        Self::CoreMl,
-        Self::Metal,
-        Self::Sycl,
-        Self::Vulkan,
-        Self::Cpu,
-    ];
-
     /// The backend this choice names, `None` for [`Self::Auto`].
     #[must_use]
     pub const fn backend(self) -> Option<AccelBackend> {
@@ -84,50 +71,6 @@ impl AccelSelection {
             Self::Cpu => Some(AccelBackend::Cpu),
         }
     }
-
-    /// The choice that names `backend`.
-    #[must_use]
-    pub const fn of(backend: AccelBackend) -> Self {
-        match backend {
-            AccelBackend::Cuda => Self::Cuda,
-            AccelBackend::Hip => Self::Hip,
-            AccelBackend::CoreMl => Self::CoreMl,
-            AccelBackend::Metal => Self::Metal,
-            AccelBackend::Sycl => Self::Sycl,
-            AccelBackend::Vulkan => Self::Vulkan,
-            AccelBackend::Cpu => Self::Cpu,
-        }
-    }
-
-    /// The name shown in the backend menu.
-    #[must_use]
-    pub const fn label(self) -> &'static str {
-        match self.backend() {
-            None => "Automatic",
-            Some(backend) => backend.label(),
-        }
-    }
-}
-
-/// How a transcription picks its backend, after every performance setting is taken into account.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum AccelPolicy {
-    /// Try the priority list from best to worst, moving on when a backend is unavailable.
-    #[default]
-    Auto,
-    /// Use `backend`; without `allow_fallback` an unavailable or failing backend is an error.
-    Forced {
-        backend: AccelBackend,
-        allow_fallback: bool,
-    },
-}
-
-impl AccelPolicy {
-    /// The processor only, with nothing to fall back to.
-    pub const CPU_ONLY: Self = Self::Forced {
-        backend: AccelBackend::Cpu,
-        allow_fallback: false,
-    };
 }
 
 /// Why a backend cannot be used on this machine.
@@ -317,10 +260,10 @@ pub enum PassedReason {
     Failed(String),
 }
 
-/// A backend the last transcription passed over before it found one that worked.
+/// A device the last transcription passed over before it found one that worked.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PassedOver {
-    pub backend: AccelBackend,
+    pub key: DeviceKey,
     pub reason: PassedReason,
 }
 
@@ -328,6 +271,7 @@ pub struct PassedOver {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LastRun {
     pub backend: AccelBackend,
+    /// The device or processor name, as the system reports it.
     pub device: Option<String>,
     pub passed_over: Vec<PassedOver>,
 }
@@ -351,24 +295,6 @@ pub struct SystemReport {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn every_backend_has_its_own_selection() {
-        for backend in AccelBackend::PRIORITY {
-            assert_eq!(AccelSelection::of(backend).backend(), Some(backend));
-        }
-        assert_eq!(AccelSelection::Auto.backend(), None);
-    }
-
-    #[test]
-    fn the_menu_lists_automatic_first_then_the_priority_order() {
-        let named: Vec<_> = AccelSelection::ALL
-            .iter()
-            .filter_map(|selection| selection.backend())
-            .collect();
-        assert_eq!(AccelSelection::ALL.first(), Some(&AccelSelection::Auto));
-        assert_eq!(named, AccelBackend::PRIORITY);
-    }
 
     fn report(built_with: &[CpuFeature], detected: Option<&[CpuFeature]>) -> CpuReport {
         CpuReport {

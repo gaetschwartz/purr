@@ -2,8 +2,8 @@
 //! WebGPU cannot start. Nothing is measured: the GPU is trusted until the worker says it failed.
 
 use crate::protocol::{FailureKind, Provider};
-use purr_common::accel::AccelPolicy;
 use purr_common::browser_engine::{BrowserEngine, CpuReason};
+use purr_common::devices::DeviceOrder;
 use purr_common::web_model::registry::WebModelSpec;
 
 /// Where a model runs.
@@ -64,11 +64,11 @@ pub const fn gpu_failure_reason(kind: FailureKind) -> Option<CpuReason> {
     }
 }
 
-/// Where `spec` runs under `policy`, or why it cannot: it only runs on WebGPU and the settings
+/// Where `spec` runs under `devices`, or why it cannot: it only runs on WebGPU and the settings
 /// ask for the CPU.
-pub fn choose(spec: &WebModelSpec, policy: AccelPolicy) -> Result<Choice, CpuReason> {
+pub fn choose(spec: &WebModelSpec, devices: &DeviceOrder) -> Result<Choice, CpuReason> {
     let cpu_can_run = spec.runs_on_cpu();
-    match BrowserEngine::requested(policy) {
+    match BrowserEngine::requested(devices) {
         BrowserEngine::WebGpu => Ok(Choice {
             engine: BrowserEngine::WebGpu,
             cpu_can_run,
@@ -93,15 +93,15 @@ mod tests {
         Ok(WebModelRegistry::embedded()?.get(id)?.clone())
     }
 
-    fn chosen(id: &str, policy: AccelPolicy) -> Result<Choice, Box<dyn std::error::Error>> {
-        choose(&spec(id)?, policy).map_err(|reason| format!("{reason:?}").into())
+    fn chosen(id: &str, devices: &DeviceOrder) -> Result<Choice, Box<dyn std::error::Error>> {
+        choose(&spec(id)?, devices).map_err(|reason| format!("{reason:?}").into())
     }
 
     #[test]
     fn the_default_policy_runs_on_webgpu() -> Result<(), Box<dyn std::error::Error>> {
         for id in [CPU_RUNNABLE, GPU_ONLY] {
             assert_eq!(
-                choose(&spec(id)?, AccelPolicy::Auto).map(|choice| choice.engine),
+                choose(&spec(id)?, &DeviceOrder::automatic()).map(|choice| choice.engine),
                 Ok(BrowserEngine::WebGpu),
                 "{id}"
             );
@@ -113,11 +113,11 @@ mod tests {
     fn the_cpu_policy_runs_on_the_cpu_when_the_model_can() -> Result<(), Box<dyn std::error::Error>>
     {
         assert_eq!(
-            choose(&spec(CPU_RUNNABLE)?, AccelPolicy::CPU_ONLY).map(|choice| choice.engine),
+            choose(&spec(CPU_RUNNABLE)?, &DeviceOrder::cpu_only()).map(|choice| choice.engine),
             Ok(BrowserEngine::Cpu(CpuReason::Chosen))
         );
         assert_eq!(
-            choose(&spec(GPU_ONLY)?, AccelPolicy::CPU_ONLY).map(|choice| choice.engine),
+            choose(&spec(GPU_ONLY)?, &DeviceOrder::cpu_only()).map(|choice| choice.engine),
             Err(CpuReason::Chosen)
         );
         Ok(())
@@ -126,11 +126,11 @@ mod tests {
     #[test]
     fn the_provider_follows_the_engine() -> Result<(), Box<dyn std::error::Error>> {
         assert_eq!(
-            chosen(CPU_RUNNABLE, AccelPolicy::Auto)?.provider(),
+            chosen(CPU_RUNNABLE, &DeviceOrder::automatic())?.provider(),
             Provider::WebGpu
         );
         assert_eq!(
-            chosen(CPU_RUNNABLE, AccelPolicy::CPU_ONLY)?.provider(),
+            chosen(CPU_RUNNABLE, &DeviceOrder::cpu_only())?.provider(),
             Provider::Cpu
         );
         Ok(())
@@ -139,7 +139,7 @@ mod tests {
     #[test]
     fn a_webgpu_failure_moves_a_cpu_capable_model_to_the_cpu()
     -> Result<(), Box<dyn std::error::Error>> {
-        let choice = chosen(CPU_RUNNABLE, AccelPolicy::Auto)?;
+        let choice = chosen(CPU_RUNNABLE, &DeviceOrder::automatic())?;
         for (kind, reason) in [
             (FailureKind::WebGpuUnavailable, CpuReason::NoWebGpu),
             (FailureKind::ShaderF16Unavailable, CpuReason::NoShaderF16),
@@ -160,7 +160,7 @@ mod tests {
     #[test]
     fn a_webgpu_failure_refuses_a_model_the_cpu_cannot_run()
     -> Result<(), Box<dyn std::error::Error>> {
-        let choice = chosen(GPU_ONLY, AccelPolicy::Auto)?;
+        let choice = chosen(GPU_ONLY, &DeviceOrder::automatic())?;
         assert_eq!(
             choice.after_failure(FailureKind::WebGpuUnavailable),
             GpuFailure::CannotRun(CpuReason::NoWebGpu)
@@ -171,8 +171,8 @@ mod tests {
     #[test]
     fn other_failures_and_runs_already_on_the_cpu_stay_as_they_are()
     -> Result<(), Box<dyn std::error::Error>> {
-        let gpu = chosen(CPU_RUNNABLE, AccelPolicy::Auto)?;
-        let cpu = chosen(CPU_RUNNABLE, AccelPolicy::CPU_ONLY)?;
+        let gpu = chosen(CPU_RUNNABLE, &DeviceOrder::automatic())?;
+        let cpu = chosen(CPU_RUNNABLE, &DeviceOrder::cpu_only())?;
         assert_eq!(
             gpu.after_failure(FailureKind::Inference),
             GpuFailure::Unrelated

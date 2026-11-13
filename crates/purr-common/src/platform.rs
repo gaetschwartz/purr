@@ -15,10 +15,11 @@ use std::{
 };
 
 use crate::{
-    accel::{AccelPolicy, LastRun, SystemReport},
+    accel::{LastRun, SystemReport},
     audio_overview::AudioOverview,
     beams::{BeamSnapshot, BeamSwitch},
     browser_engine::BrowserEngine,
+    devices::{DeviceKey, DeviceOrder},
     history::{
         audio::{AudioOutcome, HistoryAudio},
         entry::{HistoryEntry, HistoryId, HistoryRecord},
@@ -362,10 +363,10 @@ pub struct TranscriptionRequest {
 }
 
 /// How the transcription engine runs, taken from the performance and model settings.
-#[derive(Debug, Clone, Copy, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct EngineOptions {
-    /// Which hardware to run on
-    pub accel: AccelPolicy,
+    /// Which devices to try, and in what order
+    pub devices: DeviceOrder,
     /// CPU threads, `None` to let the engine choose
     pub threads: Option<u32>,
     /// Sampling temperature, 0.0 being deterministic
@@ -375,9 +376,9 @@ pub struct EngineOptions {
 impl EngineOptions {
     /// The options the user's settings ask for.
     #[must_use]
-    pub const fn from_settings(settings: &Settings) -> Self {
+    pub fn from_settings(settings: &Settings) -> Self {
         Self {
-            accel: settings.performance.accel_policy(),
+            devices: settings.performance.device_order(),
             threads: settings.performance.threads,
             temperature: settings.model.temperature,
         }
@@ -784,17 +785,40 @@ pub enum ModelIntegrity {
     },
 }
 
-/// Device type for transcription acceleration
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+/// What kind of device it is; the values are the ones ggml reports.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, strum::FromRepr, PartialEq, Eq)]
+#[repr(u8)]
 pub enum DeviceType {
-    /// CPU device - always available
-    Cpu,
-    /// GPU device - available when GPU acceleration is supported
-    Gpu,
+    /// The processor
+    Cpu = 0,
+    /// A discrete GPU
+    Gpu = 1,
+    /// An integrated GPU, which shares system memory
+    Igpu = 2,
     /// Accelerator device (TPU, NPU, etc.)
-    Accel,
+    Accel = 3,
     /// Unknown device type
-    Unknown,
+    Unknown = 255,
+}
+
+impl DeviceType {
+    /// What kind of device it is, in plain words.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Cpu => "CPU",
+            Self::Gpu => "discrete GPU",
+            Self::Igpu => "integrated GPU",
+            Self::Accel => "accelerator",
+            Self::Unknown => "unknown",
+        }
+    }
+
+    /// Whether it is a GPU, discrete or integrated.
+    #[must_use]
+    pub const fn is_gpu(self) -> bool {
+        matches!(self, Self::Gpu | Self::Igpu)
+    }
 }
 
 /// Information about available devices for transcription
@@ -814,6 +838,9 @@ pub struct DeviceInfo {
     pub memory_total: Option<usize>,
     /// Device capabilities (platform-specific)
     pub capabilities: Option<HashMap<String, serde_json::Value>>,
+    /// What the user's device list calls this device; `None` where the list is not used
+    #[serde(default)]
+    pub key: Option<DeviceKey>,
 }
 
 /// Platform trait defining the interface for platform-specific implementations
@@ -1206,22 +1233,28 @@ pub trait Platform: Send + Sync + 'static {
 #[cfg(test)]
 mod engine_options_tests {
     use super::*;
-    use crate::accel::{AccelBackend, AccelSelection};
+    use crate::{
+        accel::AccelBackend,
+        devices::{DeviceKey, DevicePreference},
+    };
 
     #[test]
     fn the_engine_follows_the_performance_and_model_settings() {
+        let list = vec![
+            DevicePreference {
+                key: DeviceKey::new(AccelBackend::Vulkan, "Radeon", 0),
+                enabled: false,
+            },
+            DevicePreference::enabled(DeviceKey::cpu()),
+        ];
         let mut settings = Settings::default();
-        settings.performance.accel_backend = AccelSelection::Vulkan;
-        settings.performance.accel_fallback = false;
+        settings.performance.devices = list.clone();
         settings.performance.threads = Some(3);
         settings.model.temperature = 0.4;
         assert_eq!(
             EngineOptions::from_settings(&settings),
             EngineOptions {
-                accel: AccelPolicy::Forced {
-                    backend: AccelBackend::Vulkan,
-                    allow_fallback: false
-                },
+                devices: DeviceOrder::saved(list),
                 threads: Some(3),
                 temperature: 0.4,
             }

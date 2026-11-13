@@ -1,11 +1,10 @@
 //! What `purr sys` reports: the processor and devices as plain lines, and the whole report as JSON.
 
-use purr_common::accel::{CpuFeature, CpuReport};
-use purr_core::{
-    SystemInfo,
-    accel::backend::AccelBackend,
-    dev::{Device, DeviceType},
+use purr_common::{
+    accel::{CpuFeature, CpuReport},
+    platform::DeviceType,
 };
+use purr_core::{SystemInfo, accel::backend::AccelBackend, dev::Device};
 
 /// The whole report as one JSON document.
 pub fn json(sys: &SystemInfo) -> serde_json::Result<String> {
@@ -379,6 +378,7 @@ mod tests {
                 Some(&[CpuFeature::Avx2, CpuFeature::Bmi2]),
             ),
             picked_gpus: std::iter::once((AccelBackend::Vulkan, 2)).collect(),
+            default_order: vec![2],
             devices: vec![device(DeviceType::Igpu, Some("0000:00:02.0"))],
         }
     }
@@ -442,6 +442,7 @@ mod tests {
                     "detected": ["Avx2", "Bmi2"]
                 },
                 "picked_gpus": { "vulkan": 2 },
+                "default_order": [2],
                 "devices": [{
                     "id": 2,
                     "name": "Vulkan0",

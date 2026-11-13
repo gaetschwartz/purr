@@ -1,13 +1,8 @@
-use std::cmp::Ordering;
-
-use crate::{
-    dev::{Device, DeviceType},
-    error::AccelerationError,
-};
+use purr_common::devices::{DeviceKey, DeviceOrder};
 
 use super::{
     backend::{AccelBackend, BuildStatus},
-    config::{AccelConfig, AccelMode},
+    devices::{DetectedDevice, detect, keys},
     inventory::Inventory,
     report::{AccelAttempt, AttemptOutcome, UnavailableReason},
 };
@@ -32,434 +27,425 @@ pub enum Target {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Candidate {
+    pub key: DeviceKey,
     pub backend: AccelBackend,
+    /// The name the system reports for the device.
+    pub name: String,
     pub target: Target,
+}
+
+impl Candidate {
+    fn of(device: &DetectedDevice) -> Self {
+        Self {
+            key: device.key.clone(),
+            backend: device.backend,
+            name: device.name.clone(),
+            target: device.target.clone(),
+        }
+    }
+
+    fn cpu() -> Self {
+        Self {
+            key: DeviceKey::cpu(),
+            backend: AccelBackend::Cpu,
+            name: "CPU".to_owned(),
+            target: Target::Cpu,
+        }
+    }
+}
+
+/// What to do with one device of the list.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Step {
+    Try(Candidate),
+    /// It cannot be used at all; nothing is loaded on it.
+    Skip(AccelAttempt),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Plan {
-    /// Usable candidates, in the order they should be tried.
-    pub candidates: Vec<Candidate>,
-    /// Backends of the attempt order that cannot be used at all.
-    pub skipped: Vec<AccelAttempt>,
+    /// The devices to go through, first to last. The last step is always the processor.
+    pub steps: Vec<Step>,
 }
 
-fn is_gpu(device: &Device) -> bool {
-    matches!(device.tpe, DeviceType::Gpu | DeviceType::Igpu)
-}
-
-/// Discrete GPUs first, then integrated ones, then the one with more memory, then the lower index.
-fn gpu_preference(a: &Device, b: &Device) -> Ordering {
-    const fn kind(device: &Device) -> u8 {
-        match device.tpe {
-            DeviceType::Gpu => 0,
-            DeviceType::Igpu => 1,
-            DeviceType::Cpu | DeviceType::Accel | DeviceType::Unknown => 2,
-        }
+impl Plan {
+    /// The devices that can be tried, in order.
+    pub fn candidates(&self) -> impl Iterator<Item = &Candidate> {
+        self.steps.iter().filter_map(|step| match step {
+            Step::Try(candidate) => Some(candidate),
+            Step::Skip(_) => None,
+        })
     }
-    kind(a)
-        .cmp(&kind(b))
-        .then_with(|| b.vram_total.cmp(&a.vram_total))
-        .then_with(|| a.id.cmp(&b.id))
 }
 
-/// Where `backend` would run, or why it cannot.
-pub fn locate(
-    backend: AccelBackend,
-    inventory: &Inventory,
-) -> Result<Candidate, UnavailableReason> {
-    let unavailable = || match inventory.build_status(backend) {
+/// Why a backend that is built in cannot run: its runtime library cannot be loaded.
+fn missing_runtime(backend: AccelBackend, inventory: &Inventory) -> Option<UnavailableReason> {
+    inventory.missing_runtime.get(&backend).map(|library| {
+        UnavailableReason::RuntimeLibraryMissing {
+            library: library.clone(),
+            searched: inventory.runtime_dirs.clone(),
+        }
+    })
+}
+
+/// Why `backend` has no device to offer.
+fn absent_reason(backend: AccelBackend, inventory: &Inventory) -> UnavailableReason {
+    missing_runtime(backend, inventory).unwrap_or_else(|| match inventory.build_status(backend) {
         BuildStatus::Built => UnavailableReason::NoDevice,
         BuildStatus::NotBuilt => UnavailableReason::NotBuilt,
         BuildStatus::Unknown => UnavailableReason::NotBuiltOrNoDevice,
-    };
-    if let Some(library) = inventory.missing_runtime.get(&backend) {
-        return Err(UnavailableReason::RuntimeLibraryMissing {
-            library: library.clone(),
-            searched: inventory.runtime_dirs.clone(),
-        });
+    })
+}
+
+/// Whether `backend` can run on this machine, or why it cannot.
+pub fn backend_status(
+    backend: AccelBackend,
+    inventory: &Inventory,
+    detected: &[DetectedDevice],
+) -> Result<(), UnavailableReason> {
+    if let Some(reason) = missing_runtime(backend, inventory) {
+        return Err(reason);
     }
-    let target = match backend {
-        AccelBackend::Cpu => Target::Cpu,
-        AccelBackend::CoreMl => match inventory.build_status(backend) {
-            BuildStatus::Built => Target::CoreMl,
-            BuildStatus::NotBuilt | BuildStatus::Unknown => return Err(unavailable()),
-        },
-        AccelBackend::Cuda
+    match backend {
+        AccelBackend::Cpu => Ok(()),
+        AccelBackend::CoreMl
+        | AccelBackend::Cuda
         | AccelBackend::Hip
         | AccelBackend::Metal
         | AccelBackend::Sycl
         | AccelBackend::Vulkan => {
-            let device = inventory
-                .devices
-                .iter()
-                .filter(|d| d.backend == Some(backend) && is_gpu(d))
-                .min_by(|a, b| gpu_preference(a, b))
-                .ok_or_else(unavailable)?;
-            let ordinal = inventory
-                .devices
-                .iter()
-                .filter(|d| is_gpu(d))
-                .position(|d| d.id == device.id)
-                .and_then(|ordinal| i32::try_from(ordinal).ok())
-                .ok_or_else(unavailable)?;
-            Target::Gpu(GpuTarget {
-                device_id: device.id,
-                ordinal,
-                name: device.name.clone(),
-            })
+            if detected.iter().any(|device| device.backend == backend) {
+                Ok(())
+            } else {
+                Err(absent_reason(backend, inventory))
+            }
         }
-    };
-    Ok(Candidate { backend, target })
+    }
 }
 
-/// Decide which backends to try, without touching any device.
+/// Decide which devices to try, in which order, without touching any of them.
 ///
-/// Fails only when a backend was forced without fallback and cannot be used.
-pub fn resolve(config: &AccelConfig, inventory: &Inventory) -> Result<Plan, AccelerationError> {
-    let mut plan = Plan::default();
-    for backend in config.attempt_order() {
-        match locate(backend, inventory) {
-            Ok(candidate) => plan.candidates.push(candidate),
-            Err(reason) => plan.skipped.push(AccelAttempt {
-                backend,
-                outcome: AttemptOutcome::Unavailable(reason),
-            }),
+/// The devices come from `order` merged with what the inventory holds. Switched-off devices are
+/// left out. A device that cannot be used is a skipped step, with the reason. The processor
+/// ends the plan: devices listed after it are never reached, and it is added when the order
+/// lacks it.
+#[must_use]
+pub fn resolve(order: &DeviceOrder, inventory: &Inventory) -> Plan {
+    let detected = detect(inventory);
+    let list = order.effective(&keys(&detected));
+    let mut steps = Vec::new();
+    let mut ends_with_cpu = false;
+    for preference in list.iter().filter(|preference| preference.enabled) {
+        let backend = AccelBackend::from(preference.key.backend);
+        let found = detected.iter().find(|device| device.key == preference.key);
+        steps.push(match found {
+            Some(device) => match missing_runtime(backend, inventory) {
+                Some(reason) => skipped(preference.key.clone(), reason),
+                None => Step::Try(Candidate::of(device)),
+            },
+            None if preference.key.is_cpu() => Step::Try(Candidate::cpu()),
+            None => skipped(preference.key.clone(), absent_reason(backend, inventory)),
+        });
+        if preference.key.is_cpu() {
+            ends_with_cpu = true;
+            break;
         }
     }
-    if let AccelMode::Force {
-        backend,
-        allow_fallback: false,
-    } = config.mode
-        && let Some(AccelAttempt {
-            outcome: AttemptOutcome::Unavailable(reason),
-            ..
-        }) = plan.skipped.first()
-    {
-        return Err(AccelerationError::Unavailable {
-            backend,
-            reason: reason.clone(),
-        });
+    if !ends_with_cpu {
+        steps.push(Step::Try(Candidate::cpu()));
     }
-    Ok(plan)
+    Plan { steps }
+}
+
+fn skipped(key: DeviceKey, reason: UnavailableReason) -> Step {
+    Step::Skip(AccelAttempt::new(key, AttemptOutcome::Unavailable(reason)))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use AccelBackend::{Cpu, Cuda, Hip, Metal, Vulkan};
-    use std::{collections::HashMap, path::PathBuf};
+    use crate::accel::devices::fixtures::{device, inventory, workstation};
+    use AccelBackend::{Cpu, Cuda, Metal, Vulkan};
+    use purr_common::platform::DeviceType;
+    use purr_common::{
+        accel::AccelBackend as Common,
+        devices::{DeviceDefaults, DevicePreference},
+    };
+    use std::path::PathBuf;
 
-    fn device(id: i32, backend: AccelBackend, tpe: DeviceType) -> Device {
-        Device {
-            id,
-            name: format!("{backend}{id}"),
-            description: String::new(),
-            device_id: None,
-            vram_free: 0,
-            vram_total: 0,
-            tpe,
-            backend: Some(backend),
-            caps: None,
-            vulkan_driver: None,
+    const RTX: &str = "NVIDIA GeForce RTX 2070 SUPER";
+    const RADEON: &str = "AMD Radeon(TM) Graphics";
+
+    fn cuda_rtx() -> DeviceKey {
+        DeviceKey::new(Common::Cuda, RTX, 0)
+    }
+
+    fn vulkan_rtx() -> DeviceKey {
+        DeviceKey::new(Common::Vulkan, RTX, 0)
+    }
+
+    fn radeon() -> DeviceKey {
+        DeviceKey::new(Common::Vulkan, RADEON, 0)
+    }
+
+    fn on(key: DeviceKey) -> DevicePreference {
+        DevicePreference::enabled(key)
+    }
+
+    fn off(key: DeviceKey) -> DevicePreference {
+        DevicePreference {
+            key,
+            enabled: false,
         }
     }
 
-    fn inventory(devices: Vec<Device>, built: &[AccelBackend]) -> Inventory {
-        Inventory {
-            devices,
-            build: AccelBackend::ALL
-                .iter()
-                .map(|b| {
-                    let status = if built.contains(b) {
-                        BuildStatus::Built
-                    } else {
-                        BuildStatus::NotBuilt
-                    };
-                    (*b, status)
-                })
-                .collect::<HashMap<_, _>>(),
-            missing_runtime: HashMap::new(),
-            runtime_dirs: vec![PathBuf::from("/runtime")],
-        }
+    fn saved(list: Vec<DevicePreference>) -> DeviceOrder {
+        DeviceOrder::saved(list)
     }
 
-    fn without_runtime(
-        mut inventory: Inventory,
-        backend: AccelBackend,
-        library: &str,
-    ) -> Inventory {
-        inventory
-            .missing_runtime
-            .insert(backend, library.to_owned());
-        inventory
+    fn tried(plan: &Plan) -> Vec<DeviceKey> {
+        plan.candidates().map(|c| c.key.clone()).collect()
     }
 
-    fn cuda_and_vulkan_machine() -> Inventory {
-        inventory(
-            vec![
-                device(0, Cuda, DeviceType::Gpu),
-                device(1, Vulkan, DeviceType::Igpu),
-                device(2, Vulkan, DeviceType::Gpu),
-                device(3, Cpu, DeviceType::Cpu),
-            ],
-            &[Cuda, Vulkan, Cpu],
-        )
-    }
-
-    fn backends(plan: &Plan) -> Vec<AccelBackend> {
-        plan.candidates.iter().map(|c| c.backend).collect()
-    }
-
-    fn gpu_target(plan: &Plan, backend: AccelBackend) -> Option<&GpuTarget> {
-        plan.candidates
+    fn skipped_keys(plan: &Plan) -> Vec<DeviceKey> {
+        plan.steps
             .iter()
-            .find_map(|c| match (&c.target, c.backend == backend) {
-                (Target::Gpu(target), true) => Some(target),
-                (Target::Gpu(_) | Target::Cpu | Target::CoreMl, _) => None,
+            .filter_map(|step| match step {
+                Step::Skip(attempt) => Some(attempt.key.clone()),
+                Step::Try(_) => None,
             })
+            .collect()
     }
 
     #[test]
-    fn auto_orders_available_backends_by_priority_and_records_skips() {
-        let plan = resolve(&AccelConfig::default(), &cuda_and_vulkan_machine()).unwrap();
-        assert_eq!(backends(&plan), [Cuda, Vulkan, Cpu]);
-        let skipped: Vec<_> = plan.skipped.iter().map(|a| a.backend).collect();
+    fn automatic_tries_every_device_in_the_usual_order_ending_with_the_cpu() {
+        let plan = resolve(&DeviceOrder::automatic(), &workstation());
         assert_eq!(
-            skipped,
-            [Hip, AccelBackend::CoreMl, Metal, AccelBackend::Sycl]
+            tried(&plan),
+            [cuda_rtx(), vulkan_rtx(), radeon(), DeviceKey::cpu()]
         );
+        assert_eq!(skipped_keys(&plan), []);
     }
 
     #[test]
-    fn gpu_ordinal_counts_only_gpu_devices() {
-        let inventory = inventory(
-            vec![
-                device(0, AccelBackend::Cpu, DeviceType::Cpu),
-                device(1, Cuda, DeviceType::Accel),
-                device(2, Cuda, DeviceType::Gpu),
-                device(3, Vulkan, DeviceType::Unknown),
-                device(4, Vulkan, DeviceType::Igpu),
-            ],
-            &[Cuda, Vulkan, Cpu],
-        );
-        let plan = resolve(&AccelConfig::default(), &inventory).unwrap();
-        let cuda = gpu_target(&plan, Cuda).unwrap();
-        let vulkan = gpu_target(&plan, Vulkan).unwrap();
-        assert_eq!((cuda.device_id, cuda.ordinal), (2, 0));
-        assert_eq!((vulkan.device_id, vulkan.ordinal), (4, 1));
-    }
-
-    fn with_memory(mut device: Device, vram_total: usize) -> Device {
-        device.vram_total = vram_total;
-        device
-    }
-
-    fn chosen(devices: Vec<Device>) -> (i32, i32) {
-        let plan = resolve(
-            &AccelConfig::forced(Vulkan, false),
-            &inventory(devices, &[Vulkan, Cpu]),
-        )
-        .unwrap();
-        let vulkan = gpu_target(&plan, Vulkan).unwrap();
-        (vulkan.device_id, vulkan.ordinal)
-    }
-
-    #[test]
-    fn a_discrete_gpu_is_chosen_over_an_integrated_one_listed_first() {
-        let plan = resolve(
-            &AccelConfig::forced(Vulkan, false),
-            &cuda_and_vulkan_machine(),
-        )
-        .unwrap();
-        let vulkan = gpu_target(&plan, Vulkan).unwrap();
-        assert_eq!((vulkan.device_id, vulkan.ordinal), (2, 2));
-    }
-
-    #[test]
-    fn a_discrete_gpu_is_chosen_over_a_larger_integrated_one() {
+    fn the_saved_order_decides() {
+        let order = saved(vec![
+            on(radeon()),
+            on(cuda_rtx()),
+            on(vulkan_rtx()),
+            on(DeviceKey::cpu()),
+        ]);
         assert_eq!(
-            chosen(vec![
-                with_memory(device(0, Vulkan, DeviceType::Igpu), 32 << 30),
-                with_memory(device(1, Vulkan, DeviceType::Gpu), 4 << 30),
-                device(2, Cpu, DeviceType::Cpu),
-            ]),
-            (1, 1)
+            tried(&resolve(&order, &workstation())),
+            [radeon(), cuda_rtx(), vulkan_rtx(), DeviceKey::cpu()]
         );
     }
 
     #[test]
-    fn among_discrete_gpus_the_one_with_more_memory_is_chosen() {
+    fn a_disabled_device_is_neither_tried_nor_reported() {
+        let order = saved(vec![
+            off(cuda_rtx()),
+            on(vulkan_rtx()),
+            off(radeon()),
+            on(DeviceKey::cpu()),
+        ]);
+        let plan = resolve(&order, &workstation());
+        assert_eq!(tried(&plan), [vulkan_rtx(), DeviceKey::cpu()]);
+        assert_eq!(skipped_keys(&plan), []);
+    }
+
+    #[test]
+    fn devices_after_the_cpu_are_not_reached_and_not_reported() {
+        let order = saved(vec![
+            on(DeviceKey::cpu()),
+            on(DeviceKey::new(Common::Metal, "M3", 0)),
+            on(cuda_rtx()),
+        ]);
+        let plan = resolve(&order, &workstation());
+        assert_eq!(tried(&plan), [DeviceKey::cpu()]);
+        assert_eq!(skipped_keys(&plan), []);
+    }
+
+    #[test]
+    fn a_cpu_less_inventory_still_ends_with_a_cpu() {
+        let machine = inventory(vec![device(0, RADEON, Vulkan, DeviceType::Igpu)], &[Vulkan]);
+        let plan = resolve(&DeviceOrder::automatic(), &machine);
+        assert_eq!(tried(&plan), [radeon(), DeviceKey::cpu()]);
+    }
+
+    #[test]
+    fn a_saved_device_that_is_gone_is_skipped_with_the_reason_of_its_backend() {
+        let gone_vulkan = DeviceKey::new(Common::Vulkan, "Unplugged eGPU", 0);
+        let gone_metal = DeviceKey::new(Common::Metal, "M3", 0);
+        let order = saved(vec![
+            on(gone_vulkan.clone()),
+            on(gone_metal.clone()),
+            on(cuda_rtx()),
+            on(DeviceKey::cpu()),
+        ]);
+        let plan = resolve(&order, &workstation());
         assert_eq!(
-            chosen(vec![
-                with_memory(device(0, Vulkan, DeviceType::Gpu), 8 << 30),
-                with_memory(device(1, Vulkan, DeviceType::Gpu), 16 << 30),
-            ]),
-            (1, 1)
+            plan.steps.first(),
+            Some(&Step::Skip(AccelAttempt::new(
+                gone_vulkan,
+                AttemptOutcome::Unavailable(UnavailableReason::NoDevice)
+            )))
         );
-    }
-
-    #[test]
-    fn among_equal_gpus_the_lower_index_is_chosen() {
         assert_eq!(
-            chosen(vec![
-                device(0, Cpu, DeviceType::Cpu),
-                device(1, Vulkan, DeviceType::Igpu),
-                device(2, Vulkan, DeviceType::Igpu),
-            ]),
-            (1, 0)
+            plan.steps.get(1),
+            Some(&Step::Skip(AccelAttempt::new(
+                gone_metal,
+                AttemptOutcome::Unavailable(UnavailableReason::NotBuilt)
+            )))
         );
-    }
-
-    #[test]
-    fn a_lone_integrated_gpu_is_still_used() {
-        assert_eq!(chosen(vec![device(0, Vulkan, DeviceType::Igpu)]), (0, 0));
-    }
-
-    #[test]
-    fn devices_of_other_backends_do_not_take_part_in_the_ranking() {
         assert_eq!(
-            chosen(vec![
-                with_memory(device(0, Cuda, DeviceType::Gpu), 24 << 30),
-                with_memory(device(1, Vulkan, DeviceType::Igpu), 1 << 30),
-            ]),
-            (1, 1)
+            tried(&plan),
+            [cuda_rtx(), vulkan_rtx(), radeon(), DeviceKey::cpu()]
         );
     }
 
     #[test]
-    fn a_discrete_gpu_is_preferred_when_the_backend_is_picked_by_priority() {
-        let plan = resolve(&AccelConfig::default(), &cuda_and_vulkan_machine()).unwrap();
-        let vulkan = gpu_target(&plan, Vulkan).unwrap();
-        assert_eq!((vulkan.device_id, vulkan.ordinal), (2, 2));
-    }
-
-    #[test]
-    fn forced_unavailable_backend_without_fallback_is_an_error() {
-        let result = resolve(
-            &AccelConfig::forced(Metal, false),
-            &cuda_and_vulkan_machine(),
-        );
-        assert!(matches!(
-            result,
-            Err(AccelerationError::Unavailable {
-                backend: Metal,
-                reason: UnavailableReason::NotBuilt,
-            })
-        ));
-    }
-
-    #[test]
-    fn forced_built_backend_without_device_reports_no_device() {
-        let inventory = inventory(vec![device(0, Cpu, DeviceType::Cpu)], &[Cuda, Cpu]);
-        let result = resolve(&AccelConfig::forced(Cuda, false), &inventory);
-        assert!(matches!(
-            result,
-            Err(AccelerationError::Unavailable {
-                backend: Cuda,
-                reason: UnavailableReason::NoDevice,
-            })
-        ));
-    }
-
-    #[test]
-    fn backend_with_a_missing_runtime_library_is_skipped_by_auto() {
-        let machine = without_runtime(cuda_and_vulkan_machine(), Cuda, "cublas64_13.dll");
-        let plan = resolve(&AccelConfig::default(), &machine).unwrap();
-        assert_eq!(backends(&plan), [Vulkan, Cpu]);
+    fn a_device_of_a_backend_without_its_runtime_library_is_skipped() {
+        let mut machine = workstation();
+        machine
+            .missing_runtime
+            .insert(Cuda, "cublas64_13.dll".to_owned());
+        let plan = resolve(&DeviceOrder::automatic(), &machine);
         assert_eq!(
-            plan.skipped.first(),
-            Some(&AccelAttempt {
-                backend: Cuda,
-                outcome: AttemptOutcome::Unavailable(UnavailableReason::RuntimeLibraryMissing {
+            plan.steps.first(),
+            Some(&Step::Skip(AccelAttempt::new(
+                cuda_rtx(),
+                AttemptOutcome::Unavailable(UnavailableReason::RuntimeLibraryMissing {
                     library: "cublas64_13.dll".to_owned(),
                     searched: vec![PathBuf::from("/runtime")],
-                }),
-            })
+                })
+            )))
+        );
+        assert_eq!(tried(&plan), [vulkan_rtx(), radeon(), DeviceKey::cpu()]);
+    }
+
+    #[test]
+    fn a_backend_of_unknown_build_status_is_reported_as_such() {
+        let order = saved(vec![
+            on(DeviceKey::new(Common::Hip, "Instinct", 0)),
+            on(DeviceKey::cpu()),
+        ]);
+        let machine = Inventory {
+            build: Default::default(),
+            ..workstation()
+        };
+        let plan = resolve(&order, &machine);
+        assert_eq!(
+            plan.steps.first(),
+            Some(&Step::Skip(AccelAttempt::new(
+                DeviceKey::new(Common::Hip, "Instinct", 0),
+                AttemptOutcome::Unavailable(UnavailableReason::NotBuiltOrNoDevice)
+            )))
         );
     }
 
     #[test]
-    fn forced_backend_with_a_missing_runtime_library_is_an_error_despite_its_device() {
-        let machine = without_runtime(cuda_and_vulkan_machine(), Cuda, "cublas64_13.dll");
-        let result = resolve(&AccelConfig::forced(Cuda, false), &machine);
-        assert!(matches!(
-            result,
-            Err(AccelerationError::Unavailable {
-                backend: Cuda,
-                reason: UnavailableReason::RuntimeLibraryMissing { .. },
+    fn identical_names_under_one_backend_are_two_devices_with_their_own_ordinals() {
+        let machine = inventory(
+            vec![
+                device(0, "Same Card", Vulkan, DeviceType::Gpu),
+                device(1, "Same Card", Vulkan, DeviceType::Gpu),
+                device(2, "Processor", Cpu, DeviceType::Cpu),
+            ],
+            &[Vulkan, Cpu],
+        );
+        let second = DeviceKey::new(Common::Vulkan, "Same Card", 1);
+        let first = DeviceKey::new(Common::Vulkan, "Same Card", 0);
+        let plan = resolve(
+            &saved(vec![
+                on(second.clone()),
+                on(first.clone()),
+                on(DeviceKey::cpu()),
+            ]),
+            &machine,
+        );
+        let targets: Vec<_> = plan
+            .candidates()
+            .map(|c| match &c.target {
+                Target::Gpu(gpu) => Some((gpu.device_id, gpu.ordinal)),
+                Target::Cpu | Target::CoreMl => None,
             })
-        ));
+            .collect();
+        assert_eq!(tried(&plan), [second, first, DeviceKey::cpu()]);
+        assert_eq!(targets, [Some((1, 1)), Some((0, 0)), None]);
     }
 
     #[test]
-    fn forced_backend_with_a_missing_runtime_library_falls_through_when_allowed() {
-        let machine = without_runtime(cuda_and_vulkan_machine(), Cuda, "cublas64_13.dll");
-        let plan = resolve(&AccelConfig::forced(Cuda, true), &machine).unwrap();
-        assert_eq!(backends(&plan), [Vulkan, Cpu]);
+    fn a_device_picked_for_one_run_goes_first_even_when_switched_off() {
+        let order = saved(vec![on(cuda_rtx()), off(radeon()), on(DeviceKey::cpu())])
+            .with_first(Some(radeon()));
+        assert_eq!(
+            tried(&resolve(&order, &workstation())),
+            [radeon(), cuda_rtx(), vulkan_rtx(), DeviceKey::cpu()]
+        );
     }
 
     #[test]
-    fn forced_unavailable_backend_with_fallback_falls_through() {
-        let plan = resolve(
-            &AccelConfig::forced(Metal, true),
-            &cuda_and_vulkan_machine(),
-        )
-        .unwrap();
-        assert_eq!(backends(&plan), [Cuda, Vulkan, Cpu]);
-        assert_eq!(plan.skipped.first().map(|a| a.backend), Some(Metal));
+    fn a_new_device_is_tried_after_the_saved_gpus() {
+        let order = saved(vec![on(radeon()), on(DeviceKey::cpu())]);
+        assert_eq!(
+            tried(&resolve(&order, &workstation())),
+            [radeon(), cuda_rtx(), vulkan_rtx(), DeviceKey::cpu()]
+        );
     }
 
     #[test]
-    fn forced_available_backend_with_fallback_goes_first() {
-        let plan = resolve(
-            &AccelConfig::forced(Vulkan, true),
-            &cuda_and_vulkan_machine(),
-        )
-        .unwrap();
-        assert_eq!(backends(&plan), [Vulkan, Cuda, Cpu]);
+    fn migrated_defaults_order_the_devices_nothing_has_arranged() {
+        let order = DeviceOrder::automatic().with_defaults(DeviceDefaults {
+            gpus_enabled: true,
+            backends_first: vec![Common::Vulkan],
+        });
+        assert_eq!(
+            tried(&resolve(&order, &workstation())),
+            [vulkan_rtx(), radeon(), cuda_rtx(), DeviceKey::cpu()]
+        );
+        let order = DeviceOrder::automatic().with_defaults(DeviceDefaults {
+            gpus_enabled: false,
+            backends_first: Vec::new(),
+        });
+        assert_eq!(tried(&resolve(&order, &workstation())), [DeviceKey::cpu()]);
     }
 
     #[test]
-    fn forced_available_backend_without_fallback_is_alone() {
-        let plan = resolve(
-            &AccelConfig::forced(Cuda, false),
-            &cuda_and_vulkan_machine(),
-        )
-        .unwrap();
-        assert_eq!(backends(&plan), [Cuda]);
-        assert_eq!(plan.skipped, []);
+    fn the_cpu_only_order_tries_only_the_cpu() {
+        let plan = resolve(&DeviceOrder::cpu_only(), &workstation());
+        assert_eq!(tried(&plan), [DeviceKey::cpu()]);
     }
 
     #[test]
-    fn cpu_only_machine_resolves_to_cpu() {
-        let inventory = inventory(vec![device(0, Cpu, DeviceType::Cpu)], &[Cpu]);
-        let plan = resolve(&AccelConfig::default(), &inventory).unwrap();
-        assert_eq!(backends(&plan), [Cpu]);
+    fn the_cpu_candidate_carries_the_name_the_system_reports() {
+        let plan = resolve(&DeviceOrder::cpu_only(), &workstation());
+        assert_eq!(
+            plan.candidates()
+                .map(|c| c.name.clone())
+                .collect::<Vec<_>>(),
+            ["AMD Ryzen 9 7950X 16-Core Processor"]
+        );
     }
 
     #[test]
-    fn custom_priority_reorders_candidates() {
-        let config = AccelConfig::default().with_priority(vec![Vulkan, Cuda]);
-        let plan = resolve(&config, &cuda_and_vulkan_machine()).unwrap();
-        assert_eq!(backends(&plan), [Vulkan, Cuda, Cpu]);
-    }
-
-    #[test]
-    fn unknown_build_status_is_reported_as_such() {
-        let inventory = Inventory {
-            devices: vec![device(0, Cpu, DeviceType::Cpu)],
-            build: HashMap::new(),
-            missing_runtime: HashMap::new(),
-            runtime_dirs: Vec::new(),
-        };
-        let result = resolve(&AccelConfig::forced(Hip, false), &inventory);
-        assert!(matches!(
-            result,
-            Err(AccelerationError::Unavailable {
-                backend: Hip,
-                reason: UnavailableReason::NotBuiltOrNoDevice,
-            })
-        ));
+    fn a_backend_with_a_device_is_available_and_one_without_says_why() {
+        let machine = workstation();
+        let detected = detect(&machine);
+        assert_eq!(backend_status(Cuda, &machine, &detected), Ok(()));
+        assert_eq!(backend_status(Cpu, &machine, &detected), Ok(()));
+        assert_eq!(
+            backend_status(Metal, &machine, &detected),
+            Err(UnavailableReason::NotBuilt)
+        );
+        let machine = inventory(
+            vec![device(0, "Processor", Cpu, DeviceType::Cpu)],
+            &[Cuda, Cpu],
+        );
+        let detected = detect(&machine);
+        assert_eq!(
+            backend_status(Cuda, &machine, &detected),
+            Err(UnavailableReason::NoDevice)
+        );
     }
 }

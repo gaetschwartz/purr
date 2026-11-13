@@ -3,10 +3,7 @@
 use crate::model::digest::Sha256Digest;
 use std::path::PathBuf;
 
-use crate::accel::{
-    backend::AccelBackend,
-    report::{AccelAttempt, AttemptOutcome, UnavailableReason},
-};
+use crate::accel::report::{AccelAttempt, AttemptOutcome};
 
 // ========================================
 // Dedicated Error Types for Transparent Wrapper Pattern
@@ -201,36 +198,27 @@ pub enum TranscriptionError {
 /// Acceleration backend selection errors
 #[derive(Debug, thiserror::Error, miette::Diagnostic)]
 pub enum AccelerationError {
-    #[error(
-        "{} acceleration was requested but is unavailable: {reason}{}; choose another backend or allow falling back",        backend.pretty_name(),
-        remedy_clause(*backend, reason)
-    )]
-    #[diagnostic(code(whisper::accel::unavailable))]
-    Unavailable {
-        backend: AccelBackend,
-        reason: UnavailableReason,
-    },
-
-    #[error(
-        "No acceleration backend could load the model: {}",
-        describe_attempts(attempts)
-    )]
+    #[error("No device could load the model: {}", describe_attempts(attempts))]
     #[diagnostic(code(whisper::accel::exhausted))]
     Exhausted { attempts: Vec<AccelAttempt> },
-}
-
-fn remedy_clause(backend: AccelBackend, reason: &UnavailableReason) -> String {
-    reason
-        .remedy(backend)
-        .map(|remedy| format!("; {remedy}"))
-        .unwrap_or_default()
 }
 
 fn describe_attempts(attempts: &[AccelAttempt]) -> String {
     attempts
         .iter()
         .filter(|attempt| matches!(attempt.outcome, AttemptOutcome::Failed(_)))
-        .map(|attempt| format!("{}: {}", attempt.backend.pretty_name(), attempt.outcome))
+        .map(|attempt| {
+            if attempt.key.is_cpu() {
+                format!("{}: {}", attempt.backend.pretty_name(), attempt.outcome)
+            } else {
+                format!(
+                    "{} {}: {}",
+                    attempt.backend.pretty_name(),
+                    attempt.key.name,
+                    attempt.outcome
+                )
+            }
+        })
         .collect::<Vec<_>>()
         .join("; ")
 }
@@ -402,28 +390,3 @@ into_whisper_error_via_configuration!(UnknownModelError, ManifestError, ModelInt
 
 /// Result type alias for purr operations
 pub type Result<T> = std::result::Result<T, WhisperError>;
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_remedy_is_appended_as_a_clause() {
-        let reason = UnavailableReason::RuntimeLibraryMissing {
-            library: "libvulkan.so.1".to_owned(),
-            searched: Vec::new(),
-        };
-        assert_eq!(
-            remedy_clause(AccelBackend::Vulkan, &reason),
-            "; install your GPU's Vulkan driver (on Linux, Intel and AMD use Mesa's Vulkan driver)"
-        );
-    }
-
-    #[test]
-    fn no_remedy_adds_nothing() {
-        assert_eq!(
-            remedy_clause(AccelBackend::Vulkan, &UnavailableReason::NoDevice),
-            ""
-        );
-    }
-}

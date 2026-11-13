@@ -7,8 +7,13 @@ use clap::{
     builder::{PossibleValue, TypedValueParser},
     error::ErrorKind,
 };
+use purr_common::devices::{DeviceDefaults, DeviceOrder};
 use purr_common::{Language, beams::BeamSwitch};
-use purr_core::accel::{backend::AccelBackend, config::AccelConfig};
+use purr_core::accel::{
+    backend::AccelBackend,
+    devices::DetectedDevice,
+    selector::{DeviceSelector, SelectorError},
+};
 use std::{ffi::OsStr, path::PathBuf, str::FromStr as _};
 
 const ABOUT: &str = "😸 Transcribe audio files and URLs using Whisper AI";
@@ -37,10 +42,10 @@ pub struct Cli {
     #[arg(long)]
     pub translate: bool,
 
-    /// Acceleration backend. `auto` tries the priority list from best to worst, moving to the
-    /// next backend when one is unavailable or fails (the CPU is the last resort). A named
-    /// backend is forced: there is no fallback, and it is an error if it cannot be used
-    /// (see --accel-fallback). Run `purr sys` to see what this build supports
+    /// Which backend's devices to try first. `auto` keeps the usual order (CUDA, ROCm, CoreML,
+    /// Metal, SYCL, Vulkan, CPU). A named backend goes first and the other devices follow as
+    /// fallbacks, so `--accel cpu` runs on the CPU alone. Run `purr sys` to see what this build
+    /// supports
     #[arg(
         long,
         value_name = "BACKEND",
@@ -49,13 +54,8 @@ pub struct Cli {
     )]
     pub accel: Option<AccelChoice>,
 
-    /// With --accel BACKEND: when it is unavailable or fails, fall back to the priority list
-    /// instead of failing
-    #[arg(long, requires = "accel", conflicts_with = "no_gpu")]
-    pub accel_fallback: bool,
-
-    /// Priority order for `auto` and --accel-fallback, best first, comma separated
-    /// (e.g. vulkan,cuda). The CPU is appended when absent
+    /// Backends whose devices are tried first, best first, comma separated (e.g. vulkan,cuda);
+    /// the other devices follow in the usual order
     #[arg(
         long,
         value_name = "BACKENDS",
@@ -64,6 +64,15 @@ pub struct Cli {
         conflicts_with = "no_gpu"
     )]
     pub accel_priority: Vec<AccelBackend>,
+
+    /// Run on one device first; the others stay as fallbacks. Give a device index as `purr sys`
+    /// prints it (`--device 2`), or describe it with tokens joined by `/` in any order: a
+    /// backend (cuda, vulkan, rocm, ...), a type (gpu, igpu, cpu, accel) and a device id such as
+    /// 0000:01:00.0 (`--device vulkan/igpu`, `--device cuda/0000:01:00.0`, `--device gpu`).
+    /// The explicit `backend=`, `type=`, `id=` and `index=` forms also work. It
+    /// must match exactly one device; otherwise the candidates are listed
+    #[arg(long, value_name = "DEVICE", conflicts_with = "no_gpu")]
+    pub device: Option<DeviceSelector>,
 
     /// Disable GPU acceleration (same as --accel cpu)
     #[arg(long)]
@@ -368,23 +377,38 @@ impl Cli {
             .unwrap_or_default()
     }
 
-    /// Acceleration settings from `--accel`, `--accel-fallback`, `--accel-priority` and
-    /// `--no-gpu`.
-    pub fn accel_config(&self) -> AccelConfig {
-        let config = if self.no_gpu {
-            AccelConfig::cpu_only()
-        } else {
-            match self.accel {
-                None | Some(AccelChoice::Auto) => AccelConfig::default(),
-                Some(AccelChoice::Backend(backend)) => {
-                    AccelConfig::forced(backend, self.accel_fallback)
-                }
+    /// The devices `--accel`, `--accel-priority` and `--no-gpu` ask for, before `--device`.
+    pub fn device_order(&self) -> DeviceOrder {
+        if self.no_gpu || self.accel == Some(AccelChoice::Backend(AccelBackend::Cpu)) {
+            return DeviceOrder::cpu_only();
+        }
+        let mut backends_first: Vec<AccelBackend> = Vec::new();
+        if let Some(AccelChoice::Backend(backend)) = self.accel {
+            backends_first.push(backend);
+        }
+        for backend in &self.accel_priority {
+            if !backends_first.contains(backend) {
+                backends_first.push(*backend);
             }
-        };
-        if self.accel_priority.is_empty() {
-            config
-        } else {
-            config.with_priority(self.accel_priority.clone())
+        }
+        DeviceOrder::automatic().with_defaults(DeviceDefaults {
+            gpus_enabled: true,
+            backends_first: backends_first.into_iter().map(Into::into).collect(),
+        })
+    }
+
+    /// [`Self::device_order`] with the `--device` device in front, found among `detected`.
+    pub fn device_order_among(
+        &self,
+        detected: &[DetectedDevice],
+    ) -> Result<DeviceOrder, SelectorError> {
+        let order = self.device_order();
+        match &self.device {
+            None => Ok(order),
+            Some(selector) => {
+                let device = selector.resolve(detected)?;
+                Ok(order.with_first(Some(device.key.clone())))
+            }
         }
     }
 }
@@ -404,7 +428,7 @@ impl TranscriptionConfigWithCliExt for purr_core::TranscriptionConfig {
             .with_chunk_size(cli.chunk_size)
             .with_vad_model(cli.vad_model.clone())
             .with_beam_telemetry(BeamSwitch::new(cli.trace_beams))
-            .with_accel(cli.accel_config())
+            .with_devices(cli.device_order())
             .with_http_timeout(cli.http_timeout)
             .with_http_connect_timeout(cli.http_connect_timeout)
             .apply_output_format(|f| {
@@ -485,11 +509,19 @@ mod tests {
         }
     }
 
-    fn accel_of(args: &[&str]) -> AccelConfig {
+    fn cli_of(args: &[&str]) -> Cli {
         let args = ["purr", "audio.wav"]
             .into_iter()
             .chain(args.iter().copied());
-        Cli::try_parse_from(args).unwrap().accel_config()
+        Cli::try_parse_from(args).unwrap()
+    }
+
+    fn order_of(args: &[&str]) -> DeviceOrder {
+        cli_of(args).device_order()
+    }
+
+    fn first_backends(order: &DeviceOrder) -> Vec<purr_common::accel::AccelBackend> {
+        order.defaults().backends_first.clone()
     }
 
     fn parse_error(args: &[&str]) -> ErrorKind {
@@ -499,38 +531,139 @@ mod tests {
         Cli::try_parse_from(args).unwrap_err().kind()
     }
 
-    #[test]
-    fn accel_defaults_to_auto() {
-        assert_eq!(accel_of(&[]), AccelConfig::default());
-        assert_eq!(accel_of(&["--accel", "auto"]), AccelConfig::default());
+    fn detected_workstation() -> Vec<DetectedDevice> {
+        use purr_common::platform::DeviceType;
+        use purr_core::{accel::backend::BuildStatus, dev::Device};
+        let device = |id, name: &str, backend, tpe| Device {
+            id,
+            name: format!("dev{id}"),
+            description: name.to_owned(),
+            device_id: None,
+            vram_free: 0,
+            vram_total: 0,
+            tpe,
+            backend: Some(backend),
+            caps: None,
+            vulkan_driver: None,
+        };
+        let inventory = purr_core::accel::inventory::Inventory {
+            devices: vec![
+                device(0, "RTX", AccelBackend::Cuda, DeviceType::Gpu),
+                device(1, "RTX", AccelBackend::Vulkan, DeviceType::Gpu),
+                device(2, "Radeon", AccelBackend::Vulkan, DeviceType::Igpu),
+                device(3, "Ryzen", AccelBackend::Cpu, DeviceType::Cpu),
+            ],
+            build: AccelBackend::ALL
+                .iter()
+                .map(|backend| (*backend, BuildStatus::Built))
+                .collect(),
+            ..Default::default()
+        };
+        purr_core::accel::devices::detect(&inventory)
     }
 
     #[test]
-    fn named_accel_is_forced_without_fallback() {
+    fn accel_defaults_to_the_usual_order() {
+        assert_eq!(order_of(&[]), DeviceOrder::automatic());
+        assert_eq!(order_of(&["--accel", "auto"]), DeviceOrder::automatic());
+    }
+
+    #[test]
+    fn a_named_accel_puts_its_devices_first_and_keeps_the_rest_as_fallbacks() {
         assert_eq!(
-            accel_of(&["--accel", "vulkan"]),
-            AccelConfig::forced(AccelBackend::Vulkan, false)
+            first_backends(&order_of(&["--accel", "vulkan"])),
+            [purr_common::accel::AccelBackend::Vulkan]
+        );
+        assert!(order_of(&["--accel", "vulkan"]).defaults().gpus_enabled);
+        assert!(!order_of(&["--accel", "vulkan"]).is_cpu_only());
+    }
+
+    #[test]
+    fn accel_cpu_and_no_gpu_run_on_the_cpu_alone() {
+        assert_eq!(order_of(&["--accel", "cpu"]), DeviceOrder::cpu_only());
+        assert_eq!(order_of(&["--no-gpu"]), DeviceOrder::cpu_only());
+    }
+
+    #[test]
+    fn accel_priority_lists_the_backends_to_try_first() {
+        use purr_common::accel::AccelBackend::{Cuda, Vulkan};
+        assert_eq!(
+            first_backends(&order_of(&["--accel-priority", "vulkan,cuda"])),
+            [Vulkan, Cuda]
+        );
+        assert_eq!(
+            first_backends(&order_of(&[
+                "--accel",
+                "cuda",
+                "--accel-priority",
+                "vulkan,cuda"
+            ])),
+            [Cuda, Vulkan]
         );
     }
 
     #[test]
-    fn accel_fallback_allows_fallback_for_a_forced_backend() {
+    fn device_takes_an_index_or_a_selector() {
         assert_eq!(
-            accel_of(&["--accel", "cuda", "--accel-fallback"]),
-            AccelConfig::forced(AccelBackend::Cuda, true)
+            cli_of(&["--device", "2"]).device,
+            Some(DeviceSelector {
+                index: Some(2),
+                ..DeviceSelector::default()
+            })
+        );
+        assert_eq!(
+            cli_of(&["--device", "vulkan/igpu"]).device,
+            Some(DeviceSelector {
+                backend: Some(AccelBackend::Vulkan),
+                kind: Some(purr_common::platform::DeviceType::Igpu),
+                ..DeviceSelector::default()
+            })
         );
     }
 
     #[test]
-    fn no_gpu_forces_the_cpu() {
-        assert_eq!(accel_of(&["--no-gpu"]), AccelConfig::cpu_only());
+    fn a_malformed_device_selector_is_rejected() {
+        assert_eq!(
+            parse_error(&["--device", "colour=red"]),
+            ErrorKind::ValueValidation
+        );
     }
 
     #[test]
-    fn accel_priority_overrides_the_priority_list() {
+    fn the_selected_device_goes_first_among_the_detected_ones() {
+        let detected = detected_workstation();
+        let order = cli_of(&["--device", "type=igpu"])
+            .device_order_among(&detected)
+            .unwrap();
+        let igpu = detected
+            .iter()
+            .find(|d| d.kind == Some(purr_common::platform::DeviceType::Igpu))
+            .unwrap();
+        assert_eq!(order.first(), Some(&igpu.key));
+    }
+
+    #[test]
+    fn an_ambiguous_device_is_an_error_not_a_guess() {
+        let detected = detected_workstation();
+        assert!(matches!(
+            cli_of(&["--device", "backend=vulkan"]).device_order_among(&detected),
+            Err(SelectorError::Ambiguous { .. })
+        ));
+    }
+
+    #[test]
+    fn the_accel_fallback_option_is_gone() {
         assert_eq!(
-            accel_of(&["--accel-priority", "vulkan,cuda"]).priority,
-            [AccelBackend::Vulkan, AccelBackend::Cuda]
+            parse_error(&["--accel", "cuda", "--accel-fallback"]),
+            ErrorKind::UnknownArgument
+        );
+    }
+
+    #[test]
+    fn no_gpu_conflicts_with_the_device_flags() {
+        assert_eq!(
+            parse_error(&["--no-gpu", "--device", "1"]),
+            ErrorKind::ArgumentConflict
         );
     }
 
@@ -571,14 +704,6 @@ mod tests {
         for (args, expected) in table {
             assert_eq!(Cli::color_choice_in(args), expected, "{args:?}");
         }
-    }
-
-    #[test]
-    fn accel_fallback_needs_a_forced_backend() {
-        assert_eq!(
-            parse_error(&["--accel-fallback"]),
-            ErrorKind::MissingRequiredArgument
-        );
     }
 
     #[test]

@@ -104,6 +104,35 @@ impl AccelBackend {
     }
 }
 
+impl From<purr_common::accel::AccelBackend> for AccelBackend {
+    fn from(backend: purr_common::accel::AccelBackend) -> Self {
+        use purr_common::accel::AccelBackend as Common;
+        match backend {
+            Common::Cuda => Self::Cuda,
+            Common::Hip => Self::Hip,
+            Common::CoreMl => Self::CoreMl,
+            Common::Metal => Self::Metal,
+            Common::Sycl => Self::Sycl,
+            Common::Vulkan => Self::Vulkan,
+            Common::Cpu => Self::Cpu,
+        }
+    }
+}
+
+impl From<AccelBackend> for purr_common::accel::AccelBackend {
+    fn from(backend: AccelBackend) -> Self {
+        match backend {
+            AccelBackend::Cuda => Self::Cuda,
+            AccelBackend::Hip => Self::Hip,
+            AccelBackend::CoreMl => Self::CoreMl,
+            AccelBackend::Metal => Self::Metal,
+            AccelBackend::Sycl => Self::Sycl,
+            AccelBackend::Vulkan => Self::Vulkan,
+            AccelBackend::Cpu => Self::Cpu,
+        }
+    }
+}
+
 const fn feature_status(enabled: bool) -> BuildStatus {
     if enabled {
         BuildStatus::Built
@@ -131,6 +160,19 @@ mod tests {
             AccelBackend::DEFAULT_PRIORITY.last(),
             Some(&AccelBackend::Cpu)
         );
+    }
+
+    #[test]
+    fn the_backends_and_their_priority_match_purr_common() {
+        let common: Vec<_> = purr_common::accel::AccelBackend::PRIORITY
+            .iter()
+            .map(|backend| AccelBackend::from(*backend))
+            .collect();
+        assert_eq!(common, AccelBackend::DEFAULT_PRIORITY);
+        for backend in AccelBackend::ALL {
+            let there: purr_common::accel::AccelBackend = (*backend).into();
+            assert_eq!(AccelBackend::from(there), *backend);
+        }
     }
 
     #[test]

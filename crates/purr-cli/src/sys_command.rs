@@ -69,7 +69,10 @@ pub fn handle(json: bool) -> miette::Result<()> {
     }
     resultln!()?;
 
-    resultln!("{}", "Devices:".heading())?;
+    resultln!(
+        "{}",
+        "Devices (pick one with --device INDEX, or --device BACKEND/TYPE/ID):".heading()
+    )?;
     resultln!()?;
 
     if sys.devices.is_empty() {

@@ -2,6 +2,8 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
+use purr_common::devices::DeviceKey;
+
 use super::backend::AccelBackend;
 
 /// Why a backend could not be considered at all.
@@ -64,15 +66,29 @@ impl std::fmt::Display for AttemptOutcome {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AccelAttempt {
     pub backend: AccelBackend,
+    pub key: DeviceKey,
     pub outcome: AttemptOutcome,
+}
+
+impl AccelAttempt {
+    #[must_use]
+    pub fn new(key: DeviceKey, outcome: AttemptOutcome) -> Self {
+        Self {
+            backend: key.backend.into(),
+            key,
+            outcome,
+        }
+    }
 }
 
 /// What acceleration a transcription ended up on, and what was passed over to get there.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AccelReport {
     pub selected: AccelBackend,
+    pub key: DeviceKey,
+    /// The GPU's name as the system reports it; `None` for the processor.
     pub device: Option<String>,
-    /// Backends tried or considered before `selected`, in priority order.
+    /// Devices tried or considered before `selected`, in the order they were considered.
     pub attempts: Vec<AccelAttempt>,
 }
 

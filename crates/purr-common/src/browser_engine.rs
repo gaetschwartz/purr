@@ -1,6 +1,6 @@
 //! Where a browser transcription runs: the GPU through WebGPU, or the CPU through WebAssembly.
 
-use crate::accel::{AccelBackend, AccelPolicy};
+use crate::devices::DeviceOrder;
 use serde::{Deserialize, Serialize};
 
 /// The execution provider a browser transcription runs on.
@@ -26,23 +26,11 @@ pub enum CpuReason {
 impl BrowserEngine {
     /// The engine the settings ask for: the CPU when they say so, WebGPU otherwise.
     #[must_use]
-    pub const fn requested(policy: AccelPolicy) -> Self {
-        match policy {
-            AccelPolicy::Forced {
-                backend: AccelBackend::Cpu,
-                ..
-            } => Self::Cpu(CpuReason::Chosen),
-            AccelPolicy::Auto
-            | AccelPolicy::Forced {
-                backend:
-                    AccelBackend::Cuda
-                    | AccelBackend::Hip
-                    | AccelBackend::CoreMl
-                    | AccelBackend::Metal
-                    | AccelBackend::Sycl
-                    | AccelBackend::Vulkan,
-                ..
-            } => Self::WebGpu,
+    pub fn requested(devices: &DeviceOrder) -> Self {
+        if devices.is_cpu_only() {
+            Self::Cpu(CpuReason::Chosen)
+        } else {
+            Self::WebGpu
         }
     }
 }
@@ -87,7 +75,7 @@ mod tests {
     #[test]
     fn a_fresh_profile_asks_for_webgpu() {
         assert_eq!(
-            BrowserEngine::requested(Settings::default().performance.accel_policy()),
+            BrowserEngine::requested(&Settings::default().performance.device_order()),
             BrowserEngine::WebGpu
         );
     }
@@ -95,21 +83,11 @@ mod tests {
     #[test]
     fn only_the_processor_asks_for_the_cpu() {
         assert_eq!(
-            BrowserEngine::requested(AccelPolicy::CPU_ONLY),
+            BrowserEngine::requested(&DeviceOrder::cpu_only()),
             BrowserEngine::Cpu(CpuReason::Chosen)
         );
         assert_eq!(
-            BrowserEngine::requested(AccelPolicy::Forced {
-                backend: AccelBackend::Cpu,
-                allow_fallback: true,
-            }),
-            BrowserEngine::Cpu(CpuReason::Chosen)
-        );
-        assert_eq!(
-            BrowserEngine::requested(AccelPolicy::Forced {
-                backend: AccelBackend::Vulkan,
-                allow_fallback: false,
-            }),
+            BrowserEngine::requested(&DeviceOrder::automatic()),
             BrowserEngine::WebGpu
         );
     }

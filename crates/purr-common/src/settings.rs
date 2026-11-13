@@ -4,21 +4,18 @@
 //! all Purr components (UI, core, CLI) with proper serialization support
 //! and validation methods.
 
-use crate::accel::{AccelBackend, AccelPolicy, AccelSelection};
+use crate::accel::{AccelBackend, AccelSelection};
+use crate::devices::{DeviceDefaults, DeviceOrder, DevicePreference};
 use crate::export_format::ExportFormat;
 use crate::hugging_face_token::HuggingFaceToken;
 use crate::transcript_view::TranscriptView;
 use serde::{Deserialize, Serialize};
 
 /// The version of the settings schema this build writes.
-pub const CURRENT_VERSION: u32 = 2;
+pub const CURRENT_VERSION: u32 = 3;
 
 /// The most CPU threads a setting may ask for.
 pub const MAX_THREADS: u32 = 256;
-
-const fn enabled() -> bool {
-    true
-}
 
 /// Application settings configuration
 ///
@@ -90,17 +87,21 @@ pub struct UiSettings {
 /// Performance and optimization settings
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PerformanceSettings {
-    /// Allow hardware acceleration; off means the processor only, whatever `accel_backend` says
-    pub gpu_acceleration: bool,
-    /// The backend to use, or `Auto` to take the best one that works
-    #[serde(default)]
-    pub accel_backend: AccelSelection,
-    /// Move on to the next best backend when the chosen one cannot run
-    #[serde(default = "enabled")]
-    pub accel_fallback: bool,
     /// Threads for the processor, `None` to let Whisper choose
     #[serde(default)]
     pub threads: Option<u32>,
+    /// How devices are ordered until the user arranges them; set by migrating older settings
+    #[serde(default, skip_serializing_if = "DeviceDefaults::is_default")]
+    pub device_defaults: DeviceDefaults,
+    /// The devices transcription tries, first to last; empty until the user arranges them
+    #[serde(default)]
+    pub devices: Vec<DevicePreference>,
+    /// Version 2's switch for hardware acceleration, read only to migrate it
+    #[serde(default, skip_serializing, rename = "gpu_acceleration")]
+    legacy_gpu_acceleration: Option<bool>,
+    /// Version 2's backend choice, read only to migrate it
+    #[serde(default, skip_serializing, rename = "accel_backend")]
+    legacy_accel_backend: Option<AccelSelection>,
 }
 
 /// Logging configuration settings
@@ -177,10 +178,11 @@ impl Default for UiSettings {
 impl Default for PerformanceSettings {
     fn default() -> Self {
         Self {
-            gpu_acceleration: true,
-            accel_backend: AccelSelection::Auto,
-            accel_fallback: true,
             threads: None,
+            device_defaults: DeviceDefaults::default(),
+            devices: Vec::new(),
+            legacy_gpu_acceleration: None,
+            legacy_accel_backend: None,
         }
     }
 }
@@ -194,24 +196,45 @@ impl Default for LoggingSettings {
 }
 
 impl PerformanceSettings {
-    /// How transcription picks its backend.
-    ///
-    /// Turning `gpu_acceleration` off wins over every other choice and means the processor only.
-    /// With it on, `Auto` always falls back, and a named backend falls back only when
-    /// `accel_fallback` allows it.
+    /// The devices transcription is asked to try.
     #[must_use]
-    pub const fn accel_policy(&self) -> AccelPolicy {
-        if !self.gpu_acceleration {
-            return AccelPolicy::CPU_ONLY;
+    pub fn device_order(&self) -> DeviceOrder {
+        DeviceOrder::saved(self.devices.clone()).with_defaults(self.device_defaults.clone())
+    }
+
+    /// Saves `devices` as the user's arranged list.
+    pub fn set_devices(&mut self, devices: Vec<DevicePreference>) {
+        self.devices = devices;
+        self.device_defaults = DeviceDefaults::default();
+    }
+
+    /// Version 2 chose between acceleration on or off and one backend; the devices it could
+    /// not name yet are ordered by [`DeviceDefaults`] once they are detected.
+    fn migrate_acceleration(&mut self) {
+        let accelerate = self.legacy_gpu_acceleration.take().unwrap_or(true);
+        let backend = self
+            .legacy_accel_backend
+            .take()
+            .unwrap_or_default()
+            .backend();
+        if !self.devices.is_empty() {
+            return;
         }
-        match self.accel_backend.backend() {
-            None => AccelPolicy::Auto,
-            Some(AccelBackend::Cpu) => AccelPolicy::CPU_ONLY,
-            Some(backend) => AccelPolicy::Forced {
-                backend,
-                allow_fallback: self.accel_fallback,
+        self.device_defaults = match (accelerate, backend) {
+            (false, _) => DeviceDefaults {
+                gpus_enabled: false,
+                backends_first: Vec::new(),
             },
-        }
+            (true, Some(AccelBackend::Cpu)) => DeviceDefaults {
+                gpus_enabled: false,
+                backends_first: vec![AccelBackend::Cpu],
+            },
+            (true, Some(backend)) => DeviceDefaults {
+                gpus_enabled: true,
+                backends_first: vec![backend],
+            },
+            (true, None) => DeviceDefaults::default(),
+        };
     }
 }
 
@@ -284,7 +307,8 @@ impl Settings {
     /// Brings settings read from schema version `from_version` up to [`CURRENT_VERSION`].
     ///
     /// Version 1 saved `gpu_acceleration` as off without anything reading it, so it moves to
-    /// the new default instead of silently switching acceleration off. Its `ui.language` was the
+    /// the new default instead of silently switching acceleration off. Version 2's acceleration
+    /// switch and backend choice become the order of the device list. Its `ui.language` was the
     /// interface language, `en` by default; read as the spoken language it would force English
     /// on every recording, so `en` becomes detection.
     pub fn migrate_from_version(&mut self, from_version: u32) -> Result<(), SettingsError> {
@@ -298,11 +322,12 @@ impl Settings {
             match step {
                 0 => {}
                 1 => {
-                    self.performance.gpu_acceleration = true;
+                    self.performance.legacy_gpu_acceleration = Some(true);
                     if self.ui.language == "en" {
                         "auto".clone_into(&mut self.ui.language);
                     }
                 }
+                2 => self.performance.migrate_acceleration(),
                 other => {
                     return Err(SettingsError::UnsupportedMigration {
                         from: other,
@@ -344,6 +369,7 @@ pub enum SettingsError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::devices::DeviceKey;
     use crate::transcript_view::{TranscriptLayout, UnsureShare};
 
     #[test]
@@ -401,20 +427,132 @@ mod tests {
         );
     }
 
+    fn migrated(saved: &str) -> Settings {
+        let mut settings: Settings = toml::from_str(saved).unwrap();
+        let stored = settings.version;
+        assert_eq!(settings.migrate_from_version(stored), Ok(()));
+        assert_eq!(settings.version, CURRENT_VERSION);
+        settings
+    }
+
+    fn performance_of(version: u32, performance: &str) -> PerformanceSettings {
+        migrated(&format!(
+            "version = {version}\n[model]\nmodel_name = \"base\"\ntemperature = 0.0\n\
+             [ui]\ntheme = \"Dark\"\ncompact_mode = false\nlanguage = \"fr\"\n\
+             [performance]\n{performance}\n[logging]\nlevel = \"Info\"\n"
+        ))
+        .performance
+    }
+
+    fn defaults(gpus_enabled: bool, backends_first: &[AccelBackend]) -> DeviceDefaults {
+        DeviceDefaults {
+            gpus_enabled,
+            backends_first: backends_first.to_vec(),
+        }
+    }
+
     #[test]
-    fn performance_settings_saved_before_the_backend_choice_still_load() {
-        let saved =
-            r#"{"gpu_acceleration":true,"concurrent_processing":false,"max_concurrent_jobs":3}"#;
-        let performance: PerformanceSettings = serde_json::from_str(saved).unwrap();
-        assert_eq!(
-            performance,
-            PerformanceSettings {
-                gpu_acceleration: true,
-                accel_backend: AccelSelection::Auto,
-                accel_fallback: true,
-                threads: None,
-            }
+    fn a_version_two_file_without_a_backend_choice_keeps_the_usual_order() {
+        let performance = performance_of(2, "gpu_acceleration = true");
+        assert_eq!(performance, PerformanceSettings::default());
+    }
+
+    #[test]
+    fn version_two_with_acceleration_off_switches_every_gpu_off() {
+        for backend in ["Auto", "Cuda", "Vulkan", "Cpu"] {
+            let performance = performance_of(
+                2,
+                &format!(
+                    "gpu_acceleration = false\naccel_backend = \"{backend}\"\naccel_fallback = true"
+                ),
+            );
+            assert_eq!(performance.device_defaults, defaults(false, &[]));
+            assert_eq!(performance.devices, []);
+        }
+    }
+
+    #[test]
+    fn version_two_with_a_forced_backend_puts_its_devices_first() {
+        for fallback in [true, false] {
+            let performance = performance_of(
+                2,
+                &format!(
+                    "gpu_acceleration = true\naccel_backend = \"Vulkan\"\naccel_fallback = {fallback}"
+                ),
+            );
+            assert_eq!(
+                performance.device_defaults,
+                defaults(true, &[AccelBackend::Vulkan])
+            );
+        }
+        let rocm = performance_of(2, "gpu_acceleration = true\naccel_backend = \"Hip\"");
+        assert_eq!(rocm.device_defaults, defaults(true, &[AccelBackend::Hip]));
+    }
+
+    #[test]
+    fn version_two_with_automatic_selection_keeps_the_usual_order() {
+        let performance = performance_of(
+            2,
+            "gpu_acceleration = true\naccel_backend = \"Auto\"\naccel_fallback = false",
         );
+        assert_eq!(performance.device_defaults, DeviceDefaults::default());
+    }
+
+    #[test]
+    fn version_two_forced_to_the_processor_puts_it_first_and_the_gpus_off() {
+        let performance = performance_of(2, "gpu_acceleration = true\naccel_backend = \"Cpu\"");
+        assert_eq!(
+            performance.device_defaults,
+            defaults(false, &[AccelBackend::Cpu])
+        );
+        assert!(performance.device_order().is_cpu_only());
+    }
+
+    #[test]
+    fn threads_survive_the_acceleration_migration() {
+        let performance = performance_of(2, "gpu_acceleration = false\nthreads = 6");
+        assert_eq!(performance.threads, Some(6));
+    }
+
+    #[test]
+    fn version_two_json_from_the_browser_migrates_too() {
+        let saved = r#"{"version":2,"model":{"model_name":"base","temperature":0.0},
+            "ui":{"theme":"Dark","compact_mode":false,"language":"auto"},
+            "performance":{"gpu_acceleration":true,"accel_backend":"Cpu","accel_fallback":true},
+            "logging":{"level":"Info"}}"#;
+        let mut settings: Settings = serde_json::from_str(saved).unwrap();
+        assert_eq!(settings.migrate_from_version(2), Ok(()));
+        assert!(settings.performance.device_order().is_cpu_only());
+    }
+
+    #[test]
+    fn a_saved_list_wins_over_leftover_version_two_fields() {
+        let mut settings = Settings::default();
+        settings.performance.legacy_gpu_acceleration = Some(false);
+        settings.performance.devices = vec![DevicePreference::enabled(DeviceKey::cpu())];
+        assert_eq!(settings.migrate_from_version(2), Ok(()));
+        assert_eq!(
+            settings.performance.device_defaults,
+            DeviceDefaults::default()
+        );
+    }
+
+    #[test]
+    fn the_old_keys_are_never_written_again() {
+        let performance = performance_of(2, "gpu_acceleration = false\naccel_backend = \"Cuda\"");
+        let saved = toml::to_string_pretty(&Settings {
+            performance,
+            ..Settings::default()
+        })
+        .unwrap();
+        let written: toml::Table = toml::from_str(&saved).unwrap();
+        let keys: Vec<&str> = written["performance"]
+            .as_table()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect();
+        assert_eq!(keys, ["device_defaults", "devices"]);
     }
 
     #[test]
@@ -447,14 +585,8 @@ level = "Info"
 enable_file_logging = true
 log_file_path = "C:/logs/purr.log"
 "#;
-        let mut settings: Settings = toml::from_str(saved).unwrap();
-        let stored = settings.version;
-        assert_eq!(stored, 1);
-        assert_eq!(settings.migrate_from_version(stored), Ok(()));
-        assert_eq!(settings.version, CURRENT_VERSION);
-        assert!(settings.performance.gpu_acceleration);
-        assert_eq!(settings.performance.accel_backend, AccelSelection::Auto);
-        assert_eq!(settings.performance.threads, None);
+        let settings = migrated(saved);
+        assert_eq!(settings.performance, PerformanceSettings::default());
         assert_eq!(settings.ui.export_format, ExportFormat::Txt);
         assert_eq!(settings.ui.language, "auto");
         assert_eq!(settings.logging.level, LogLevel::Info);
@@ -477,28 +609,19 @@ log_file_path = "C:/logs/purr.log"
     #[test]
     fn migration_reaches_the_current_version_from_every_older_one() {
         for from in 0..CURRENT_VERSION {
-            let mut settings = Settings {
-                performance: PerformanceSettings {
-                    gpu_acceleration: false,
-                    ..PerformanceSettings::default()
-                },
-                ..Settings::default()
-            };
+            let mut settings = Settings::default();
             assert_eq!(settings.migrate_from_version(from), Ok(()));
             assert_eq!(settings.version, CURRENT_VERSION);
-            assert!(settings.performance.gpu_acceleration);
+            assert_eq!(settings.performance, PerformanceSettings::default());
         }
     }
 
     #[test]
     fn current_settings_are_left_as_they_are() {
-        let mut settings = Settings {
-            performance: PerformanceSettings {
-                gpu_acceleration: false,
-                ..PerformanceSettings::default()
-            },
-            ..Settings::default()
-        };
+        let mut settings = Settings::default();
+        settings
+            .performance
+            .set_devices(vec![DevicePreference::enabled(DeviceKey::cpu())]);
         let before = settings.clone();
         assert_eq!(settings.migrate_from_version(CURRENT_VERSION), Ok(()));
         assert_eq!(settings, before);
@@ -538,72 +661,37 @@ log_file_path = "C:/logs/purr.log"
         );
     }
 
-    fn policy(gpu: bool, backend: AccelSelection, fallback: bool) -> AccelPolicy {
-        PerformanceSettings {
-            gpu_acceleration: gpu,
-            accel_backend: backend,
-            accel_fallback: fallback,
+    #[test]
+    fn the_defaults_leave_every_device_in_the_usual_order() {
+        assert_eq!(
+            Settings::default().performance.device_order(),
+            DeviceOrder::automatic()
+        );
+    }
+
+    #[test]
+    fn saving_a_list_forgets_the_migrated_defaults() {
+        let mut performance = PerformanceSettings {
+            device_defaults: defaults(false, &[AccelBackend::Cpu]),
             ..PerformanceSettings::default()
-        }
-        .accel_policy()
-    }
-
-    #[test]
-    fn turning_acceleration_off_beats_every_other_choice() {
-        for backend in AccelSelection::ALL {
-            for fallback in [true, false] {
-                assert_eq!(policy(false, backend, fallback), AccelPolicy::CPU_ONLY);
-            }
-        }
-    }
-
-    #[test]
-    fn automatic_always_falls_back() {
-        assert_eq!(policy(true, AccelSelection::Auto, true), AccelPolicy::Auto);
-        assert_eq!(policy(true, AccelSelection::Auto, false), AccelPolicy::Auto);
-    }
-
-    #[test]
-    fn a_named_backend_falls_back_only_when_allowed() {
-        assert_eq!(
-            policy(true, AccelSelection::Vulkan, true),
-            AccelPolicy::Forced {
-                backend: AccelBackend::Vulkan,
-                allow_fallback: true
-            }
-        );
-        assert_eq!(
-            policy(true, AccelSelection::Cuda, false),
-            AccelPolicy::Forced {
-                backend: AccelBackend::Cuda,
-                allow_fallback: false
-            }
-        );
-    }
-
-    #[test]
-    fn choosing_the_processor_never_falls_back_to_anything() {
-        assert_eq!(
-            policy(true, AccelSelection::Cpu, true),
-            AccelPolicy::CPU_ONLY
-        );
-    }
-
-    #[test]
-    fn the_defaults_accelerate_automatically() {
-        assert_eq!(
-            Settings::default().performance.accel_policy(),
-            AccelPolicy::Auto
-        );
+        };
+        performance.set_devices(vec![DevicePreference::enabled(DeviceKey::cpu())]);
+        assert_eq!(performance.device_defaults, DeviceDefaults::default());
     }
 
     #[test]
     fn every_setting_survives_a_save_and_a_load() {
         let mut settings = Settings::default();
         settings.model.translate = true;
-        settings.performance.accel_backend = AccelSelection::Vulkan;
-        settings.performance.accel_fallback = false;
+        settings.performance.device_defaults = defaults(true, &[AccelBackend::Vulkan]);
         settings.performance.threads = Some(6);
+        settings.performance.devices = vec![
+            DevicePreference {
+                key: DeviceKey::new(AccelBackend::Vulkan, "AMD Radeon(TM) Graphics", 1),
+                enabled: false,
+            },
+            DevicePreference::enabled(DeviceKey::cpu()),
+        ];
         settings.ui.export_format = ExportFormat::Vtt;
         settings.ui.transcript.layout = TranscriptLayout::Reading;
         settings.ui.transcript.show_times = false;
@@ -626,7 +714,7 @@ log_file_path = "C:/logs/purr.log"
     #[test]
     fn current_settings_saved_before_the_token_load_without_one() {
         let saved = r#"
-version = 2
+version = 3
 
 [model]
 model_name = "small"
@@ -639,13 +727,13 @@ compact_mode = false
 language = "fr"
 
 [performance]
-gpu_acceleration = true
+threads = 4
 
 [logging]
 level = "Info"
 "#;
         let mut settings: Settings = toml::from_str(saved).unwrap();
-        assert_eq!(settings.migrate_from_version(2), Ok(()));
+        assert_eq!(settings.migrate_from_version(3), Ok(()));
         assert_eq!(settings.model.hugging_face_token, None);
         assert_eq!(settings.validate(), []);
     }

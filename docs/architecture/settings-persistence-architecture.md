@@ -156,11 +156,12 @@ pub struct UiSettings {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct PerformanceSettings {
-    /// Enable GPU acceleration when available
-    pub gpu_acceleration: bool,
+    /// Threads for the processor, `None` to let Whisper choose
+    pub threads: Option<u32>,
 
-    /// Selected device ID for processing
-    pub device_id: Option<i32>,
+    /// The devices transcription tries, first to last; the CPU is the last resort
+    /// (schema version 3 replaced `gpu_acceleration`, `accel_backend` and `accel_fallback`)
+    pub devices: Vec<DevicePreference>,
 
     /// Enable concurrent file processing
     pub concurrent_processing: bool,
@@ -785,7 +786,7 @@ async fn start_transcription_process(
         temperature: settings.model.temperature,
         max_tokens: settings.model.max_tokens,
         device_id: settings.performance.device_id,
-        gpu_enabled: settings.performance.gpu_acceleration,
+        devices: settings.performance.device_order(),
     }).await?;
 
     // Start transcription with configured parameters

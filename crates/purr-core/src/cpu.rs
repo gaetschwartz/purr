@@ -3,7 +3,8 @@
 use purr_common::accel::{CpuFeature, CpuReport};
 use whisper_rs::whisper_rs_sys as ggml;
 
-use crate::dev::{Device, DeviceType};
+use crate::dev::Device;
+use purr_common::platform::DeviceType;
 
 fn present(has: impl Fn(CpuFeature) -> bool) -> Vec<CpuFeature> {
     CpuFeature::ALL

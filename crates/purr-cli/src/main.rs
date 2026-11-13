@@ -28,6 +28,7 @@ use futures::StreamExt as _;
 use indicatif::{ProgressBar, ProgressFinish, ProgressStyle};
 use miette::IntoDiagnostic as _;
 use purr_common::platform::ChunkKind;
+use purr_core::accel::inventory::Inventory;
 use purr_core::{
     ModelManager, StreamEvent, StreamingTranscription, TranscriptionConfig, install_logging_hooks,
     is_file_path, is_valid_url, model::vad_or_none, transcribe_file_stream, transcribe_file_sync,
@@ -282,6 +283,10 @@ async fn setup_config(cli: &Cli) -> miette::Result<TranscriptionConfig> {
     config = setup_model_config(cli, config).await?;
 
     config = config.with_cli_options(cli);
+    if cli.device.is_some() {
+        let detected = purr_core::accel::devices::detect(&Inventory::detect());
+        config = config.with_devices(cli.device_order_among(&detected).into_diagnostic()?);
+    }
 
     if config.vad_model_path.is_none() {
         let installed = ModelManager::new()?.vad_model_path().await;

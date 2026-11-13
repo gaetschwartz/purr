@@ -15,11 +15,8 @@ async fn test_transcription_config() {
 
     assert_eq!(config.language, Some("en".into()));
     assert_eq!(
-        config.accel.mode,
-        purr_core::accel::config::AccelMode::Force {
-            backend: purr_core::accel::backend::AccelBackend::Cpu,
-            allow_fallback: false,
-        }
+        config.devices,
+        purr_common::devices::DeviceOrder::cpu_only()
     );
     assert_eq!(config.num_threads, Some(2));
     assert_eq!(config.sample_rate, 16000);
