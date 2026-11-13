@@ -143,7 +143,7 @@ async fn list_downloaded(manager: &ModelManager) -> miette::Result<()> {
         resultln!("{} No models downloaded yet.", "Info:".info())?;
         resultln!(
             "Use {} to download a model.",
-            format_args!("{} models download base", env!("CARGO_PKG_NAME")).command()
+            format_args!("{} models download base", crate::APP_NAME).command()
         )?;
         return Ok(());
     }
@@ -236,14 +236,14 @@ async fn list_available(manager: &ModelManager) -> miette::Result<()> {
     resultln!(
         "{}{}",
         "Usage: ".muted(),
-        format_args!("{} models download <model>", env!("CARGO_PKG_NAME")).command()
+        format_args!("{} models download <model>", crate::APP_NAME).command()
     )?;
     resultln!(
         "{}{}",
         "Example: ".muted(),
         format_args!(
             "{} models download {}",
-            env!("CARGO_PKG_NAME"),
+            crate::APP_NAME,
             registry.default_model().id
         )
         .command()

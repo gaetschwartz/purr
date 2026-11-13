@@ -23,7 +23,7 @@ pub async fn prompt_for_model_download(
     model_manager: &ModelManager,
     model: Option<&ModelSpec>,
 ) -> miette::Result<Option<PathBuf>> {
-    let program = env!("CARGO_PKG_NAME");
+    let program = crate::APP_NAME;
     if !can_ask() {
         let wanted = model.unwrap_or_else(|| model_manager.registry().default_model());
         return Err(if model.is_some() {

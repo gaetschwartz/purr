@@ -1,6 +1,7 @@
 //! Whisper UI CLI - Audio transcription command-line interface
 #![deny(clippy::print_stdout, clippy::print_stderr, clippy::dbg_macro)]
 
+mod build_info;
 mod cli;
 mod color;
 mod download_prompt;
@@ -32,15 +33,12 @@ use purr_core::{
     is_file_path, is_valid_url, model::vad_or_none, transcribe_file_stream, transcribe_file_sync,
     transcribe_url_stream, transcribe_url_sync,
 };
-use shadow_rs::shadow;
 use std::borrow::Cow;
 use std::path::Path;
 use std::process::ExitCode;
 use tracing::{debug, info};
 
 const APP_NAME: &str = env!("CARGO_BIN_NAME");
-
-shadow!(build);
 
 #[tokio::main]
 async fn main() -> ExitCode {

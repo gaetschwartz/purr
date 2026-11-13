@@ -13,9 +13,9 @@ use std::{ffi::OsStr, path::PathBuf, str::FromStr as _};
 
 const ABOUT: &str = "😸 Transcribe audio files and URLs using Whisper AI";
 #[derive(Parser, Debug)]
-#[command(name = env!("CARGO_PKG_NAME"), author = env!("CARGO_PKG_AUTHORS"))]
+#[command(name = env!("CARGO_BIN_NAME"), bin_name = env!("CARGO_BIN_NAME"), author = env!("CARGO_PKG_AUTHORS"))]
 #[command(about = ABOUT)]
-#[command(version = "0.1.0")]
+#[command(version = crate::build_info::version())]
 #[command(styles = CLAP_STYLES)]
 pub struct Cli {
     #[command(subcommand)]

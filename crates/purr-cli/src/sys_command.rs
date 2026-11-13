@@ -40,6 +40,8 @@ pub fn handle(json: bool) -> miette::Result<()> {
         return Ok(());
     }
 
+    resultln!("{} {}", crate::APP_NAME, crate::build_info::version())?;
+    resultln!()?;
     resultln!(
         "{}",
         "Acceleration backends (default priority order, best first):".heading()
