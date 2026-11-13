@@ -4,7 +4,10 @@ use super::{
     search_field::SearchField,
 };
 use crate::utils::dom_id::use_dom_id;
-use dioxus::prelude::*;
+use dioxus::{
+    core::{Runtime, ScopeId},
+    prelude::*,
+};
 
 /// Which row of a [`ListPicker`] the keyboard and the pointer point at; there is only ever one.
 ///
@@ -18,23 +21,25 @@ pub struct ListNav {
 /// A [`ListNav`] for one picker; nothing is pointed at until the pointer or the arrows move.
 pub fn use_list_nav() -> ListNav {
     let list_id = use_dom_id("list");
-    ListNav {
-        list_id: use_signal(|| list_id),
-        pointed: use_signal(|| None),
-    }
+    use_hook(|| {
+        Runtime::current().in_scope(ScopeId::ROOT, || ListNav {
+            list_id: Signal::new(list_id),
+            pointed: Signal::new(None),
+        })
+    })
 }
 
 impl ListNav {
     /// The DOM id of the list box.
     #[must_use]
     pub fn list_id(&self) -> String {
-        self.list_id.read().clone()
+        self.list_id.peek().clone()
     }
 
     /// The DOM id of the row with `key`.
     #[must_use]
     pub fn row_id(&self, key: &str) -> String {
-        format!("{}-{key}", self.list_id.read())
+        format!("{}-{key}", self.list_id.peek())
     }
 
     /// The key of the row to mark among `keys`: the pointed one, else the first while a search
