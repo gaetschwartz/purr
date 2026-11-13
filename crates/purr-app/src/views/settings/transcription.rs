@@ -7,6 +7,7 @@ use crate::{
         group::{Group, Item},
         language_picker::LanguagePill,
         model_picker::ModelPill,
+        pick_target::PickTarget,
         segmented::{Segment, Segmented},
         slider::Slider,
         switch::Switch,
@@ -36,17 +37,17 @@ pub fn TranscriptionSection() -> Element {
         div { class: "sect", id: SettingsSection::Transcription.anchor(),
             Group { header: SettingsSection::Transcription.label(),
                 Item {
-                    title: "Spoken language",
+                    title: "Default language",
                     stackable: true,
                     control: rsx! {
-                        LanguagePill { id: "settings-language" }
+                        LanguagePill { id: "settings-language", target: PickTarget::Default }
                     },
                 }
                 Item {
-                    title: "Model",
+                    title: "Default model",
                     stackable: true,
                     control: rsx! {
-                        ModelPill { id: "settings-model" }
+                        ModelPill { id: "settings-model", target: PickTarget::Default }
                     },
                 }
                 HuggingFaceTokenItem {}
@@ -78,7 +79,6 @@ pub fn TranscriptionSection() -> Element {
                 if !IS_WEB {
                     Item {
                         title: "Temperature",
-                        subtitle: "Raise it if the text repeats itself.",
                         value: temperature_text.clone(),
                         Slider {
                             label: "Temperature",

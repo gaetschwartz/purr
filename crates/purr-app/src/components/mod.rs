@@ -20,6 +20,7 @@ pub mod kbd;
 pub mod language_picker;
 pub mod layer;
 pub mod page;
+pub mod pick_target;
 pub mod pill;
 pub mod popover;
 pub mod progress_bar;
@@ -33,6 +34,7 @@ pub mod stepper;
 pub mod switch;
 pub mod toast;
 
+pub mod model_check;
 pub mod model_download;
 pub mod model_filters;
 pub mod model_picker;

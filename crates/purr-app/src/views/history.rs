@@ -27,7 +27,6 @@ use crate::{
 };
 use clear_dialog::ClearDialog;
 use dioxus::prelude::*;
-use purr_common::history::retention::MAX_ENTRIES;
 use row::HistoryRow;
 use unreadable_notice::UnreadableNotice;
 
@@ -148,7 +147,6 @@ pub fn History() -> Element {
                     }
                 }
             }
-            p { class: "foot", style: "padding-left:16px", "Keeps the newest {MAX_ENTRIES}." }
         }
         if clearing() {
             ClearDialog {

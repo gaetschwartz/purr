@@ -51,6 +51,9 @@ pub struct Settings {
 pub struct ModelSettings {
     /// Name/ID of the transcription model to use
     pub model_name: String,
+    /// The model every launch starts with; `None` keeps the last one used
+    #[serde(default)]
+    pub default_model: Option<String>,
     /// Temperature for model randomness (0.0 = deterministic, 1.0 = creative)
     pub temperature: f64,
     /// Write English text whatever language is spoken
@@ -70,6 +73,9 @@ pub struct UiSettings {
     pub compact_mode: bool,
     /// Language spoken in the audio as a Whisper language code, or `auto` to detect it
     pub language: String,
+    /// The language every launch starts with; `None` keeps the last one used
+    #[serde(default)]
+    pub default_language: Option<String>,
     /// Replace the translucent glass surfaces with solid ones
     #[serde(default)]
     pub reduce_transparency: bool,
@@ -146,6 +152,7 @@ impl Default for ModelSettings {
     fn default() -> Self {
         Self {
             model_name: "base".to_owned(),
+            default_model: None,
             temperature: 0.0,
             translate: false,
             hugging_face_token: None,
@@ -159,6 +166,7 @@ impl Default for UiSettings {
             theme: Theme::System,
             compact_mode: false,
             language: "auto".to_owned(),
+            default_language: None,
             reduce_transparency: false,
             export_format: ExportFormat::default(),
             transcript: TranscriptView::default(),
@@ -243,6 +251,24 @@ impl Settings {
         }
 
         if self.ui.language.trim().is_empty() {
+            errors.push(SettingsError::EmptyLanguage);
+        }
+
+        if self
+            .model
+            .default_model
+            .as_deref()
+            .is_some_and(|name| name.trim().is_empty())
+        {
+            errors.push(SettingsError::EmptyModelName);
+        }
+
+        if self
+            .ui
+            .default_language
+            .as_deref()
+            .is_some_and(|code| code.trim().is_empty())
+        {
             errors.push(SettingsError::EmptyLanguage);
         }
 
@@ -345,6 +371,7 @@ mod tests {
                 theme: Theme::Dark,
                 compact_mode: false,
                 language: "fr".to_owned(),
+                default_language: None,
                 reduce_transparency: false,
                 export_format: ExportFormat::Txt,
                 transcript: TranscriptView::default(),
@@ -662,7 +689,7 @@ level = "Info"
         };
         assert_eq!(
             format!("{model:?}"),
-            "ModelSettings { model_name: \"base\", temperature: 0.0, translate: false, \
+            "ModelSettings { model_name: \"base\", default_model: None, temperature: 0.0, translate: false, \
              hugging_face_token: Some(HuggingFaceToken(<redacted>)) }"
         );
     }

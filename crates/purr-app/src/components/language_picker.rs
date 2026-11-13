@@ -1,5 +1,6 @@
 use super::{
     icon::{Icon, IconName, IconSize},
+    pick_target::PickTarget,
     pill::Pill,
     popover::{OptionRole, Popover, PopoverOption},
     search_field::SearchField,
@@ -29,19 +30,48 @@ pub fn LanguagePill(
     #[props(into)]
     id: String,
     #[props(default)] disabled: bool,
+    #[props(default)] target: PickTarget,
 ) -> Element {
     let settings = use_settings();
     let models = use_models();
     let mut open = use_signal(|| false);
-    let (selected, model) = settings.with(|settings| {
+    let (saved, model) = settings.with(|settings| {
         (
-            settings.ui.language.clone(),
+            match target {
+                PickTarget::Current => Some(settings.ui.language.clone()),
+                PickTarget::Default => settings.ui.default_language.clone(),
+            },
             settings.model.model_name.clone(),
         )
     });
-    let english_only = models
-        .find(&model)
-        .is_some_and(|info| ModelEntry::from_info(&info).language == ModelLanguage::EnglishOnly);
+    let Some(selected) = saved else {
+        return rsx! {
+            Pill {
+                id: id.clone(),
+                icon: IconName::Globe,
+                label: "Spoken language",
+                value: "Last used",
+                detail: None::<String>,
+                hint: None::<String>,
+                expanded: open(),
+                disabled,
+                onclick: move |_| open.toggle(),
+            }
+            if open() {
+                LanguagePicker {
+                    anchor: id,
+                    selected: String::new(),
+                    english_only: false,
+                    target,
+                    on_close: move |()| open.set(false),
+                }
+            }
+        };
+    };
+    let english_only = target == PickTarget::Current
+        && models.find(&model).is_some_and(|info| {
+            ModelEntry::from_info(&info).language == ModelLanguage::EnglishOnly
+        });
     let choice = LanguageChoice::from_setting(&selected).for_model(english_only);
     let (detail, hint) = match (&choice, english_only) {
         (_, true) => (Some("English only"), None),
@@ -65,6 +95,7 @@ pub fn LanguagePill(
                 anchor: id,
                 selected,
                 english_only,
+                target,
                 on_close: move |()| open.set(false),
             }
         }
@@ -81,12 +112,13 @@ pub fn LanguagePicker(
     /// The id of the element the popover hangs from.
     #[props(into)]
     anchor: String,
-    /// The `ui.language` setting: a Whisper code or `auto`.
+    /// The language setting: a Whisper code or `auto`; empty when none is, as with Last used.
     #[props(into)]
     selected: String,
     /// The chosen model only transcribes English.
     #[props(default)]
     english_only: bool,
+    #[props(default)] target: PickTarget,
     on_close: EventHandler<()>,
 ) -> Element {
     let settings = use_settings();
@@ -95,6 +127,7 @@ pub fn LanguagePicker(
     let mut query = use_signal(String::new);
     let mut highlight = use_signal(|| 0_usize);
 
+    let none_selected = selected.is_empty();
     let current = LanguageChoice::from_setting(&selected).for_model(english_only);
     let choices = if english_only {
         vec![LanguageChoice::Spoken(Language::En)]
@@ -114,7 +147,11 @@ pub fn LanguagePicker(
             on_close.call(());
             return;
         }
-        match settings.set_language(choice.setting()) {
+        let saved = match target {
+            PickTarget::Current => settings.set_language(choice.setting()),
+            PickTarget::Default => settings.set_default_language(Some(choice.setting().to_owned())),
+        };
+        match saved {
             Ok(()) => on_close.call(()),
             Err(error) => {
                 toasts.error("That language can't be used", error.to_string());
@@ -168,6 +205,29 @@ pub fn LanguagePicker(
                     onkeydown: on_key,
                 }
             }
+            if target == PickTarget::Default {
+                div { class: "plist", role: "listbox", aria_label: "Default language",
+                    PopoverOption {
+                        title: "Last used",
+                        subtitle: "Start with the language you picked last".to_owned(),
+                        role: OptionRole::Option,
+                        selected: none_selected,
+                        leading: rsx! {
+                            if none_selected {
+                                Icon { name: IconName::Check, size: IconSize::Small }
+                            }
+                        },
+                        onselect: move |()| {
+                            match settings.set_default_language(None) {
+                                Ok(()) => on_close.call(()),
+                                Err(error) => {
+                                    toasts.error("That language can't be used", error.to_string());
+                                }
+                            }
+                        },
+                    }
+                }
+            }
             div { class: "plist", role: "listbox", id: list_id, aria_label: "Languages",
                 if choices.is_empty() {
                     p { class: "faint", style: "padding:10px;margin:0;font-size:14px",
@@ -181,10 +241,10 @@ pub fn LanguagePicker(
                         title: choice.label(),
                         subtitle: (choice == LanguageChoice::Automatic).then(|| AUTOMATIC_HINT.to_owned()),
                         role: OptionRole::Option,
-                        selected: choice == current,
+                        selected: choice == current && !none_selected,
                         highlighted: index == active,
                         leading: rsx! {
-                            if choice == current {
+                            if choice == current && !none_selected {
                                 Icon { name: IconName::Check, size: IconSize::Small }
                             }
                         },

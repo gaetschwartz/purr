@@ -194,7 +194,6 @@ pub fn Shell() -> Element {
                 }
                 div { class: "side-foot",
                     NavLink { section: NavSection::Settings, current }
-                    NavLink { section: NavSection::Logs, current }
                     button {
                         class: "side-keys",
                         r#type: "button",

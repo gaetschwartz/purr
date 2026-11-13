@@ -41,9 +41,6 @@ pub fn SystemPanel(system: Resource<Result<SystemReport, String>>) -> Element {
                 },
                 Some(Ok(report)) => rsx! {
                     SystemList { label: "Detected backends and devices", rows: rows(&report) }
-                    p { class: "group-f",
-                        "“Built, unavailable”: this build supports the backend, but no device or driver responds."
-                    }
                 },
             }
         }

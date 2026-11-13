@@ -23,8 +23,7 @@ impl Badge {
     pub const fn label(self) -> &'static str {
         match self {
             Self::Available => "Available",
-            Self::BuiltUnavailable => "Built, unavailable",
-            Self::Unavailable => "Not available",
+            Self::BuiltUnavailable | Self::Unavailable => "Unavailable",
         }
     }
 }
@@ -59,10 +58,6 @@ fn cpu_detail(cpu: &CpuReport) -> Option<String> {
             "not on this CPU: {}",
             CpuFeature::join_labels(&missing)
         ));
-    }
-    let unused = cpu.unused_by_build();
-    if !unused.is_empty() {
-        parts.push(format!("unused: {}", CpuFeature::join_labels(&unused)));
     }
     (!parts.is_empty()).then(|| parts.join(" · "))
 }
@@ -323,7 +318,7 @@ mod tests {
                 &[CpuFeature::Avx2, CpuFeature::Avx512F],
                 Some(&[CpuFeature::Avx2, CpuFeature::Bmi2])
             )),
-            Some("8 threads · AVX2, AVX512F · not on this CPU: AVX512F · unused: BMI2".to_owned())
+            Some("8 threads · AVX2, AVX512F · not on this CPU: AVX512F".to_owned())
         );
     }
 

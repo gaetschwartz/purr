@@ -99,6 +99,7 @@ pub fn App() -> Element {
     use_appearance_provider(settings);
     use_models_provider();
     use_system_probe_provider();
+    hooks::launch_defaults::use_launch_defaults();
     history::store::use_history_provider();
     let session = transcribe::session::use_transcribe_session_provider();
     platform::playback_source::use_audio_route(session);

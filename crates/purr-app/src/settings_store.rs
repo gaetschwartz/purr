@@ -95,6 +95,16 @@ impl SettingsStore {
         self.update(|settings| settings.model.model_name = model_name)
     }
 
+    /// The model each launch starts with, or `None` to keep the last one used.
+    pub fn set_default_model(&self, model_name: Option<String>) -> Result<(), UpdateError> {
+        self.update(|settings| settings.model.default_model = model_name)
+    }
+
+    /// The language each launch starts with, or `None` to keep the last one used.
+    pub fn set_default_language(&self, code: Option<String>) -> Result<(), UpdateError> {
+        self.update(|settings| settings.ui.default_language = code)
+    }
+
     /// The spoken language as a Whisper language code, or `auto` to detect it.
     pub fn set_language(&self, code: impl Into<String>) -> Result<(), UpdateError> {
         let code = code.into();
