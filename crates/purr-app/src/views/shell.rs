@@ -9,7 +9,10 @@ use crate::{
     transcribe::session::use_transcribe_session,
     views::{settings_load_banner::SettingsLoadBanner, shortcuts_sheet::ShortcutsSheet},
 };
-use dioxus::prelude::*;
+use dioxus::{
+    html::{PointerInteraction as _, input_data::MouseButton},
+    prelude::*,
+};
 use std::rc::Rc;
 
 struct NavEntry {
@@ -112,6 +115,14 @@ pub fn Shell() -> Element {
     let mut main_area = use_signal(|| None::<Rc<MountedData>>);
 
     use_shortcut(
+        Shortcut::new(KeyChord::key(Key::ArrowLeft).with_alt(), "Go back"),
+        move || navigator.go_back(),
+    );
+    use_shortcut(
+        Shortcut::new(KeyChord::key(Key::ArrowRight).with_alt(), "Go forward"),
+        move || navigator.go_forward(),
+    );
+    use_shortcut(
         Shortcut::new(screen_chord(IS_WEB, '1'), "Go to Transcribe").in_inputs(),
         move || {
             navigator.push(Route::Home {});
@@ -155,6 +166,23 @@ pub fn Shell() -> Element {
             class: "shell",
             ondragover: move |event| event.prevent_default(),
             ondrop: move |event| event.prevent_default(),
+            onmouseup: move |event: MouseEvent| match event.trigger_button() {
+                Some(MouseButton::Fourth) => {
+                    event.prevent_default();
+                    navigator.go_back();
+                }
+                Some(MouseButton::Fifth) => {
+                    event.prevent_default();
+                    navigator.go_forward();
+                }
+                Some(
+                    MouseButton::Primary
+                    | MouseButton::Secondary
+                    | MouseButton::Auxiliary
+                    | MouseButton::Unknown,
+                )
+                | None => {}
+            },
             button { class: "skip-link", r#type: "button", onclick: skip, "Skip to content" }
             nav { class: "sidebar glass g1", aria_label: "Purr",
                 Link { class: "side-brand", to: Route::Home {}, aria_label: "Purr, Transcribe",
