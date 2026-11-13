@@ -47,7 +47,7 @@ git push --atomic origin develop v0.3.0
 4. When `develop` still carries `0.3.0`, adds a `chore: start 0.4.0 development` commit.
 5. Prints the push command and stops; nothing is pushed.
 
-`--dry-run` shows the plan. Only plain `X.Y.Z` versions are accepted. A pre-release tag such as `v0.3.0-rc.1` can be made by hand: the workflow marks any tag with a `-` as a pre-release and does not publish it to the package managers.
+`--dry-run` shows the plan. Only plain `X.Y.Z` versions are accepted. A pre-release tag such as `v0.3.0-rc.1` can be made by hand once the workspace version at that commit is set to `0.3.0-rc.1`, because the release job checks the CLI reports the tag's version. The workflow marks any tag with a `-` as a pre-release and does not publish it to the package managers.
 
 Pushing the tag starts `build.yml` with `PURR_CHANNEL=stable`. `release (tag)` checks the CLI reports `0.3.0`, creates the GitHub release, and `publish packages (stable)` updates `purr` and `purr-app` in the tap and bucket.
 

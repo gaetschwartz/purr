@@ -32,6 +32,7 @@ all cli/desktop/web ─┬─ release (canary)  ─ publish packages (canary)   
 - The `ffmpeg` jobs only check the cache when it hits. On a miss they build FFmpeg with vcpkg and save it, so the build jobs only restore it.
 - The single-backend Windows CLIs (`cuda` alone, `vulkan` alone) never ship. They only build on a manual run with `windows_single_backends`.
 - Concurrency: a push to `develop` cancels the previous run on that branch, so quick successive pushes only publish the newest commit. Tags and manual runs are never cancelled.
+- `deploy web (vercel)` is part of this workflow, so it only runs for `develop` and `v*` tags.
 - A release job only starts when every build job succeeded. `ci.yml` is a separate workflow and is not waited for.
 - `PURR_CHANNEL` and `PURR_CANARY_NUMBER` are set for the whole workflow: `stable` on `v*` tags, `canary` with the run number on `develop`, unset (a dev build) otherwise. They make `purr --version` report the same identifier as the release. See [releasing.md](releasing.md).
 - The build scripts read the commit and its date from the checkout, which a shallow clone provides. Only the release jobs fetch the full history, for the changelog.
