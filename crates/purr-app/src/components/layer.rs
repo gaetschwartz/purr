@@ -94,8 +94,13 @@ if (root) {{
       const pw = pop.offsetWidth, ph = pop.offsetHeight;
       let left = alignEnd ? r.right - app.left - pw : r.left - app.left;
       left = Math.max(12, Math.min(left, app.width - pw - 12));
-      let top = r.bottom - app.top + 8;
-      if (top + ph > app.height - 12) top = Math.max(12, r.top - app.top - ph - 8);
+      const below = app.height - (r.bottom - app.top) - 20;
+      const above = r.top - app.top - 20;
+      const placeBelow = ph <= below || below >= above;
+      const room = Math.max(120, placeBelow ? below : above);
+      const height = Math.min(ph, room);
+      pop.style.maxHeight = room + 'px';
+      const top = placeBelow ? r.bottom - app.top + 8 : r.top - app.top - 8 - height;
       pop.style.left = left + 'px';
       pop.style.top = top + 'px';
     }}

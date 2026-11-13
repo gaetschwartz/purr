@@ -15,13 +15,14 @@ pub fn Popover(
     on_close: EventHandler<()>,
     #[props(default)] align: PopoverAlign,
     #[props(default)] menu: bool,
+    #[props(default)] wide: bool,
     children: Element,
 ) -> Element {
     let dom_id = use_dom_id("layer");
-    let class = if menu {
-        "popover glass g3 menu"
-    } else {
-        "popover glass g3"
+    let class = match (menu, wide) {
+        (true, _) => "popover glass g3 menu",
+        (false, true) => "popover glass g3 wide",
+        (false, false) => "popover glass g3",
     };
     let view = rsx! {
         LayerFrame {
@@ -62,6 +63,8 @@ pub fn PopoverOption(
     #[props(into)]
     trailing_prefix: Option<String>,
     leading: Option<Element>,
+    /// A mark after the trailing text, such as a downloaded badge.
+    status: Option<Element>,
     #[props(default)] role: OptionRole,
     #[props(default)] selected: bool,
     #[props(default)] disabled: bool,
@@ -109,6 +112,9 @@ pub fn PopoverOption(
                     }
                     "{trailing}"
                 }
+            }
+            if let Some(status) = status {
+                span { class: "st", {status} }
             }
         }
     }

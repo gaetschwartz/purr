@@ -3,13 +3,13 @@ use crate::{
         banner::{Banner, BannerTone},
         button::{Button, ButtonSize},
         icon::IconName,
+        model_check::ModelCheck,
         progress_bar::{Progress, ProgressBar},
-        spinner::Spinner,
     },
     hooks::use_models::use_models,
     model_catalog::{
         copy,
-        format::{rate_and_eta, transferred},
+        format::{checking, rate_and_eta, transferred},
         selection::Selection,
         state::ModelState,
     },
@@ -72,10 +72,13 @@ pub fn ModelNotice(selection: Option<Selection>, plan: StartPlan) -> Element {
                 }
             }
         },
-        ModelState::Verifying => rsx! {
-            div { class: "row", role: "status",
-                Spinner {}
-                span { class: "muted", "Checking {label}…" }
+        ModelState::Verifying(progress) => rsx! {
+            div { class: "card surface stack", style: "gap:10px",
+                ModelCheck {
+                    progress,
+                    label: label.clone(),
+                    text: checking(&label, &progress),
+                }
             }
         },
         ModelState::Failed(failure) => {

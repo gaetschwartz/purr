@@ -59,6 +59,20 @@ impl ModelFamily {
         }
     }
 
+    /// Whether a newer family replaces this one.
+    #[must_use]
+    pub const fn superseded(self) -> bool {
+        match self {
+            Self::LargeV1 | Self::LargeV2 => true,
+            Self::Tiny
+            | Self::Base
+            | Self::Small
+            | Self::Medium
+            | Self::LargeV3
+            | Self::LargeV3Turbo => false,
+        }
+    }
+
     /// A caveat that only applies to this family, if any.
     #[must_use]
     pub const fn note(self) -> Option<&'static str> {

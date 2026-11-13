@@ -2,7 +2,7 @@ use crate::{
     components::toast::{Toasts, use_toasts},
     hooks::model_operations,
     model_catalog::{
-        activity::{DownloadFailure, DownloadProgress, ModelActivity},
+        activity::{DownloadFailure, DownloadProgress, ModelActivity, VerifyProgress},
         entry::ModelEntry,
         listing::ModelRow,
         recommend::Device,
@@ -167,7 +167,7 @@ impl ModelsHandle {
     pub fn is_busy(&self, id: &str) -> bool {
         matches!(
             self.activity.read().get(id),
-            Some(ModelActivity::Downloading(_) | ModelActivity::Verifying)
+            Some(ModelActivity::Downloading(_) | ModelActivity::Verifying(_))
         )
     }
 
@@ -277,9 +277,10 @@ impl ModelsHandle {
             return;
         }
         let id = id.to_owned();
-        self.activity
-            .write()
-            .insert(id.clone(), ModelActivity::Verifying);
+        self.activity.write().insert(
+            id.clone(),
+            ModelActivity::Verifying(VerifyProgress::default()),
+        );
         spawn_forever(async move { model_operations::verify(self, id).await });
     }
 

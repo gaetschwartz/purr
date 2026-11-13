@@ -4,13 +4,13 @@ use super::{
     chip::{Chip, ChipTone},
     icon::{Icon, IconName, IconSize},
     icon_button::IconButton,
+    model_check::ModelCheck,
     model_download::ModelDownload,
     popover::{Popover, PopoverOption},
-    spinner::Spinner,
 };
 use crate::{
     hooks::use_models::use_models,
-    model_catalog::{copy, listing::ModelRow, state::ModelState},
+    model_catalog::{copy, format::checking, listing::ModelRow, state::ModelState},
     utils::{byte_size::ByteSize, dom_id::use_dom_id},
 };
 use dioxus::prelude::*;
@@ -43,7 +43,7 @@ pub fn ModelListRow(
         ModelState::NotDownloaded
         | ModelState::Downloaded
         | ModelState::Downloading(_)
-        | ModelState::Verifying
+        | ModelState::Verifying(_)
         | ModelState::Failed(_)
         | ModelState::NeedsRepair(_) => (false, entry.hint()),
     };
@@ -121,15 +121,7 @@ pub fn ModelListRow(
             {menu}
         },
         ModelState::Downloading(_) => rsx! {},
-        ModelState::Verifying => rsx! {
-            span {
-                class: "row",
-                role: "status",
-                style: "gap:8px;font-size:13px;color:var(--fg-2)",
-                Spinner {}
-                "Checking files…"
-            }
-        },
+        ModelState::Verifying(_) => rsx! {},
         ModelState::Failed(failure) => {
             let words = copy::failure(failure);
             let tone = if words.is_connection {
@@ -226,7 +218,7 @@ pub fn ModelListRow(
         ModelState::NotDownloaded
         | ModelState::Downloaded
         | ModelState::Downloading(_)
-        | ModelState::Verifying
+        | ModelState::Verifying(_)
         | ModelState::Unavailable { .. } => rsx! {},
     };
 
@@ -250,12 +242,26 @@ pub fn ModelListRow(
                 span { class: "size", "{size}" }
                 {side}
             }
-            if let ModelState::Downloading(progress) = &state {
-                ModelDownload {
-                    progress: *progress,
-                    label: label.clone(),
-                    on_cancel: move |()| models.cancel(&id),
-                }
+            match &state {
+                ModelState::Downloading(progress) => rsx! {
+                    ModelDownload {
+                        progress: *progress,
+                        label: label.clone(),
+                        on_cancel: move |()| models.cancel(&id),
+                    }
+                },
+                ModelState::Verifying(progress) => rsx! {
+                    ModelCheck {
+                        progress: *progress,
+                        label: label.clone(),
+                        text: checking("files", progress),
+                    }
+                },
+                ModelState::NotDownloaded
+                | ModelState::Downloaded
+                | ModelState::Failed(_)
+                | ModelState::NeedsRepair(_)
+                | ModelState::Unavailable { .. } => rsx! {},
             }
         }
     }

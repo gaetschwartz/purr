@@ -364,6 +364,9 @@ kbd{font-family:var(--font);font-size:12px;font-weight:600;padding:2px 7px;borde
 .popover>.pscroll>*{flex:none}
 .popover.glass::before,.sheet.glass::before{inset:0}
 .popover.menu{width:220px}
+.popover.wide{width:400px}
+.pfilters{display:flex;gap:8px;flex-wrap:wrap;padding:2px 8px 8px}
+.pempty{display:flex;flex-direction:column;align-items:flex-start;gap:4px;padding:8px 12px;color:var(--fg-2);font-size:14px}
 .popover .ph{padding:8px 10px 6px;font-size:12px;font-weight:600;color:var(--fg-3);letter-spacing:.04em;text-transform:uppercase}
 .popover .plist{display:flex;flex-direction:column;padding:2px}
 .popover hr{border:0;height:1px;background:var(--separator);margin:6px 8px}
@@ -377,6 +380,7 @@ kbd{font-family:var(--font);font-size:12px;font-weight:600;padding:2px 7px;borde
 .opt .t span{display:block;font-size:12px;color:var(--fg-3)}
 .opt[aria-disabled="true"]{opacity:.5;cursor:not-allowed}
 .opt .r{font-size:12.5px;color:var(--fg-3);white-space:nowrap}
+.opt .st{display:grid;place-items:center;color:var(--success);flex:none}
 .opt.danger{color:var(--danger)}
 .opt.danger .ck{color:var(--danger)}
 .sheet-wrap{position:absolute;inset:0;display:grid;place-items:center;padding:24px;pointer-events:none}

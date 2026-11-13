@@ -1,5 +1,5 @@
 use super::{
-    activity::{Damage, DownloadFailure, DownloadProgress, ModelActivity},
+    activity::{Damage, DownloadFailure, DownloadProgress, ModelActivity, VerifyProgress},
     entry::ModelEntry,
 };
 use crate::hooks::use_models::GpuSupport;
@@ -21,7 +21,7 @@ pub enum ModelState {
     NotDownloaded,
     Downloaded,
     Downloading(DownloadProgress),
-    Verifying,
+    Verifying(VerifyProgress),
     Failed(DownloadFailure),
     /// A check found the stored files wrong; downloading again repairs them.
     NeedsRepair(Damage),
@@ -43,7 +43,7 @@ impl ModelState {
             } => true,
             Self::NotDownloaded
             | Self::Downloading(_)
-            | Self::Verifying
+            | Self::Verifying(_)
             | Self::Failed(_)
             | Self::NeedsRepair(_)
             | Self::Unavailable {
@@ -59,7 +59,7 @@ impl ModelState {
             Self::Downloading(progress) => Some(progress),
             Self::NotDownloaded
             | Self::Downloaded
-            | Self::Verifying
+            | Self::Verifying(_)
             | Self::Failed(_)
             | Self::NeedsRepair(_)
             | Self::Unavailable { .. } => None,
@@ -70,7 +70,7 @@ impl ModelState {
     #[must_use]
     pub const fn is_active(&self) -> bool {
         match self {
-            Self::Downloading(_) | Self::Verifying | Self::Failed(_) => true,
+            Self::Downloading(_) | Self::Verifying(_) | Self::Failed(_) => true,
             Self::NotDownloaded
             | Self::Downloaded
             | Self::NeedsRepair(_)
@@ -111,7 +111,7 @@ pub fn model_state(
 ) -> ModelState {
     match activity {
         Some(ModelActivity::Downloading(progress)) => return ModelState::Downloading(*progress),
-        Some(ModelActivity::Verifying) => return ModelState::Verifying,
+        Some(ModelActivity::Verifying(progress)) => return ModelState::Verifying(*progress),
         Some(ModelActivity::Failed(failure)) => return ModelState::Failed(failure.clone()),
         Some(ModelActivity::Damaged(damage)) => return ModelState::NeedsRepair(damage.clone()),
         None => {}
@@ -222,14 +222,18 @@ mod tests {
             ),
             ModelState::Failed(failure)
         );
+        let checking = VerifyProgress {
+            checked_bytes: 3,
+            total_bytes: Some(9),
+        };
         assert_eq!(
             model_state(
                 &entry(true, false),
-                Some(&ModelActivity::Verifying),
+                Some(&ModelActivity::Verifying(checking)),
                 &GpuSupport::Checking,
                 false
             ),
-            ModelState::Verifying
+            ModelState::Verifying(checking)
         );
     }
 

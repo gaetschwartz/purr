@@ -26,6 +26,22 @@ impl DownloadProgress {
     }
 }
 
+/// How far the check of a model's stored files has come.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct VerifyProgress {
+    pub checked_bytes: u64,
+    pub total_bytes: Option<u64>,
+}
+
+impl VerifyProgress {
+    /// The finished fraction between 0 and 1, or `None` while the total is unknown.
+    #[must_use]
+    pub fn fraction(&self) -> Option<f64> {
+        let total = self.total_bytes.filter(|total| *total > 0)?;
+        Some((self.checked_bytes as f64 / total as f64).clamp(0.0, 1.0))
+    }
+}
+
 /// Why a download did not finish.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DownloadFailure {
@@ -44,7 +60,7 @@ pub struct Damage {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ModelActivity {
     Downloading(DownloadProgress),
-    Verifying,
+    Verifying(VerifyProgress),
     Failed(DownloadFailure),
     Damaged(Damage),
 }
@@ -97,6 +113,25 @@ mod tests {
             bytes_per_second: None,
         };
         assert_eq!(half.fraction(), Some(0.5));
+    }
+
+    #[test]
+    fn a_check_needs_a_known_total_to_have_a_fraction() {
+        let unknown = VerifyProgress {
+            checked_bytes: 10,
+            total_bytes: None,
+        };
+        assert_eq!(unknown.fraction(), None);
+        let quarter = VerifyProgress {
+            checked_bytes: 25,
+            total_bytes: Some(100),
+        };
+        assert_eq!(quarter.fraction(), Some(0.25));
+        let empty = VerifyProgress {
+            checked_bytes: 0,
+            total_bytes: Some(0),
+        };
+        assert_eq!(empty.fraction(), None);
     }
 
     #[test]

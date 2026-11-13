@@ -1,4 +1,4 @@
-use super::activity::DownloadProgress;
+use super::activity::{DownloadProgress, VerifyProgress};
 use crate::utils::byte_size::ByteSize;
 
 /// `1.2 MiB/s`.
@@ -50,9 +50,49 @@ pub fn percent(progress: &DownloadProgress) -> Option<u32> {
         .map(|fraction| (fraction * 100.0).round() as u32)
 }
 
+/// The whole-number percentage of a check, `None` while the total is unknown.
+#[must_use]
+pub fn check_percent(progress: &VerifyProgress) -> Option<u32> {
+    progress
+        .fraction()
+        .map(|fraction| (fraction * 100.0).round() as u32)
+}
+
+/// `Checking files · 42%`, or `Checking files…` while the total is unknown.
+#[must_use]
+pub fn checking(subject: &str, progress: &VerifyProgress) -> String {
+    check_percent(progress).map_or_else(
+        || format!("Checking {subject}…"),
+        |percent| format!("Checking {subject} · {percent}%"),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn checking_text_adds_the_percentage_once_it_is_known() {
+        let half = VerifyProgress {
+            checked_bytes: 1,
+            total_bytes: Some(2),
+        };
+        assert_eq!(checking("files", &half), "Checking files · 50%");
+        assert_eq!(
+            checking("files", &VerifyProgress::default()),
+            "Checking files…"
+        );
+    }
+
+    #[test]
+    fn a_check_rounds_to_a_whole_percentage() {
+        let progress = VerifyProgress {
+            checked_bytes: 1,
+            total_bytes: Some(3),
+        };
+        assert_eq!(check_percent(&progress), Some(33));
+        assert_eq!(check_percent(&VerifyProgress::default()), None);
+    }
 
     #[test]
     fn time_left_switches_units() {

@@ -1,5 +1,9 @@
 use crate::{
-    model_catalog::state::ModelState,
+    model_catalog::{
+        activity::{DownloadProgress, VerifyProgress},
+        format::{check_percent, percent, rate_and_eta},
+        state::ModelState,
+    },
     transcribe::{eta::EtaText, run::Stage, timing},
 };
 use std::fmt;
@@ -7,9 +11,10 @@ use std::fmt;
 /// The words at the end of the audio card's second line.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum RunStatus {
-    /// The model is downloading; the share once the size is known.
-    Downloading(Option<f64>),
-    CheckingDownload,
+    /// The model is downloading, as far as it has come.
+    Downloading(DownloadProgress),
+    /// The downloaded files are being hashed.
+    CheckingDownload(VerifyProgress),
     LoadingModel,
     DetectingLanguage,
     /// Speech is being decoded; the time left once it can be estimated.
@@ -24,9 +29,11 @@ impl RunStatus {
     pub fn running(stage: Stage, model: &ModelState, eta: Option<EtaText>) -> Self {
         match (stage, model) {
             (Stage::LoadingModel, ModelState::Downloading(progress)) => {
-                Self::Downloading(progress.fraction())
+                Self::Downloading(*progress)
             }
-            (Stage::LoadingModel, ModelState::Verifying) => Self::CheckingDownload,
+            (Stage::LoadingModel, ModelState::Verifying(progress)) => {
+                Self::CheckingDownload(*progress)
+            }
             (
                 Stage::LoadingModel,
                 ModelState::NotDownloaded
@@ -45,7 +52,7 @@ impl RunStatus {
     pub const fn busy(self) -> bool {
         match self {
             Self::Downloading(_)
-            | Self::CheckingDownload
+            | Self::CheckingDownload(_)
             | Self::LoadingModel
             | Self::DetectingLanguage => true,
             Self::Transcribing(_) | Self::Stopped(_) => false,
@@ -56,11 +63,24 @@ impl RunStatus {
 impl fmt::Display for RunStatus {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Downloading(Some(done)) => {
-                write!(f, "Downloading model {}%", (done * 100.0).round())
+            Self::Downloading(progress) => {
+                f.write_str("Downloading model")?;
+                if let Some(done) = percent(progress) {
+                    write!(f, " {done}%")?;
+                }
+                let pace = rate_and_eta(progress);
+                if !pace.is_empty() {
+                    write!(f, " · {pace}")?;
+                }
+                Ok(())
             }
-            Self::Downloading(None) => f.write_str("Downloading model"),
-            Self::CheckingDownload => f.write_str("Checking the download"),
+            Self::CheckingDownload(progress) => {
+                f.write_str("Checking the download")?;
+                if let Some(done) = check_percent(progress) {
+                    write!(f, " {done}%")?;
+                }
+                Ok(())
+            }
             Self::LoadingModel => f.write_str("Loading model"),
             Self::DetectingLanguage => f.write_str("Detecting language"),
             Self::Transcribing(Some(eta)) => write!(f, "{eta}"),
@@ -77,11 +97,23 @@ impl fmt::Display for RunStatus {
 mod tests {
     use super::*;
 
+    fn download(loaded_bytes: u64, bytes_per_second: Option<u64>) -> DownloadProgress {
+        DownloadProgress {
+            loaded_bytes,
+            total_bytes: Some(1_000_000),
+            bytes_per_second,
+        }
+    }
+
     #[test]
     fn a_download_shows_until_the_model_loads() {
+        let checking = VerifyProgress {
+            checked_bytes: 1,
+            total_bytes: Some(4),
+        };
         assert_eq!(
-            RunStatus::running(Stage::LoadingModel, &ModelState::Verifying, None),
-            RunStatus::CheckingDownload
+            RunStatus::running(Stage::LoadingModel, &ModelState::Verifying(checking), None),
+            RunStatus::CheckingDownload(checking)
         );
         assert_eq!(
             RunStatus::running(Stage::LoadingModel, &ModelState::Downloaded, None),
@@ -94,6 +126,51 @@ mod tests {
                 Some(EtaText::Minutes(4))
             ),
             RunStatus::Transcribing(Some(EtaText::Minutes(4)))
+        );
+    }
+
+    #[test]
+    fn a_download_names_its_speed_and_time_left_once_known() {
+        assert_eq!(
+            RunStatus::Downloading(download(450_000, Some(1_048_576))).to_string(),
+            "Downloading model 45% · 1.0 MiB/s · 1 s left"
+        );
+    }
+
+    #[test]
+    fn a_download_leaves_out_what_is_not_known_yet() {
+        assert_eq!(
+            RunStatus::Downloading(download(450_000, None)).to_string(),
+            "Downloading model 45%"
+        );
+        assert_eq!(
+            RunStatus::Downloading(DownloadProgress::default()).to_string(),
+            "Downloading model"
+        );
+        let unknown_total = DownloadProgress {
+            loaded_bytes: 10,
+            total_bytes: None,
+            bytes_per_second: Some(2_048),
+        };
+        assert_eq!(
+            RunStatus::Downloading(unknown_total).to_string(),
+            "Downloading model · 2.0 KiB/s"
+        );
+    }
+
+    #[test]
+    fn a_check_shows_its_share_once_known() {
+        let half = VerifyProgress {
+            checked_bytes: 2,
+            total_bytes: Some(4),
+        };
+        assert_eq!(
+            RunStatus::CheckingDownload(half).to_string(),
+            "Checking the download 50%"
+        );
+        assert_eq!(
+            RunStatus::CheckingDownload(VerifyProgress::default()).to_string(),
+            "Checking the download"
         );
     }
 }

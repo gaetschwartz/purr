@@ -76,7 +76,7 @@ pub const fn prepare(state: &ModelState, other_download: bool) -> Result<Prepara
     match state {
         ModelState::Downloaded => Ok(Preparation::None),
         ModelState::Downloading(_) => Ok(Preparation::JoinDownload),
-        ModelState::Verifying => Err(Blocker::Checking),
+        ModelState::Verifying(_) => Err(Blocker::Checking),
         ModelState::Unavailable { reason, .. } => Err(Blocker::CannotRun(*reason)),
         ModelState::NotDownloaded | ModelState::Failed(_) if other_download => {
             Err(Blocker::OtherDownload)
@@ -108,7 +108,9 @@ pub fn plan_start(file: FileReadiness, model: &ModelChoice, other_download: bool
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model_catalog::activity::{Damage, DownloadFailure, DownloadProgress};
+    use crate::model_catalog::activity::{
+        Damage, DownloadFailure, DownloadProgress, VerifyProgress,
+    };
     use purr_common::platform::{IntegrityProblem, ModelFailureKind};
 
     fn chosen(state: ModelState) -> ModelChoice {
@@ -189,7 +191,7 @@ mod tests {
             StartPlan::Blocked(Blocker::CannotRun(UnavailableReason::NeedsShaderF16))
         );
         assert_eq!(
-            usable(&chosen(ModelState::Verifying)),
+            usable(&chosen(ModelState::Verifying(VerifyProgress::default()))),
             StartPlan::Blocked(Blocker::Checking)
         );
     }

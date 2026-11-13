@@ -2,16 +2,18 @@ use super::use_models::ModelsHandle;
 use crate::{
     components::toast::{Toast, ToastKind},
     model_catalog::{
-        activity::{Damage, DownloadFailure, DownloadProgress, ModelActivity, SpeedMeter},
+        activity::{
+            Damage, DownloadFailure, DownloadProgress, ModelActivity, SpeedMeter, VerifyProgress,
+        },
         entry::ModelEntry,
     },
     platform,
     utils::{byte_size::ByteSize, clock::now_ms},
 };
 use dioxus::prelude::ReadableExt as _;
-use futures::StreamExt as _;
+use futures::{StreamExt as _, channel::mpsc};
 use purr_common::platform::{
-    ModelFailureKind, ModelIntegrity, ModelOperationProgress, Platform as _,
+    ModelCheckProgress, ModelFailureKind, ModelIntegrity, ModelOperationProgress, Platform as _,
 };
 
 const STOPPED_EARLY: &str = "The download stopped before it finished.";
@@ -70,7 +72,7 @@ async fn receive(models: ModelsHandle, id: &str) -> Outcome {
                 );
             }
             Ok(ModelOperationProgress::Installing { .. }) => {
-                models.set_activity(id, ModelActivity::Verifying);
+                models.set_activity(id, ModelActivity::Verifying(VerifyProgress::default()));
             }
             Ok(ModelOperationProgress::Completed { .. }) => return Outcome::Done,
             Ok(ModelOperationProgress::Failed {
@@ -167,7 +169,20 @@ pub(super) async fn discard(models: ModelsHandle, id: String) {
 /// Checks the stored files of `id` and reports what the check found.
 pub(super) async fn verify(models: ModelsHandle, id: String) {
     let (label, _) = describe(models, &id);
-    match platform::get_platform().verify_model(&id).await {
+    let (sender, mut reports) = mpsc::unbounded::<ModelCheckProgress>();
+    let follow = async {
+        while let Some(report) = reports.next().await {
+            models.set_activity(
+                &id,
+                ModelActivity::Verifying(VerifyProgress {
+                    checked_bytes: report.checked_bytes,
+                    total_bytes: Some(report.total_bytes),
+                }),
+            );
+        }
+    };
+    let (result, ()) = futures::join!(platform::get_platform().verify_model(&id, sender), follow);
+    match result {
         Ok(ModelIntegrity::Verified) => {
             models.clear_activity(&id);
             models.toasts.success(
