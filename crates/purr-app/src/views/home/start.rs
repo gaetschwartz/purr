@@ -183,7 +183,9 @@ pub fn Start() -> Element {
                     aria_label: "Transcription options",
                     ModelPill { id: "pick-model" }
                     LanguagePill { id: "pick-lang" }
-                    EngineChip { id: "engine-chip", label: engine }
+                    if engine.backend.is_known() {
+                        EngineChip { id: "engine-chip", label: engine }
+                    }
                     Button {
                         variant: ButtonVariant::Primary,
                         size: ButtonSize::Large,

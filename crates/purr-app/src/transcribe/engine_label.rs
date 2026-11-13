@@ -23,6 +23,15 @@ pub enum BackendLabel {
 }
 
 impl BackendLabel {
+    /// Whether a backend is actually known, as opposed to "Automatic" or still probing.
+    #[must_use]
+    pub const fn is_known(self) -> bool {
+        match self {
+            Self::Accel(_) | Self::WebGpu => true,
+            Self::Automatic | Self::Checking => false,
+        }
+    }
+
     const fn text(self) -> &'static str {
         match self {
             Self::Accel(backend) => backend.label(),
@@ -573,5 +582,13 @@ mod tests {
             "Vulkan · NVIDIA GeForce RTX 4090"
         );
         assert_eq!(label(AccelBackend::Cpu, None).to_string(), "CPU");
+    }
+
+    #[test]
+    fn only_a_named_backend_is_known() {
+        assert!(BackendLabel::Accel(AccelBackend::Cpu).is_known());
+        assert!(BackendLabel::WebGpu.is_known());
+        assert!(!BackendLabel::Automatic.is_known());
+        assert!(!BackendLabel::Checking.is_known());
     }
 }
