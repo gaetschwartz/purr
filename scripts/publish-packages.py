@@ -52,7 +52,6 @@ class Channel:
     scoop_app: str
     conflict_formula: str
     conflict_cask: str
-    cli_shim: str
     title_suffix: str
     description_note: str
 
@@ -74,7 +73,6 @@ STABLE = Channel(
     scoop_app="purr-app",
     conflict_formula="purr@nightly",
     conflict_cask="purr-app@nightly",
-    cli_shim="purr.exe",
     title_suffix="",
     description_note="",
 )
@@ -88,7 +86,6 @@ NIGHTLY = Channel(
     scoop_app="purr-app-nightly",
     conflict_formula="purr",
     conflict_cask="purr-app",
-    cli_shim="purr-nightly",
     title_suffix=" Nightly",
     description_note=", nightly build",
 )
@@ -225,7 +222,6 @@ def scoop_manifest(
 def scoop_cli(
     channel: Channel, repo: str, version: str, sums: Mapping[str, str]
 ) -> dict[str, Json]:
-    bin_entry: Json = "purr.exe" if channel.name == "stable" else [["purr.exe", channel.cli_shim]]
     return scoop_manifest(
         channel,
         repo,
@@ -234,7 +230,7 @@ def scoop_cli(
         kind="cli",
         ext=".zip",
         description=f"{DESCRIPTION} (command-line tool{channel.description_note})",
-        extra={"bin": bin_entry},
+        extra={"bin": "purr.exe"},
     )
 
 
