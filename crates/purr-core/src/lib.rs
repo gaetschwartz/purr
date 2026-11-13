@@ -12,6 +12,7 @@ pub mod http;
 pub mod input;
 pub mod math;
 pub mod model;
+mod resample;
 pub mod url;
 pub mod whisper;
 
