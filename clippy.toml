@@ -3,3 +3,9 @@ allow-expect-in-tests = true
 allow-panic-in-tests = true
 allow-indexing-slicing-in-tests = true
 allow-dbg-in-tests = true
+allow-print-in-tests = true
+
+disallowed-methods = [
+  { path = "std::io::stdout", reason = "write through purr-cli's output layer; only its sink module touches the process streams" },
+  { path = "std::io::stderr", reason = "write through purr-cli's output layer; only its sink module touches the process streams" },
+]
