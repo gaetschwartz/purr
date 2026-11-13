@@ -10,6 +10,7 @@ pub mod platform;
 pub mod progress;
 pub mod settings;
 pub mod transcript_view;
+pub mod version;
 pub mod vulkan;
 pub mod web_model;
 pub mod word;
