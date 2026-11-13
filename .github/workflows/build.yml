@@ -707,6 +707,8 @@ jobs:
     runs-on: ubuntu-24.04
     needs: [web]
     timeout-minutes: 15
+    outputs:
+      url: ${{ steps.deploy.outputs.url }}
     steps:
       - uses: actions/checkout@v7
       - name: Download Web Artifacts
@@ -729,8 +731,21 @@ jobs:
           echo "environment=$ENVIRONMENT" >> $GITHUB_OUTPUT
           vercel pull --yes --environment=$ENVIRONMENT --token=${{ secrets.VERCEL_TOKEN }}
       - name: Deploy to Vercel
+        id: deploy
         run: |
-          vercel --yes ${{ steps.setup-env.outputs.environment == 'production' && '--prod' || '' }} --token=${{ secrets.VERCEL_TOKEN }} --archive=tgz --prebuilt
+          url="$(vercel --yes ${{ steps.setup-env.outputs.environment == 'production' && '--prod' || '' }} --token=${{ secrets.VERCEL_TOKEN }} --archive=tgz --prebuilt | tail -n 1)"
+          case "$url" in
+            https://*) ;;
+            *) echo "::error::vercel did not print a deployment URL: $url"; exit 1 ;;
+          esac
+          echo "$url" > deployed-site.txt
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "Deployed site: $url" >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload the deployment URL
+        uses: actions/upload-artifact@v7
+        with:
+          name: deployed-site
+          path: deployed-site.txt
 
   canary-release:
     name: release (canary)
