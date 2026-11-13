@@ -138,7 +138,7 @@ pub fn TranscriptCard(
     let shown_tentative = tentative.as_ref().filter(|_| live);
 
     rsx! {
-        section { class: "card glass tight tcard", aria_label: "Transcript",
+        section { class: "card surface tight tcard", aria_label: "Transcript",
             div { class: "tools",
                 SearchField {
                     id: SEARCH_ID,

@@ -75,18 +75,6 @@ fn Head() -> Element {
     }
 }
 
-#[component]
-fn Ambient() -> Element {
-    rsx! {
-        div { class: "ambient", aria_hidden: "true",
-            i { class: "blob b1" }
-            i { class: "blob b2" }
-            i { class: "blob b3" }
-            i { class: "blob b4" }
-        }
-    }
-}
-
 /// The root component: providers, the app window and its overlays.
 #[component]
 pub fn App() -> Element {
@@ -94,7 +82,6 @@ pub fn App() -> Element {
         return rsx! {
             Head {}
             div { class: "app",
-                Ambient {}
                 div { class: "scroller",
                     div { class: "content",
                         h1 { class: "lt", "Purr could not start" }
@@ -123,7 +110,6 @@ pub fn App() -> Element {
     rsx! {
         Head {}
         div { class: "app",
-            Ambient {}
             if !loading {
                 ErrorBoundary {
                     handle_error: |errors: ErrorContext| {

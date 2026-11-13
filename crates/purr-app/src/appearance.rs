@@ -56,7 +56,7 @@ fn root_script(attributes: RootAttributes) -> String {
 }
 
 /// Marks the root `data-inactive` while the window is hidden or unfocused, or after a minute with no
-/// input, which pauses the ambient field.
+/// input, which pauses animations.
 const INACTIVE_WATCHER: &str = "const root = document.documentElement; let away = false; let timer = 0; const mark = () => root.toggleAttribute('data-inactive', away || document.hidden || !document.hasFocus()); const wake = () => { clearTimeout(timer); if (away) { away = false; mark(); } timer = setTimeout(() => { away = true; mark(); }, 60000); }; for (const type of ['pointermove', 'pointerdown', 'keydown', 'wheel', 'touchstart']) window.addEventListener(type, wake, { passive: true }); window.addEventListener('focus', mark); window.addEventListener('blur', mark); document.addEventListener('visibilitychange', mark); wake(); mark();";
 
 /// Keeps the document root in step with the theme and transparency held by the settings store.

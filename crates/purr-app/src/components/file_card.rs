@@ -24,7 +24,7 @@ pub fn FileCard(
         ("fileicon", IconName::Music)
     };
     rsx! {
-        section { class: "filecard glass", aria_label: "Selected file",
+        section { class: "filecard surface", aria_label: "Selected file",
             span { class: icon_class,
                 Icon { name: icon, size: IconSize::Large }
             }

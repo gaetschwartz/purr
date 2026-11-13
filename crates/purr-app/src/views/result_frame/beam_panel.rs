@@ -62,7 +62,7 @@ pub fn SideBeams(beams: BeamsView) -> Element {
     let window = window_text(beams.snapshot.as_ref());
     rsx! {
         aside { class: "side-beams", aria_label: "Decoder beams",
-            div { class: "card glass",
+            div { class: "card surface",
                 div { class: "beams",
                     div { class: "bh",
                         span { "Beams" }

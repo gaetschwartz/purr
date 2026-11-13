@@ -1,7 +1,7 @@
 use crate::utils::dom_id::use_dom_id;
 use dioxus::prelude::*;
 
-/// A titled list section of the Models screen: a small caps header with an optional hint, then a glass group.
+/// A titled list section of the Models screen: a small caps header with an optional hint, then a grouped list.
 #[component]
 pub fn ModelSection(
     #[props(into)] title: String,
@@ -17,7 +17,7 @@ pub fn ModelSection(
                     span { "{hint}" }
                 }
             }
-            div { class: "group glass", {children} }
+            div { class: "group surface", {children} }
         }
     }
 }

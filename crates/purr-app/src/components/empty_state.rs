@@ -1,7 +1,7 @@
 use super::icon::{Icon, IconName, IconSize};
 use dioxus::prelude::*;
 
-/// A centred placeholder on a glass card: large icon well, title, optional explanation and actions.
+/// A centred placeholder on a card: large icon well, title, optional explanation and actions.
 ///
 /// `inline` drops the card and the icon well so it can sit inside a card that already has a frame.
 #[component]
@@ -16,7 +16,7 @@ pub fn EmptyState(
     let class = if inline {
         "empty compact"
     } else {
-        "card glass empty"
+        "card surface empty"
     };
     rsx! {
         section { class,

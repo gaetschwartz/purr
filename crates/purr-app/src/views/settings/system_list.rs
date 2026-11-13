@@ -25,7 +25,7 @@ const fn badge_icon(badge: Badge) -> Option<IconName> {
 #[component]
 pub fn SystemList(#[props(into)] label: String, rows: Vec<SystemRow>) -> Element {
     rsx! {
-        div { class: "group glass sys", role: "list", aria_label: label,
+        div { class: "group surface sys", role: "list", aria_label: label,
             for (index , row) in rows.into_iter().enumerate() {
                 div { key: "{index}", class: "dev", role: "listitem",
                     span { class: "be", "{row.backend}" }

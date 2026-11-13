@@ -45,7 +45,7 @@ pub fn Recent() -> Element {
                         rsx! {
                             button {
                                 key: "{summary.id}",
-                                class: "glass",
+                                class: "surface",
                                 r#type: "button",
                                 id: "rc-{summary.id}",
                                 onclick: move |_| {

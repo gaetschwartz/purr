@@ -171,7 +171,7 @@ pub fn Logs() -> Element {
                     },
                 }
             },
-            section { class: "card glass tight", aria_label: "Log entries",
+            section { class: "card surface tight", aria_label: "Log entries",
                 LogToolbar {
                     level: model_now.level(),
                     query: model_now.query().to_owned(),

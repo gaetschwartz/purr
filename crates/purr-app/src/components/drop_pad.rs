@@ -16,7 +16,7 @@ const ACCEPT: &str = if IS_WEB {
     ".mp3,.wav,.aac,.flac,.ogg,.oga,.opus,.webm,.weba,.m4a,.m4b,.mp4,.wma,.aif,.aiff,.amr,.mka"
 };
 
-/// The glass well of the Transcribe screen: drop a file on it, or click it (or press Space or
+/// The drop area of the Transcribe screen: drop a file on it, or click it (or press Space or
 /// Enter on it) to open the file chooser. It "purrs" a few times when it appears, unless motion is reduced.
 #[component]
 pub fn DropPad(
@@ -30,14 +30,15 @@ pub fn DropPad(
     let mut over = use_signal(|| false);
     let busy = reading.is_some();
     let class = if over() {
-        "drop glass over"
+        "drop surface over"
     } else {
-        "drop glass idle"
+        "drop surface idle"
     };
 
     rsx! {
         label {
             class,
+            title: "{formats}",
             ondragenter: move |event: DragEvent| {
                 event.prevent_default();
                 over.set(true);
@@ -54,7 +55,6 @@ pub fn DropPad(
                     on_file.call(file);
                 }
             },
-            span { class: "well" }
             input {
                 r#type: "file",
                 class: "sr",
@@ -86,7 +86,7 @@ pub fn DropPad(
                     "or "
                     span { class: "link", "choose a file" }
                 }
-                span { class: "formats", id: "drop-formats", "{formats}" }
+                span { class: "sr", id: "drop-formats", "{formats}" }
             }
         }
     }

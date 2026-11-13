@@ -105,7 +105,7 @@ pub fn AudioCard(
     };
 
     rsx! {
-        div { class: "player glass", role: "group", aria_label: "Source audio",
+        div { class: "player surface", role: "group", aria_label: "Source audio",
             button {
                 class: button_class,
                 r#type: "button",
@@ -176,7 +176,7 @@ pub fn AudioCard(
 #[component]
 pub fn SilentAudioCard(#[props(into)] file_name: String, #[props(into)] note: String) -> Element {
     rsx! {
-        div { class: "player silent glass", role: "group", aria_label: "Source audio",
+        div { class: "player silent surface", role: "group", aria_label: "Source audio",
             div { class: "pfile",
                 FileName { name: file_name }
             }

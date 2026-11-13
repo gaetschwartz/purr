@@ -140,7 +140,7 @@ pub fn History() -> Element {
                 }
             } else {
                 section {
-                    class: "group glass",
+                    class: "group surface",
                     id: "hlist",
                     aria_label: "Transcriptions",
                     for summary in shown {

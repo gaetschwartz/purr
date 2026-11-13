@@ -2,7 +2,7 @@ use super::icon::{Icon, IconName, IconSize};
 use crate::{main_app::Route, utils::dom_id::use_dom_id};
 use dioxus::prelude::*;
 
-/// An inset grouped list on glass, with an optional caps header and a footnote.
+/// An inset grouped list, with an optional caps header and a footnote.
 #[component]
 pub fn Group(
     #[props(into)] header: Option<String>,
@@ -18,7 +18,7 @@ pub fn Group(
             if let Some(header) = header {
                 h2 { class: "group-h", id: header_id, "{header}" }
             }
-            div { class: "group glass", {children} }
+            div { class: "group surface", {children} }
             if let Some(footer) = footer {
                 p { class: "group-f", "{footer}" }
             }
