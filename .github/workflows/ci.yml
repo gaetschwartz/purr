@@ -29,6 +29,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - run: bash scripts/test-prune-rust-caches.sh
+      - run: bash scripts/test-drop-ggml-build.sh
 
   test:
     name: test (linux)
