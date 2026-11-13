@@ -12,9 +12,9 @@ use crate::{
     hooks::use_models::{GpuSupport, use_models},
     main_app::Route,
     model_catalog::{
+        clusters::{ModelCluster, cluster},
         copy,
-        entry::ModelEntry,
-        family::ModelGroup,
+        entry::{ModelEntry, Precision},
         format::{check_percent, percent},
         listing::ModelRow,
         picker_filter::{PickerPrecision, PickerQuery, PickerStorage, opening_storage, pick_rows},
@@ -27,29 +27,17 @@ use crate::{
 use dioxus::prelude::*;
 use purr_common::accel::AccelPolicy;
 
-/// Language and precision, such as "Multilingual · Q5".
-fn variant(entry: &ModelEntry) -> String {
-    [
-        Some(entry.language.label().to_owned()),
-        entry.precision.tag(),
-    ]
-    .into_iter()
-    .flatten()
-    .collect::<Vec<_>>()
-    .join(" · ")
-}
-
-fn subtitle(row: &ModelRow) -> String {
+fn subtitle(row: &ModelRow) -> Option<String> {
     match &row.state {
-        ModelState::Unavailable { reason, .. } => copy::unavailable(*reason).1.to_owned(),
-        ModelState::Downloading(_) => "Downloading…".to_owned(),
-        ModelState::Verifying(progress) => check_percent(progress).map_or_else(
+        ModelState::Unavailable { reason, .. } => Some(copy::unavailable(*reason).1.to_owned()),
+        ModelState::Downloading(_) => Some("Downloading…".to_owned()),
+        ModelState::Verifying(progress) => Some(check_percent(progress).map_or_else(
             || "Checking files…".to_owned(),
             |done| format!("Checking files… {done}%"),
-        ),
-        ModelState::Failed(_) => "Last download failed".to_owned(),
-        ModelState::NeedsRepair(_) => "Files damaged".to_owned(),
-        ModelState::NotDownloaded | ModelState::Downloaded => variant(&row.entry),
+        )),
+        ModelState::Failed(_) => Some("Last download failed".to_owned()),
+        ModelState::NeedsRepair(_) => Some("Files damaged".to_owned()),
+        ModelState::NotDownloaded | ModelState::Downloaded => None,
     }
 }
 
@@ -71,14 +59,6 @@ fn download_size(row: &ModelRow) -> Option<String> {
             installed: false, ..
         } => Some(ByteSize(row.entry.size_bytes).to_string()),
     }
-}
-
-/// Rows of `group`, in the order they came in.
-fn in_group(rows: &[ModelRow], group: ModelGroup) -> Vec<ModelRow> {
-    rows.iter()
-        .filter(|row| row.entry.group == group)
-        .cloned()
-        .collect()
 }
 
 /// Every model of `use_models()` in a popover (a sheet on phones), anchored on the element `anchor`.
@@ -106,6 +86,7 @@ pub fn ModelPicker(
     let mut storage = use_signal(|| None::<PickerStorage>);
     let mut precision = use_signal(PickerPrecision::default);
     let mut search = use_signal(String::new);
+    let mut more_open = use_signal(|| false);
 
     let pick = move |row: ModelRow| {
         if matches!(row.state, ModelState::Unavailable { .. }) {
@@ -149,10 +130,14 @@ pub fn ModelPicker(
             let shown = pick_rows(&rows, &query);
             let on_device_only = query.storage == PickerStorage::OnDevice;
             let empty = shown.is_empty();
-            let groups = ModelGroup::ORDER
+            let (older, current): (Vec<ModelCluster>, Vec<ModelCluster>) = cluster(&shown)
                 .into_iter()
-                .map(|group| (group, in_group(&shown, group)))
-                .filter(|(_, rows)| !rows.is_empty());
+                .partition(ModelCluster::superseded);
+            let older_count = older.len();
+            let older_holds_selected = older
+                .iter()
+                .any(|cluster| cluster.rows().any(|row| row.entry.id == selected));
+            let older_open = more_open() || !query.search.trim().is_empty() || older_holds_selected;
             rsx! {
                 SearchField {
                     value: query.search.clone(),
@@ -196,19 +181,31 @@ pub fn ModelPicker(
                         }
                     }
                 }
-                for (group , rows) in groups {
-                    div {
-                        class: "plist",
-                        role: "listbox",
-                        aria_label: "{group.label()}",
-                        key: "{group.label()}",
-                        div { class: "ph", "{group.label()}" }
-                        for row in rows {
-                            ModelOption {
-                                key: "{row.entry.id}",
-                                row: row.clone(),
-                                selected: row.entry.id == selected,
-                                onselect: pick,
+                div { class: "plist", role: "listbox", aria_label: "Models",
+                    for cluster in current {
+                        ClusterOption {
+                            key: "{cluster.primary.entry.id}",
+                            cluster: cluster.clone(),
+                            selected: selected.clone(),
+                            onselect: pick,
+                        }
+                    }
+                    if older_count > 0 {
+                        button {
+                            class: "btn plain sm pmore",
+                            r#type: "button",
+                            aria_expanded: older_open,
+                            onclick: move |_| more_open.toggle(),
+                            "More models ({older_count})"
+                        }
+                        if older_open {
+                            for cluster in older {
+                                ClusterOption {
+                                    key: "{cluster.primary.entry.id}",
+                                    cluster: cluster.clone(),
+                                    selected: selected.clone(),
+                                    onselect: pick,
+                                }
                             }
                         }
                     }
@@ -266,6 +263,70 @@ pub fn ModelPicker(
                         navigator.push(Route::Models {});
                     },
                 }
+            }
+        }
+    }
+}
+
+#[component]
+fn ClusterOption(
+    cluster: ModelCluster,
+    selected: String,
+    onselect: EventHandler<ModelRow>,
+) -> Element {
+    let name = cluster.primary.entry.name.clone();
+    rsx! {
+        ModelOption {
+            row: cluster.primary.clone(),
+            selected: cluster.primary.entry.id == selected,
+            onselect,
+        }
+        if !cluster.variants.is_empty() {
+            div {
+                class: "pvars",
+                role: "group",
+                aria_label: "Other versions of {name}",
+                for row in cluster.variants.clone() {
+                    VariantOption {
+                        key: "{row.entry.id}",
+                        selected: row.entry.id == selected,
+                        row,
+                        onselect,
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn VariantOption(row: ModelRow, selected: bool, onselect: EventHandler<ModelRow>) -> Element {
+    let disabled = matches!(row.state, ModelState::Unavailable { .. });
+    let tag = match &row.entry.precision {
+        Precision::Quantized { bits } => format!("Q{bits}"),
+        Precision::Other(raw) => raw.clone(),
+        Precision::Full | Precision::Mixed => "Full".to_owned(),
+    };
+    let size = download_size(&row);
+    let on_device = row.state.is_on_device();
+    rsx! {
+        button {
+            class: if selected { "pvar sel" } else { "pvar" },
+            r#type: "button",
+            role: "option",
+            aria_selected: selected,
+            aria_disabled: disabled.then_some("true"),
+            onclick: move |_| {
+                if !disabled {
+                    onselect.call(row.clone());
+                }
+            },
+            b { "{tag}" }
+            if on_device {
+                Icon { name: IconName::CheckCircle, size: IconSize::Small }
+                span { class: "sr", "Downloaded" }
+            } else if let Some(size) = size {
+                span { "{size}" }
             }
         }
     }

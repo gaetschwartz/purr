@@ -366,6 +366,15 @@ kbd{font-family:var(--font);font-size:12px;font-weight:600;padding:2px 7px;borde
 .popover.menu{width:220px}
 .popover.wide{width:400px}
 .pfilters{display:flex;gap:8px;flex-wrap:wrap;padding:2px 8px 8px}
+.pvars{display:flex;flex-wrap:wrap;gap:6px;padding:0 10px 8px 38px}
+.pvar{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 10px;border-radius:999px;background:var(--fill);font-size:12.5px;color:var(--fg-2)}
+.pvar:hover{background:var(--fill-2)}
+.pvar b{font-weight:600;color:var(--fg)}
+.pvar svg{width:14px;height:14px;color:var(--success)}
+.pvar.sel{background:var(--accent-soft-2);color:var(--accent-text)}
+.pvar.sel b{color:var(--accent-text)}
+.pvar[aria-disabled="true"]{opacity:.5;cursor:not-allowed}
+.pmore{align-self:flex-start;margin:4px 6px}
 .pempty{display:flex;flex-direction:column;align-items:flex-start;gap:4px;padding:8px 12px;color:var(--fg-2);font-size:14px}
 .popover .ph{padding:8px 10px 6px;font-size:12px;font-weight:600;color:var(--fg-3);letter-spacing:.04em;text-transform:uppercase}
 .popover .plist{display:flex;flex-direction:column;padding:2px}
