@@ -16,13 +16,14 @@ use crate::{
         model_picker::ModelPicker,
     },
     history::save_state::SaveState,
-    hooks::use_models::use_models,
+    hooks::{use_models::use_models, use_system_probe::use_system_probe},
     main_app::Route,
     platform::{IS_WEB, playback_source::AudioSource},
     settings_store::use_settings,
     shortcuts::{Key, KeyChord, Shortcut, use_shortcut},
     transcribe::{
         chosen_file::OverviewState,
+        engine_label::EngineLabel,
         eta::EtaText,
         language_choice::LanguageChoice,
         run::{RunOutcome, Stage},
@@ -112,6 +113,7 @@ pub fn RunView(record: RunRecord) -> Element {
     let session = use_transcribe_session();
     let settings = use_settings();
     let models = use_models();
+    let probe = use_system_probe();
     let navigator = use_navigator();
     let player = use_audio_player(&AudioSource::Upload(record.file.clone()));
     let mut picking = use_signal(|| None::<&'static str>);
@@ -320,6 +322,10 @@ pub fn RunView(record: RunRecord) -> Element {
             facts: TranscriptionFacts {
                 model_label: record.model.label.clone(),
                 language_text: language_text(&record),
+                engine_text: run
+                    .engine
+                    .as_ref()
+                    .map(|last| EngineLabel::ran(last, &probe.read()).to_string()),
             },
             more,
             on_more: move |action| match action {

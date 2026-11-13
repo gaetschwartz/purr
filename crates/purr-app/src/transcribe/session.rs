@@ -3,6 +3,7 @@
 use super::{
     chosen_file::{ChosenFile, FileProblem, OverviewState, WAVEFORM_BARS},
     engine::RunMemory,
+    engine_label::EngineLabel,
     language_choice::LanguageChoice,
     run::{Completion, Run, RunOutcome},
     start_plan::{Blocker, Preparation, blocked_text, prepare},
@@ -15,7 +16,10 @@ use crate::{
         save_state::SaveState,
         store::{HistoryStore, use_history},
     },
-    hooks::use_models::{ModelsHandle, use_models},
+    hooks::{
+        use_models::{ModelsHandle, use_models},
+        use_system_probe::{SystemProbe, use_system_probe},
+    },
     model_catalog::{
         copy,
         entry::{Language, ModelEntry},
@@ -107,6 +111,7 @@ pub struct TranscribeSession {
     models: ModelsHandle,
     history: HistoryStore,
     settings: SettingsStore,
+    probe: ReadSignal<SystemProbe>,
 }
 
 impl TranscribeSession {
@@ -600,6 +605,11 @@ impl TranscribeSession {
             audio_seconds: duration,
             segments: record.run.transcript.segments(),
             peaks,
+            engine: record
+                .run
+                .engine
+                .as_ref()
+                .map(|last| EngineLabel::used(last, &self.probe.peek())),
         });
         self.write_to_history(Rc::new(entry));
     }
@@ -740,6 +750,7 @@ pub fn use_transcribe_session_provider() -> TranscribeSession {
     let models = use_models();
     let history = use_history();
     let settings = use_settings();
+    let probe = use_system_probe();
     let session = use_hook(|| {
         Runtime::current().in_scope(ScopeId::ROOT, || TranscribeSession {
             file: Signal::new(None),
@@ -759,6 +770,7 @@ pub fn use_transcribe_session_provider() -> TranscribeSession {
             models,
             history,
             settings,
+            probe,
         })
     });
     use_context_provider(|| session)

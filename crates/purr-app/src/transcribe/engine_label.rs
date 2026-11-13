@@ -3,7 +3,9 @@
 use super::engine::RunMemory;
 use crate::hooks::{use_models::GpuSupport, use_system_probe::SystemProbe};
 use purr_common::{
-    accel::{AccelBackend, AccelPolicy, BackendReport, BackendStatus, LastRun, SystemReport},
+    accel::{
+        AccelBackend, AccelPolicy, BackendReport, BackendStatus, EngineUsed, LastRun, SystemReport,
+    },
     browser_engine::{BrowserEngine, EnginePlan},
     platform::{DeviceInfo, DeviceType},
 };
@@ -154,6 +156,24 @@ fn expected_backend(policy: AccelPolicy, report: Option<&SystemReport>) -> Optio
 }
 
 impl EngineLabel {
+    /// What a saved run ran on.
+    #[must_use]
+    pub fn saved(engine: &EngineUsed) -> Self {
+        Self {
+            backend: BackendLabel::Accel(engine.backend),
+            hardware: engine.hardware.clone(),
+        }
+    }
+
+    /// What a run ended up on, as stored with its history entry.
+    #[must_use]
+    pub fn used(last: &LastRun, probe: &SystemProbe) -> EngineUsed {
+        EngineUsed {
+            backend: last.backend,
+            hardware: Self::ran(last, probe).hardware,
+        }
+    }
+
     /// What a run ended up on.
     #[must_use]
     pub fn ran(last: &LastRun, probe: &SystemProbe) -> Self {

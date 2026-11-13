@@ -332,6 +332,14 @@ pub struct LastRun {
     pub passed_over: Vec<PassedOver>,
 }
 
+/// The backend and hardware a saved transcription ran on.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EngineUsed {
+    pub backend: AccelBackend,
+    /// The device or processor name, when the system gave one.
+    pub hardware: Option<String>,
+}
+
 /// The acceleration a machine offers, best backend first, and what the last run used.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SystemReport {

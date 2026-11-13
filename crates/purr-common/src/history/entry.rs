@@ -1,7 +1,7 @@
 //! A saved transcription, and the lighter views of it the lists use.
 
 use super::preview::search_text;
-use crate::platform::TranscriptSegment;
+use crate::{accel::EngineUsed, platform::TranscriptSegment};
 use serde::{Deserialize, Serialize};
 use std::{fmt, path::PathBuf, str::FromStr};
 
@@ -117,6 +117,10 @@ pub struct HistoryEntry {
     /// Waveform bars, each from 0 (silent) to 255 (the loudest bar).
     pub peaks: Vec<u8>,
     pub source: HistorySource,
+    /// What ran the transcription; absent for entries saved before it was recorded and in the
+    /// browser.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub engine: Option<EngineUsed>,
 }
 
 impl HistoryEntry {

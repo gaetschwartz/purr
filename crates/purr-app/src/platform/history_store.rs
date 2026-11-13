@@ -272,6 +272,7 @@ mod tests {
             }],
             peaks: vec![10, 200],
             source: HistorySource::NotKept,
+            engine: None,
         }
     }
 

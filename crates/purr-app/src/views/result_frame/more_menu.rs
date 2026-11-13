@@ -27,6 +27,8 @@ pub const MORE_ID: &str = "more-btn";
 pub struct TranscriptionFacts {
     pub model_label: String,
     pub language_text: String,
+    /// What ran it, when known.
+    pub engine_text: Option<String>,
 }
 
 /// A rare action on the transcription, offered in the More menu.
@@ -159,6 +161,9 @@ pub fn MoreMenu(
                     span { class: "t",
                         "{facts.model_label}"
                         small { "{facts.language_text}" }
+                        if let Some(engine) = &facts.engine_text {
+                            small { "Ran on {engine}" }
+                        }
                     }
                     for action in beside {
                         {button(action)}

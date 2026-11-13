@@ -64,6 +64,7 @@ pub fn decode(text: &str) -> Result<HistoryEntry, UnreadableReason> {
 mod tests {
     use super::*;
     use crate::{
+        accel::{AccelBackend, EngineUsed},
         history::entry::{HistoryId, HistorySource, LanguageOrigin},
         platform::TranscriptSegment,
         word::Word,
@@ -98,6 +99,10 @@ mod tests {
             source: HistorySource::Path {
                 path: PathBuf::from("memo.ogg"),
             },
+            engine: Some(EngineUsed {
+                backend: AccelBackend::Vulkan,
+                hardware: Some("Test GPU".to_owned()),
+            }),
         }
     }
 
@@ -133,6 +138,7 @@ mod tests {
         let stored = "{\"version\":1,\"entry\":{\"id\":\"abc-1\",\"title\":\"memo.ogg\",\"file_name\":\"memo.ogg\",\"created_at_ms\":1762848000000,\"audio_seconds\":12.5,\"language\":\"fr\",\"language_origin\":\"detected\",\"model_id\":\"tiny\",\"model_label\":\"Tiny\",\"processing_seconds\":2.0,\"preview\":\"Bonjour\",\"segments\":[{\"text\":\"Bonjour\",\"start_time\":0.0,\"end_time\":1.5}],\"peaks\":[0,128,255],\"source\":{\"kind\":\"path\",\"path\":\"memo.ogg\"}}}";
         let mut expected = entry();
         expected.segments[0].words.clear();
+        expected.engine = None;
         assert_eq!(decode(stored), Ok(expected));
     }
 
