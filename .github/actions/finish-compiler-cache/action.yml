@@ -1,0 +1,128 @@
+name: Finish the compiler cache
+description: >
+  Closing steps of a job that ran setup-compiler-cache. Prints the ccache statistics and adds a hit
+  rate table to the step summary. In the one job per OS that writes the cache, saves a new entry
+  when something was compiled and then deletes the older ones. Needs the actions: write permission
+  for the deletion. Run it with if: always(), before prune-rust-cache.
+inputs:
+  label:
+    description: Name of the job in the step summary
+    required: true
+  job-status:
+    description: The job.status of the calling job
+    required: true
+  save:
+    description: "true: this job is the writer of its OS and saves the entry"
+    required: false
+    default: "false"
+  shrink:
+    description: "true: when the PURR_SHRINK_RUST_CACHE switch is on, drop the ggml build tree from target before rust-cache saves it"
+    required: false
+    default: "false"
+  target-dir:
+    description: The cargo target directory
+    required: false
+    default: ${{ github.workspace }}/target
+runs:
+  using: composite
+  steps:
+    - name: Report the compiler cache statistics
+      id: stats
+      continue-on-error: true
+      shell: bash
+      env:
+        LABEL: ${{ inputs.label }}
+        JOB_STATUS: ${{ inputs.job-status }}
+        SAVE: ${{ inputs.save }}
+      run: |
+        set -euo pipefail
+        if [ "${PURR_COMPILER_CACHE_ACTIVE:-}" != "true" ]; then
+          echo "the compiler cache is not active in this job"
+          echo "save=false" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        ccache --show-stats --verbose
+        stats="$(ccache --print-stats --format json | tr -d '\r')"
+        misses="$(jq -r '.cache_miss' <<< "$stats" | tr -d '\r')"
+
+        reason=""
+        if [ "$SAVE" != "true" ]; then
+          reason="this job only restores the cache"
+        elif [ "$GITHUB_REF" != "refs/heads/develop" ]; then
+          reason="only develop saves the cache"
+        elif [ "$JOB_STATUS" != "success" ]; then
+          reason="the job did not succeed"
+        elif [ "$misses" -eq 0 ]; then
+          reason="nothing new was compiled, so the existing entry is kept"
+        fi
+
+        if [ -z "$reason" ]; then
+          echo "save=true" >> "$GITHUB_OUTPUT"
+          echo "key=$PURR_COMPILER_CACHE_PREFIX$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
+          saving="saving a new entry"
+        else
+          echo "save=false" >> "$GITHUB_OUTPUT"
+          saving="not saving: $reason"
+        fi
+
+        row="$(jq -r '
+          (.direct_cache_hit + .preprocessed_cache_hit) as $hits
+          | .cache_miss as $misses
+          | ($hits + $misses) as $total
+          | [ $hits, $misses,
+              (if $total > 0 then "\(($hits * 1000 / $total | round) / 10) %" else "n/a" end),
+              "\((.cache_size_kibibyte / 1024 | round)) MiB",
+              .files_in_cache ]
+          | "| " + (map(tostring) | join(" | ")) + " |"' <<< "$stats" | tr -d '\r')"
+        {
+          echo "### Compiler cache: $LABEL"
+          echo
+          echo "| hits | misses | hit rate | cache size | files |"
+          echo "|---:|---:|---:|---:|---:|"
+          echo "$row"
+          echo
+          echo "Restored from \`${PURR_COMPILER_CACHE_RESTORED:-none}\`, $saving."
+          echo
+        } >> "$GITHUB_STEP_SUMMARY"
+        echo "$saving"
+
+    - name: Save the compiler cache
+      id: save
+      if: steps.stats.outputs.save == 'true'
+      continue-on-error: true
+      uses: actions/cache/save@v6
+      with:
+        path: ${{ runner.temp }}/ccache
+        key: ${{ steps.stats.outputs.key }}
+
+    - name: Delete the compiler cache entries the new one replaces
+      if: steps.save.outcome == 'success'
+      continue-on-error: true
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        GH_REPO: ${{ github.repository }}
+        PURR_COMPILER_CACHE_KEEP_KEY: ${{ steps.stats.outputs.key }}
+      run: bash "$GITHUB_WORKSPACE/scripts/prune-rust-caches.sh" compiler-cache
+
+    - name: Drop the ggml build tree from the Rust cache
+      if: inputs.shrink == 'true' && inputs.job-status == 'success' && github.ref == 'refs/heads/develop'
+      continue-on-error: true
+      shell: bash
+      env:
+        TARGET_DIR: ${{ inputs.target-dir }}
+      run: |
+        set -euo pipefail
+        if [ "${PURR_SHRINK_RUST_CACHE:-off}" != "on" ] || [ "${PURR_COMPILER_CACHE_ACTIVE:-}" != "true" ]; then
+          echo "the Rust cache is not shrunk (switch off or compiler cache inactive)"
+          exit 0
+        fi
+        report="$(bash "$GITHUB_WORKSPACE/scripts/drop-ggml-build.sh" "$TARGET_DIR")"
+        echo "$report"
+        {
+          echo "Dropped from the Rust cache before it is saved:"
+          echo
+          echo '```'
+          echo "$report"
+          echo '```'
+        } >> "$GITHUB_STEP_SUMMARY"
