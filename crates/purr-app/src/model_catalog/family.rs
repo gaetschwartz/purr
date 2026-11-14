@@ -5,6 +5,7 @@ use purr_common::model::family::{ModelFamily, WhisperSize};
 pub enum ModelLine {
     Whisper,
     Parakeet,
+    Qwen3Asr,
 }
 
 impl ModelLine {
@@ -13,6 +14,7 @@ impl ModelLine {
         match family {
             ModelFamily::Whisper(_) => Self::Whisper,
             ModelFamily::Parakeet(_) => Self::Parakeet,
+            ModelFamily::Qwen3Asr(_) => Self::Qwen3Asr,
         }
     }
 
@@ -21,6 +23,7 @@ impl ModelLine {
         match self {
             Self::Whisper => "Whisper",
             Self::Parakeet => "Parakeet",
+            Self::Qwen3Asr => "Qwen3-ASR",
         }
     }
 }
@@ -35,13 +38,14 @@ pub enum ModelGroup {
     Base,
     Tiny,
     Parakeet,
+    Qwen3Asr,
     /// Models whose family this app does not know.
     Other,
 }
 
 impl ModelGroup {
     /// The sections in the order the list shows them.
-    pub const ORDER: [Self; 8] = [
+    pub const ORDER: [Self; 9] = [
         Self::Turbo,
         Self::Large,
         Self::Medium,
@@ -49,6 +53,7 @@ impl ModelGroup {
         Self::Base,
         Self::Tiny,
         Self::Parakeet,
+        Self::Qwen3Asr,
         Self::Other,
     ];
 
@@ -65,6 +70,7 @@ impl ModelGroup {
                 WhisperSize::LargeV3Turbo => Self::Turbo,
             },
             ModelFamily::Parakeet(_) => Self::Parakeet,
+            ModelFamily::Qwen3Asr(_) => Self::Qwen3Asr,
         }
     }
 
@@ -79,6 +85,7 @@ impl ModelGroup {
             Self::Base => "Base",
             Self::Tiny => "Tiny",
             Self::Parakeet => "Parakeet",
+            Self::Qwen3Asr => "Qwen3-ASR",
             Self::Other => "Other models",
         }
     }
@@ -97,13 +104,14 @@ pub const fn superseded(family: ModelFamily) -> bool {
             | WhisperSize::LargeV3
             | WhisperSize::LargeV3Turbo => false,
         },
-        ModelFamily::Parakeet(_) => false,
+        ModelFamily::Parakeet(_) | ModelFamily::Qwen3Asr(_) => false,
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use purr_common::model::family::Qwen3AsrSize;
 
     fn whisper(size: WhisperSize) -> ModelFamily {
         ModelFamily::Whisper(size)
@@ -127,6 +135,17 @@ mod tests {
             ModelGroup::of(whisper(WhisperSize::LargeV3Turbo)),
             ModelGroup::Turbo
         );
+    }
+
+    #[test]
+    fn qwen3_asr_is_listed_after_parakeet_in_a_section_of_its_own() {
+        let family = ModelFamily::Qwen3Asr(Qwen3AsrSize::B0_6);
+        assert_eq!(ModelGroup::of(family), ModelGroup::Qwen3Asr);
+        assert_eq!(ModelLine::of(family), ModelLine::Qwen3Asr);
+        assert!(!superseded(family));
+        let position = |group| ModelGroup::ORDER.iter().position(|listed| *listed == group);
+        assert!(position(ModelGroup::Parakeet) < position(ModelGroup::Qwen3Asr));
+        assert!(position(ModelGroup::Qwen3Asr) < position(ModelGroup::Other));
     }
 
     #[test]

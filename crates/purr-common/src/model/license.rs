@@ -2,6 +2,7 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ModelLicense {
     Mit,
+    Apache2,
     CcBy4,
 }
 
@@ -10,6 +11,7 @@ impl ModelLicense {
     pub const fn label(self) -> &'static str {
         match self {
             Self::Mit => "MIT",
+            Self::Apache2 => "Apache 2.0",
             Self::CcBy4 => "CC BY 4.0",
         }
     }
@@ -18,7 +20,7 @@ impl ModelLicense {
     #[must_use]
     pub const fn requires_attribution(self) -> bool {
         match self {
-            Self::Mit => false,
+            Self::Mit | Self::Apache2 => false,
             Self::CcBy4 => true,
         }
     }
@@ -27,6 +29,7 @@ impl ModelLicense {
     pub const fn url(self) -> &'static str {
         match self {
             Self::Mit => "https://opensource.org/license/mit",
+            Self::Apache2 => "https://www.apache.org/licenses/LICENSE-2.0",
             Self::CcBy4 => "https://creativecommons.org/licenses/by/4.0/",
         }
     }
@@ -50,6 +53,7 @@ mod tests {
     #[test]
     fn only_creative_commons_attribution_asks_for_credit_where_the_model_is_offered() {
         assert!(!ModelLicense::Mit.requires_attribution());
+        assert!(!ModelLicense::Apache2.requires_attribution());
         assert!(ModelLicense::CcBy4.requires_attribution());
     }
 }

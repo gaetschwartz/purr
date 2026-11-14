@@ -429,12 +429,13 @@ pub fn picker_list(
 mod tests {
     use super::*;
     use crate::hooks::use_models::GpuSupport;
-    use crate::model_catalog::test_support::{info, parakeet_info};
+    use crate::model_catalog::test_support::{info, parakeet_info, qwen3_info};
     use crate::model_catalog::{
         activity::{DownloadProgress, VerifyProgress},
         entry::ModelEntry,
         state::model_state,
     };
+    use purr_common::model::family::Qwen3AsrSize;
 
     fn row(id: &str, family: &str, size: u64, quantization: Option<&str>) -> ModelRow {
         let english = matches!(id, "tiny.en" | "base.en" | "small.en" | "medium.en");
@@ -752,6 +753,40 @@ mod tests {
         let parakeet = &list.available[4];
         assert_eq!(versions(parakeet), ["p-f16", "p-q8", "p-q4"]);
         assert_eq!(list.columns(), ["Full", "Q8", "Q5", "Q4"]);
+    }
+
+    fn qwen3(id: &str, size_class: Qwen3AsrSize, quantization: &str, size: u64) -> ModelRow {
+        ModelRow {
+            entry: ModelEntry::from_info(&qwen3_info(id, size_class, quantization, size)),
+            state: ModelState::NotDownloaded,
+        }
+    }
+
+    fn with_qwen3() -> Vec<ModelRow> {
+        let mut rows = catalog();
+        rows.push(qwen3("q-small", Qwen3AsrSize::B0_6, "f16", 1_580));
+        rows.push(qwen3("q-small-q8", Qwen3AsrSize::B0_6, "q8_0", 850));
+        rows.push(qwen3("q-large", Qwen3AsrSize::B1_7, "q8_0", 2_185));
+        rows
+    }
+
+    #[test]
+    fn qwen3_asr_is_a_line_of_its_own_with_one_model_per_size_and_no_credit_in_the_heading() {
+        let list = picker_list(&with_qwen3(), PickerScope::All, "", "");
+        assert_eq!(
+            titles(&list.available)[4..],
+            ["Qwen3-ASR 0.6B", "Qwen3-ASR 1.7B"]
+        );
+        assert_eq!(versions(&list.available[4]), ["q-small", "q-small-q8"]);
+        assert_eq!(list.available[4].details().as_deref(), Some("30 languages"));
+        let sections = PickerList::sections(list.available, true);
+        assert_eq!(
+            sections
+                .iter()
+                .map(|section| (section.heading.as_deref(), section.models.len()))
+                .collect::<Vec<_>>(),
+            [(Some("Whisper"), 4), (Some("Qwen3-ASR"), 2)]
+        );
     }
 
     #[test]

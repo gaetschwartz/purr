@@ -107,6 +107,47 @@ impl ParakeetVariant {
     }
 }
 
+/// Qwen3-ASR's checkpoints, named by their parameter count. Declaration order is ascending size.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Display,
+    EnumString,
+    SerializeDisplay,
+    DeserializeFromStr,
+)]
+pub enum Qwen3AsrSize {
+    #[strum(serialize = "qwen3-asr-0.6b")]
+    B0_6,
+    #[strum(serialize = "qwen3-asr-1.7b")]
+    B1_7,
+}
+
+impl Qwen3AsrSize {
+    #[must_use]
+    pub const fn summary(self) -> &'static str {
+        match self {
+            Self::B0_6 => "small and quick, 30 languages",
+            Self::B1_7 => "more accurate, 30 languages",
+        }
+    }
+
+    /// The name people know it by.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::B0_6 => "Qwen3-ASR 0.6B",
+            Self::B1_7 => "Qwen3-ASR 1.7B",
+        }
+    }
+}
+
 /// A model family: the line of models a model belongs to, and its size class within it.
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, SerializeDisplay, DeserializeFromStr,
@@ -114,6 +155,7 @@ impl ParakeetVariant {
 pub enum ModelFamily {
     Whisper(WhisperSize),
     Parakeet(ParakeetVariant),
+    Qwen3Asr(Qwen3AsrSize),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -142,6 +184,7 @@ impl ModelFamily {
         match self {
             Self::Whisper(size) => size.summary(),
             Self::Parakeet(variant) => variant.summary(),
+            Self::Qwen3Asr(size) => size.summary(),
         }
     }
 
@@ -151,6 +194,7 @@ impl ModelFamily {
         match self {
             Self::Whisper(size) => size.label(),
             Self::Parakeet(variant) => variant.label(),
+            Self::Qwen3Asr(size) => size.label(),
         }
     }
 }
@@ -178,6 +222,23 @@ impl ModelFamily {
                      were not retrained or fine-tuned.",
                 ),
             },
+            Self::Qwen3Asr(size) => Attribution {
+                license: ModelLicense::Apache2,
+                author: "Alibaba Cloud (Qwen team)",
+                work: match size {
+                    Qwen3AsrSize::B0_6 => "Qwen3-ASR-0.6B",
+                    Qwen3AsrSize::B1_7 => "Qwen3-ASR-1.7B",
+                },
+                origin_url: match size {
+                    Qwen3AsrSize::B0_6 => "https://huggingface.co/Qwen/Qwen3-ASR-0.6B",
+                    Qwen3AsrSize::B1_7 => "https://huggingface.co/Qwen/Qwen3-ASR-1.7B",
+                },
+                changes: Some(
+                    "Converted to GGUF by handy-computer for transcribe.cpp; the quantized \
+                     files also store the weights at reduced numeric precision. The weights \
+                     were not retrained or fine-tuned.",
+                ),
+            },
         }
     }
 }
@@ -187,6 +248,7 @@ impl fmt::Display for ModelFamily {
         match self {
             Self::Whisper(size) => fmt::Display::fmt(size, f),
             Self::Parakeet(variant) => fmt::Display::fmt(variant, f),
+            Self::Qwen3Asr(size) => fmt::Display::fmt(size, f),
         }
     }
 }
@@ -198,6 +260,7 @@ impl FromStr for ModelFamily {
         WhisperSize::from_str(name)
             .map(Self::Whisper)
             .or_else(|_| ParakeetVariant::from_str(name).map(Self::Parakeet))
+            .or_else(|_| Qwen3AsrSize::from_str(name).map(Self::Qwen3Asr))
             .map_err(|_| UnknownFamily {
                 name: name.to_owned(),
             })
@@ -240,6 +303,40 @@ mod tests {
             ModelFamily::Whisper(WhisperSize::LargeV3Turbo)
                 < ModelFamily::Parakeet(ParakeetVariant::TdtV3)
         );
+    }
+
+    #[test]
+    fn a_qwen3_asr_is_stored_under_its_checkpoint_name() {
+        for (size, name) in [
+            (Qwen3AsrSize::B0_6, "qwen3-asr-0.6b"),
+            (Qwen3AsrSize::B1_7, "qwen3-asr-1.7b"),
+        ] {
+            let family = ModelFamily::Qwen3Asr(size);
+            assert_eq!(
+                serde_json::to_string(&family).unwrap(),
+                format!("\"{name}\"")
+            );
+            assert_eq!(name.parse::<ModelFamily>(), Ok(family));
+        }
+    }
+
+    #[test]
+    fn qwen3_asr_is_listed_after_parakeet_and_the_larger_size_after_the_smaller() {
+        assert!(
+            ModelFamily::Parakeet(ParakeetVariant::TdtV3)
+                < ModelFamily::Qwen3Asr(Qwen3AsrSize::B0_6)
+        );
+        assert!(
+            ModelFamily::Qwen3Asr(Qwen3AsrSize::B0_6) < ModelFamily::Qwen3Asr(Qwen3AsrSize::B1_7)
+        );
+    }
+
+    #[test]
+    fn qwen3_asr_is_apache_licensed_and_says_what_was_changed() {
+        let attribution = ModelFamily::Qwen3Asr(Qwen3AsrSize::B1_7).attribution();
+        assert_eq!(attribution.license, ModelLicense::Apache2);
+        assert_eq!(attribution.work, "Qwen3-ASR-1.7B");
+        assert!(attribution.changes.is_some());
     }
 
     #[test]

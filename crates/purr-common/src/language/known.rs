@@ -111,6 +111,10 @@ const NAMES: &[(&str, &str)] = &[
     ("su", "sundanese"),
 ];
 
+/// Languages that models other than Whisper transcribe: they are named and found, but are not
+/// offered to a model that takes any language, which is Whisper's list.
+const ALSO_NAMED: &[(&str, &str)] = &[("yue", "cantonese"), ("fil", "filipino")];
+
 /// Other names that find a language, by the code of the language.
 const ALIASES: &[(&str, &str)] = &[
     ("burmese", "my"),
@@ -126,8 +130,8 @@ const ALIASES: &[(&str, &str)] = &[
     ("castilian", "es"),
 ];
 
-static KNOWN: LazyLock<Vec<KnownLanguage>> = LazyLock::new(|| {
-    NAMES
+fn known_languages(names: &[(&'static str, &'static str)]) -> Vec<KnownLanguage> {
+    names
         .iter()
         .filter_map(|&(code, name)| {
             LanguageTag::parse(code)
@@ -135,7 +139,15 @@ static KNOWN: LazyLock<Vec<KnownLanguage>> = LazyLock::new(|| {
                 .map(|tag| KnownLanguage { tag, name })
         })
         .collect()
-});
+}
+
+static KNOWN: LazyLock<Vec<KnownLanguage>> = LazyLock::new(|| known_languages(NAMES));
+
+static ALSO_KNOWN: LazyLock<Vec<KnownLanguage>> = LazyLock::new(|| known_languages(ALSO_NAMED));
+
+fn named() -> impl Iterator<Item = &'static KnownLanguage> {
+    KNOWN.iter().chain(ALSO_KNOWN.iter())
+}
 
 /// The languages the pickers list, in order.
 #[must_use]
@@ -147,17 +159,17 @@ pub fn all() -> &'static [KnownLanguage] {
 #[must_use]
 pub fn find(query: &str) -> Option<&'static KnownLanguage> {
     let query = query.trim().to_lowercase();
-    let by_name = KNOWN.iter().find(|known| known.name == query);
+    let by_name = named().find(|known| known.name == query);
     let by_alias = || {
         ALIASES
             .iter()
             .find(|(alias, _)| *alias == query)
-            .and_then(|(_, code)| KNOWN.iter().find(|known| known.tag.as_str() == *code))
+            .and_then(|(_, code)| named().find(|known| known.tag.as_str() == *code))
     };
     let by_tag = || {
         LanguageTag::parse(&query)
             .ok()
-            .and_then(|tag| KNOWN.iter().find(|known| known.tag == tag))
+            .and_then(|tag| named().find(|known| known.tag == tag))
     };
     by_name.or_else(by_alias).or_else(by_tag)
 }
@@ -166,12 +178,8 @@ pub fn find(query: &str) -> Option<&'static KnownLanguage> {
 /// by the name of its language when it is not listed itself.
 #[must_use]
 pub fn display_name(tag: &LanguageTag) -> Option<String> {
-    let exact = KNOWN.iter().find(|known| known.tag == *tag);
-    let by_language = || {
-        KNOWN
-            .iter()
-            .find(|known| known.tag.as_str() == tag.primary())
-    };
+    let exact = named().find(|known| known.tag == *tag);
+    let by_language = || named().find(|known| known.tag.as_str() == tag.primary());
     exact
         .or_else(by_language)
         .map(|known| capitalized(known.name))
@@ -235,7 +243,18 @@ mod tests {
     #[test]
     fn a_regional_tag_is_named_after_its_language() {
         assert_eq!(display_name(&tag("pt-BR")).as_deref(), Some("Portuguese"));
-        assert_eq!(display_name(&tag("fil")), None);
+        assert_eq!(display_name(&tag("zzz")), None);
+    }
+
+    #[test]
+    fn languages_only_other_models_transcribe_are_named_but_not_offered_to_any_model() {
+        assert_eq!(display_name(&tag("yue")).as_deref(), Some("Cantonese"));
+        assert_eq!(display_name(&tag("fil")).as_deref(), Some("Filipino"));
+        assert_eq!(
+            find("Cantonese").map(|known| known.tag.as_str()),
+            Some("yue")
+        );
+        assert!(all().iter().all(|known| known.tag != tag("yue")));
     }
 
     #[test]

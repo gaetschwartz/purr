@@ -175,8 +175,8 @@ impl ModelEntry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model_catalog::test_support::{info, parakeet_info};
-    use purr_common::model::family::WhisperSize;
+    use crate::model_catalog::test_support::{info, parakeet_info, qwen3_info};
+    use purr_common::model::family::{Qwen3AsrSize, WhisperSize};
 
     #[test]
     fn a_quantized_english_model_gets_a_friendly_label() {
@@ -246,6 +246,13 @@ mod tests {
     }
 
     #[test]
+    fn a_qwen3_asr_model_is_its_own_line_and_group_with_30_languages() {
+        let entry = ModelEntry::from_info(&qwen3_info("q", Qwen3AsrSize::B1_7, "q8_0", 1));
+        assert_eq!(languages_label(entry.languages()), "30 languages");
+        assert_eq!(entry.line(), ModelLine::Qwen3Asr);
+        assert_eq!(entry.group, ModelGroup::Qwen3Asr);
+    }
+
     fn search_finds_a_model_by_its_line_and_its_quantization() {
         let entry = ModelEntry::from_info(&parakeet_info("p-q4", "q4_k_m", 1, false));
         assert!(entry.matches("parakeet"));

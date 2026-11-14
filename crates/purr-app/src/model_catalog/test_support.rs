@@ -5,7 +5,7 @@ use purr_common::{
     model::{
         descriptor::{ModelDescriptor, Weights},
         engine::EngineId,
-        family::{ModelFamily, ParakeetVariant, WhisperSize},
+        family::{ModelFamily, ParakeetVariant, Qwen3AsrSize, WhisperSize},
         format::ModelFormat,
         profile::{DetectionReport, HintEffect, InputLimit, ModelProfile, Speakers, Timing},
     },
@@ -68,6 +68,45 @@ pub fn parakeet_info(id: &str, quantization: &str, size: u64, installed: bool) -
             format: ModelFormat::Gguf,
             weights: weights(Some(quantization)),
             profile: parakeet_profile(),
+        },
+    )
+}
+
+/// What transcribe.cpp reports of Qwen3-ASR: 30 languages that the choice steers, a detection
+/// the model names, and text without times.
+pub fn qwen3_profile() -> ModelProfile {
+    ModelProfile {
+        languages: LanguageSupport::Only(
+            [
+                "zh", "en", "yue", "ar", "de", "fr", "es", "pt", "id", "it", "ko", "ru", "th",
+                "vi", "ja", "tr", "hi", "ms", "nl", "sv", "da", "fi", "pl", "cs", "fil", "fa",
+                "el", "ro", "hu", "mk",
+            ]
+            .iter()
+            .map(|tag| tag.parse().unwrap())
+            .collect(),
+        ),
+        language_hint: HintEffect::Steers,
+        detection: DetectionReport::Reported,
+        timing: Timing::None,
+        word_scores: false,
+        speakers: Speakers::None,
+        input: InputLimit::UpTo(std::time::Duration::from_secs(5_218)),
+    }
+}
+
+/// A Qwen3-ASR model file of the catalog stored as `quantization`.
+pub fn qwen3_info(id: &str, size_class: Qwen3AsrSize, quantization: &str, size: u64) -> ModelInfo {
+    info_of(
+        id,
+        size,
+        false,
+        ModelDescriptor {
+            engine: EngineId::TranscribeCpp,
+            family: ModelFamily::Qwen3Asr(size_class),
+            format: ModelFormat::Gguf,
+            weights: weights(Some(quantization)),
+            profile: qwen3_profile(),
         },
     )
 }

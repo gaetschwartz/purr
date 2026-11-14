@@ -120,7 +120,8 @@ mod tests {
     fn labels_are_capitalized_names() {
         assert_eq!(spoken("de").label(), "German");
         assert_eq!(spoken("iw").label(), "Hebrew");
-        assert_eq!(spoken("fil").label(), "fil");
+        assert_eq!(spoken("fil").label(), "Filipino");
+        assert_eq!(spoken("zzz").label(), "zzz");
         assert_eq!(LanguageChoice::Automatic.label(), "Automatic");
     }
 
