@@ -24,7 +24,7 @@ use purr_common::platform::{
 };
 use purr_common::settings::Settings;
 use purr_core::Error;
-use purr_core::accel::inventory::Inventory;
+use purr_core::accel::engine_report::reports;
 use purr_core::config::{ModelRef, RunConfig, TentativeText};
 use purr_core::engine::Engine;
 use purr_core::error::ConfigurationError;
@@ -398,7 +398,7 @@ impl Platform for DesktopPlatformImpl {
     }
 
     async fn list_available_devices(&self) -> Result<Vec<DeviceInfo>, PlatformError> {
-        Ok(backend_reports(&Inventory::detect(&engines::hardware()))
+        Ok(backend_reports(&reports(&self.engines, &[]))
             .into_iter()
             .flat_map(|report| report.devices)
             .collect())
@@ -406,7 +406,8 @@ impl Platform for DesktopPlatformImpl {
 
     async fn system_report(&self) -> Result<SystemReport, PlatformError> {
         let last = self.last_run.lock().clone();
-        tokio::task::spawn_blocking(move || probe(last))
+        let engines = Arc::clone(&self.engines);
+        tokio::task::spawn_blocking(move || probe(&engines, last))
             .await
             .map_err(PlatformError::device_detection)
     }

@@ -10,16 +10,16 @@ use purr_common::{
 use purr_core::{
     accel::{
         backend::AccelBackend as CoreBackend,
-        devices::{DetectedDevice, detect},
-        inventory::Inventory,
-        plan::backend_status,
+        engine_report::{EngineReport, reports},
+        hardware::{self, HardwareDevice},
         report::{AccelReport, AttemptOutcome, UnavailableReason},
     },
     config::RunConfig,
     cpu,
     dev::Device,
+    engine::Engine,
 };
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 /// `config` run the way `compute` asks.
 pub fn apply_compute(config: RunConfig, compute: &ComputeOptions) -> RunConfig {
@@ -56,8 +56,14 @@ fn capabilities(device: &Device) -> Option<HashMap<String, serde_json::Value>> {
     })
 }
 
-/// A detected device in the platform's neutral description.
-pub fn device_info(detected: &DetectedDevice, device: Option<Device>) -> DeviceInfo {
+/// A device of the union of the engines' devices in the platform's neutral description; `device`
+/// is the first engine's own record of it.
+pub fn device_info(hardware: &HardwareDevice, device: Option<&Device>) -> DeviceInfo {
+    let seen_by = hardware
+        .seen_by
+        .iter()
+        .map(|sighting| sighting.engine)
+        .collect();
     match device {
         Some(device) => DeviceInfo {
             id: device.id,
@@ -66,18 +72,20 @@ pub fn device_info(detected: &DetectedDevice, device: Option<Device>) -> DeviceI
             device_type: device.tpe,
             memory_free: Some(device.vram_free),
             memory_total: Some(device.vram_total),
-            capabilities: capabilities(&device),
-            key: Some(detected.key.clone()),
+            capabilities: capabilities(device),
+            key: Some(hardware.key.clone()),
+            seen_by,
         },
         None => DeviceInfo {
             id: -1,
-            name: detected.name.clone(),
+            name: hardware.name.clone(),
             description: None,
             device_type: DeviceType::Accel,
             memory_free: None,
             memory_total: None,
             capabilities: None,
-            key: Some(detected.key.clone()),
+            key: Some(hardware.key.clone()),
+            seen_by,
         },
     }
 }
@@ -103,28 +111,28 @@ pub fn last_run(report: &AccelReport) -> LastRun {
     }
 }
 
-/// Every backend in priority order with whether it can run and its devices, which come in the
-/// order transcription tries them when nobody arranged them.
-pub fn backend_reports(inventory: &Inventory) -> Vec<BackendReport> {
-    let detected = detect(inventory);
+/// Every backend in priority order with whether any engine can run it and its devices, which
+/// come in the order transcription tries them when nobody arranged them.
+pub fn backend_reports(reports: &[EngineReport]) -> Vec<BackendReport> {
+    let merged = hardware::merge(reports);
     CoreBackend::DEFAULT_PRIORITY
         .iter()
         .map(|backend| BackendReport {
             backend: AccelBackend::from(*backend),
-            status: match backend_status(*backend, inventory, &detected) {
+            status: match hardware::backend_status(*backend, reports) {
                 Ok(()) => BackendStatus::Available,
                 Err(reason) => BackendStatus::Unavailable(unavailable(reason)),
             },
-            devices: detected
+            devices: merged
                 .iter()
                 .filter(|device| device.backend == *backend)
                 .map(|device| {
-                    let found = device.index.and_then(|id| {
-                        inventory
-                            .devices
+                    let found = device.first_sighting().and_then(|sighting| {
+                        let index = sighting.index?;
+                        reports
                             .iter()
-                            .find(|candidate| candidate.id == id)
-                            .cloned()
+                            .find(|report| report.engine == sighting.engine)?
+                            .device(index)
                     });
                     device_info(device, found)
                 })
@@ -133,14 +141,23 @@ pub fn backend_reports(inventory: &Inventory) -> Vec<BackendReport> {
         .collect()
 }
 
-/// Probes this machine; this calls into the native backends and can take a moment.
-pub fn probe(last_run: Option<LastRun>) -> SystemReport {
-    let inventory = Inventory::detect(&super::engines::hardware());
+/// What `reports` say together, with what the last run used.
+pub fn system_report(reports: &[EngineReport], last_run: Option<LastRun>) -> SystemReport {
+    let inventory = reports
+        .first()
+        .map(|report| report.inventory.clone())
+        .unwrap_or_default();
     SystemReport {
-        backends: backend_reports(&inventory),
+        backends: backend_reports(reports),
         cpu: cpu::report(&inventory),
         last_run,
+        engines: reports.iter().map(EngineReport::summary).collect(),
     }
+}
+
+/// Probes this machine; this calls into the native backends and can take a moment.
+pub fn probe(engines: &[Arc<dyn Engine>], last_run: Option<LastRun>) -> SystemReport {
+    system_report(&reports(engines, &[]), last_run)
 }
 
 #[cfg(test)]
@@ -148,10 +165,15 @@ mod tests {
     use std::path::PathBuf;
 
     use super::*;
-    use purr_common::devices::{DeviceKey, DeviceOrder};
+    use purr_common::{
+        accel::{EngineAvailability, EngineUnavailable, LoadedEngine},
+        devices::{DeviceKey, DeviceOrder},
+        model::engine::EngineId,
+    };
     use purr_core::accel::{
         backend::BuildStatus,
         build_info::BuildInfo,
+        inventory::Inventory,
         report::{AccelAttempt, AttemptFailure},
     };
 
@@ -204,6 +226,21 @@ mod tests {
         }
     }
 
+    fn report_of(engine: EngineId, devices: Vec<Device>, built: &[CoreBackend]) -> EngineReport {
+        EngineReport::new(
+            engine,
+            EngineAvailability::Loaded(LoadedEngine {
+                version: None,
+                directory: None,
+            }),
+            inventory(devices, built),
+        )
+    }
+
+    fn reported(devices: Vec<Device>, built: &[CoreBackend]) -> [EngineReport; 1] {
+        [report_of(EngineId::WhisperCpp, devices, built)]
+    }
+
     fn device(id: i32, description: &str, tpe: DeviceType, backend: CoreBackend) -> Device {
         Device {
             id,
@@ -225,7 +262,7 @@ mod tests {
 
     #[test]
     fn backends_are_reported_in_priority_order_with_the_reason_they_cannot_run() {
-        let reports = backend_reports(&inventory(
+        let reports = backend_reports(&reported(
             vec![cpu_device()],
             &[CoreBackend::Cuda, CoreBackend::Vulkan, CoreBackend::Cpu],
         ));
@@ -276,7 +313,7 @@ mod tests {
 
     #[test]
     fn devices_keep_their_kind_their_key_and_the_order_they_are_tried_in() {
-        let reports = backend_reports(&inventory(
+        let reports = backend_reports(&reported(
             vec![
                 device(
                     0,
@@ -324,6 +361,79 @@ mod tests {
                     ))
                 ),
             ])
+        );
+    }
+
+    #[test]
+    fn a_device_two_engines_list_is_reported_once_with_both_engines() {
+        let radeon = |id| {
+            device(
+                id,
+                "AMD Radeon(TM) Graphics",
+                DeviceType::Igpu,
+                CoreBackend::Vulkan,
+            )
+        };
+        let reports = [
+            report_of(
+                EngineId::WhisperCpp,
+                vec![radeon(0), cpu_device()],
+                &[CoreBackend::Vulkan, CoreBackend::Cpu],
+            ),
+            report_of(
+                EngineId::TranscribeCpp,
+                vec![cpu_device(), radeon(1)],
+                &[CoreBackend::Vulkan, CoreBackend::Cpu],
+            ),
+        ];
+        let found: Vec<_> = backend_reports(&reports)
+            .into_iter()
+            .flat_map(|report| report.devices)
+            .map(|device| (device.id, device.seen_by))
+            .collect();
+        assert_eq!(
+            found,
+            [
+                (0, vec![EngineId::WhisperCpp, EngineId::TranscribeCpp]),
+                (0, vec![EngineId::WhisperCpp, EngineId::TranscribeCpp]),
+            ]
+        );
+    }
+
+    #[test]
+    fn the_system_report_names_every_engine_and_whether_it_runs() {
+        let unavailable = EngineAvailability::Unavailable(EngineUnavailable::LibraryMissing {
+            library: "transcribe.dll".to_owned(),
+            searched: Vec::new(),
+        });
+        let reports = [
+            report_of(
+                EngineId::WhisperCpp,
+                vec![cpu_device()],
+                &[CoreBackend::Cpu],
+            ),
+            EngineReport::new(
+                EngineId::TranscribeCpp,
+                unavailable.clone(),
+                Inventory::default(),
+            ),
+        ];
+        let engines = system_report(&reports, None).engines;
+        assert_eq!(
+            engines
+                .iter()
+                .map(|summary| (summary.engine, summary.availability.clone()))
+                .collect::<Vec<_>>(),
+            [
+                (
+                    EngineId::WhisperCpp,
+                    EngineAvailability::Loaded(LoadedEngine {
+                        version: None,
+                        directory: None
+                    })
+                ),
+                (EngineId::TranscribeCpp, unavailable),
+            ]
         );
     }
 

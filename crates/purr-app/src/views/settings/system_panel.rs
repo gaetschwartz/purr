@@ -1,4 +1,4 @@
-use super::{changes::report, device_list::DeviceList};
+use super::{changes::report, device_list::DeviceList, engine_notes::engine_notes};
 use crate::{
     components::{
         banner::{Banner, BannerTone},
@@ -51,9 +51,20 @@ pub fn SystemPanel(system: Resource<Result<SystemReport, String>>) -> Element {
                     let rows = device_rows(&settings.with(|settings| settings.performance.clone()), &found);
                     let list = saved_list(&rows);
                     let list_for_toggle = list.clone();
+                    let notes = engine_notes(&found.engines);
                     rsx! {
+                        for (index , note) in notes.into_iter().enumerate() {
+                            p {
+                                key: "{index}",
+                                class: "group-f",
+                                role: "status",
+                                style: "margin:0 16px 8px",
+                                "{note}"
+                            }
+                        }
                         DeviceList {
                             rows,
+                            engines: found.engines.clone(),
                             on_move: move |(key, direction)| {
                                 let next = moved(&list, &key, direction);
                                 report(toasts, settings.update(|s| s.performance.set_devices(next)));

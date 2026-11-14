@@ -8,6 +8,7 @@ use purr_common::{
         SystemReport,
     },
     devices::{DeviceKey, DevicePreference},
+    model::engine::EngineId,
     platform::{DeviceInfo, DeviceType},
     settings::PerformanceSettings,
 };
@@ -31,6 +32,8 @@ pub struct DeviceRow {
     pub name: String,
     pub kind: Option<DeviceType>,
     pub detail: Option<String>,
+    /// The engines that can run on the device; empty for a device that is not found.
+    pub seen_by: Vec<EngineId>,
     pub enabled: bool,
     pub state: DeviceState,
 }
@@ -143,6 +146,7 @@ pub fn device_rows(performance: &PerformanceSettings, system: &SystemReport) -> 
                         | AccelBackend::Sycl
                         | AccelBackend::Vulkan => gpu_detail(device.info),
                     },
+                    seen_by: device.info.seen_by.clone(),
                     enabled: preference.enabled,
                     state: match &device.report.status {
                         BackendStatus::Available => DeviceState::Available,
@@ -155,6 +159,7 @@ pub fn device_rows(performance: &PerformanceSettings, system: &SystemReport) -> 
                     name: key.name.clone(),
                     kind: None,
                     detail: None,
+                    seen_by: Vec::new(),
                     enabled: preference.enabled,
                     state: DeviceState::NotFound(
                         system
@@ -292,6 +297,7 @@ mod tests {
             memory_total: Some(memory),
             capabilities: None,
             key: Some(DeviceKey::new(backend, name, 0)),
+            seen_by: vec![EngineId::WhisperCpp],
         }
     }
 
@@ -341,6 +347,7 @@ mod tests {
                 detected: None,
             },
             last_run: None,
+            engines: Vec::new(),
         }
     }
 

@@ -19,8 +19,3 @@ pub fn all() -> Vec<Arc<dyn Engine>> {
         vec![Arc::new(WhisperEngine)]
     }
 }
-
-/// The engine whose devices the compute settings list.
-pub const fn hardware() -> WhisperEngine {
-    WhisperEngine
-}

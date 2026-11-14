@@ -6,6 +6,7 @@ pub mod changes;
 mod device_list;
 pub mod dialog;
 pub mod dialog_handle;
+mod engine_notes;
 mod general;
 mod hardware;
 mod hugging_face_token;

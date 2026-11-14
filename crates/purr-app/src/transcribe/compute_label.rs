@@ -80,6 +80,7 @@ mod tests {
                 detected: None,
             },
             last_run: None,
+            engines: vec![],
         })
     }
 

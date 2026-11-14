@@ -1,3 +1,4 @@
+use super::engine_notes::seen_by_note;
 use crate::{
     components::{
         chip::{Chip, ChipTone},
@@ -8,7 +9,10 @@ use crate::{
     transcribe::device_rows::{DeviceRow, DeviceState, Move, reachable_rows},
 };
 use dioxus::prelude::*;
-use purr_common::{accel::BackendUnavailable, devices::DeviceKey};
+use purr_common::{
+    accel::{BackendUnavailable, EngineSummary},
+    devices::DeviceKey,
+};
 
 /// Why a device cannot run, as one short sentence.
 #[must_use]
@@ -81,6 +85,7 @@ fn focus_target(direction: Move, to: usize, count: usize) -> String {
 #[component]
 pub fn DeviceList(
     rows: Vec<DeviceRow>,
+    engines: Vec<EngineSummary>,
     on_move: EventHandler<(DeviceKey, Move)>,
     on_toggle: EventHandler<(DeviceKey, bool)>,
 ) -> Element {
@@ -111,6 +116,9 @@ pub fn DeviceList(
                         "{row.name}"
                         if let Some(detail) = &row.detail {
                             small { "{detail}" }
+                        }
+                        if let Some(note) = seen_by_note(&row.seen_by, &engines) {
+                            small { "{note}" }
                         }
                         if let Some(note) = state_note(&row.state) {
                             small { class: "note", "{note}" }
