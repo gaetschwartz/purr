@@ -824,6 +824,7 @@ impl Platform for WasmPlatformImpl {
             memory_total: None,
             capabilities: None,
             key: None,
+            seen_by: Vec::new(),
         }];
         if let Some(gpu) = run_local(detect_webgpu).await? {
             devices.push(gpu);
@@ -921,5 +922,6 @@ async fn detect_webgpu() -> WebResult<Option<DeviceInfo>> {
         memory_total: None,
         capabilities: Some(capabilities),
         key: None,
+        seen_by: Vec::new(),
     }))
 }

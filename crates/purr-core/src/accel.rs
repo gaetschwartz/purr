@@ -7,6 +7,8 @@ pub mod build_info;
 ))]
 pub mod delay_load_hook;
 pub mod devices;
+pub mod engine_report;
+pub mod hardware;
 pub mod inventory;
 pub mod library_loader;
 pub mod plan;

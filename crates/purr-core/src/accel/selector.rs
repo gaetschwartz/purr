@@ -2,7 +2,7 @@
 
 use std::{fmt, str::FromStr};
 
-use purr_common::platform::DeviceType;
+use purr_common::{model::engine::EngineId, platform::DeviceType};
 
 use super::{backend::AccelBackend, devices::DetectedDevice};
 
@@ -240,23 +240,45 @@ impl DeviceSelector {
             && self.kind.is_none_or(|kind| device.kind == Some(kind))
     }
 
-    /// The one device this selector names, or why it does not name exactly one.
+    /// The one device of `own` this selector names, or why it does not name exactly one.
+    ///
+    /// A device index is a position in one engine's list, so the selector is matched against the
+    /// engine that will run the model. When it matches nothing there but another engine in
+    /// `others` lists a device it describes, the error says so instead of calling it unknown.
     pub fn resolve<'a>(
         &self,
-        detected: &'a [DetectedDevice],
+        own: EngineDevices<'a>,
+        others: &[EngineDevices<'_>],
     ) -> Result<&'a DetectedDevice, SelectorError> {
-        let matching: Vec<&DetectedDevice> = detected
+        let matching: Vec<&DetectedDevice> = own
+            .devices
             .iter()
             .filter(|device| self.matches(device))
             .collect();
         match matching.as_slice() {
             [only] => Ok(only),
-            [] => Err(SelectorError::NoMatch {
-                selector: self.clone(),
-                devices: detected.iter().map(DeviceSummary::of).collect(),
-            }),
+            [] => {
+                let devices: Vec<DeviceSummary> =
+                    own.devices.iter().map(DeviceSummary::of).collect();
+                let seen_by = self.engines_listing_a_match(others);
+                if seen_by.is_empty() {
+                    Err(SelectorError::NoMatch {
+                        selector: self.clone(),
+                        engine: own.engine,
+                        devices,
+                    })
+                } else {
+                    Err(SelectorError::NotOnEngine {
+                        selector: self.clone(),
+                        engine: own.engine,
+                        seen_by,
+                        devices,
+                    })
+                }
+            }
             several => Err(SelectorError::Ambiguous {
                 selector: self.clone(),
+                engine: own.engine,
                 add: self.fields_telling_apart(several),
                 matches: several
                     .iter()
@@ -264,6 +286,20 @@ impl DeviceSelector {
                     .collect(),
             }),
         }
+    }
+
+    /// The engines among `others` that list a device this selector describes. A selector with an
+    /// index describes a position in one engine's list only, so it never names another engine's
+    /// device.
+    fn engines_listing_a_match(&self, others: &[EngineDevices<'_>]) -> Vec<EngineId> {
+        if self.index.is_some() {
+            return Vec::new();
+        }
+        others
+            .iter()
+            .filter(|other| other.devices.iter().any(|device| self.matches(device)))
+            .map(|other| other.engine)
+            .collect()
     }
 
     fn fields_telling_apart(&self, devices: &[&DetectedDevice]) -> Vec<SelectorField> {
@@ -289,6 +325,13 @@ impl DeviceSelector {
         }
         fields
     }
+}
+
+/// The devices one engine lists, which a selector is matched against.
+#[derive(Debug, Clone, Copy)]
+pub struct EngineDevices<'a> {
+    pub engine: EngineId,
+    pub devices: &'a [DetectedDevice],
 }
 
 /// A device as a selector error lists it, the way `purr sys` shows it.
@@ -344,21 +387,51 @@ fn names(fields: &[SelectorField]) -> String {
         .join(", ")
 }
 
+fn labels(engines: &[EngineId]) -> String {
+    engines
+        .iter()
+        .map(|engine| engine.label())
+        .collect::<Vec<_>>()
+        .join(" and the ")
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum SelectorError {
-    #[error("no device matches `{selector}`; the devices are:{}", list(devices))]
+    #[error(
+        "no device matches `{selector}` on the {}; its devices are:{}",
+        engine.label(),
+        list(devices)
+    )]
     NoMatch {
         selector: DeviceSelector,
+        engine: EngineId,
         devices: Vec<DeviceSummary>,
     },
     #[error(
-        "`{selector}` matches {} devices:{}\nadd one of these fields to pick one: {}",
+        "`{selector}` describes a device the {} cannot run on; only the {} lists it. The devices of the {} are:{}",
+        engine.label(),
+        labels(seen_by),
+        engine.label(),
+        list(devices)
+    )]
+    NotOnEngine {
+        selector: DeviceSelector,
+        /// The engine that runs the model.
+        engine: EngineId,
+        /// The other engines that list a device the selector describes.
+        seen_by: Vec<EngineId>,
+        devices: Vec<DeviceSummary>,
+    },
+    #[error(
+        "`{selector}` matches {} devices of the {}:{}\nadd one of these fields to pick one: {}",
         matches.len(),
+        engine.label(),
         list(matches),
         names(add)
     )]
     Ambiguous {
         selector: DeviceSelector,
+        engine: EngineId,
         matches: Vec<DeviceSummary>,
         add: Vec<SelectorField>,
     },
@@ -391,7 +464,92 @@ mod tests {
 
     fn index_of(text: &str) -> Result<Option<i32>, SelectorError> {
         let devices = machine();
-        selector(text).resolve(&devices).map(|device| device.index)
+        selector(text)
+            .resolve(
+                EngineDevices {
+                    engine: EngineId::WhisperCpp,
+                    devices: &devices,
+                },
+                &[],
+            )
+            .map(|device| device.index)
+    }
+
+    fn radeon_and_processor() -> Vec<DetectedDevice> {
+        detect(&inventory(
+            vec![
+                device(0, "Radeon", Vulkan, DeviceType::Igpu),
+                device(1, "Processor", Cpu, DeviceType::Cpu),
+            ],
+            &[Vulkan, Cpu],
+        ))
+    }
+
+    fn processor_alone() -> Vec<DetectedDevice> {
+        detect(&inventory(
+            vec![device(0, "Processor", Cpu, DeviceType::Cpu)],
+            &[Cpu],
+        ))
+    }
+
+    fn on_transcribe(text: &str) -> Result<Option<i32>, SelectorError> {
+        let own = processor_alone();
+        let other = radeon_and_processor();
+        selector(text)
+            .resolve(
+                EngineDevices {
+                    engine: EngineId::TranscribeCpp,
+                    devices: &own,
+                },
+                &[EngineDevices {
+                    engine: EngineId::WhisperCpp,
+                    devices: &other,
+                }],
+            )
+            .map(|device| device.index)
+    }
+
+    #[test]
+    fn a_device_only_another_engine_lists_is_reported_as_such() {
+        let Err(SelectorError::NotOnEngine {
+            engine,
+            seen_by,
+            devices,
+            ..
+        }) = on_transcribe("igpu/vulkan")
+        else {
+            panic!("expected a device the engine cannot use");
+        };
+        assert_eq!(engine, EngineId::TranscribeCpp);
+        assert_eq!(seen_by, [EngineId::WhisperCpp]);
+        assert_eq!(
+            devices.iter().map(|d| d.index).collect::<Vec<_>>(),
+            [Some(0)]
+        );
+    }
+
+    #[test]
+    fn a_device_nobody_lists_is_still_unknown() {
+        assert!(matches!(
+            on_transcribe("backend=metal"),
+            Err(SelectorError::NoMatch {
+                engine: EngineId::TranscribeCpp,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn an_index_is_never_looked_for_in_another_engines_list() {
+        assert!(matches!(
+            on_transcribe("index=1"),
+            Err(SelectorError::NoMatch { .. })
+        ));
+    }
+
+    #[test]
+    fn an_index_names_the_position_in_the_engine_that_runs_the_model() {
+        assert_eq!(on_transcribe("0"), Ok(Some(0)));
     }
 
     fn only(configure: impl FnOnce(&mut DeviceSelector)) -> DeviceSelector {
@@ -608,7 +766,7 @@ mod tests {
         let error = index_of("backend=vulkan").unwrap_err();
         assert_eq!(
             error.to_string(),
-            "`backend=vulkan` matches 2 devices:\n  \
+            "`backend=vulkan` matches 2 devices of the whisper.cpp engine:\n  \
              1: Vulkan - RTX, discrete GPU, id 0000:01:00.0\n  \
              2: Vulkan - Radeon, integrated GPU, id not reported\n\
              add one of these fields to pick one: index, id, type"

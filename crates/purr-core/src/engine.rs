@@ -13,7 +13,10 @@ pub mod text;
 
 use std::path::Path;
 
-use purr_common::model::engine::EngineId;
+use purr_common::{
+    accel::{EngineUnavailable, LoadedEngine},
+    model::engine::EngineId,
+};
 
 use crate::{
     accel::{build_info::BuildInfo, plan::Candidate},
@@ -39,6 +42,16 @@ pub struct OpenSpec<'a> {
 /// [`Engine::devices`].
 pub trait Engine: Send + Sync {
     fn id(&self) -> EngineId;
+
+    /// Loads the engine's software if that has not happened yet, and says whether it can be used.
+    ///
+    /// An engine that is linked into the executable is always loaded.
+    fn availability(&self) -> Result<LoadedEngine, EngineUnavailable> {
+        Ok(LoadedEngine {
+            version: None,
+            directory: None,
+        })
+    }
 
     /// The backends and instruction sets the engine was compiled with.
     fn build_info(&self) -> BuildInfo;

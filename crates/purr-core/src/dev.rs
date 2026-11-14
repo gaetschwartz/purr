@@ -2,7 +2,7 @@
 
 pub mod caps;
 
-use std::{collections::HashMap, path::PathBuf};
+use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
 use purr_common::{accel::CpuReport, platform::DeviceType, vulkan::VulkanDriverStatus};
 use serde::{Deserialize, Serialize};
@@ -10,8 +10,11 @@ use serde::{Deserialize, Serialize};
 use self::caps::DeviceCaps;
 use crate::{
     accel::{
-        backend::AccelBackend, devices::detect, inventory::Inventory, plan::backend_status,
-        report::UnavailableReason, vulkan_probe,
+        backend::AccelBackend,
+        devices::DetectedDevice,
+        engine_report::{EngineReport, reports},
+        hardware,
+        report::UnavailableReason,
     },
     cpu,
     engine::Engine,
@@ -48,24 +51,36 @@ impl Device {
 /// GPU acceleration status
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SystemInfo {
+    /// Whether each backend can run on any loaded engine.
     pub backends: HashMap<AccelBackend, FeatureStatus>,
     pub cpu: CpuReport,
-    /// The index of the GPU each usable GPU backend picks when the device is not chosen.
+    /// The index of the GPU each usable GPU backend picks when the device is not chosen, in the
+    /// first engine's list.
     pub picked_gpus: HashMap<AccelBackend, i32>,
-    /// The indexes of the devices transcription tries when nobody arranged them, first to last.
+    /// The indexes of the devices transcription tries when nobody arranged them, first to last,
+    /// in the first engine's list.
     #[serde(default)]
     pub default_order: Vec<i32>,
+    /// The first engine's own devices.
     pub devices: Vec<Device>,
 }
 
 impl SystemInfo {
-    /// Check system capabilities and the GPU devices `engine` can use
+    /// Check system capabilities and the devices of `engines`.
     #[must_use]
-    pub fn get(engine: &dyn Engine) -> Self {
-        let mut inventory = Inventory::detect(engine);
-        vulkan_probe::attach_drivers(&mut inventory.devices);
+    pub fn get(engines: &[Arc<dyn Engine>]) -> Self {
+        Self::of(&reports(engines, &[]))
+    }
 
-        let detected = detect(&inventory);
+    /// What `reports` say together. The devices and their indexes are the first report's, the ones
+    /// `--device` takes for that engine; the backends and the processor span every loaded engine.
+    #[must_use]
+    pub fn of(reports: &[EngineReport]) -> Self {
+        let first = reports.first();
+        let detected: &[DetectedDevice] = first.map_or(&[], |report| &report.detected);
+        let inventory = first
+            .map(|report| report.inventory.clone())
+            .unwrap_or_default();
 
         Self {
             picked_gpus: AccelBackend::ALL
@@ -82,7 +97,7 @@ impl SystemInfo {
             backends: AccelBackend::ALL
                 .iter()
                 .map(|backend| {
-                    let status = match backend_status(*backend, &inventory, &detected) {
+                    let status = match hardware::backend_status(*backend, reports) {
                         Ok(()) => FeatureStatus::Available(None),
                         Err(UnavailableReason::RuntimeLibraryMissing { library, searched }) => {
                             FeatureStatus::RuntimeLibraryMissing { library, searched }

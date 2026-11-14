@@ -26,7 +26,7 @@ use crate::{
     },
     hugging_face_token::HuggingFaceToken,
     language::tag::LanguageTag,
-    model::descriptor::ModelDescriptor,
+    model::{descriptor::ModelDescriptor, engine::EngineId},
     progress::ProgressFrame,
     settings::Settings,
     word::Word,
@@ -762,6 +762,9 @@ pub struct DeviceInfo {
     /// What the user's device list calls this device; `None` where the list is not used
     #[serde(default)]
     pub key: Option<DeviceKey>,
+    /// The engines that can run on this device.
+    #[serde(default)]
+    pub seen_by: Vec<EngineId>,
 }
 
 /// Platform trait defining the interface for platform-specific implementations

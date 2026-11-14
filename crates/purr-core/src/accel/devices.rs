@@ -54,7 +54,7 @@ pub fn gpu_preference(a: &Device, b: &Device) -> Ordering {
         .then_with(|| a.id.cmp(&b.id))
 }
 
-fn priority(backend: AccelBackend) -> usize {
+pub(crate) fn priority(backend: AccelBackend) -> usize {
     AccelBackend::DEFAULT_PRIORITY
         .iter()
         .position(|b| *b == backend)

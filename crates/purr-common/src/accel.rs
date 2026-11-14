@@ -1,7 +1,8 @@
 //! Which hardware transcription runs on: what the user may choose and what a machine reports.
 
-use crate::{devices::DeviceKey, platform::DeviceInfo};
+use crate::{devices::DeviceKey, model::engine::EngineId, platform::DeviceInfo};
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 
 /// A hardware backend a transcription can run on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -104,6 +105,51 @@ pub struct BackendReport {
     pub backend: AccelBackend,
     pub status: BackendStatus,
     pub devices: Vec<DeviceInfo>,
+}
+
+/// What an engine says about itself once its software is in the process.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LoadedEngine {
+    /// The version its library reports; `None` for an engine that is linked into the executable.
+    pub version: Option<String>,
+    /// The folder its library was opened from; `None` when the executable links it eagerly.
+    pub directory: Option<PathBuf>,
+}
+
+/// Why an engine that is built in cannot be used in this process.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EngineUnavailable {
+    LibraryMissing {
+        library: String,
+        /// The directories looked in before the system's own library search.
+        searched: Vec<PathBuf>,
+    },
+    LibraryUnloadable {
+        library: String,
+        directory: PathBuf,
+    },
+    NoBackend {
+        /// What the engine's library said; for people to read, not to match on.
+        detail: String,
+    },
+}
+
+/// Whether an engine can run in this process.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EngineAvailability {
+    Loaded(LoadedEngine),
+    /// This copy of Purr was built without it.
+    NotBuilt,
+    Unavailable(EngineUnavailable),
+}
+
+/// One engine and whether it can run.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EngineSummary {
+    pub engine: EngineId,
+    pub availability: EngineAvailability,
 }
 
 /// A processor instruction set that speeds Whisper up.
@@ -290,6 +336,9 @@ pub struct SystemReport {
     pub backends: Vec<BackendReport>,
     pub cpu: CpuReport,
     pub last_run: Option<LastRun>,
+    /// The engines this copy of Purr runs models with, and whether each can run.
+    #[serde(default)]
+    pub engines: Vec<EngineSummary>,
 }
 
 #[cfg(test)]

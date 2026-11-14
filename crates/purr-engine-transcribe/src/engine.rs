@@ -2,7 +2,10 @@
 
 use std::path::Path;
 
-use purr_common::model::engine::EngineId;
+use purr_common::{
+    accel::{EngineUnavailable, LoadedEngine},
+    model::engine::EngineId,
+};
 use purr_core::{
     accel::build_info::BuildInfo,
     dev::Device,
@@ -14,23 +17,43 @@ use crate::{
     devices::list_devices,
     error::TranscribeEngineError,
     logging,
-    runtime::{self, Runtime, Unavailable},
+    runtime::{self, Unavailable},
 };
 
 /// transcribe.cpp, with the ggml it was built with.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct TranscribeEngine;
 
-impl TranscribeEngine {
-    /// Loads transcribe.cpp if that has not happened yet, and says whether it can be used.
-    pub fn availability(&self) -> Result<&'static Runtime, &'static Unavailable> {
-        runtime::get()
+fn unavailable(why: &Unavailable) -> EngineUnavailable {
+    match why {
+        Unavailable::LibraryMissing { library, searched } => EngineUnavailable::LibraryMissing {
+            library: library.clone(),
+            searched: searched.clone(),
+        },
+        Unavailable::LibraryUnloadable { library, directory } => {
+            EngineUnavailable::LibraryUnloadable {
+                library: library.clone(),
+                directory: directory.clone(),
+            }
+        }
+        Unavailable::Backends(_) => EngineUnavailable::NoBackend {
+            detail: why.to_string(),
+        },
     }
 }
 
 impl Engine for TranscribeEngine {
     fn id(&self) -> EngineId {
         EngineId::TranscribeCpp
+    }
+
+    fn availability(&self) -> Result<LoadedEngine, EngineUnavailable> {
+        runtime::get()
+            .map(|runtime| LoadedEngine {
+                version: Some(runtime.version.clone()),
+                directory: runtime.directory.clone(),
+            })
+            .map_err(unavailable)
     }
 
     fn build_info(&self) -> BuildInfo {
