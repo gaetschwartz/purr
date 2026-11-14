@@ -12,7 +12,7 @@ use tokio_stream::wrappers::UnboundedReceiverStream;
 
 use crate::{
     AudioStream,
-    config::RunConfig,
+    config::{RunConfig, Windowing},
     engine::{
         cancel::CancelToken,
         decoder::{DecodeRequest, LanguageRequest, WindowDecoder, WindowLimits},
@@ -29,7 +29,7 @@ use super::{
     commit::WindowKind,
     driver::drive,
     events::{StreamEvent, StreamingChunk},
-    policy::{SAMPLE_RATE, WindowPolicy},
+    policy::{SAMPLE_RATE, WindowPolicy, samples},
     session::{Decoding, Events, Session},
 };
 
@@ -46,14 +46,17 @@ struct Asked {
 struct ScriptedDecoder {
     script: VecDeque<std::result::Result<Decoded, DecodeError>>,
     asked: Arc<Mutex<Vec<Asked>>>,
+    limits: WindowLimits,
 }
+
+const UNLIMITED: WindowLimits = WindowLimits {
+    input: InputLimit::Unbounded,
+    window: Duration::from_secs(30),
+};
 
 impl WindowDecoder for ScriptedDecoder {
     fn limits(&self) -> WindowLimits {
-        WindowLimits {
-            input: InputLimit::Unbounded,
-            window: Duration::from_secs(30),
-        }
+        self.limits
     }
 
     fn supports(&self, _language: &LanguageTag) -> bool {
@@ -133,6 +136,16 @@ fn harness(
     speech: Option<Vec<Vec<Span>>>,
     run: &RunConfig,
 ) -> Harness {
+    limited_harness(UNLIMITED, policy, script, speech, run)
+}
+
+fn limited_harness(
+    limits: WindowLimits,
+    policy: WindowPolicy,
+    script: Vec<std::result::Result<Decoded, DecodeError>>,
+    speech: Option<Vec<Vec<Span>>>,
+    run: &RunConfig,
+) -> Harness {
     let asked = Arc::new(Mutex::new(Vec::new()));
     let (tx, events) = mpsc::unbounded_channel();
     let session = Session::new(
@@ -141,6 +154,7 @@ fn harness(
             decoder: Box::new(ScriptedDecoder {
                 script: script.into(),
                 asked: Arc::clone(&asked),
+                limits,
             }),
             speech: speech.map(|script| {
                 Box::new(ScriptedDetector {
@@ -479,4 +493,144 @@ async fn an_engine_error_mid_stream_ends_it_with_the_typed_error() {
             }
         }))
     ));
+}
+
+fn stopped(completion: Completion, partial: &str) -> Decoded {
+    Decoded {
+        hypothesis: Hypothesis {
+            segments: vec![Segment {
+                text: partial.to_owned(),
+                span: None,
+                words: Vec::new(),
+            }],
+            language: None,
+            segmentation: Segmentation::Native,
+        },
+        completion,
+    }
+}
+
+fn asked_samples(h: &Harness) -> Vec<usize> {
+    h.asked.lock().iter().map(|asked| asked.samples).collect()
+}
+
+#[test]
+fn a_window_the_engine_stopped_early_on_is_decoded_again_at_half_the_length() -> Result<()> {
+    let mut h = harness(
+        FULL,
+        vec![
+            Ok(stopped(Completion::Truncated, "never shown")),
+            Ok(decoded(vec![segment("hello", 0.0, 4.0)])),
+        ],
+        None,
+        &RunConfig::new(),
+    );
+    h.session.push(&vec![0.0; 10 * S]);
+    let committed = chunks(h.session.process(WindowKind::Full)?);
+    assert_eq!(asked_samples(&h), [10 * S, 5 * S]);
+    assert_eq!(
+        texts(&committed),
+        [("hello", ChunkKind::Committed, 0.0, 4.0)]
+    );
+    assert!(!h.session.finished);
+    Ok(())
+}
+
+#[test]
+fn a_window_too_short_to_cut_again_commits_the_partial_text_and_is_consumed() -> Result<()> {
+    let mut h = harness(
+        FULL,
+        vec![Ok(stopped(Completion::Repeating, "so far"))],
+        None,
+        &RunConfig::new(),
+    );
+    h.session.push(&vec![0.0; 8 * S]);
+    let last = chunks(h.session.process(WindowKind::Last)?);
+    assert_eq!(asked_samples(&h), [8 * S]);
+    assert_eq!(texts(&last), [("so far", ChunkKind::Committed, 0.0, 8.0)]);
+    assert!(last.iter().all(|chunk| chunk.is_final));
+    assert!(h.session.finished);
+    Ok(())
+}
+
+#[test]
+fn a_last_window_that_is_cut_again_does_not_end_the_stream_before_the_rest_is_decoded() -> Result<()>
+{
+    let mut h = harness(
+        WindowPolicy::Full { max: 20 * S },
+        vec![
+            Ok(stopped(Completion::Truncated, "never shown")),
+            Ok(decoded(vec![segment("first", 0.0, 7.4)])),
+            Ok(decoded(vec![segment("second", 0.0, 7.6)])),
+        ],
+        None,
+        &RunConfig::new(),
+    );
+    h.session.push(&vec![0.0; 15 * S]);
+    assert_eq!(h.session.next_window(true), Some(WindowKind::Last));
+    let first = chunks(h.session.process(WindowKind::Last)?);
+    assert_eq!(texts(&first), [("first", ChunkKind::Committed, 0.0, 7.4)]);
+    assert!(first.iter().all(|chunk| !chunk.is_final));
+    assert!(!h.session.finished);
+    assert_eq!(h.session.next_window(true), Some(WindowKind::Last));
+    let second = chunks(h.session.process(WindowKind::Last)?);
+    assert_eq!(second.len(), 1);
+    assert!(second.iter().all(|chunk| chunk.is_final));
+    assert_eq!(asked_samples(&h), [15 * S, at(7.5), at(7.6)]);
+    assert!(h.session.finished);
+    Ok(())
+}
+
+#[test]
+fn a_window_cut_again_ends_in_the_last_pause_of_its_first_half() -> Result<()> {
+    let speech = vec![span(0.5, 6.0), span(8.0, 14.0), span(14.5, 25.0)];
+    let mut h = harness(
+        AT_PAUSES,
+        vec![
+            Ok(stopped(Completion::Truncated, "never shown")),
+            Ok(decoded(vec![
+                segment("one", 0.5, 6.0),
+                segment("two", 8.0, 6.9),
+            ])),
+        ],
+        Some(vec![speech]),
+        &RunConfig::new(),
+    );
+    h.session.push(&vec![0.0; 30 * S]);
+    let committed = chunks(h.session.process(WindowKind::Full)?);
+    assert_eq!(asked_samples(&h), [at(27.5), at(7.0)]);
+    assert_eq!(committed.len(), 2);
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_whole_source_goes_to_a_decoder_with_a_limit_in_windows_no_longer_than_it() {
+    let limit = Duration::from_secs(20);
+    let limits = WindowLimits {
+        input: InputLimit::UpTo(limit),
+        window: Duration::from_secs(30),
+    };
+    let run = RunConfig::new().with_windowing(Windowing::Whole);
+    let policy = WindowPolicy::choose(run.windowing, limits, false, samples(run.chunk_size));
+    assert_eq!(policy, WindowPolicy::Full { max: 20 * S });
+    let h = limited_harness(limits, policy, Vec::new(), None, &run);
+    let Harness {
+        session,
+        asked,
+        tx,
+        events,
+    } = h;
+    drive(session, AudioStream::from_samples(&vec![0.0; 70 * S]), tx).await;
+    let received: Vec<Result<StreamEvent>> = UnboundedReceiverStream::new(events).collect().await;
+    let sizes: Vec<usize> = asked.lock().iter().map(|asked| asked.samples).collect();
+    assert!(sizes.len() >= 4, "{sizes:?}");
+    assert!(sizes.iter().all(|samples| *samples <= 20 * S), "{sizes:?}");
+    let last = received
+        .into_iter()
+        .filter_map(|event| match event {
+            Ok(event) => event.into_chunk(),
+            Err(_) => None,
+        })
+        .last();
+    assert!(last.is_some_and(|chunk| chunk.is_final));
 }

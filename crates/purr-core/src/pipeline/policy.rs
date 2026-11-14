@@ -9,6 +9,7 @@ pub const SAMPLE_RATE: usize = 16_000;
 const COMMIT_MARGIN_SECONDS: f32 = 1.0;
 const MIN_WINDOW_SECONDS: f32 = 0.1;
 const MIN_PAUSED_WINDOW_SECONDS: f32 = 1.0;
+const MIN_RETRY_WINDOW_SECONDS: f32 = 5.0;
 
 /// How the source is cut into windows; lengths in samples.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -65,6 +66,9 @@ pub struct Margins {
     pub min_paused: usize,
     /// Segments ending this close to a growing window's end are not committed
     pub commit: usize,
+    /// A window the engine stopped early on is cut in half again only while the half is at
+    /// least this long
+    pub retry_floor: usize,
 }
 
 impl Default for Margins {
@@ -73,6 +77,7 @@ impl Default for Margins {
             min: samples(MIN_WINDOW_SECONDS),
             min_paused: samples(MIN_PAUSED_WINDOW_SECONDS),
             commit: samples(COMMIT_MARGIN_SECONDS),
+            retry_floor: samples(MIN_RETRY_WINDOW_SECONDS),
         }
     }
 }
@@ -136,6 +141,7 @@ mod tests {
                 min: 1_600,
                 min_paused: 16_000,
                 commit: 16_000,
+                retry_floor: 80_000,
             }
         );
     }

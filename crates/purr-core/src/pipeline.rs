@@ -12,6 +12,7 @@ pub mod language;
 pub mod pause;
 pub mod policy;
 pub mod result;
+mod retry;
 pub mod run;
 pub mod segmenter;
 mod session;

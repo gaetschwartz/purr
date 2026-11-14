@@ -9,7 +9,7 @@ use purr_common::{
     progress::{ProgressFrame, ProgressPhase},
 };
 use tokio::sync::mpsc;
-use tracing::debug;
+use tracing::{debug, warn};
 
 use crate::{
     config::{RunConfig, TentativeText},
@@ -28,6 +28,7 @@ use super::{
     language::StreamLanguage,
     pause::last_pause,
     policy::{Margins, SAMPLE_RATE, WindowPolicy},
+    retry::shorter,
     segmenter::{Part, Segmenter},
     tentative::{self, Waiting},
 };
@@ -313,6 +314,7 @@ impl Session {
         };
         let mut window: Vec<f32> = self.pending.iter().take(len).copied().collect();
         let mut spoke = len >= self.margins.min;
+        let mut speech_spans: Option<Vec<Span>> = None;
 
         if let Some(detector) = self.speech.as_mut() {
             let speech = if spoke {
@@ -324,8 +326,14 @@ impl Session {
             };
             self.seen = self.seen.max(len);
             spoke = !speech.is_empty() && len >= self.margins.min;
+            let paused = if spoke && kind != WindowKind::Last {
+                last_pause(&speech, len, self.margins.min_paused, self.margins.commit)
+            } else {
+                None
+            };
+            speech_spans = Some(speech);
             if spoke && kind != WindowKind::Last {
-                match last_pause(&speech, len, self.margins.min_paused, self.margins.commit) {
+                match paused {
                     Some(cut) => {
                         len = cut;
                         window.truncate(cut);
@@ -338,11 +346,42 @@ impl Session {
         }
 
         let (mut decoded, language) = if spoke {
-            self.send(self.progress(Some((self.origin, self.origin + len))));
-            let recognised = self.decode(&window, &self.language.request())?;
-            if recognised.completion == Completion::Cancelled {
-                kind = WindowKind::Last;
-            }
+            let recognised = loop {
+                self.send(self.progress(Some((self.origin, self.origin + len))));
+                let recognised = self.decode(&window, &self.language.request())?;
+                match recognised.completion {
+                    Completion::Complete => break recognised,
+                    Completion::Cancelled => {
+                        kind = WindowKind::Last;
+                        break recognised;
+                    }
+                    Completion::Truncated | Completion::Repeating => {
+                        let shorter = shorter(
+                            speech_spans.as_deref(),
+                            len,
+                            self.margins.retry_floor,
+                            self.margins.commit,
+                        );
+                        let Some(shorter) = shorter else {
+                            warn!(
+                                "The engine stopped early on a window of {:.1}s ({:?}); keeping what it gave",
+                                len as f64 / Self::sample_rate(),
+                                recognised.completion
+                            );
+                            break recognised;
+                        };
+                        debug!(
+                            "The engine stopped early on a window of {:.1}s ({:?}); decoding its first {:.1}s",
+                            len as f64 / Self::sample_rate(),
+                            recognised.completion,
+                            shorter.len as f64 / Self::sample_rate()
+                        );
+                        len = shorter.len;
+                        kind = shorter.kind;
+                        window.truncate(len);
+                    }
+                }
+            };
             let spoken = recognised.parts.iter().any(|d| !d.text.is_empty());
             let language = recognised.language.map(|estimate| {
                 let confidence = estimate.confidence;

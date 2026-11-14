@@ -64,6 +64,12 @@ pub enum Completion {
     Complete,
     /// Stopped by its cancel token; the hypothesis holds what the engine finished before
     Cancelled,
+    /// Stopped before the end of the window because it ran out of room for its output; the
+    /// hypothesis holds the text so far, which says nothing about how far into the window it got
+    Truncated,
+    /// Stopped because its output began repeating itself; the hypothesis holds the text before
+    /// the loop, which says nothing about how far into the window it got
+    Repeating,
 }
 
 /// The outcome of one decode.
