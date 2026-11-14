@@ -69,7 +69,7 @@ pub fn DevicePill(
             icon: IconName::Cpu,
             label: "Device",
             value,
-            hint: "Where this session's transcriptions start. The order in Settings still applies if it fails.",
+            hint: "This session only; falls back to the Settings order",
             expanded: open(),
             disabled: rows.is_none(),
             onclick: move |_| open.toggle(),
@@ -109,9 +109,7 @@ pub fn DevicePicker(
                         DeviceChoice::Device(key) => picked.as_ref() == Some(key),
                     };
                     let subtitle = match &choice {
-                        DeviceChoice::Automatic => {
-                            Some("Tries the devices in the order set in Settings".to_owned())
-                        }
+                        DeviceChoice::Automatic => None,
                         DeviceChoice::Device(key) => row_of(&rows, key).and_then(|row| row.detail.clone()),
                     };
                     let name = title(&choice, &rows);

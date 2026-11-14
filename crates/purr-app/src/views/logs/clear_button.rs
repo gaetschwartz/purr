@@ -16,10 +16,7 @@ use dioxus::prelude::*;
 pub fn ClearButton(total: usize, on_cleared: EventHandler<()>) -> Element {
     let mut asking = use_signal(|| false);
     let toasts = use_toasts();
-    let message = format!(
-        "Removes {} from this view. This can't be undone.",
-        count::entries(total)
-    );
+    let message = format!("Removes {}. This can't be undone.", count::entries(total));
 
     rsx! {
         Button {
