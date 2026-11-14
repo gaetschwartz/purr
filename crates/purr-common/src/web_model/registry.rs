@@ -1,6 +1,9 @@
 //! Validated, queryable view of the web model manifest.
 
-use crate::web_model::attributes::{OnnxDtype, WebModelFamily};
+use crate::model::{
+    engine::EngineId, family::ModelFamily, format::ModelFormat, language::ModelLanguage,
+};
+use crate::web_model::attributes::OnnxDtype;
 use crate::web_model::digest::Sha256Digest;
 use crate::web_model::error::{UnknownWebModelError, WebManifestError};
 use crate::web_model::file_role::ModelFileRole;
@@ -34,7 +37,8 @@ pub struct WebModelSpec {
     pub id: String,
     pub repo: String,
     pub revision: String,
-    pub family: WebModelFamily,
+    pub family: ModelFamily,
+    pub language: ModelLanguage,
     pub encoder_dtype: OnnxDtype,
     pub decoder_dtype: OnnxDtype,
     pub description: String,
@@ -43,9 +47,16 @@ pub struct WebModelSpec {
 }
 
 impl WebModelSpec {
+    pub const ENGINE: EngineId = EngineId::Browser;
+    pub const FORMAT: ModelFormat = ModelFormat::Onnx;
+
     #[must_use]
-    pub fn display_name(&self) -> &'static str {
-        self.family.display_name()
+    pub fn display_name(&self) -> String {
+        let english = match self.language {
+            ModelLanguage::EnglishOnly => " (English)",
+            ModelLanguage::Multilingual => "",
+        };
+        format!("Whisper {}{english}", self.family.label())
     }
 
     /// Total download size: the sum of every file.
@@ -68,7 +79,10 @@ impl WebModelSpec {
 
     #[must_use]
     pub const fn english_only(&self) -> bool {
-        self.family.is_english_only()
+        match self.language {
+            ModelLanguage::EnglishOnly => true,
+            ModelLanguage::Multilingual => false,
+        }
     }
 
     #[must_use]
@@ -266,6 +280,7 @@ fn resolve(entry: WebManifestModel) -> Result<WebModelSpec, WebManifestError> {
         repo: entry.repo,
         revision: entry.revision,
         family: entry.family,
+        language: entry.language,
         encoder_dtype: entry.encoder_dtype,
         decoder_dtype: entry.decoder_dtype,
         description: entry.description,

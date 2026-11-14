@@ -2,7 +2,7 @@ use super::{
     clusters::cluster,
     copy,
     entry::Precision,
-    family::ModelGroup,
+    family::{ModelGroup, superseded},
     format::percent,
     listing::ModelRow,
     state::{ModelState, UnavailableReason},
@@ -182,7 +182,7 @@ impl PickerModel {
         self.versions
             .first()
             .and_then(|row| row.entry.family)
-            .is_some_and(|family| family.superseded())
+            .is_some_and(superseded)
     }
 
     fn stored(&self) -> bool {
@@ -663,8 +663,8 @@ mod tests {
     fn two_versions_with_one_tag_get_a_column_each() {
         let rows = vec![
             row("tiny", "tiny", 75, None),
-            row("tiny-fp16", "tiny", 70, Some("fp16")),
-            row("tiny-q4", "tiny", 20, Some("q4_0")),
+            row("tiny-fp16", "tiny", 70, Some("f16")),
+            row("tiny-q4", "tiny", 20, Some("q4_k_m")),
         ];
         let list = picker_list(&rows, PickerScope::All, "", "");
         assert_eq!(list.columns(), ["Full", "Full", "Q4"]);

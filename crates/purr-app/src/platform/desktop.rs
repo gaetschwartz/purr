@@ -16,6 +16,7 @@ use purr_common::history::{
     listing::HistoryListing,
 };
 use purr_common::hugging_face_token::HuggingFaceToken;
+use purr_common::model::language::ModelLanguage;
 use purr_common::platform::{
     ChunkKind, DeviceInfo, FileId, FileSource, IntegrityProblem, ModelCheckProgress,
     ModelCheckSender, ModelFailureKind, ModelInfo, ModelIntegrity, ModelMetadata,
@@ -26,7 +27,7 @@ use purr_core::Error;
 use purr_core::accel::inventory::Inventory;
 use purr_core::config::TentativeText;
 use purr_core::error::ConfigurationError;
-use purr_core::model::attributes::{ModelFeature, ModelLanguage};
+use purr_core::model::attributes::ModelFeature;
 use purr_core::model::registry::ModelSpec;
 use purr_core::model::status::ModelIntegrity as CoreIntegrity;
 use purr_core::model::{ModelManager, vad_or_none};

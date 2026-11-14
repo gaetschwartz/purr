@@ -1,63 +1,8 @@
-//! Typed attributes describing a browser Whisper model.
+//! Typed attributes describing how a browser Whisper model is stored.
 
+use crate::model::precision::Precision;
 use serde_with::{DeserializeFromStr, SerializeDisplay};
 use strum::{Display, EnumString};
-
-/// Model size class. Declaration order is ascending size.
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Display,
-    EnumString,
-    SerializeDisplay,
-    DeserializeFromStr,
-)]
-pub enum WebModelFamily {
-    #[strum(serialize = "tiny")]
-    Tiny,
-    #[strum(serialize = "tiny.en")]
-    TinyEn,
-    #[strum(serialize = "base")]
-    Base,
-    #[strum(serialize = "base.en")]
-    BaseEn,
-    #[strum(serialize = "small")]
-    Small,
-    #[strum(serialize = "small.en")]
-    SmallEn,
-    #[strum(serialize = "large-v3-turbo")]
-    LargeV3Turbo,
-}
-
-impl WebModelFamily {
-    #[must_use]
-    pub const fn display_name(self) -> &'static str {
-        match self {
-            Self::Tiny => "Whisper Tiny",
-            Self::TinyEn => "Whisper Tiny (English)",
-            Self::Base => "Whisper Base",
-            Self::BaseEn => "Whisper Base (English)",
-            Self::Small => "Whisper Small",
-            Self::SmallEn => "Whisper Small (English)",
-            Self::LargeV3Turbo => "Whisper Large v3 Turbo",
-        }
-    }
-
-    /// Whether the model only knows English and rejects `language` and `task` options.
-    #[must_use]
-    pub const fn is_english_only(self) -> bool {
-        match self {
-            Self::TinyEn | Self::BaseEn | Self::SmallEn => true,
-            Self::Tiny | Self::Base | Self::Small | Self::LargeV3Turbo => false,
-        }
-    }
-}
 
 /// ONNX weight precision as named by transformers.js dtype options.
 #[derive(
@@ -94,6 +39,15 @@ pub enum OnnxDtype {
 }
 
 impl OnnxDtype {
+    #[must_use]
+    pub const fn precision(self) -> Precision {
+        match self {
+            Self::Fp32 | Self::Fp16 => Precision::Full,
+            Self::Q8 | Self::Int8 | Self::Uint8 => Precision::Quantized { bits: 8 },
+            Self::Q4 | Self::Bnb4 | Self::Q4F16 => Precision::Quantized { bits: 4 },
+        }
+    }
+
     /// File name suffix transformers.js appends to the model file for this dtype.
     #[must_use]
     pub const fn file_suffix(self) -> &'static str {
@@ -142,5 +96,45 @@ impl OnnxDtype {
             Self::Fp16 | Self::Q4F16 => true,
             Self::Fp32 | Self::Q8 | Self::Int8 | Self::Uint8 | Self::Q4 | Self::Bnb4 => false,
         }
+    }
+}
+
+/// The precision of a model whose encoder and decoder are stored as `encoder` and `decoder`.
+#[must_use]
+pub fn pair_precision(encoder: OnnxDtype, decoder: OnnxDtype) -> Precision {
+    let (encoder, decoder) = (encoder.precision(), decoder.precision());
+    if encoder == decoder {
+        encoder
+    } else {
+        Precision::Mixed
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_pair_is_mixed_unless_both_halves_share_a_precision() {
+        assert_eq!(
+            pair_precision(OnnxDtype::Fp32, OnnxDtype::Q4),
+            Precision::Mixed
+        );
+        assert_eq!(
+            pair_precision(OnnxDtype::Q4, OnnxDtype::Q4),
+            Precision::Quantized { bits: 4 }
+        );
+        assert_eq!(
+            pair_precision(OnnxDtype::Q4F16, OnnxDtype::Q4F16),
+            Precision::Quantized { bits: 4 }
+        );
+        assert_eq!(
+            pair_precision(OnnxDtype::Q4, OnnxDtype::Q8),
+            Precision::Mixed
+        );
+        assert_eq!(
+            pair_precision(OnnxDtype::Fp32, OnnxDtype::Fp16),
+            Precision::Full
+        );
     }
 }

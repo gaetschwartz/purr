@@ -1,11 +1,15 @@
 //! Serialized form of the model manifest.
 
 use crate::error::ManifestError;
-use crate::model::attributes::{ModelFamily, ModelFeature, ModelLanguage, Quantization};
+use crate::model::attributes::ModelFeature;
 use crate::model::digest::Sha256Digest;
+use purr_common::model::{
+    engine::EngineId, family::ModelFamily, format::ModelFormat, language::ModelLanguage,
+    quantization::Quantization,
+};
 use serde::{Deserialize, Serialize};
 
-pub const SUPPORTED_SCHEMA: u32 = 2;
+pub const SUPPORTED_SCHEMA: u32 = 3;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -31,6 +35,8 @@ pub struct Source {
 #[serde(deny_unknown_fields)]
 pub struct ManifestModel {
     pub id: String,
+    pub engine: EngineId,
+    pub format: ModelFormat,
     pub source: String,
     pub filename: String,
     pub family: ModelFamily,

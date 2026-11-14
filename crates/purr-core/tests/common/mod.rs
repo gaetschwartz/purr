@@ -24,12 +24,12 @@ pub fn digest_of(bytes: &[u8]) -> Sha256Digest {
 pub fn fixture_registry(bytes: &[u8]) -> Result<Arc<Registry>, Box<dyn Error>> {
     let vad = vad_fixture_bytes();
     let json = serde_json::json!({
-        "schema": 2,
+        "schema": 3,
         "preferred": ["fixture"],
         "sources": [{"id": "main", "repo": "owner/repo", "revision": REVISION}],
         "models": [{
-            "id": "fixture", "source": "main", "filename": "ggml-fixture.bin",
-            "family": "tiny", "language": "multilingual", "quantization": "fp16",
+            "id": "fixture", "engine": "whisper-cpp", "format": "ggml-bin", "source": "main", "filename": "ggml-fixture.bin",
+            "family": "tiny", "language": "multilingual", "quantization": "f16",
             "features": [], "size_bytes": bytes.len(), "sha256": digest_of(bytes).to_string(),
             "description": "Fixture"
         }],

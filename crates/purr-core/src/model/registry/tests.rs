@@ -1,5 +1,6 @@
 use super::*;
 use crate::model::digest::{Sha256Hasher, Sha256ParseError};
+use purr_common::model::family::WhisperSize;
 use std::str::FromStr;
 
 const DIGEST_A: &str = "be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21";
@@ -9,7 +10,7 @@ const REVISION: &str = "5359861c739e955e79d9a303bcbc70fb988958b1";
 
 fn manifest_json(edit: impl FnOnce(&mut serde_json::Value)) -> String {
     let mut value = serde_json::json!({
-        "schema": 2,
+        "schema": 3,
         "preferred": ["alpha", "beta.en-tdrz"],
         "sources": [
             {"id": "main", "repo": "owner/repo", "revision": REVISION},
@@ -17,13 +18,15 @@ fn manifest_json(edit: impl FnOnce(&mut serde_json::Value)) -> String {
         ],
         "models": [
             {
-                "id": "alpha", "source": "main", "filename": "ggml-alpha.bin",
-                "family": "tiny", "language": "multilingual", "quantization": "fp16",
+                "id": "alpha", "engine": "whisper-cpp", "format": "ggml-bin",
+                "source": "main", "filename": "ggml-alpha.bin",
+                "family": "tiny", "language": "multilingual", "quantization": "f16",
                 "features": [], "size_bytes": 10, "sha256": DIGEST_A,
                 "description": "Alpha"
             },
             {
-                "id": "beta.en-tdrz", "source": "extra", "filename": "ggml-beta.en-tdrz.bin",
+                "id": "beta.en-tdrz", "engine": "whisper-cpp", "format": "ggml-bin",
+                "source": "extra", "filename": "ggml-beta.en-tdrz.bin",
                 "family": "small", "language": "english-only", "quantization": "q5_1",
                 "features": ["tdrz"], "size_bytes": 20, "sha256": DIGEST_B,
                 "description": "Beta"
@@ -62,6 +65,11 @@ fn embedded_manifest_entries_are_complete() -> Result<(), ManifestError> {
             filenames.insert(model.filename.as_str()),
             "duplicate filename {}",
             model.filename
+        );
+        assert!(
+            model.engine.supports(model.format),
+            "{} is run by an engine that does not load its format",
+            model.id
         );
         assert!(model.file.size_bytes > 0, "{} has no size", model.id);
         let hex = model.file.sha256.to_string();
@@ -185,7 +193,9 @@ fn lookup_of_unknown_id_is_a_typed_error() -> Result<(), ManifestError> {
 fn attributes_are_typed() -> Result<(), Box<dyn std::error::Error>> {
     let registry = registry_with(|_| {})?;
     let beta = registry.get("beta.en-tdrz")?;
-    assert_eq!(beta.family, ModelFamily::Small);
+    assert_eq!(beta.engine, EngineId::WhisperCpp);
+    assert_eq!(beta.format, ModelFormat::GgmlBin);
+    assert_eq!(beta.family, ModelFamily::Whisper(WhisperSize::Small));
     assert_eq!(beta.language, ModelLanguage::EnglishOnly);
     assert_eq!(beta.quantization, Quantization::Q5_1);
     assert_eq!(beta.features, [ModelFeature::Tdrz]);
@@ -222,6 +232,31 @@ fn rejects_unsupported_schema() {
             supported: SUPPORTED_SCHEMA
         })
     );
+}
+
+#[test]
+fn rejects_a_format_the_engine_does_not_load() {
+    let result = registry_with(|v| v["models"][1]["format"] = "gguf".into());
+    assert_eq!(
+        result.err(),
+        Some(ManifestError::UnsupportedFormat {
+            model_id: "beta.en-tdrz".to_owned(),
+            engine: EngineId::WhisperCpp,
+            format: ModelFormat::Gguf,
+        })
+    );
+}
+
+#[test]
+fn rejects_an_unknown_engine_and_a_model_without_one() {
+    let unknown = registry_with(|v| v["models"][0]["engine"] = "vosk".into());
+    assert!(matches!(unknown, Err(ManifestError::Parse { .. })));
+    let missing = registry_with(|v| {
+        if let Some(model) = v["models"][0].as_object_mut() {
+            model.remove("engine");
+        }
+    });
+    assert!(matches!(missing, Err(ManifestError::Parse { .. })));
 }
 
 #[test]

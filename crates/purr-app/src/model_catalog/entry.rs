@@ -1,7 +1,11 @@
-use super::family::{ModelFamily, ModelGroup};
+use super::family::ModelGroup;
 use purr_common::{
     language::support::LanguageSupport,
+    model::{
+        family::ModelFamily, precision::Precision as StoredPrecision, quantization::Quantization,
+    },
     platform::{ModelInfo, model_flag},
+    web_model::attributes::{OnnxDtype, pair_precision},
 };
 
 /// Platform attribute that names the model's size class.
@@ -34,6 +38,16 @@ impl Language {
     }
 }
 
+impl From<StoredPrecision> for Precision {
+    fn from(stored: StoredPrecision) -> Self {
+        match stored {
+            StoredPrecision::Full => Self::Full,
+            StoredPrecision::Quantized { bits } => Self::Quantized { bits },
+            StoredPrecision::Mixed => Self::Mixed,
+        }
+    }
+}
+
 /// How the weights are stored; quantized ones are smaller and slightly less accurate.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Precision {
@@ -48,44 +62,26 @@ pub enum Precision {
 }
 
 impl Precision {
-    /// Reads the platform's quantization attribute: `fp16`, `q5_1`, or `encoder/decoder` pairs.
+    /// Reads the platform's quantization attribute: a quantization, or an `encoder/decoder` pair
+    /// of ONNX dtypes.
     #[must_use]
     pub fn parse(raw: Option<&str>) -> Self {
         let Some(raw) = raw else {
             return Self::Full;
         };
-        match raw.split_once('/') {
-            Some((encoder, decoder)) => {
-                let (encoder, decoder) = (Self::parse_single(encoder), Self::parse_single(decoder));
-                if encoder == decoder {
-                    encoder
-                } else {
-                    Self::Mixed
-                }
-            }
-            None => Self::parse_single(raw),
-        }
-    }
-
-    fn parse_single(raw: &str) -> Self {
-        match raw {
-            "fp32" | "fp16" => Self::Full,
-            "int8" | "uint8" => Self::Quantized { bits: 8 },
-            other => {
-                let bits = other
-                    .strip_prefix('q')
-                    .map(|rest| {
-                        rest.chars()
-                            .take_while(char::is_ascii_digit)
-                            .collect::<String>()
-                    })
-                    .and_then(|digits| digits.parse::<u8>().ok());
-                bits.map_or_else(
-                    || Self::Other(other.to_owned()),
-                    |bits| Self::Quantized { bits },
-                )
-            }
-        }
+        let stored = match raw.split_once('/') {
+            Some((encoder, decoder)) => encoder
+                .parse::<OnnxDtype>()
+                .ok()
+                .zip(decoder.parse::<OnnxDtype>().ok())
+                .map(|(encoder, decoder)| pair_precision(encoder, decoder)),
+            None => raw
+                .parse::<Quantization>()
+                .map(Quantization::precision)
+                .ok()
+                .or_else(|| raw.parse::<OnnxDtype>().map(OnnxDtype::precision).ok()),
+        };
+        stored.map_or_else(|| Self::Other(raw.to_owned()), Self::from)
     }
 
     /// The tag text, absent for full precision and for the mixed precision every browser model has.
@@ -127,7 +123,7 @@ impl ModelEntry {
         let family = metadata
             .platform_specific
             .get(FAMILY_ATTRIBUTE)
-            .and_then(|raw| ModelFamily::parse(raw));
+            .and_then(|raw| raw.parse::<ModelFamily>().ok());
         let language = if metadata.has_flag(model_flag::ENGLISH_ONLY) {
             Language::EnglishOnly
         } else {
@@ -153,7 +149,7 @@ impl ModelEntry {
             name,
             label,
             family,
-            group: family.map_or(ModelGroup::Other, ModelFamily::group),
+            group: family.map_or(ModelGroup::Other, ModelGroup::of),
             language,
             precision,
             speaker_turns,
@@ -184,7 +180,7 @@ impl ModelEntry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use purr_common::platform::ModelMetadata;
+    use purr_common::{model::family::WhisperSize, platform::ModelMetadata};
 
     fn info(id: &str, family: &str, quantization: &str, english: bool) -> ModelInfo {
         let metadata = ModelMetadata::new(
@@ -209,7 +205,16 @@ mod tests {
     #[test]
     fn precision_reads_desktop_and_browser_spellings() {
         assert_eq!(Precision::parse(None), Precision::Full);
-        assert_eq!(Precision::parse(Some("fp16")), Precision::Full);
+        assert_eq!(Precision::parse(Some("f16")), Precision::Full);
+        assert_eq!(Precision::parse(Some("f32")), Precision::Full);
+        assert_eq!(
+            Precision::parse(Some("q5_k_m")),
+            Precision::Quantized { bits: 5 }
+        );
+        assert_eq!(
+            Precision::parse(Some("q6_k")),
+            Precision::Quantized { bits: 6 }
+        );
         assert_eq!(
             Precision::parse(Some("q5_1")),
             Precision::Quantized { bits: 5 }
@@ -245,16 +250,16 @@ mod tests {
     }
 
     #[test]
-    fn web_family_spellings_group_with_their_size_class() {
-        let entry = ModelEntry::from_info(&info("base.en", "base.en", "fp32/q4", true));
-        assert_eq!(entry.family, Some(ModelFamily::Base));
+    fn web_models_group_with_their_size_class() {
+        let entry = ModelEntry::from_info(&info("base.en", "base", "fp32/q4", true));
+        assert_eq!(entry.family, Some(ModelFamily::Whisper(WhisperSize::Base)));
         assert_eq!(entry.label, "Base (English)");
         assert_eq!(entry.precision, Precision::Mixed);
     }
 
     #[test]
     fn an_unknown_family_keeps_the_platform_name_and_lands_in_other() {
-        let entry = ModelEntry::from_info(&info("mystery", "mystery", "fp16", false));
+        let entry = ModelEntry::from_info(&info("mystery", "mystery", "f16", false));
         assert_eq!(entry.name, "mystery");
         assert_eq!(entry.group, ModelGroup::Other);
     }

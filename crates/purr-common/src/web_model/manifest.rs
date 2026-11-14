@@ -1,11 +1,12 @@
 //! Serialized form of the web model manifest.
 
-use crate::web_model::attributes::{OnnxDtype, WebModelFamily};
+use crate::model::{family::ModelFamily, language::ModelLanguage};
+use crate::web_model::attributes::OnnxDtype;
 use crate::web_model::digest::Sha256Digest;
 use crate::web_model::error::WebManifestError;
 use serde::{Deserialize, Serialize};
 
-pub const SUPPORTED_SCHEMA: u32 = 1;
+pub const SUPPORTED_SCHEMA: u32 = 2;
 pub const HUGGING_FACE_ORIGIN: &str = "https://huggingface.co";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -24,7 +25,8 @@ pub struct WebManifestModel {
     pub id: String,
     pub repo: String,
     pub revision: String,
-    pub family: WebModelFamily,
+    pub family: ModelFamily,
+    pub language: ModelLanguage,
     pub encoder_dtype: OnnxDtype,
     pub decoder_dtype: OnnxDtype,
     pub description: String,

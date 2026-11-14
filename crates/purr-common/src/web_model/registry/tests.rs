@@ -1,4 +1,5 @@
 use super::*;
+use crate::model::family::WhisperSize;
 use serde_json::{Value, json};
 
 const DIGEST: &str = "be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21";
@@ -21,18 +22,18 @@ fn files_json(encoder: OnnxDtype, decoder: OnnxDtype) -> Value {
 
 fn manifest_json(edit: impl FnOnce(&mut Value)) -> String {
     let mut value = json!({
-        "schema": 1,
+        "schema": 2,
         "default": "alpha",
         "models": [
             {
                 "id": "alpha", "repo": "owner/alpha", "revision": REVISION,
-                "family": "base", "encoder_dtype": "fp32", "decoder_dtype": "q4",
+                "family": "base", "language": "multilingual", "encoder_dtype": "fp32", "decoder_dtype": "q4",
                 "description": "Alpha",
                 "files": files_json(OnnxDtype::Fp32, OnnxDtype::Q4),
             },
             {
                 "id": "beta", "repo": "owner/beta", "revision": REVISION,
-                "family": "large-v3-turbo", "encoder_dtype": "fp16", "decoder_dtype": "q4",
+                "family": "large-v3-turbo", "language": "multilingual", "encoder_dtype": "fp16", "decoder_dtype": "q4",
                 "description": "Beta",
                 "files": files_json(OnnxDtype::Fp16, OnnxDtype::Q4),
             },
@@ -59,16 +60,17 @@ fn valid_manifest_resolves_every_model() -> Result<(), WebManifestError> {
 fn attributes_are_typed() -> Result<(), Box<dyn std::error::Error>> {
     let registry = registry_with(|_| {})?;
     let beta = registry.get("beta")?;
-    assert_eq!(beta.family, WebModelFamily::LargeV3Turbo);
+    assert_eq!(beta.family, ModelFamily::Whisper(WhisperSize::LargeV3Turbo));
+    assert_eq!(beta.language, ModelLanguage::Multilingual);
     assert_eq!(beta.encoder_dtype, OnnxDtype::Fp16);
     assert_eq!(beta.decoder_dtype, OnnxDtype::Q4);
     Ok(())
 }
 
 #[test]
-fn english_only_follows_the_family() -> Result<(), Box<dyn std::error::Error>> {
+fn english_only_follows_the_language() -> Result<(), Box<dyn std::error::Error>> {
     let registry = registry_with(|v| {
-        v["models"][0]["family"] = json!("base.en");
+        v["models"][0]["language"] = json!("english-only");
     })?;
     assert!(registry.get("alpha")?.english_only());
     assert!(!registry.get("beta")?.english_only());
@@ -275,11 +277,11 @@ fn lookup_of_unknown_id_is_a_typed_error() -> Result<(), WebManifestError> {
 
 #[test]
 fn rejects_unsupported_schema() {
-    let result = registry_with(|v| v["schema"] = 2.into());
+    let result = registry_with(|v| v["schema"] = 1.into());
     assert_eq!(
         result.err(),
         Some(WebManifestError::UnsupportedSchema {
-            found: 2,
+            found: 1,
             supported: SUPPORTED_SCHEMA
         })
     );
@@ -456,19 +458,43 @@ fn embedded_manifest_pins_every_model_to_a_complete_file_set() -> Result<(), Web
 }
 
 #[test]
-fn only_the_english_families_are_english_only() -> Result<(), WebManifestError> {
+fn only_the_dot_en_models_are_english_only() -> Result<(), WebManifestError> {
     let registry = WebModelRegistry::embedded()?;
     for model in registry.models() {
         assert_eq!(
             model.english_only(),
             matches!(
-                model.family,
-                WebModelFamily::TinyEn | WebModelFamily::BaseEn | WebModelFamily::SmallEn
+                model.id.as_str(),
+                "tiny.en" | "base.en" | "base.en-q4" | "small.en" | "small.en-q4"
             ),
             "{}",
             model.id
         );
     }
+    Ok(())
+}
+
+#[test]
+fn embedded_models_have_the_names_the_picker_showed() -> Result<(), WebManifestError> {
+    let registry = WebModelRegistry::embedded()?;
+    let names: Vec<String> = registry.models().iter().map(|m| m.display_name()).collect();
+    assert_eq!(
+        names,
+        [
+            "Whisper Tiny",
+            "Whisper Tiny (English)",
+            "Whisper Base",
+            "Whisper Base",
+            "Whisper Base (English)",
+            "Whisper Base (English)",
+            "Whisper Small",
+            "Whisper Small",
+            "Whisper Small (English)",
+            "Whisper Small (English)",
+            "Whisper Large v3 Turbo",
+            "Whisper Large v3 Turbo",
+        ]
+    );
     Ok(())
 }
 

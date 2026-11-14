@@ -7,6 +7,7 @@ pub mod export_format;
 pub mod history;
 pub mod hugging_face_token;
 pub mod language;
+pub mod model;
 pub mod platform;
 pub mod progress;
 pub mod settings;

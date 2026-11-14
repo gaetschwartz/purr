@@ -1,78 +1,4 @@
-use std::str::FromStr;
-use strum::EnumString;
-
-/// A Whisper model size class, as the platforms name it in the `family` attribute.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumString)]
-pub enum ModelFamily {
-    #[strum(serialize = "tiny")]
-    Tiny,
-    #[strum(serialize = "base")]
-    Base,
-    #[strum(serialize = "small")]
-    Small,
-    #[strum(serialize = "medium")]
-    Medium,
-    #[strum(serialize = "large-v1")]
-    LargeV1,
-    #[strum(serialize = "large-v2")]
-    LargeV2,
-    #[strum(serialize = "large-v3")]
-    LargeV3,
-    #[strum(serialize = "large-v3-turbo")]
-    LargeV3Turbo,
-}
-
-const ENGLISH_SUFFIX: &str = ".en";
-
-impl ModelFamily {
-    /// The family named by a platform attribute; web manifests append `.en` for English-only ones.
-    #[must_use]
-    pub fn parse(raw: &str) -> Option<Self> {
-        Self::from_str(raw.strip_suffix(ENGLISH_SUFFIX).unwrap_or(raw)).ok()
-    }
-
-    /// The name people know it by.
-    #[must_use]
-    pub const fn label(self) -> &'static str {
-        match self {
-            Self::Tiny => "Tiny",
-            Self::Base => "Base",
-            Self::Small => "Small",
-            Self::Medium => "Medium",
-            Self::LargeV1 => "Large v1",
-            Self::LargeV2 => "Large v2",
-            Self::LargeV3 => "Large v3",
-            Self::LargeV3Turbo => "Large v3 Turbo",
-        }
-    }
-
-    /// The list section the family belongs to.
-    #[must_use]
-    pub const fn group(self) -> ModelGroup {
-        match self {
-            Self::Tiny => ModelGroup::Tiny,
-            Self::Base => ModelGroup::Base,
-            Self::Small => ModelGroup::Small,
-            Self::Medium => ModelGroup::Medium,
-            Self::LargeV1 | Self::LargeV2 | Self::LargeV3 => ModelGroup::Large,
-            Self::LargeV3Turbo => ModelGroup::Turbo,
-        }
-    }
-
-    /// Whether a newer family replaces this one.
-    #[must_use]
-    pub const fn superseded(self) -> bool {
-        match self {
-            Self::LargeV1 | Self::LargeV2 => true,
-            Self::Tiny
-            | Self::Base
-            | Self::Small
-            | Self::Medium
-            | Self::LargeV3
-            | Self::LargeV3Turbo => false,
-        }
-    }
-}
+use purr_common::model::family::{ModelFamily, WhisperSize};
 
 /// A section of the model list: related families shown together.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -99,6 +25,21 @@ impl ModelGroup {
         Self::Other,
     ];
 
+    /// The list section a family belongs to.
+    #[must_use]
+    pub const fn of(family: ModelFamily) -> Self {
+        match family {
+            ModelFamily::Whisper(size) => match size {
+                WhisperSize::Tiny => Self::Tiny,
+                WhisperSize::Base => Self::Base,
+                WhisperSize::Small => Self::Small,
+                WhisperSize::Medium => Self::Medium,
+                WhisperSize::LargeV1 | WhisperSize::LargeV2 | WhisperSize::LargeV3 => Self::Large,
+                WhisperSize::LargeV3Turbo => Self::Turbo,
+            },
+        }
+    }
+
     /// The section title.
     #[must_use]
     pub const fn label(self) -> &'static str {
@@ -114,32 +55,56 @@ impl ModelGroup {
     }
 }
 
+/// Whether a newer family replaces `family`.
+#[must_use]
+pub const fn superseded(family: ModelFamily) -> bool {
+    match family {
+        ModelFamily::Whisper(size) => match size {
+            WhisperSize::LargeV1 | WhisperSize::LargeV2 => true,
+            WhisperSize::Tiny
+            | WhisperSize::Base
+            | WhisperSize::Small
+            | WhisperSize::Medium
+            | WhisperSize::LargeV3
+            | WhisperSize::LargeV3Turbo => false,
+        },
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn english_suffixed_web_families_parse_like_desktop_ones() {
-        assert_eq!(ModelFamily::parse("tiny"), Some(ModelFamily::Tiny));
-        assert_eq!(ModelFamily::parse("tiny.en"), Some(ModelFamily::Tiny));
-        assert_eq!(
-            ModelFamily::parse("large-v3-turbo"),
-            Some(ModelFamily::LargeV3Turbo)
-        );
-    }
-
-    #[test]
-    fn unknown_families_do_not_parse() {
-        assert_eq!(ModelFamily::parse("distil-large"), None);
-        assert_eq!(ModelFamily::parse(""), None);
+    fn whisper(size: WhisperSize) -> ModelFamily {
+        ModelFamily::Whisper(size)
     }
 
     #[test]
     fn large_releases_share_a_group_but_turbo_has_its_own() {
-        assert_eq!(ModelFamily::LargeV1.group(), ModelGroup::Large);
-        assert_eq!(ModelFamily::LargeV2.group(), ModelGroup::Large);
-        assert_eq!(ModelFamily::LargeV3.group(), ModelGroup::Large);
-        assert_eq!(ModelFamily::LargeV3Turbo.group(), ModelGroup::Turbo);
+        assert_eq!(
+            ModelGroup::of(whisper(WhisperSize::LargeV1)),
+            ModelGroup::Large
+        );
+        assert_eq!(
+            ModelGroup::of(whisper(WhisperSize::LargeV2)),
+            ModelGroup::Large
+        );
+        assert_eq!(
+            ModelGroup::of(whisper(WhisperSize::LargeV3)),
+            ModelGroup::Large
+        );
+        assert_eq!(
+            ModelGroup::of(whisper(WhisperSize::LargeV3Turbo)),
+            ModelGroup::Turbo
+        );
+    }
+
+    #[test]
+    fn only_the_old_large_families_are_superseded() {
+        assert!(superseded(whisper(WhisperSize::LargeV1)));
+        assert!(superseded(whisper(WhisperSize::LargeV2)));
+        assert!(!superseded(whisper(WhisperSize::LargeV3)));
+        assert!(!superseded(whisper(WhisperSize::Tiny)));
     }
 
     #[test]

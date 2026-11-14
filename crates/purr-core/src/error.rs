@@ -1,6 +1,7 @@
 //! Error types for the purr-core library
 
 use crate::model::digest::Sha256Digest;
+use purr_common::model::{engine::EngineId, format::ModelFormat};
 use std::path::PathBuf;
 
 use crate::accel::report::{AccelAttempt, AttemptOutcome};
@@ -51,6 +52,14 @@ pub enum ManifestError {
     #[error("Model {model_id} references unknown source {source_id}")]
     #[diagnostic(code(whisper::manifest::unknown_source))]
     UnknownSource { model_id: String, source_id: String },
+
+    #[error("Model {model_id} is run by {engine}, which does not load {format} files")]
+    #[diagnostic(code(whisper::manifest::unsupported_format))]
+    UnsupportedFormat {
+        model_id: String,
+        engine: EngineId,
+        format: ModelFormat,
+    },
 
     #[error("Source {source_id} has an invalid revision: {revision}")]
     #[diagnostic(code(whisper::manifest::invalid_revision))]

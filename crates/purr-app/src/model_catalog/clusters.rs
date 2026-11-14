@@ -1,5 +1,6 @@
 use super::{
     entry::{Language, Precision},
+    family::superseded,
     listing::ModelRow,
     state::ModelState,
 };
@@ -57,10 +58,7 @@ impl ModelCluster {
     /// Whether the models of the cluster are superseded by a newer family.
     #[must_use]
     pub fn superseded(&self) -> bool {
-        self.primary
-            .entry
-            .family
-            .is_some_and(|family| family.superseded())
+        self.primary.entry.family.is_some_and(superseded)
     }
 }
 
@@ -115,7 +113,6 @@ mod tests {
     use crate::model_catalog::{
         activity::{DownloadFailure, DownloadProgress},
         entry::ModelEntry,
-        family::ModelFamily,
         state::ModelState,
     };
     use purr_common::platform::{ModelFailureKind, ModelInfo, ModelMetadata, model_flag};
@@ -253,6 +250,5 @@ mod tests {
         let old = cluster(&[row("large-v1", "large-v1", 1, None, false)]);
         let new = cluster(&[row("large-v3", "large-v3", 1, None, false)]);
         assert_eq!((old[0].superseded(), new[0].superseded()), (true, false));
-        assert_eq!(ModelFamily::LargeV2.superseded(), true);
     }
 }

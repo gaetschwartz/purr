@@ -2,10 +2,14 @@
 
 use crate::error::{ManifestError, UnknownModelError};
 use crate::math::ByteSpeed;
-use crate::model::attributes::{ModelFamily, ModelFeature, ModelLanguage, Quantization};
+use crate::model::attributes::ModelFeature;
 use crate::model::digest::Sha256Digest;
 use crate::model::manifest::{Manifest, ManifestModel, ManifestVad, SUPPORTED_SCHEMA, Source};
 use crate::model::pinned::PinnedFile;
+use purr_common::model::{
+    engine::EngineId, family::ModelFamily, format::ModelFormat, language::ModelLanguage,
+    quantization::Quantization,
+};
 use std::collections::{BTreeMap, HashSet};
 use std::sync::{Arc, LazyLock};
 use std::time::Duration;
@@ -23,6 +27,8 @@ static EMBEDDED: LazyLock<Result<Arc<Registry>, ManifestError>> =
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ModelSpec {
     pub id: String,
+    pub engine: EngineId,
+    pub format: ModelFormat,
     pub source: Arc<Source>,
     pub filename: String,
     pub family: ModelFamily,
@@ -119,6 +125,13 @@ impl Registry {
             if !filenames.insert(entry.filename.clone()) {
                 return Err(ManifestError::DuplicateFilename {
                     filename: entry.filename,
+                });
+            }
+            if !entry.engine.supports(entry.format) {
+                return Err(ManifestError::UnsupportedFormat {
+                    model_id: entry.id,
+                    engine: entry.engine,
+                    format: entry.format,
                 });
             }
             models.push(Arc::new(resolve(entry, &sources)?));
@@ -253,6 +266,8 @@ fn resolve(entry: ManifestModel, sources: &[Arc<Source>]) -> Result<ModelSpec, M
     )?;
     Ok(ModelSpec {
         id: entry.id,
+        engine: entry.engine,
+        format: entry.format,
         source,
         filename: entry.filename,
         family: entry.family,
