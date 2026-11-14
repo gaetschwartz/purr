@@ -101,6 +101,24 @@ mod tests {
     }
 
     #[test]
+    fn the_embedded_qwen3_asr_is_listed_with_its_thirty_languages() {
+        let registry = purr_core::model::registry::Registry::embedded().unwrap();
+        let listed: Vec<String> = registry
+            .groups()
+            .into_iter()
+            .filter(|group| {
+                matches!(
+                    group.family,
+                    purr_common::model::family::ModelFamily::Qwen3Asr(_)
+                )
+            })
+            .flat_map(|group| group.models)
+            .map(|model| languages_summary(&model.profile.languages))
+            .collect();
+        assert_eq!(listed, ["30 languages"; 6]);
+    }
+
+    #[test]
     fn turn_markers_are_the_tdrz_feature() {
         assert_eq!(features(&profile(Speakers::None)), Vec::<&str>::new());
         assert_eq!(features(&profile(Speakers::TurnMarkers)), ["tdrz"]);

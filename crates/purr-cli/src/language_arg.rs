@@ -165,6 +165,25 @@ mod tests {
     }
 
     #[test]
+    fn the_embedded_qwen3_asr_takes_the_hint_for_its_languages_by_name_or_code() {
+        let registry = purr_core::model::registry::Registry::embedded().unwrap();
+        let profile = &registry.get("qwen3-asr-0.6b").unwrap().profile;
+        for wanted in ["fr", "French", "cantonese", "fil"] {
+            assert_eq!(
+                verdict(Some(wanted), profile),
+                Ok(LanguageVerdict::Applies),
+                "{wanted}"
+            );
+        }
+        assert_eq!(parse_language("Cantonese"), spoken("yue"));
+        assert!(matches!(
+            verdict(Some("he"), profile),
+            Err(LanguageProblem::Unsupported { .. })
+        ));
+        assert_eq!(verdict(None, profile), Ok(LanguageVerdict::Applies));
+    }
+
+    #[test]
     fn a_model_that_cannot_detect_needs_a_language() {
         let mut profile = ModelProfile::browser(LanguageSupport::Any);
         profile.language_hint = HintEffect::Required;
