@@ -197,21 +197,19 @@ Arguments:
 
 Options:
   -m, --model <MODEL>              Path to a model file, or the id of a model from `models list --available`
-  -l, --language <LANGUAGE>        Language code (e.g., en, es, fr)
-      --accel <BACKEND>            auto (default), cuda, hip, coreml, metal, sycl, vulkan or cpu.
-                                   A named backend's devices are tried first, the other devices
-                                   and the CPU follow if one fails; cpu runs on the CPU alone
-      --accel-priority <BACKENDS>  Backends tried first, best first, comma separated
-      --device <DEVICE>            Start on one device: an index from `purr sys`, or tokens joined
-                                   by `/` (backend, type gpu/igpu/cpu/accel, device id such as
-                                   0000:01:00.0). It must match exactly one device
+  -l, --language <LANGUAGE>        Spoken language: a name (french), code (fr) or tag (pt-BR);
+                                   detected when omitted
+      --accel <BACKEND>            Backend to try first; the others stay as fallbacks
+                                   (`cpu`: the CPU alone, `auto`: the usual order)
+      --accel-priority <BACKENDS>  Backends to try first, best first, comma separated (e.g. vulkan,cuda)
+      --device <DEVICE>            Device to try first: an index from `purr sys` (2) or
+                                   BACKEND/TYPE/ID tokens (vulkan/igpu, cuda/0000:01:00.0)
       --no-gpu                     Disable GPU acceleration (same as --accel cpu)
   -t, --threads <THREADS>          Number of threads to use (default: one per physical core)
   -o, --output <OUTPUT>            Output format [default: text] [possible values: text, json, srt]
       --timestamps                 Include timestamps in output (text format only)
-      --word-timestamps            Time every word, and add each segment's words
-                                   (text, start, end, score) to --output json
-      --progress                   Show position / duration on stderr while streaming
+      --word-timestamps            Add each word's start, end and score to --output json
+      --progress                   Show position / duration under the streamed text (terminal only)
   -v, --verbose                    Verbose output
   -h, --help                       Print help
   -V, --version                    Print version
