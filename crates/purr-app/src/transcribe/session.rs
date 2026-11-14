@@ -524,7 +524,7 @@ impl TranscribeSession {
             Ok(Ok(())) => Ok(()),
             Ok(Err(failure)) => {
                 let text = copy::failure(&failure);
-                Err((text.title.to_owned(), Some(text.body)))
+                Err((text.title.to_owned(), text.detail))
             }
             Err(oneshot::Canceled) => Err(("The model download was cancelled.".to_owned(), None)),
         }

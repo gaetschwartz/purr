@@ -9,9 +9,14 @@ use purr_common::platform::{IntegrityProblem, ModelFailureKind};
 pub struct FailureCopy {
     pub chip: &'static str,
     pub title: &'static str,
-    pub body: String,
+    /// The platform's own words, for a Details disclosure.
+    pub detail: Option<String>,
     /// Whether the cause is the connection, which colours the message as a warning.
     pub is_connection: bool,
+}
+
+fn given(message: &str) -> Option<String> {
+    (!message.trim().is_empty()).then(|| message.to_owned())
 }
 
 /// What to tell the user about a failed download.
@@ -21,58 +26,46 @@ pub fn failure(failure: &DownloadFailure) -> FailureCopy {
         ModelFailureKind::Network => FailureCopy {
             chip: "Offline",
             title: "Couldn't reach the download server",
-            body: "Check your connection and try again.".to_owned(),
+            detail: None,
             is_connection: true,
         },
         ModelFailureKind::Integrity => FailureCopy {
             chip: "Failed",
             title: "The download didn't match its checksum",
-            body: format!(
-                "The files were removed so nothing broken is kept. Try again. {}",
-                failure.message
-            ),
+            detail: given(&failure.message),
             is_connection: false,
         },
         ModelFailureKind::Other => FailureCopy {
             chip: "Failed",
             title: "The download failed",
-            body: failure.message.clone(),
+            detail: given(&failure.message),
             is_connection: false,
         },
     }
 }
 
-/// What a failed integrity check means, and what to do about it.
+/// Which file failed the integrity check and how.
 #[must_use]
 pub fn damage(damage: &Damage) -> String {
-    let what = match damage.problem {
-        IntegrityProblem::Missing => format!("{} is missing.", damage.file),
-        IntegrityProblem::SizeMismatch => format!(
-            "{} has the wrong size, probably from an interrupted write.",
-            damage.file
-        ),
-        IntegrityProblem::ChecksumMismatch => format!(
-            "{} doesn't match its published checksum, probably from an interrupted write.",
-            damage.file
-        ),
-    };
-    format!("{what} Download the model again to repair it.")
+    match damage.problem {
+        IntegrityProblem::Missing => format!("{} is missing", damage.file),
+        IntegrityProblem::SizeMismatch => format!("{} has the wrong size", damage.file),
+        IntegrityProblem::ChecksumMismatch => {
+            format!("{} doesn't match its checksum", damage.file)
+        }
+    }
 }
 
-/// The chip and hint of a model that cannot run here.
+/// The chip and tooltip of a model that cannot run here.
 #[must_use]
 pub const fn unavailable(reason: UnavailableReason) -> (&'static str, &'static str) {
     match reason {
-        UnavailableReason::NeedsShaderF16 => ("Needs shader-f16", "This GPU lacks shader-f16."),
-        UnavailableReason::NeedsWebGpu => ("Needs WebGPU", "This browser has no WebGPU."),
-        UnavailableReason::CpuChosen => (
-            "Needs WebGPU",
-            "Too large for the CPU, which Settings chose.",
-        ),
-        UnavailableReason::EngineNotBuilt => (
-            "Not in this build",
-            "This build of Purr lacks the engine this model runs on.",
-        ),
+        UnavailableReason::NeedsShaderF16 => ("Needs shader-f16", "This GPU lacks shader-f16"),
+        UnavailableReason::NeedsWebGpu => ("Needs WebGPU", "This browser has no WebGPU"),
+        UnavailableReason::CpuChosen => ("Needs WebGPU", "Settings chose the CPU"),
+        UnavailableReason::EngineNotBuilt => {
+            ("Not in this build", "Its engine isn't in this build")
+        }
     }
 }
 
@@ -95,8 +88,18 @@ mod tests {
     }
 
     #[test]
-    fn an_unexplained_failure_shows_the_platform_message() {
-        assert_eq!(failure(&failed(ModelFailureKind::Other)).body, "detail");
+    fn the_platform_message_is_the_detail_of_any_but_a_connection_failure() {
+        assert_eq!(
+            failure(&failed(ModelFailureKind::Other)).detail.as_deref(),
+            Some("detail")
+        );
+        assert_eq!(
+            failure(&failed(ModelFailureKind::Integrity))
+                .detail
+                .as_deref(),
+            Some("detail")
+        );
+        assert_eq!(failure(&failed(ModelFailureKind::Network)).detail, None);
     }
 
     #[test]

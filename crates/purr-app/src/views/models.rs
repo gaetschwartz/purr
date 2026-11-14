@@ -25,25 +25,16 @@ use dioxus::prelude::*;
 
 const IN_PROGRESS: &str = "In progress";
 
-fn gpu_notice(
-    gpu: &GpuSupport,
-    rows: &[ModelRow],
-) -> Option<(BannerTone, &'static str, &'static str)> {
+fn gpu_notice(gpu: &GpuSupport, rows: &[ModelRow]) -> Option<(BannerTone, &'static str)> {
     if !rows.iter().any(|row| row.entry.requires_shader_f16()) {
         return None;
     }
     match gpu {
         GpuSupport::Checking => None,
-        GpuSupport::Unavailable => Some((
-            BannerTone::Warn,
-            "This browser has no WebGPU",
-            "Models run on the CPU, which is slower. Those that need WebGPU are greyed out.",
-        )),
-        GpuSupport::Available { shader_f16, .. } => (!shader_f16).then_some((
-            BannerTone::Info,
-            "Some models need shader-f16",
-            "This GPU lacks it, so those models are greyed out.",
-        )),
+        GpuSupport::Unavailable => Some((BannerTone::Warn, "No WebGPU: models run on the CPU")),
+        GpuSupport::Available { shader_f16, .. } => {
+            (!shader_f16).then_some((BannerTone::Info, "This GPU lacks shader-f16"))
+        }
     }
 }
 
@@ -77,11 +68,10 @@ fn Catalog(models: ModelsHandle, rows: Vec<ModelRow>, selected: Option<String>) 
                 icon: IconName::WifiOff,
                 title: "You're offline",
                 role: "status",
-                "Downloads need a connection."
             }
         }
-        if let Some((tone, title, body)) = notice {
-            Banner { tone, title, "{body}" }
+        if let Some((tone, title)) = notice {
+            Banner { tone, title }
         }
         ModelFilters {
             query: query(),

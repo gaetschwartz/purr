@@ -43,15 +43,7 @@ pub fn ModelListRow(
     let downloading_elsewhere =
         models.is_downloading() && !matches!(state, ModelState::Downloading(_));
 
-    let (disabled, hint) = match &state {
-        ModelState::Unavailable { reason, .. } => (true, Some(copy::unavailable(*reason).1)),
-        ModelState::NotDownloaded
-        | ModelState::Downloaded
-        | ModelState::Downloading(_)
-        | ModelState::Verifying(_)
-        | ModelState::Failed(_)
-        | ModelState::NeedsRepair(_) => (false, None),
-    };
+    let disabled = matches!(state, ModelState::Unavailable { .. });
     let can_verify = !matches!(state, ModelState::NeedsRepair(_));
     let is_default =
         settings.with(|settings| settings.model.default_model.as_deref() == Some(id.as_str()));
@@ -132,17 +124,18 @@ pub fn ModelListRow(
 
     let side = match &state {
         ModelState::NotDownloaded => rsx! {
-            Button {
-                size: ButtonSize::Small,
-                icon: IconName::Download,
-                disabled: downloading_elsewhere,
-                title: if downloading_elsewhere { "Wait for the current download to finish" },
-                aria_label: "Get {label}, {size}",
-                onclick: {
-                    let id = id.clone();
-                    move |_| models.download(&id)
-                },
-                "Get"
+            span { title: downloading_elsewhere.then_some("Another download is running"),
+                Button {
+                    size: ButtonSize::Small,
+                    icon: IconName::Download,
+                    disabled: downloading_elsewhere,
+                    aria_label: "Get {label}, {size}",
+                    onclick: {
+                        let id = id.clone();
+                        move |_| models.download(&id)
+                    },
+                    "Get"
+                }
             }
         },
         ModelState::Downloaded => rsx! {
@@ -209,9 +202,9 @@ pub fn ModelListRow(
             {menu}
         },
         ModelState::Unavailable { reason, installed } => {
-            let (chip, _) = copy::unavailable(*reason);
+            let (chip, why) = copy::unavailable(*reason);
             rsx! {
-                Chip { "{chip}" }
+                Chip { title: why, "aria-description": why, "{chip}" }
                 if *installed {
                     {menu}
                 }
@@ -233,7 +226,7 @@ pub fn ModelListRow(
                     title: "{words.title}",
                     role: "alert",
                     style: COMPACT_BANNER,
-                    "{words.body}"
+                    details: words.detail.map(|detail| rsx! { "{detail}" }),
                 }
             }
         }
@@ -244,7 +237,7 @@ pub fn ModelListRow(
                 title: "Integrity check failed",
                 role: "alert",
                 style: COMPACT_BANNER,
-                {copy::damage(damage)}
+                details: rsx! { {copy::damage(damage)} },
             }
         },
         ModelState::NotDownloaded
@@ -259,9 +252,6 @@ pub fn ModelListRow(
         div { class, role: "group", aria_label: "{label}",
             div { style: "min-width:0",
                 div { class: "nm", "{entry.label}" }
-                if let Some(hint) = hint {
-                    div { class: "hint", "{hint}" }
-                }
                 div { class: "tags",
                     Chip { "{languages_label(entry.languages())}" }
                     if let Some(tag) = entry.quantization_tag() {

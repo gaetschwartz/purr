@@ -180,8 +180,6 @@ pub fn ListPicker(
     on_query: Option<EventHandler<String>>,
     /// A control beside the search field that narrows the list.
     filter: Option<Element>,
-    /// A line under the search field.
-    note: Option<Element>,
     /// What shows instead of items, such as a loading or empty state.
     status: Option<Element>,
     footer: Option<Element>,
@@ -236,17 +234,12 @@ pub fn ListPicker(
             }
         }
     });
-    let header = match (field, filter, note) {
-        (None, None, None) => None,
-        (field, filter, note) => Some(rsx! {
-            if field.is_some() || filter.is_some() {
-                div { class: "psearch",
-                    {field}
-                    {filter}
-                }
-            }
-            if let Some(note) = note {
-                p { class: "pnote", role: "note", {note} }
+    let header = match (field, filter) {
+        (None, None) => None,
+        (field, filter) => Some(rsx! {
+            div { class: "psearch",
+                {field}
+                {filter}
             }
         }),
     };
@@ -282,14 +275,12 @@ pub fn LastUsedOption(
     nav: ListNav,
     highlighted: bool,
     selected: bool,
-    #[props(into)] subtitle: String,
     onselect: EventHandler<()>,
 ) -> Element {
     rsx! {
         PopoverOption {
             id: nav.row_id(LAST_USED_KEY),
             title: "Last used",
-            subtitle,
             role: OptionRole::Option,
             selected,
             highlighted,

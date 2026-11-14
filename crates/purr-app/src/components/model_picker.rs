@@ -12,7 +12,7 @@ use super::{
 use crate::utils::primary_key::use_primary_key_label;
 use crate::{
     components::toast::use_toasts,
-    hooks::use_models::{GpuSupport, use_models},
+    hooks::use_models::use_models,
     main_app::Route,
     model_catalog::{
         entry::ModelEntry,
@@ -21,7 +21,6 @@ use crate::{
         picker::{PickerList, PickerModel, PickerScope, picker_list, version_tag},
         state::ModelState,
     },
-    platform::IS_WEB,
     settings_store::use_settings,
 };
 use dioxus::prelude::*;
@@ -230,9 +229,6 @@ pub fn ModelPicker(
         }
     };
 
-    let on_cpu = IS_WEB
-        && (*models.gpu.read() == GpuSupport::Unavailable
-            || settings.with(|settings| settings.performance.device_order().is_cpu_only()));
     let segments: Vec<Segment<PickerScope>> = PickerScope::ALL
         .into_iter()
         .map(|scope| Segment::new(scope, scope.label()))
@@ -262,7 +258,6 @@ pub fn ModelPicker(
                     },
                 }
             },
-            note: on_cpu.then(|| rsx! { "Models run on the CPU here. Smaller ones are faster." }),
             status,
             footer: rsx! {
                 div { class: "plist", role: "menu", aria_label: "Models",
@@ -283,7 +278,6 @@ pub fn ModelPicker(
                     nav,
                     highlighted: active.as_deref() == Some(LAST_USED_KEY),
                     selected: selected.is_empty(),
-                    subtitle: "Start with the model you picked last",
                     onselect: move |()| pick_last_used(),
                 }
             }

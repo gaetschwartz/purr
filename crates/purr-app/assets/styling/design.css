@@ -382,7 +382,6 @@ kbd{font-family:var(--font);font-size:12px;font-weight:600;padding:2px 7px;borde
 .psearch{display:flex;align-items:center;gap:6px}
 .psearch .field{flex:1}
 .psearch .seg{flex:none}
-.pnote{margin:0;padding:2px 6px 6px;font-size:12.5px;line-height:1.4;color:var(--fg-2)}
 .popover.picker .plist{padding:0}
 .popover.picker .pfold{display:flex;align-items:center;gap:11px;width:100%;padding-left:11px;text-align:left;border-radius:12px}
 .popover.picker .pfold:hover{color:var(--fg)}

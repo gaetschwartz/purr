@@ -185,18 +185,15 @@ pub(super) async fn verify(models: ModelsHandle, id: String) {
     match result {
         Ok(ModelIntegrity::Verified) => {
             models.clear_activity(&id);
-            models.toasts.success(
-                "Files check out",
-                format!("{label} matches its published checksums."),
-            );
+            models.toasts.success("Files check out", label);
         }
         Ok(ModelIntegrity::Damaged { problem, file }) => {
             models.set_activity(&id, ModelActivity::Damaged(Damage { problem, file }));
             models.refresh();
-            models.toasts.error(
+            models.toasts.show(Toast::new(
+                ToastKind::Error,
                 format!("{label} failed its check"),
-                "Download it again to repair it.",
-            );
+            ));
         }
         Err(error) => {
             models.clear_activity(&id);

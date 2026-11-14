@@ -84,12 +84,20 @@ pub fn ModelNotice(selection: Option<Selection>, plan: StartPlan) -> Element {
         ModelState::Failed(failure) => {
             let text = copy::failure(&failure);
             rsx! {
-                Banner { tone: BannerTone::Bad, title: "{text.title}", role: "alert", "{text.body}" }
+                Banner {
+                    tone: BannerTone::Bad,
+                    title: "{text.title}",
+                    role: "alert",
+                    details: text.detail.map(|detail| rsx! { "{detail}" }),
+                }
             }
         }
         ModelState::NeedsRepair(damage) => rsx! {
-            Banner { tone: BannerTone::Bad, title: "{label} is damaged", role: "alert",
-                {copy::damage(&damage)}
+            Banner {
+                tone: BannerTone::Bad,
+                title: "{label} is damaged",
+                role: "alert",
+                details: rsx! { {copy::damage(&damage)} },
             }
         },
         ModelState::Unavailable { reason, .. } => rsx! {

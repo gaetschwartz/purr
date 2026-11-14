@@ -94,27 +94,13 @@ pub fn spoken_count(profile: Option<&ModelProfile>) -> usize {
         .count()
 }
 
-/// What the picker says about a model that knows one language.
-#[must_use]
-pub fn note(profile: &ModelProfile) -> Option<String> {
-    if !is_locked(profile) {
-        return None;
-    }
-    profile.languages.single().map(|tag| {
-        format!(
-            "This model only transcribes {}.",
-            LanguageChoice::Spoken(tag.clone()).label()
-        )
-    })
-}
-
 /// What "Automatic" does with `profile`: it detects the language, and says which when the model
 /// reports it.
 #[must_use]
 pub fn automatic_hint(profile: Option<&ModelProfile>) -> &'static str {
     match profile.map(|profile| profile.detection) {
-        Some(DetectionReport::Silent) => "Detects the language without reporting it",
-        Some(DetectionReport::Reported) | None => "Detects the language from the first 30 seconds",
+        Some(DetectionReport::Silent) => "Detected, not reported",
+        Some(DetectionReport::Reported) | None => "Detected from the start",
     }
 }
 
@@ -257,10 +243,6 @@ mod tests {
         assert!(is_locked(&english));
         assert!(!ignores_hint(&english));
         assert_eq!(choices(Some(&english), "fr"), vec![spoken("en")]);
-        assert_eq!(
-            note(&english),
-            Some("This model only transcribes English.".to_owned())
-        );
     }
 
     fn parakeet() -> ModelProfile {
@@ -273,7 +255,6 @@ mod tests {
         assert!(!is_locked(&parakeet()));
         let ignored = profile(HintEffect::Ignored, LanguageSupport::Any);
         assert!(ignores_hint(&ignored));
-        assert_eq!(note(&ignored), None);
     }
 
     #[test]
@@ -341,18 +322,9 @@ mod tests {
     #[test]
     fn automatic_says_it_detects_and_whether_the_language_is_reported() {
         let whisper = crate::model_catalog::test_support::whisper_profile(false, false);
-        assert_eq!(
-            automatic_hint(Some(&whisper)),
-            "Detects the language from the first 30 seconds"
-        );
-        assert_eq!(
-            automatic_hint(None),
-            "Detects the language from the first 30 seconds"
-        );
-        assert_eq!(
-            automatic_hint(Some(&parakeet())),
-            "Detects the language without reporting it"
-        );
+        assert_eq!(automatic_hint(Some(&whisper)), "Detected from the start");
+        assert_eq!(automatic_hint(None), "Detected from the start");
+        assert_eq!(automatic_hint(Some(&parakeet())), "Detected, not reported");
     }
 
     #[test]
@@ -390,7 +362,7 @@ mod tests {
         let whisper = crate::model_catalog::test_support::whisper_profile(false, false);
         assert_eq!(
             pill_notes(&LanguageChoice::Automatic, Some(&whisper), "Base").hint,
-            Some("Automatic · Detects the language from the first 30 seconds".to_owned())
+            Some("Automatic · Detected from the start".to_owned())
         );
         assert_eq!(
             pill_notes(&spoken("fr"), Some(&whisper), "Base"),
@@ -427,7 +399,6 @@ mod tests {
             choices(Some(&few), ""),
             vec![LanguageChoice::Automatic, spoken("en"), spoken("fr")]
         );
-        assert_eq!(note(&few), None);
     }
 
     #[test]

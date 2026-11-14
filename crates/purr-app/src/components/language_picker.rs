@@ -13,7 +13,7 @@ use crate::{
     hooks::use_models::use_models,
     settings_store::use_settings,
     transcribe::language_choice::{
-        automatic_hint, choices, for_model, ignores_hint, is_locked, note, pill_notes, spoken_count,
+        automatic_hint, choices, for_model, ignores_hint, is_locked, pill_notes, spoken_count,
     },
 };
 use dioxus::prelude::*;
@@ -133,7 +133,6 @@ pub fn LanguagePicker(
     let current = (!none_selected)
         .then(|| for_model(LanguageChoice::from_setting(&selected), profile.as_ref()));
     let choices = choices(profile.as_ref(), &query());
-    let note = profile.as_ref().and_then(note);
     let automatic_subtitle = automatic_hint(profile.as_ref());
     let language_count = spoken_count(profile.as_ref());
     let last_used = target == PickTarget::Default;
@@ -223,14 +222,12 @@ pub fn LanguagePicker(
             search: (!restricted).then(|| format!("Search {language_count} languages")),
             query: query(),
             on_query: move |value: String| query.set(value),
-            note: note.map(|text| rsx! { "{text}" }),
             status,
             if last_used {
                 LastUsedOption {
                     nav,
                     highlighted: is_active(LAST_USED_KEY),
                     selected: none_selected,
-                    subtitle: "Start with the language you picked last",
                     onselect: move |()| choose_last_used(),
                 }
             }

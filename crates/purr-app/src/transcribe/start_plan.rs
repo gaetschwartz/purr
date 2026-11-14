@@ -65,7 +65,7 @@ pub const fn blocked_text(blocker: &Blocker) -> &'static str {
         Blocker::NoModel => "No model is available.",
         Blocker::CannotRun(reason) => copy::unavailable(*reason).1,
         Blocker::Checking => "The model's files are being checked.",
-        Blocker::OtherDownload => "Wait for the other model download to finish.",
+        Blocker::OtherDownload => "Another model is downloading.",
     }
 }
 
