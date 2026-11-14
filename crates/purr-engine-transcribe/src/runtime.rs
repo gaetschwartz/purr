@@ -7,9 +7,10 @@
 
 use std::{
     path::{Path, PathBuf},
-    sync::OnceLock,
+    sync::{Arc, OnceLock},
 };
 
+use parking_lot::Mutex;
 use purr_core::accel::{
     library_loader::{Loader, SystemLoader},
     runtime_dir::{Environment, search_dirs},
@@ -18,6 +19,7 @@ use purr_core::accel::{
 use crate::logging;
 
 const LIBRARIES: Option<&str> = option_env!("PURR_TRANSCRIBE_RUNTIME_LIBS");
+const BUILD_DIR: Option<&str> = option_env!("PURR_TRANSCRIBE_BUILD_DIR");
 
 /// transcribe.cpp, loaded and with its backend modules registered.
 #[derive(Debug)]
@@ -29,7 +31,7 @@ pub struct Runtime {
 }
 
 /// Why transcribe.cpp cannot be used in this process.
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Clone, thiserror::Error)]
 pub enum Unavailable {
     #[error("the library {library} was not found in any runtime folder")]
     LibraryMissing {
@@ -39,23 +41,76 @@ pub enum Unavailable {
     #[error("the library {library} in {} cannot be loaded, a library it needs may be missing", directory.display())]
     LibraryUnloadable { library: String, directory: PathBuf },
     #[error("transcribe.cpp registered no compute backend")]
-    Backends(#[source] transcribe_cpp::Error),
+    Backends(#[source] Arc<transcribe_cpp::Error>),
 }
 
-static RUNTIME: OnceLock<Result<Runtime, Unavailable>> = OnceLock::new();
-
-/// Loads transcribe.cpp the first time, and answers with the outcome ever after.
-pub fn get() -> Result<&'static Runtime, &'static Unavailable> {
-    let outcome = RUNTIME.get_or_init(load).as_ref();
-    if outcome.is_ok() {
-        logging::install_if_requested();
+impl Unavailable {
+    /// Whether the outcome stays the same for the life of the process. A library that is missing
+    /// or cannot be opened may be fixed by installing it; transcribe.cpp scans a folder for
+    /// backend modules once and answers the same ever after.
+    const fn is_final(&self) -> bool {
+        match self {
+            Self::LibraryMissing { .. } | Self::LibraryUnloadable { .. } => false,
+            Self::Backends(_) => true,
+        }
     }
-    outcome
 }
 
-/// The outcome if the library has been loaded or refused already, without loading it.
-pub(crate) fn loaded() -> Option<Result<&'static Runtime, &'static Unavailable>> {
-    RUNTIME.get().map(Result::as_ref)
+/// The outcome of loading, kept once it cannot change.
+struct Slot {
+    settled: OnceLock<Result<Runtime, Unavailable>>,
+    gate: Mutex<()>,
+}
+
+impl Slot {
+    const fn new() -> Self {
+        Self {
+            settled: OnceLock::new(),
+            gate: Mutex::new(()),
+        }
+    }
+
+    /// The kept outcome, or the result of `load`, which runs one call at a time and again on the
+    /// next call after a failure that installing something can fix.
+    fn get_or_load(
+        &self,
+        load: impl FnOnce() -> Result<Runtime, Unavailable>,
+    ) -> Result<&Runtime, Unavailable> {
+        if let Some(settled) = self.settled.get() {
+            return settled.as_ref().map_err(Clone::clone);
+        }
+        let _one_at_a_time = self.gate.lock();
+        if let Some(settled) = self.settled.get() {
+            return settled.as_ref().map_err(Clone::clone);
+        }
+        match load() {
+            Err(why) if !why.is_final() => Err(why),
+            outcome => self
+                .settled
+                .get_or_init(|| outcome)
+                .as_ref()
+                .map_err(Clone::clone),
+        }
+    }
+
+    fn loaded(&self) -> Option<&Runtime> {
+        self.settled.get().and_then(|outcome| outcome.as_ref().ok())
+    }
+}
+
+static RUNTIME: Slot = Slot::new();
+
+/// Loads transcribe.cpp the first time it succeeds, and answers with that ever after. A library
+/// that was not there is looked for again on the next call.
+pub fn get() -> Result<&'static Runtime, Unavailable> {
+    let runtime = RUNTIME.get_or_load(load)?;
+    logging::install_if_requested();
+    Ok(runtime)
+}
+
+/// The runtime if the library has been loaded already, without loading it.
+pub(crate) fn loaded() -> Option<&'static Runtime> {
+    RUNTIME.loaded()
 }
 
 fn libraries() -> impl Iterator<Item = &'static str> {
@@ -65,35 +120,63 @@ fn libraries() -> impl Iterator<Item = &'static str> {
         .filter(|name| !name.is_empty())
 }
 
+/// Where the build left its libraries; only a build with debug assertions has any.
+fn build_output_dirs() -> Vec<PathBuf> {
+    BUILD_DIR
+        .filter(|_| cfg!(debug_assertions))
+        .map(PathBuf::from)
+        .into_iter()
+        .collect()
+}
+
 fn load() -> Result<Runtime, Unavailable> {
-    let searched: Vec<PathBuf> = search_dirs(&Environment::current())
+    let environment = Environment {
+        build_output_dirs: build_output_dirs(),
+        ..Environment::current()
+    };
+    let searched: Vec<PathBuf> = search_dirs(&environment)
         .into_iter()
         .map(|dir| dir.path)
         .collect();
+    let libraries: Vec<&str> = libraries().collect();
+    open_libraries(&SystemLoader, &libraries, searched, |directory| {
+        logging::install_if_requested();
+        transcribe_cpp::init_backends_default()
+            .map_err(|error| Unavailable::Backends(Arc::new(error)))?;
+        Ok(Runtime {
+            version: transcribe_cpp::version(),
+            directory,
+        })
+    })
+}
+
+/// Opens each of `libraries`, then runs `start` with the folder of the last one. A library that
+/// no folder holds is not opened at all, so looking again costs a few file checks.
+fn open_libraries(
+    loader: &impl Loader,
+    libraries: &[&str],
+    searched: Vec<PathBuf>,
+    start: impl FnOnce(Option<PathBuf>) -> Result<Runtime, Unavailable>,
+) -> Result<Runtime, Unavailable> {
     let mut directory = None;
-    for library in libraries() {
-        directory = Some(match open_in_first(&SystemLoader, library, &searched) {
+    for library in libraries {
+        directory = Some(match open_in_first(loader, library, &searched) {
             Opening::Opened(dir) => dir.to_path_buf(),
             Opening::Unopenable(dir) => {
                 return Err(Unavailable::LibraryUnloadable {
-                    library: library.to_owned(),
+                    library: (*library).to_owned(),
                     directory: dir.to_path_buf(),
                 });
             }
             Opening::Absent => {
                 return Err(Unavailable::LibraryMissing {
-                    library: library.to_owned(),
+                    library: (*library).to_owned(),
                     searched,
                 });
             }
         });
     }
-    logging::install_if_requested();
-    transcribe_cpp::init_backends_default().map_err(Unavailable::Backends)?;
-    Ok(Runtime {
-        version: transcribe_cpp::version(),
-        directory,
-    })
+    start(directory)
 }
 
 enum Opening<'a> {
@@ -118,7 +201,9 @@ fn open_in_first<'a>(loader: &impl Loader, library: &str, dirs: &'a [PathBuf]) -
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashSet;
+    use std::{cell::Cell, collections::HashSet};
+
+    use pretty_assertions::assert_eq;
 
     use super::*;
 
@@ -127,6 +212,7 @@ mod tests {
         files: HashSet<(PathBuf, String)>,
         unopenable: HashSet<(PathBuf, String)>,
         system: HashSet<String>,
+        opened: Cell<usize>,
     }
 
     impl Loader for Fake {
@@ -136,6 +222,7 @@ mod tests {
         }
 
         fn open_in(&self, dir: &Path, library: &str) -> bool {
+            self.opened.set(self.opened.get() + 1);
             let key = (dir.to_path_buf(), library.to_owned());
             !self.unopenable.contains(&key)
         }
@@ -157,6 +244,26 @@ mod tests {
                 .collect(),
             ..Fake::default()
         }
+    }
+
+    fn runtime(version: &str) -> Runtime {
+        Runtime {
+            version: version.to_owned(),
+            directory: None,
+        }
+    }
+
+    fn missing() -> Unavailable {
+        Unavailable::LibraryMissing {
+            library: "transcribe.dll".to_owned(),
+            searched: Vec::new(),
+        }
+    }
+
+    fn no_backend() -> Unavailable {
+        Unavailable::Backends(Arc::new(transcribe_cpp::Error::Backend(
+            "no device".to_owned(),
+        )))
     }
 
     #[test]
@@ -204,5 +311,121 @@ mod tests {
             open_in_first(&loader, "transcribe.dll", &dirs(&["/a"])),
             Opening::Absent
         ));
+    }
+
+    #[test]
+    fn a_library_that_is_absent_is_reported_without_opening_or_starting_anything() {
+        let loader = fake(&[]);
+        let started = Cell::new(0);
+        let outcome = open_libraries(&loader, &["transcribe.dll"], dirs(&["/a"]), |_| {
+            started.set(started.get() + 1);
+            Ok(runtime("1"))
+        });
+        assert!(matches!(
+            outcome,
+            Err(Unavailable::LibraryMissing { library, searched })
+                if library == "transcribe.dll" && searched == dirs(&["/a"])
+        ));
+        assert_eq!((loader.opened.get(), started.get()), (0, 0));
+    }
+
+    #[test]
+    fn the_start_gets_the_folder_the_last_library_opened_from() {
+        let loader = fake(&[("/b", "transcribe.dll")]);
+        let outcome = open_libraries(
+            &loader,
+            &["transcribe.dll"],
+            dirs(&["/a", "/b"]),
+            |directory| {
+                Ok(Runtime {
+                    version: "1".to_owned(),
+                    directory,
+                })
+            },
+        );
+        assert_eq!(
+            outcome.ok().and_then(|runtime| runtime.directory),
+            Some(PathBuf::from("/b"))
+        );
+    }
+
+    #[test]
+    fn a_library_that_was_missing_is_loaded_by_a_later_call() {
+        let slot = Slot::new();
+        let calls = Cell::new(0);
+        let first = slot.get_or_load(|| {
+            calls.set(calls.get() + 1);
+            Err(missing())
+        });
+        assert!(matches!(first, Err(Unavailable::LibraryMissing { .. })));
+        let second = slot.get_or_load(|| {
+            calls.set(calls.get() + 1);
+            Ok(runtime("1"))
+        });
+        assert_eq!(
+            second.ok().map(|runtime| runtime.version.as_str()),
+            Some("1")
+        );
+        assert_eq!(calls.get(), 2);
+    }
+
+    #[test]
+    fn a_failure_is_tried_again_every_time() {
+        let slot = Slot::new();
+        let calls = Cell::new(0);
+        for _ in 0..3 {
+            let outcome = slot.get_or_load(|| {
+                calls.set(calls.get() + 1);
+                Err(Unavailable::LibraryUnloadable {
+                    library: "transcribe.dll".to_owned(),
+                    directory: PathBuf::from("/a"),
+                })
+            });
+            assert!(outcome.is_err());
+        }
+        assert_eq!(calls.get(), 3);
+        assert!(slot.loaded().is_none());
+    }
+
+    #[test]
+    fn a_success_is_kept_and_not_loaded_again() {
+        let slot = Slot::new();
+        let calls = Cell::new(0);
+        for _ in 0..3 {
+            let outcome = slot.get_or_load(|| {
+                calls.set(calls.get() + 1);
+                Ok(runtime("1"))
+            });
+            assert_eq!(
+                outcome.ok().map(|runtime| runtime.version.as_str()),
+                Some("1")
+            );
+        }
+        assert_eq!(calls.get(), 1);
+        assert_eq!(
+            slot.loaded().map(|runtime| runtime.version.as_str()),
+            Some("1")
+        );
+    }
+
+    #[test]
+    fn a_loaded_library_stays_whatever_a_later_call_would_find() {
+        let slot = Slot::new();
+        assert!(slot.get_or_load(|| Ok(runtime("1"))).is_ok());
+        assert!(slot.get_or_load(|| Err(missing())).is_ok());
+    }
+
+    #[test]
+    fn a_missing_backend_is_final_and_not_scanned_again() {
+        let slot = Slot::new();
+        let calls = Cell::new(0);
+        for _ in 0..3 {
+            let outcome = slot.get_or_load(|| {
+                calls.set(calls.get() + 1);
+                Err(no_backend())
+            });
+            assert!(matches!(outcome, Err(Unavailable::Backends(_))));
+        }
+        assert_eq!(calls.get(), 1);
     }
 }

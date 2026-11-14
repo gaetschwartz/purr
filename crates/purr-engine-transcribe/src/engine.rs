@@ -56,7 +56,7 @@ impl Engine for TranscribeEngine {
                 version: Some(runtime.version.clone()),
                 directory: runtime.directory.clone(),
             })
-            .map_err(unavailable)
+            .map_err(|why| unavailable(&why))
     }
 
     fn build_info(&self) -> BuildInfo {
@@ -97,7 +97,7 @@ impl Engine for TranscribeEngine {
 
     fn install_logging(&self) {
         logging::request();
-        if let Some(Ok(_)) = runtime::loaded() {
+        if runtime::loaded().is_some() {
             logging::install_if_requested();
         }
     }

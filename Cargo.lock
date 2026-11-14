@@ -5662,6 +5662,7 @@ name = "purr-engine-transcribe"
 version = "0.1.0"
 dependencies = [
  "futures",
+ "parking_lot 0.13.0",
  "pretty_assertions",
  "purr-common",
  "purr-core",

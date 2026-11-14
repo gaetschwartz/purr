@@ -10,7 +10,7 @@ use crate::runtime::Unavailable;
 #[derive(Debug, thiserror::Error)]
 pub enum TranscribeEngineError {
     #[error("transcribe.cpp cannot be used")]
-    Library(#[source] &'static Unavailable),
+    Library(#[source] Unavailable),
 
     #[error(transparent)]
     Transcribe(#[from] transcribe_cpp::Error),
