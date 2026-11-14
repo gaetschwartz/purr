@@ -43,7 +43,6 @@ for dir in "$src"/purr-desktop-*; do
       *-setup.exe) cp "$file" "$out/$asset-setup.exe" ;;
       *-portable.zip)
         cp "$file" "$out/$asset-portable.zip"
-        unzip -Z1 "$out/$asset-portable.zip" | grep -x transcribe.dll > /dev/null || { echo "$asset-portable.zip lacks transcribe.dll" >&2; exit 1; }
         if [ "${PURR_SPLIT_CUDA_RUNTIME:-false}" = true ]; then
           status=0
           zip -qd "$out/$asset-portable.zip" "${cuda_libraries[@]}" || status=$?

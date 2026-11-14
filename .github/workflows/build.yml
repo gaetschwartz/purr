@@ -431,12 +431,13 @@ jobs:
           cp target/release/purr artifacts/cli/purr
           if [ "${{ matrix.transcribe }}" = "true" ]; then
             mkdir -p artifacts/cli/lib
-            cp -R "$(dirname "$(find target/release/build -name 'libtranscribe*.dylib' | head -n 1)")"/*.dylib artifacts/cli/lib/
+            lib_dir="$(dirname "$(find target/release/build -path '*/out/lib/libtranscribe.dylib' -print -quit)")"
+            find "$lib_dir" -maxdepth 1 \( -type f -o -type l \) -exec cp -P {} artifacts/cli/lib/ \;
             install_name_tool -add_rpath @executable_path/lib artifacts/cli/purr
           fi
           artifacts/cli/purr --version
           if [ "${{ matrix.transcribe }}" = "true" ]; then
-            artifacts/cli/purr sys --json | jq -e '.engines[] | select(.engine == "transcribe-cpp") | .status.ready.version' > /dev/null \
+            artifacts/cli/purr sys --json | jq -e '.engines[] | select(.engine == "transcribe-cpp") | .status.ready.devices | length > 0' > /dev/null \
               || { echo "::error::the transcribe.cpp engine is not loaded"; exit 1; }
           fi
       - name: Archive CLI
@@ -647,7 +648,9 @@ jobs:
       CARGO_TARGET_DIR: D:\t
       # Ninja runs nvcc on every core; the Visual Studio generator compiles the CUDA sources one at a time
       CMAKE_GENERATOR_x86_64_pc_windows_msvc: Ninja
-      FEATURES: static-ffmpeg,cuda,vulkan,transcribe
+      FEATURES: static-ffmpeg,cuda,vulkan
+      # on: the app is built with transcribe and the installer and the portable archive carry its libraries. Needs a run to prove the NSIS step first.
+      PURR_DESKTOP_TRANSCRIBE: "off"
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-msvc
@@ -670,7 +673,7 @@ jobs:
           # rust-cache joins the target onto the workspace path, and CARGO_TARGET_DIR is D:\t
           cache-workspaces: ". -> ../../../t"
           # whisper-rs-sys does not rebuild ggml when GGML_* or the GPU SDKs change, so each configuration needs its own cache
-          cache-key: cuda-vulkan-transcribe-ggml-native-${{ env.GGML_NATIVE }}-crt-static-${{ env.CMAKE_GENERATOR_x86_64_pc_windows_msvc || 'msbuild' }}-cuda-${{ env.CUDA_VERSION }}-vulkan-${{ env.VULKAN_SDK_VERSION }}
+          cache-key: cuda-vulkan${{ env.PURR_DESKTOP_TRANSCRIBE == 'on' && '-transcribe' || '' }}-ggml-native-${{ env.GGML_NATIVE }}-crt-static-${{ env.CMAKE_GENERATOR_x86_64_pc_windows_msvc || 'msbuild' }}-cuda-${{ env.CUDA_VERSION }}-vulkan-${{ env.VULKAN_SDK_VERSION }}
           cache-save: ${{ github.ref == 'refs/heads/develop' }}
       - uses: ./.github/actions/setup-dioxus
         with:
@@ -681,12 +684,15 @@ jobs:
           base-dir: ${{ env.CARGO_TARGET_DIR }}
       - name: Build the desktop app
         run: |
-          dx bundle --verbose --trace -p purr-app --release --profile r --windows --package-types nsis --out-dir dist-windows --features $env:FEATURES
+          $features = $env:FEATURES
+          if ($env:PURR_DESKTOP_TRANSCRIBE -eq 'on') { $features += ',transcribe' }
+          dx bundle --verbose --trace -p purr-app --release --profile r --windows --package-types nsis --out-dir dist-windows --features $features
       - name: Add the transcribe.cpp libraries to the installer
+        if: env.PURR_DESKTOP_TRANSCRIBE == 'on'
         run: |
           ./scripts/stage-transcribe-runtime.ps1 -Source "$env:CARGO_TARGET_DIR\r" -Destination dist-runtime
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          dx bundle --verbose --trace -p purr-app --release --profile r --windows --package-types nsis --out-dir dist-windows --features $env:FEATURES
+          dx bundle --verbose --trace -p purr-app --release --profile r --windows --package-types nsis --out-dir dist-windows --features "$env:FEATURES,transcribe"
           $staging = Get-ChildItem "$env:CARGO_TARGET_DIR\dx\purr-app" -Recurse -Directory -Filter _staging | Select-Object -First 1
           if (-Not $staging) {
             Write-Error "the NSIS staging directory was not found under $env:CARGO_TARGET_DIR\dx\purr-app"
@@ -705,12 +711,16 @@ jobs:
             Write-Error "dx app directory not found under $env:CARGO_TARGET_DIR\dx\purr-app"
             exit 1
           }
-          ./scripts/check-windows-imports.ps1 -Exe $appExe.FullName -Forbidden '^nvcuda\.dll$','^cudart64_','^cublas','^vulkan-1\.dll$' -ExpectDelayLoaded transcribe.dll
+          $expect = @{}
+          if ($env:PURR_DESKTOP_TRANSCRIBE -eq 'on') { $expect.ExpectDelayLoaded = @('transcribe.dll') }
+          ./scripts/check-windows-imports.ps1 -Exe $appExe.FullName -Forbidden '^nvcuda\.dll$','^cudart64_','^cublas','^vulkan-1\.dll$' @expect
           $portable = "artifacts\portable\purr-desktop"
           New-Item -ItemType Directory -Force -Path $portable
           Copy-Item "$($appExe.DirectoryName)\*" $portable -Recurse
-          ./scripts/stage-transcribe-runtime.ps1 -Source "$env:CARGO_TARGET_DIR\r" -Destination $portable
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ($env:PURR_DESKTOP_TRANSCRIBE -eq 'on') {
+            ./scripts/stage-transcribe-runtime.ps1 -Source "$env:CARGO_TARGET_DIR\r" -Destination $portable
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
           $cudaBinPath = "$env:CUDA_PATH\bin\x64"
           foreach ($pattern in "cudart64_*.dll", "cublas64_*.dll", "cublasLt64_*.dll") {
             $found = Get-ChildItem "$cudaBinPath\$pattern"
@@ -721,8 +731,10 @@ jobs:
             $found | Copy-Item -Destination $portable
           }
           Compress-Archive -Path "$portable\*" -DestinationPath artifacts\desktop\purr-desktop-portable.zip
-          ./scripts/stage-transcribe-runtime.ps1 -Check artifacts\desktop\purr-desktop-portable.zip
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ($env:PURR_DESKTOP_TRANSCRIBE -eq 'on') {
+            ./scripts/stage-transcribe-runtime.ps1 -Check artifacts\desktop\purr-desktop-portable.zip
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
       - name: Archive desktop app
         uses: actions/upload-artifact@v7
         with:
