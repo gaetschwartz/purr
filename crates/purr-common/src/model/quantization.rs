@@ -37,6 +37,21 @@ pub enum Quantization {
 }
 
 impl Quantization {
+    /// The name the format is known by, such as `Q4_K_M`.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::F32 => "F32",
+            Self::F16 => "F16",
+            Self::Q8_0 => "Q8_0",
+            Self::Q6K => "Q6_K",
+            Self::Q5_1 => "Q5_1",
+            Self::Q5_0 => "Q5_0",
+            Self::Q5KM => "Q5_K_M",
+            Self::Q4KM => "Q4_K_M",
+        }
+    }
+
     #[must_use]
     pub const fn precision(self) -> Precision {
         match self {
@@ -81,6 +96,25 @@ mod tests {
                 Precision::Quantized { bits: 4 },
             ]
         );
+    }
+
+    #[test]
+    fn a_label_is_the_stored_name_in_capitals() {
+        for quantization in [
+            Quantization::F32,
+            Quantization::F16,
+            Quantization::Q8_0,
+            Quantization::Q6K,
+            Quantization::Q5_1,
+            Quantization::Q5_0,
+            Quantization::Q5KM,
+            Quantization::Q4KM,
+        ] {
+            assert_eq!(
+                quantization.label().to_lowercase().parse(),
+                Ok(quantization)
+            );
+        }
     }
 
     #[test]

@@ -18,7 +18,7 @@ use crate::{
         entry::ModelEntry,
         format::download_size,
         listing::ModelRow,
-        picker::{PickerModel, PickerScope, picker_list, version_tag},
+        picker::{PickerList, PickerModel, PickerScope, picker_list, version_tag},
         state::ModelState,
     },
     platform::IS_WEB,
@@ -123,7 +123,7 @@ pub fn ModelPicker(
         Some(Err(_)) | None => &[],
     };
     let scope = scope_choice().unwrap_or_else(|| PickerScope::initial(rows));
-    let list = picker_list(rows, scope, &query, &selected);
+    let mut list = picker_list(rows, scope, &query, &selected);
     let older_open = older_toggled() || list.older_opens(&query, &selected);
     let older_count = list.older.len();
     let hidden = list.hidden;
@@ -179,6 +179,7 @@ pub fn ModelPicker(
 
     let columns = list.columns();
     let sections = scope == PickerScope::All && !list.downloaded.is_empty();
+    let headed = list.has_several_lines();
     let shown: Vec<PickerModel> = list
         .downloaded
         .iter()
@@ -186,6 +187,8 @@ pub fn ModelPicker(
         .chain(list.older.iter().filter(|_| older_open))
         .cloned()
         .collect();
+    let downloaded_lines = PickerList::sections(std::mem::take(&mut list.downloaded), headed);
+    let available_lines = PickerList::sections(std::mem::take(&mut list.available), headed);
     let nav_rows: Vec<NavRow> = last_used
         .then(|| NavRow::single(LAST_USED_KEY))
         .into_iter()
@@ -284,42 +287,52 @@ pub fn ModelPicker(
                     onselect: move |()| pick_last_used(),
                 }
             }
-            if !list.downloaded.is_empty() {
+            if !downloaded_lines.is_empty() {
                 div { role: "group", aria_label: "Downloaded",
                     if sections {
                         div { class: "ph", aria_hidden: "true", "Downloaded" }
                     }
-                    for model in list.downloaded {
-                        ModelPickRow {
-                            key: "{model.key()}",
-                            selected: selected_in(&model),
-                            highlighted: in_model(&model, active.as_ref()),
-                            model,
-                            columns: columns.clone(),
-                            nav,
-                            hint: default_hint.clone(),
-                            onselect: pick,
-                            on_alt: alt,
+                    for line in downloaded_lines {
+                        if let Some(heading) = line.heading {
+                            div { class: "ph", aria_hidden: "true", "{heading}" }
+                        }
+                        for model in line.models {
+                            ModelPickRow {
+                                key: "{model.key()}",
+                                selected: selected_in(&model),
+                                highlighted: in_model(&model, active.as_ref()),
+                                model,
+                                columns: columns.clone(),
+                                nav,
+                                hint: default_hint.clone(),
+                                onselect: pick,
+                                on_alt: alt,
+                            }
                         }
                     }
                 }
             }
-            if !list.available.is_empty() {
+            if !available_lines.is_empty() {
                 div { role: "group", aria_label: "Available to download",
                     if sections {
                         div { class: "ph", aria_hidden: "true", "Available to download" }
                     }
-                    for model in list.available {
-                        ModelPickRow {
-                            key: "{model.key()}",
-                            selected: selected_in(&model),
-                            highlighted: in_model(&model, active.as_ref()),
-                            model,
-                            columns: columns.clone(),
-                            nav,
-                            hint: default_hint.clone(),
-                            onselect: pick,
-                            on_alt: alt,
+                    for line in available_lines {
+                        if let Some(heading) = line.heading {
+                            div { class: "ph", aria_hidden: "true", "{heading}" }
+                        }
+                        for model in line.models {
+                            ModelPickRow {
+                                key: "{model.key()}",
+                                selected: selected_in(&model),
+                                highlighted: in_model(&model, active.as_ref()),
+                                model,
+                                columns: columns.clone(),
+                                nav,
+                                hint: default_hint.clone(),
+                                onselect: pick,
+                                on_alt: alt,
+                            }
                         }
                     }
                 }

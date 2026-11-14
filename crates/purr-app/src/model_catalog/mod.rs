@@ -3,6 +3,7 @@
 pub mod activity;
 pub mod clusters;
 pub mod copy;
+pub mod credit;
 pub mod entry;
 pub mod family;
 pub mod format;

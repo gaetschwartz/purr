@@ -1,8 +1,12 @@
-use super::family::ModelGroup;
+use super::family::{ModelGroup, ModelLine};
+use crate::utils::counted::counted;
 use purr_common::{
     language::{choice::LanguageChoice, support::LanguageSupport},
     model::{
-        descriptor::ModelDescriptor, family::ModelFamily, precision::Precision, profile::Speakers,
+        descriptor::{ModelDescriptor, Weights},
+        family::ModelFamily,
+        precision::Precision,
+        profile::Speakers,
     },
     platform::ModelInfo,
 };
@@ -12,10 +16,23 @@ use purr_common::{
 pub fn languages_label(support: &LanguageSupport) -> String {
     match support {
         LanguageSupport::Any => "Multilingual".to_owned(),
-        LanguageSupport::Only(_) => match support.single() {
+        LanguageSupport::Only(tags) => match support.single() {
             Some(tag) => format!("{} only", LanguageChoice::Spoken(tag.clone()).label()),
-            None => "Some languages".to_owned(),
+            None => counted(tags.len(), "language", "languages"),
         },
+    }
+}
+
+/// The tag text of how a model's weights are stored: the format's own name, with "Quantized" in
+/// front when it is reduced precision. Browser weights keep [`precision_tag`].
+#[must_use]
+pub fn quantization_tag(weights: Weights) -> Option<String> {
+    match weights {
+        Weights::Quantized(quantization) => Some(match quantization.precision() {
+            Precision::Quantized { .. } => format!("Quantized {}", quantization.label()),
+            Precision::Full | Precision::Mixed => quantization.label().to_owned(),
+        }),
+        Weights::Onnx { .. } => precision_tag(weights.precision()),
     }
 }
 
@@ -88,9 +105,31 @@ impl ModelEntry {
         &self.descriptor.profile.languages
     }
 
+    /// Whether the model transcribes more than one language.
     #[must_use]
     pub fn is_multilingual(&self) -> bool {
-        self.languages().is_any()
+        match self.languages() {
+            LanguageSupport::Any => true,
+            LanguageSupport::Only(tags) => tags.len() > 1,
+        }
+    }
+
+    #[must_use]
+    pub const fn line(&self) -> ModelLine {
+        ModelLine::of(self.descriptor.family)
+    }
+
+    /// The tag text of the licence, for a family whose licence asks for credit.
+    #[must_use]
+    pub fn license_tag(&self) -> Option<&'static str> {
+        let license = self.descriptor.family.attribution().license;
+        license.requires_attribution().then(|| license.label())
+    }
+
+    /// The tag text of how the weights are stored.
+    #[must_use]
+    pub fn quantization_tag(&self) -> Option<String> {
+        quantization_tag(self.descriptor.weights)
     }
 
     #[must_use]
@@ -126,11 +165,12 @@ impl ModelEntry {
     #[must_use]
     pub fn matches(&self, query: &str) -> bool {
         let haystack = format!(
-            "{} {} {} {}",
+            "{} {} {} {} {}",
             self.label,
             self.id,
+            self.line().label(),
             languages_label(self.languages()),
-            precision_tag(self.precision()).unwrap_or_default()
+            self.quantization_tag().unwrap_or_default()
         )
         .to_lowercase();
         query
@@ -142,7 +182,7 @@ impl ModelEntry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model_catalog::test_support::info;
+    use crate::model_catalog::test_support::{info, parakeet_info};
     use purr_common::model::family::WhisperSize;
 
     #[test]
@@ -182,6 +222,50 @@ mod tests {
         assert_eq!(tag(Some("q6_k")), Some("Quantized Q6".to_owned()));
         assert_eq!(tag(Some("fp32/q4")), None);
         assert_eq!(tag(Some("q4/q4")), Some("Quantized Q4".to_owned()));
+    }
+
+    #[test]
+    fn a_model_with_a_list_of_languages_says_how_many() {
+        let entry = ModelEntry::from_info(&parakeet_info("parakeet-q8", "q8_0", 700, false));
+        assert_eq!(languages_label(entry.languages()), "25 languages");
+        assert!(entry.is_multilingual());
+        assert!(!entry.is_english_only());
+        assert_eq!(entry.line(), ModelLine::Parakeet);
+        assert_eq!(entry.group, ModelGroup::Parakeet);
+    }
+
+    #[test]
+    fn the_quantization_tag_names_the_stored_format() {
+        let tag = |model: ModelInfo| ModelEntry::from_info(&model).quantization_tag();
+        assert_eq!(
+            tag(parakeet_info("p", "f16", 1, false)),
+            Some("F16".to_owned())
+        );
+        assert_eq!(
+            tag(parakeet_info("p", "q4_k_m", 1, false)),
+            Some("Quantized Q4_K_M".to_owned())
+        );
+        assert_eq!(tag(info("base", "base", 1, Some("fp32/q4"), false)), None);
+        assert_eq!(
+            tag(info("base", "base", 1, Some("q4/q4"), false)),
+            Some("Quantized Q4".to_owned())
+        );
+    }
+
+    #[test]
+    fn only_a_family_whose_licence_asks_for_credit_carries_a_licence_tag() {
+        let parakeet = ModelEntry::from_info(&parakeet_info("p", "f16", 1, false));
+        assert_eq!(parakeet.license_tag(), Some("CC BY 4.0"));
+        let whisper = ModelEntry::from_info(&info("base", "base", 1, None, false));
+        assert_eq!(whisper.license_tag(), None);
+    }
+
+    #[test]
+    fn search_finds_a_model_by_its_line_and_its_quantization() {
+        let entry = ModelEntry::from_info(&parakeet_info("p-q4", "q4_k_m", 1, false));
+        assert!(entry.matches("parakeet"));
+        assert!(entry.matches("q4_k_m 25"));
+        assert!(!entry.matches("whisper"));
     }
 
     #[test]

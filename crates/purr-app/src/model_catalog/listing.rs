@@ -1,5 +1,6 @@
 use super::{
     clusters::{ModelCluster, cluster},
+    credit::{Credit, credit},
     entry::ModelEntry,
     family::ModelGroup,
     state::ModelState,
@@ -85,6 +86,8 @@ impl ModelQuery {
 pub struct GroupListing {
     pub group: ModelGroup,
     pub clusters: Vec<ModelCluster>,
+    /// Who made the section's models, when their licence asks for credit.
+    pub credit: Option<Credit>,
 }
 
 /// The list the Models screen shows.
@@ -149,6 +152,7 @@ pub fn build_listing(rows: &[ModelRow], query: &ModelQuery) -> Listing {
                 Some(section) => section.clusters.push(cluster),
                 None => listing.groups.push(GroupListing {
                     group,
+                    credit: credit(cluster.primary.entry.family()),
                     clusters: vec![cluster],
                 }),
             }
@@ -185,7 +189,7 @@ pub fn summarize(rows: &[ModelRow]) -> Summary {
 mod tests {
     use super::*;
     use crate::model_catalog::activity::{DownloadFailure, DownloadProgress};
-    use crate::model_catalog::test_support::{descriptor, info_of, weights};
+    use crate::model_catalog::test_support::{descriptor, info_of, parakeet_info, weights};
     use purr_common::{model::profile::Speakers, platform::ModelFailureKind};
 
     fn row(
@@ -429,6 +433,63 @@ mod tests {
     fn the_older_models_stay_closed_when_there_are_none() {
         let listing = build_listing(&rows(), &search("tiny"));
         assert!(!listing.shows_more(&search("tiny"), None));
+    }
+
+    fn parakeet(id: &str, quantization: &str, state: ModelState) -> ModelRow {
+        ModelRow {
+            entry: ModelEntry::from_info(&parakeet_info(
+                id,
+                quantization,
+                100,
+                state.is_on_device(),
+            )),
+            state,
+        }
+    }
+
+    fn with_parakeet() -> Vec<ModelRow> {
+        let mut all = rows();
+        all.push(parakeet("p-f16", "f16", ModelState::NotDownloaded));
+        all.push(parakeet("p-q8", "q8_0", ModelState::NotDownloaded));
+        all
+    }
+
+    #[test]
+    fn parakeet_gets_a_section_of_its_own_after_the_whisper_ones_with_its_credit() {
+        let listing = build_listing(&with_parakeet(), &ModelQuery::default());
+        let order: Vec<ModelGroup> = listing.groups.iter().map(|section| section.group).collect();
+        assert_eq!(
+            order,
+            [ModelGroup::Large, ModelGroup::Tiny, ModelGroup::Parakeet]
+        );
+        assert_eq!(
+            section(&listing, ModelGroup::Parakeet),
+            [("p-f16", vec!["p-q8"])]
+        );
+        let credits: Vec<bool> = listing
+            .groups
+            .iter()
+            .map(|section| section.credit.is_some())
+            .collect();
+        assert_eq!(credits, [false, false, true]);
+    }
+
+    #[test]
+    fn the_multilingual_filter_keeps_a_model_with_a_list_of_languages() {
+        let listing = build_listing(&with_parakeet(), &query(ModelFilter::Multilingual));
+        assert_eq!(
+            section(&listing, ModelGroup::Parakeet),
+            [("p-f16", vec!["p-q8"])]
+        );
+        let english = build_listing(&with_parakeet(), &query(ModelFilter::EnglishOnly));
+        assert_eq!(section(&english, ModelGroup::Parakeet), []);
+    }
+
+    #[test]
+    fn searching_for_a_line_finds_its_models() {
+        let listing = build_listing(&with_parakeet(), &search("parakeet"));
+        assert_eq!(listing.groups.len(), 1);
+        assert_eq!(listing.groups[0].group, ModelGroup::Parakeet);
     }
 
     #[test]

@@ -5,7 +5,10 @@ use super::{
     presence::Presence,
 };
 use crate::{
-    hooks::use_system_probe::{SystemProbe, use_system_probe},
+    hooks::{
+        use_models::use_models,
+        use_system_probe::{SystemProbe, use_system_probe},
+    },
     settings_store::use_settings,
     transcribe::{
         device_rows::{
@@ -15,7 +18,7 @@ use crate::{
     },
 };
 use dioxus::prelude::*;
-use purr_common::devices::DeviceKey;
+use purr_common::{devices::DeviceKey, model::engine::EngineId};
 
 const AUTOMATIC: &str = "Automatic (settings order)";
 
@@ -39,7 +42,11 @@ pub fn DevicePill(
     let session = use_transcribe_session();
     let settings = use_settings();
     let probe = use_system_probe();
+    let models = use_models();
     let mut open = use_signal(|| false);
+    let engine = settings
+        .with(|settings| models.find(&settings.model.model_name))
+        .map(|model| model.descriptor.engine);
     let rows = match &*probe.read() {
         SystemProbe::Ready(report) => Some(device_rows(
             &settings.with(|settings| settings.performance.clone()),
@@ -49,7 +56,7 @@ pub fn DevicePill(
     };
     let picked = rows
         .as_ref()
-        .and_then(|rows| override_for(session.device_override().as_ref(), rows));
+        .and_then(|rows| override_for(session.device_override().as_ref(), rows, engine));
     let value = match (&picked, &rows) {
         (Some(key), Some(rows)) => {
             row_of(rows, key).map_or_else(|| AUTOMATIC.to_owned(), row_phrase)
@@ -73,6 +80,7 @@ pub fn DevicePill(
                     anchor: id,
                     rows,
                     picked,
+                    engine,
                     on_close: move |()| open.set(false),
                 }
             }
@@ -86,10 +94,12 @@ pub fn DevicePicker(
     #[props(into)] anchor: String,
     rows: Vec<DeviceRow>,
     picked: Option<DeviceKey>,
+    /// The engine that runs the selected model; only the devices it can use are offered.
+    engine: Option<EngineId>,
     on_close: EventHandler<()>,
 ) -> Element {
     let session = use_transcribe_session();
-    let options = choices(&rows);
+    let options = choices(&rows, engine);
     rsx! {
         Popover { anchor, label: "Device", on_close, wide: true,
             for (index , choice) in options.into_iter().enumerate() {

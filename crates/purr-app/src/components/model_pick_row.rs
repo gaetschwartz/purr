@@ -116,8 +116,14 @@ pub fn ModelPickRow(
     );
     let title = model.title.clone();
     let state = model.mark(&chosen).text();
-    let label = format!("{title}, {state}");
-    let tip = tooltip(state, hint.as_ref());
+    let (label, described) = match model.details() {
+        Some(details) => (
+            format!("{title}, {details}, {state}"),
+            format!("{details}\n{state}"),
+        ),
+        None => (format!("{title}, {state}"), state),
+    };
+    let tip = tooltip(described, hint.as_ref());
     let slots: Vec<Option<ModelRow>> = model
         .slots(&columns)
         .into_iter()

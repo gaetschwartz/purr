@@ -1,7 +1,9 @@
 use super::{
     clusters::cluster,
     copy,
-    family::{ModelGroup, superseded},
+    credit::heading,
+    entry::languages_label,
+    family::{ModelGroup, ModelLine, superseded},
     format::percent,
     listing::ModelRow,
     state::{ModelState, UnavailableReason},
@@ -171,6 +173,27 @@ impl PickerModel {
         self.versions.iter().any(|row| row.entry.id == id)
     }
 
+    fn line(&self) -> Option<ModelLine> {
+        self.versions.first().map(|row| row.entry.line())
+    }
+
+    /// What the line says about the model beyond its name, for its tooltip: the languages, and the
+    /// licence when it asks for credit.
+    #[must_use]
+    pub fn details(&self) -> Option<String> {
+        let first = self.versions.first()?;
+        let mut parts = vec![languages_label(first.entry.languages())];
+        let attribution = first.entry.family().attribution();
+        if attribution.license.requires_attribution() {
+            parts.push(format!(
+                "{} by {}",
+                attribution.license.label(),
+                attribution.author
+            ));
+        }
+        Some(parts.join(" · "))
+    }
+
     fn group(&self) -> ModelGroup {
         self.versions
             .first()
@@ -308,7 +331,58 @@ pub struct PickerList {
     pub hidden: usize,
 }
 
+/// Consecutive models of one line, under the line's heading when the list shows several lines.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LineSection {
+    pub heading: Option<String>,
+    pub models: Vec<PickerModel>,
+}
+
 impl PickerList {
+    /// Whether the models of more than one line are listed.
+    #[must_use]
+    pub fn has_several_lines(&self) -> bool {
+        let mut lines = self
+            .downloaded
+            .iter()
+            .chain(&self.available)
+            .chain(&self.older)
+            .filter_map(PickerModel::line);
+        lines
+            .next()
+            .is_some_and(|first| lines.any(|line| line != first))
+    }
+
+    /// `models` cut into runs of one line, each headed when `headed`.
+    #[must_use]
+    pub fn sections(models: Vec<PickerModel>, headed: bool) -> Vec<LineSection> {
+        let mut sections: Vec<(Option<ModelLine>, LineSection)> = Vec::new();
+        for model in models {
+            let line = model.line();
+            match sections.last_mut() {
+                Some((last, section)) if *last == line => section.models.push(model),
+                Some(_) | None => {
+                    let title = headed
+                        .then(|| {
+                            model
+                                .versions
+                                .first()
+                                .map(|row| heading(row.entry.family()))
+                        })
+                        .flatten();
+                    sections.push((
+                        line,
+                        LineSection {
+                            heading: title,
+                            models: vec![model],
+                        },
+                    ));
+                }
+            }
+        }
+        sections.into_iter().map(|(_, section)| section).collect()
+    }
+
     /// Whether nothing is listed.
     #[must_use]
     pub fn is_empty(&self) -> bool {
@@ -372,10 +446,12 @@ pub fn picker_list(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model_catalog::test_support::info;
+    use crate::hooks::use_models::GpuSupport;
+    use crate::model_catalog::test_support::{info, parakeet_info};
     use crate::model_catalog::{
         activity::{DownloadProgress, VerifyProgress},
         entry::ModelEntry,
+        state::model_state,
     };
 
     fn row(id: &str, family: &str, size: u64, quantization: Option<&str>) -> ModelRow {
@@ -661,6 +737,109 @@ mod tests {
         assert_eq!(list.available[0].status(""), Some(Mark::Failed));
         let list = picker_list(&rows, PickerScope::Downloaded, "", "");
         assert_eq!(titles(&list.downloaded), ["Large v3 Turbo", "Base"]);
+    }
+
+    fn parakeet(id: &str, quantization: &str, size: u64) -> ModelRow {
+        ModelRow {
+            entry: ModelEntry::from_info(&parakeet_info(id, quantization, size, false)),
+            state: ModelState::NotDownloaded,
+        }
+    }
+
+    fn with_parakeet() -> Vec<ModelRow> {
+        let mut rows = catalog();
+        rows.push(parakeet("p-f16", "f16", 1_200));
+        rows.push(parakeet("p-q8", "q8_0", 700));
+        rows.push(parakeet("p-q4", "q4_k_m", 450));
+        rows
+    }
+
+    #[test]
+    fn parakeet_is_one_line_listed_after_the_whisper_models_with_versions_in_shared_columns() {
+        let list = picker_list(&with_parakeet(), PickerScope::All, "", "");
+        assert_eq!(
+            titles(&list.available),
+            [
+                "Large v3",
+                "Small",
+                "Base (English)",
+                "Tiny",
+                "Parakeet TDT v3"
+            ]
+        );
+        let parakeet = &list.available[4];
+        assert_eq!(versions(parakeet), ["p-f16", "p-q8", "p-q4"]);
+        assert_eq!(list.columns(), ["Full", "Q8", "Q5", "Q4"]);
+    }
+
+    #[test]
+    fn lines_are_headed_only_when_several_are_listed() {
+        let whisper_only = picker_list(&catalog(), PickerScope::All, "", "");
+        assert!(!whisper_only.has_several_lines());
+        let list = picker_list(&with_parakeet(), PickerScope::All, "", "");
+        assert!(list.has_several_lines());
+        let sections = PickerList::sections(list.available.clone(), true);
+        assert_eq!(
+            sections
+                .iter()
+                .map(|section| (section.heading.as_deref(), section.models.len()))
+                .collect::<Vec<_>>(),
+            [
+                (Some("Whisper"), 4),
+                (Some("Parakeet · NVIDIA · CC BY 4.0"), 1)
+            ]
+        );
+        let plain = PickerList::sections(list.available, false);
+        assert_eq!(
+            plain
+                .iter()
+                .map(|section| section.heading.clone())
+                .collect::<Vec<_>>(),
+            [None, None]
+        );
+    }
+
+    #[test]
+    fn a_search_for_one_line_lists_only_that_line() {
+        let list = picker_list(&with_parakeet(), PickerScope::All, "parakeet", "");
+        assert_eq!(titles(&list.available), ["Parakeet TDT v3"]);
+        assert!(!list.has_several_lines());
+    }
+
+    #[test]
+    fn a_model_says_its_languages_and_the_licence_that_asks_for_credit() {
+        let list = picker_list(&with_parakeet(), PickerScope::All, "", "");
+        assert_eq!(
+            list.available[4].details().as_deref(),
+            Some("25 languages · CC BY 4.0 by NVIDIA")
+        );
+        assert_eq!(list.available[1].details().as_deref(), Some("Multilingual"));
+    }
+
+    #[test]
+    fn a_model_whose_engine_is_not_built_is_marked_and_cannot_be_picked() {
+        let rows: Vec<ModelRow> = [
+            parakeet_info("p-f16", "f16", 1_200, false),
+            parakeet_info("p-q8", "q8_0", 700, true),
+        ]
+        .into_iter()
+        .map(|info| {
+            let entry = ModelEntry::from_info(&info.without_engine());
+            let state = model_state(&entry, None, &GpuSupport::Checking, false);
+            ModelRow { entry, state }
+        })
+        .collect();
+        let list = picker_list(&rows, PickerScope::All, "", "");
+        let model = &list.downloaded[0];
+        assert_eq!(model.preferred(""), None);
+        assert_eq!(
+            model.mark(""),
+            Mark::Unavailable(UnavailableReason::EngineNotBuilt)
+        );
+        assert_eq!(
+            copy::unavailable(UnavailableReason::EngineNotBuilt).0,
+            "Not in this build"
+        );
     }
 
     #[test]

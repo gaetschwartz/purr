@@ -5,7 +5,7 @@ use purr_common::{
     model::{
         descriptor::{ModelDescriptor, Weights},
         engine::EngineId,
-        family::{ModelFamily, WhisperSize},
+        family::{ModelFamily, ParakeetVariant, WhisperSize},
         format::ModelFormat,
         profile::{DetectionReport, HintEffect, InputLimit, ModelProfile, Speakers, Timing},
     },
@@ -32,6 +32,44 @@ pub fn whisper_profile(english: bool, turns: bool) -> ModelProfile {
         },
         input: InputLimit::Unbounded,
     }
+}
+
+/// What transcribe.cpp reports of Parakeet TDT v3: 25 languages, found by the model itself and
+/// never named in the output.
+pub fn parakeet_profile() -> ModelProfile {
+    ModelProfile {
+        languages: LanguageSupport::Only(
+            [
+                "bg", "hr", "cs", "da", "nl", "en", "et", "fi", "fr", "de", "el", "hu", "it", "lv",
+                "lt", "mt", "pl", "pt", "ro", "sk", "sl", "es", "sv", "ru", "uk",
+            ]
+            .iter()
+            .map(|tag| tag.parse().unwrap())
+            .collect(),
+        ),
+        language_hint: HintEffect::Ignored,
+        detection: DetectionReport::Silent,
+        timing: Timing::Token,
+        word_scores: true,
+        speakers: Speakers::None,
+        input: InputLimit::Unbounded,
+    }
+}
+
+/// A Parakeet TDT v3 model file of the catalog stored as `quantization`.
+pub fn parakeet_info(id: &str, quantization: &str, size: u64, installed: bool) -> ModelInfo {
+    info_of(
+        id,
+        size,
+        installed,
+        ModelDescriptor {
+            engine: EngineId::TranscribeCpp,
+            family: ModelFamily::Parakeet(ParakeetVariant::TdtV3),
+            format: ModelFormat::Gguf,
+            weights: weights(Some(quantization)),
+            profile: parakeet_profile(),
+        },
+    )
 }
 
 /// The weights named as the tests spell them: a quantization, or `encoder/decoder` dtypes.

@@ -1,5 +1,30 @@
 use purr_common::model::family::{ModelFamily, WhisperSize};
 
+/// The line of models a family belongs to, which the lists name before its sizes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ModelLine {
+    Whisper,
+    Parakeet,
+}
+
+impl ModelLine {
+    #[must_use]
+    pub const fn of(family: ModelFamily) -> Self {
+        match family {
+            ModelFamily::Whisper(_) => Self::Whisper,
+            ModelFamily::Parakeet(_) => Self::Parakeet,
+        }
+    }
+
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Whisper => "Whisper",
+            Self::Parakeet => "Parakeet",
+        }
+    }
+}
+
 /// A section of the model list: related families shown together.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ModelGroup {

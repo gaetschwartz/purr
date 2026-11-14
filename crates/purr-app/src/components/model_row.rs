@@ -13,11 +13,7 @@ use crate::{
     components::toast::use_toasts,
     hooks::use_models::use_models,
     model_catalog::{
-        copy,
-        entry::{languages_label, precision_tag},
-        format::checking,
-        listing::ModelRow,
-        state::ModelState,
+        copy, entry::languages_label, format::checking, listing::ModelRow, state::ModelState,
     },
     settings_store::use_settings,
     utils::{byte_size::ByteSize, dom_id::use_dom_id},
@@ -268,7 +264,10 @@ pub fn ModelListRow(
                 }
                 div { class: "tags",
                     Chip { "{languages_label(entry.languages())}" }
-                    if let Some(tag) = precision_tag(entry.precision()) {
+                    if let Some(tag) = entry.quantization_tag() {
+                        Chip { "{tag}" }
+                    }
+                    if let Some(tag) = entry.license_tag() {
                         Chip { "{tag}" }
                     }
                 }
