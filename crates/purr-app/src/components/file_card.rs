@@ -2,6 +2,7 @@ use super::{
     button::{Button, ButtonSize},
     icon::{Icon, IconName, IconSize},
     icon_button::IconButton,
+    more_details::MoreDetails,
 };
 use dioxus::prelude::*;
 
@@ -12,9 +13,12 @@ pub fn FileCard(
     /// Duration, size and type, joined by the caller.
     #[props(into)]
     details: String,
-    /// Why the file cannot be transcribed, in a sentence.
+    /// Why the file cannot be transcribed, in a few words.
     #[props(into)]
     problem: Option<String>,
+    /// The cause behind `problem`, for a Details disclosure.
+    #[props(into)]
+    problem_detail: Option<String>,
     on_replace: EventHandler<()>,
     on_remove: EventHandler<()>,
 ) -> Element {
@@ -33,6 +37,9 @@ pub fn FileCard(
                 div { class: "meta tnum", "{details}" }
                 if let Some(problem) = &problem {
                     p { class: "file-problem", role: "alert", "{problem}" }
+                }
+                if let Some(detail) = &problem_detail {
+                    MoreDetails { "{detail}" }
                 }
             }
             Button {

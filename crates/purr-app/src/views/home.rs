@@ -165,7 +165,8 @@ pub fn Home() -> Element {
                     FileCard {
                         name: file.name.clone(),
                         details: file_details(overview.as_ref(), file.size, &file.name),
-                        problem: undecodable(overview.as_ref(), &file.name),
+                        problem: undecodable(overview.as_ref()).map(|_| "Can't be decoded as audio".to_owned()),
+                        problem_detail: undecodable(overview.as_ref()),
                         on_replace: move |()| {
                             document::eval(OPEN_FILE_CHOOSER);
                         },
@@ -248,11 +249,9 @@ fn file_details(overview: Option<&OverviewState>, size: u64, name: &str) -> Stri
     format!("{length} · {} · {}", ByteSize(size), kind_label(name))
 }
 
-fn undecodable(overview: Option<&OverviewState>, name: &str) -> Option<String> {
+fn undecodable(overview: Option<&OverviewState>) -> Option<String> {
     match overview {
-        Some(OverviewState::Undecodable(detail)) => Some(format!(
-            "{name} can't be decoded as audio ({detail}). Try exporting it again from the app that recorded it, or choose another file."
-        )),
+        Some(OverviewState::Undecodable(detail)) => Some(detail.clone()),
         Some(OverviewState::Reading | OverviewState::Ready { .. }) | None => None,
     }
 }

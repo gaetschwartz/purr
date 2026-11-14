@@ -41,15 +41,9 @@ impl CpuReason {
     pub const fn notice(self) -> Option<&'static str> {
         match self {
             Self::Chosen => None,
-            Self::NoWebGpu => {
-                Some("This browser has no WebGPU, so Purr uses the CPU. It's slower.")
-            }
-            Self::NoShaderF16 => {
-                Some("This GPU lacks shader-f16, so this model runs on the CPU. It's slower.")
-            }
-            Self::WebGpuFailed => {
-                Some("WebGPU failed in this browser, so Purr uses the CPU. It's slower.")
-            }
+            Self::NoWebGpu => Some("No WebGPU: running on the CPU"),
+            Self::NoShaderF16 => Some("No shader-f16: running on the CPU"),
+            Self::WebGpuFailed => Some("WebGPU failed: running on the CPU"),
         }
     }
 
@@ -57,12 +51,10 @@ impl CpuReason {
     #[must_use]
     pub const fn gpu_only_refusal(self) -> &'static str {
         match self {
-            Self::Chosen => "This model can't run on the CPU, which Settings chose.",
-            Self::NoWebGpu => "This model needs WebGPU, which this browser lacks.",
-            Self::NoShaderF16 => "This model needs shader-f16, which this GPU lacks.",
-            Self::WebGpuFailed => {
-                "WebGPU failed in this browser, and this model can't run on the CPU."
-            }
+            Self::Chosen => "Needs WebGPU; Settings chose the CPU",
+            Self::NoWebGpu => "Needs WebGPU, which this browser lacks",
+            Self::NoShaderF16 => "Needs shader-f16, which this GPU lacks",
+            Self::WebGpuFailed => "Needs WebGPU, which failed here",
         }
     }
 }

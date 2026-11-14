@@ -86,26 +86,18 @@ impl FileProblem {
         }
     }
 
-    /// What happened and what to do, in a sentence or two.
+    /// What happened, in one line.
     #[must_use]
     pub fn message(&self) -> String {
         match self {
-            Self::Empty { name } => format!(
-                "{name} is 0 bytes long, so there's nothing to transcribe. Check that the recording finished saving."
-            ),
+            Self::Empty { name } => format!("{name} is 0 bytes."),
             Self::TooLarge { name, size, limit } => format!(
-                "{name} is {}. Purr accepts files up to {} here. Convert it to M4A or MP3, which is usually much smaller, or split it into parts.",
+                "{name} is {}; the limit is {}.",
                 ByteSize(*size),
                 ByteSize(*limit)
             ),
-            Self::Unreadable { name, detail } => {
-                format!(
-                    "{name} could not be read: {detail}. Check that it is still there and try again."
-                )
-            }
-            Self::Rejected { name, detail } => {
-                format!("{name} could not be stored for transcription: {detail}.")
-            }
+            Self::Unreadable { name, detail } => format!("{name}: {detail}"),
+            Self::Rejected { name, detail } => format!("{name}: {detail}"),
         }
     }
 }
