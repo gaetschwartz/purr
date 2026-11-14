@@ -1,5 +1,6 @@
 mod commit;
 mod coreml;
+mod devices;
 pub(crate) mod inventory;
 mod language;
 pub mod loader;

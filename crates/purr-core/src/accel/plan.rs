@@ -7,31 +7,16 @@ use super::{
     report::{AccelAttempt, AttemptOutcome, UnavailableReason},
 };
 
-/// A device whisper.cpp can be pointed at.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct GpuTarget {
-    /// Index of the device in the global ggml device list.
-    pub device_id: i32,
-    /// Value for whisper's `gpu_device`: whisper counts only GPU and iGPU devices, in global
-    /// order, so this differs from `device_id` as soon as another kind of device comes first.
-    pub ordinal: i32,
-    pub name: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Target {
-    Cpu,
-    CoreMl,
-    Gpu(GpuTarget),
-}
-
+/// A device to try, described by what identifies it on the machine. Each engine finds its own
+/// handle for it among the devices it enumerates.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Candidate {
     pub key: DeviceKey,
     pub backend: AccelBackend,
     /// The name the system reports for the device.
     pub name: String,
-    pub target: Target,
+    /// The PCI-style id the device reports, when it does.
+    pub pci_id: Option<String>,
 }
 
 impl Candidate {
@@ -40,7 +25,7 @@ impl Candidate {
             key: device.key.clone(),
             backend: device.backend,
             name: device.name.clone(),
-            target: device.target.clone(),
+            pci_id: device.pci_id.clone(),
         }
     }
 
@@ -49,7 +34,7 @@ impl Candidate {
             key: DeviceKey::cpu(),
             backend: AccelBackend::Cpu,
             name: "CPU".to_owned(),
-            target: Target::Cpu,
+            pci_id: None,
         }
     }
 }
@@ -345,7 +330,7 @@ mod tests {
     }
 
     #[test]
-    fn identical_names_under_one_backend_are_two_devices_with_their_own_ordinals() {
+    fn identical_names_under_one_backend_are_two_devices_in_the_order_the_list_gives() {
         let machine = inventory(
             vec![
                 device(0, "Same Card", Vulkan, DeviceType::Gpu),
@@ -364,15 +349,7 @@ mod tests {
             ]),
             &machine,
         );
-        let targets: Vec<_> = plan
-            .candidates()
-            .map(|c| match &c.target {
-                Target::Gpu(gpu) => Some((gpu.device_id, gpu.ordinal)),
-                Target::Cpu | Target::CoreMl => None,
-            })
-            .collect();
         assert_eq!(tried(&plan), [second, first, DeviceKey::cpu()]);
-        assert_eq!(targets, [Some((1, 1)), Some((0, 0)), None]);
     }
 
     #[test]

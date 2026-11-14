@@ -7,12 +7,14 @@ use whisper_rs::{WhisperContext, WhisperContextParameters, WhisperState};
 use crate::{
     Error, ModelManager, TranscriptionConfig,
     accel::{
+        backend::AccelBackend,
         inventory::Inventory,
-        plan::{Candidate, Step, Target, resolve},
-        report::{AccelAttempt, AccelReport, AttemptFailure, AttemptOutcome},
+        plan::{Candidate, Step, resolve},
+        report::{AccelAttempt, AccelReport, AttemptFailure, AttemptOutcome, UnavailableReason},
     },
+    dev::Device,
     error::{AccelerationError, Result},
-    whisper::{coreml, probe::probe_gpu},
+    whisper::{coreml, devices::locate, probe::probe_gpu},
 };
 use purr_common::devices::DeviceOrder;
 
@@ -66,15 +68,12 @@ fn load_with_acceleration(model_path: &Path, order: &DeviceOrder) -> Result<Load
             }
             Step::Try(candidate) => candidate,
         };
-        match try_candidate(&candidate, model_path) {
+        match try_candidate(&candidate, &inventory.devices, model_path) {
             Ok((state, tokens)) => {
                 let report = AccelReport {
                     selected: candidate.backend,
                     key: candidate.key,
-                    device: match &candidate.target {
-                        Target::Gpu(gpu) => Some(gpu.name.clone()),
-                        Target::Cpu | Target::CoreMl => None,
-                    },
+                    device: candidate.backend.is_gpu().then(|| candidate.name.clone()),
                     attempts,
                 };
                 log_selection(&report);
@@ -84,16 +83,13 @@ fn load_with_acceleration(model_path: &Path, order: &DeviceOrder) -> Result<Load
                     accel: report,
                 });
             }
-            Err(failure) => {
+            Err(outcome) => {
                 warn!(
-                    "{} acceleration failed on {}: {failure}",
+                    "{} acceleration failed on {}: {outcome}",
                     candidate.backend.pretty_name(),
                     candidate.name
                 );
-                attempts.push(AccelAttempt::new(
-                    candidate.key,
-                    AttemptOutcome::Failed(failure),
-                ));
+                attempts.push(AccelAttempt::new(candidate.key, outcome));
             }
         }
     }
@@ -103,36 +99,45 @@ fn load_with_acceleration(model_path: &Path, order: &DeviceOrder) -> Result<Load
 
 fn try_candidate(
     candidate: &Candidate,
+    devices: &[Device],
     model_path: &Path,
-) -> std::result::Result<(WhisperState, SpecialTokens), AttemptFailure> {
+) -> std::result::Result<(WhisperState, SpecialTokens), AttemptOutcome> {
     let mut params = WhisperContextParameters::default();
-    match &candidate.target {
-        Target::Cpu => {
+    match candidate.backend {
+        AccelBackend::Cpu => {
             params.use_gpu(false);
         }
-        Target::CoreMl => {
+        AccelBackend::CoreMl => {
             let path = coreml::encoder_path(model_path);
             if !path.exists() {
-                return Err(AttemptFailure::CoreMlModelMissing { path });
+                return Err(AttemptOutcome::Failed(AttemptFailure::CoreMlModelMissing {
+                    path,
+                }));
             }
             params.use_gpu(false);
         }
-        Target::Gpu(gpu) => {
-            probe_gpu(gpu)?;
+        AccelBackend::Cuda
+        | AccelBackend::Hip
+        | AccelBackend::Metal
+        | AccelBackend::Sycl
+        | AccelBackend::Vulkan => {
+            let gpu = locate(candidate, devices)
+                .ok_or(AttemptOutcome::Unavailable(UnavailableReason::NoDevice))?;
+            probe_gpu(&gpu).map_err(AttemptOutcome::Failed)?;
             params.use_gpu(true).gpu_device(gpu.ordinal);
         }
     }
 
     let context = WhisperContext::new_with_params(model_path, params).map_err(|error| {
         debug!("whisper context creation failed: {error}");
-        AttemptFailure::ContextInit
+        AttemptOutcome::Failed(AttemptFailure::ContextInit)
     })?;
     let tokens = SpecialTokens {
         eot: context.token_eot(),
     };
     let state = context.create_state().map_err(|error| {
         debug!("whisper state creation failed: {error}");
-        AttemptFailure::StateInit
+        AttemptOutcome::Failed(AttemptFailure::StateInit)
     })?;
     Ok((state, tokens))
 }

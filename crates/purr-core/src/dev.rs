@@ -10,12 +10,8 @@ use serde::{Deserialize, Serialize};
 use self::caps::DeviceCaps;
 use crate::{
     accel::{
-        backend::AccelBackend,
-        devices::detect,
-        inventory::Inventory,
-        plan::{Target, backend_status},
-        report::UnavailableReason,
-        vulkan_probe,
+        backend::AccelBackend, devices::detect, inventory::Inventory, plan::backend_status,
+        report::UnavailableReason, vulkan_probe,
     },
     cpu,
 };
@@ -23,15 +19,16 @@ use crate::{
 /// GPU device information
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Device {
+    /// The device's position in the inventory it was enumerated in: the index `purr sys` prints.
     pub id: i32,
     pub name: String,
     pub description: String, // Optional description field
-    /// The id ggml reports; for PCI devices the bus id as "domain:bus:device.function".
+    /// The id the device reports; for PCI devices the bus id as "domain:bus:device.function".
     pub device_id: Option<String>,
     pub vram_free: usize,
     pub vram_total: usize,
     pub tpe: DeviceType,
-    /// Backend owning the device; `None` for ggml backends purr does not select between (BLAS).
+    /// Backend owning the device; `None` for backends purr does not select between (BLAS).
     pub backend: Option<AccelBackend>,
     pub caps: Option<DeviceCaps>,
     /// What the Vulkan driver says about a Vulkan device; `None` for every other device.
@@ -52,7 +49,7 @@ impl Device {
 pub struct SystemInfo {
     pub backends: HashMap<AccelBackend, FeatureStatus>,
     pub cpu: CpuReport,
-    /// The ggml id of the GPU each usable GPU backend picks when the device is not chosen.
+    /// The index of the GPU each usable GPU backend picks when the device is not chosen.
     pub picked_gpus: HashMap<AccelBackend, i32>,
     /// The indexes of the devices transcription tries when nobody arranged them, first to last.
     #[serde(default)]
@@ -75,17 +72,12 @@ impl SystemInfo {
                 .filter_map(|backend| {
                     detected
                         .iter()
-                        .find(|device| {
-                            device.backend == *backend && matches!(device.target, Target::Gpu(_))
-                        })
-                        .and_then(|device| device.ggml_id)
+                        .find(|device| device.backend == *backend && backend.is_gpu())
+                        .and_then(|device| device.index)
                         .map(|id| (*backend, id))
                 })
                 .collect(),
-            default_order: detected
-                .iter()
-                .filter_map(|device| device.ggml_id)
-                .collect(),
+            default_order: detected.iter().filter_map(|device| device.index).collect(),
             backends: AccelBackend::ALL
                 .iter()
                 .map(|backend| {

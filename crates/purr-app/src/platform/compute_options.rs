@@ -119,7 +119,7 @@ pub fn backend_reports(inventory: &Inventory) -> Vec<BackendReport> {
                 .iter()
                 .filter(|device| device.backend == *backend)
                 .map(|device| {
-                    let found = device.ggml_id.and_then(|id| {
+                    let found = device.index.and_then(|id| {
                         inventory
                             .devices
                             .iter()

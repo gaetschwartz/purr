@@ -8,7 +8,6 @@ use purr_common::platform::DeviceType;
 use super::{
     backend::{AccelBackend, BuildStatus},
     inventory::Inventory,
-    plan::{GpuTarget, Target},
 };
 
 /// A device this process can run on, with the key the user's list knows it by.
@@ -16,12 +15,12 @@ use super::{
 pub struct DetectedDevice {
     pub key: DeviceKey,
     pub backend: AccelBackend,
-    /// The name the system reports: ggml's description, else its device name.
+    /// The name the system reports: the device's description, else its device name.
     pub name: String,
-    pub target: Target,
-    /// The index `purr sys` prints; `None` for a device ggml does not list.
-    pub ggml_id: Option<i32>,
-    /// The PCI-style id ggml reports, when it does.
+    /// The device's position in the inventory it was detected in, which `purr sys` prints and
+    /// `--device` takes; `None` for a device no inventory lists.
+    pub index: Option<i32>,
+    /// The PCI-style id the device reports, when it does.
     pub pci_id: Option<String>,
     pub kind: Option<DeviceType>,
 }
@@ -91,33 +90,13 @@ pub fn detect(inventory: &Inventory) -> Vec<DetectedDevice> {
 
     let mut detected: Vec<DetectedDevice> = usable
         .iter()
-        .map(|(device, backend)| {
-            let ordinal = inventory
-                .devices
-                .iter()
-                .filter(|d| is_gpu(d))
-                .position(|d| d.id == device.id)
-                .and_then(|ordinal| i32::try_from(ordinal).ok());
-            let name = display_name(device);
-            DetectedDevice {
-                key: DeviceKey::cpu(),
-                backend: *backend,
-                target: match (backend, ordinal) {
-                    (AccelBackend::Cpu, _) | (_, None) => Target::Cpu,
-                    (_, Some(ordinal)) => Target::Gpu(GpuTarget {
-                        device_id: device.id,
-                        ordinal,
-                        name: name.clone(),
-                    }),
-                },
-                name,
-                ggml_id: Some(device.id),
-                pci_id: device.device_id.clone(),
-                kind: Some(device.tpe),
-            }
-        })
-        .filter(|device| {
-            device.backend == AccelBackend::Cpu || matches!(device.target, Target::Gpu(_))
+        .map(|(device, backend)| DetectedDevice {
+            key: DeviceKey::cpu(),
+            backend: *backend,
+            name: display_name(device),
+            index: Some(device.id),
+            pci_id: device.device_id.clone(),
+            kind: Some(device.tpe),
         })
         .collect();
 
@@ -132,8 +111,7 @@ pub fn detect(inventory: &Inventory) -> Vec<DetectedDevice> {
                 key: DeviceKey::cpu(),
                 backend: AccelBackend::CoreMl,
                 name: "CoreML".to_owned(),
-                target: Target::CoreMl,
-                ggml_id: None,
+                index: None,
                 pci_id: None,
                 kind: None,
             },
@@ -355,31 +333,9 @@ mod tests {
         assert_eq!(
             detected
                 .iter()
-                .map(|d| (d.backend, d.ggml_id))
+                .map(|d| (d.backend, d.index))
                 .collect::<Vec<_>>(),
             [(AccelBackend::CoreMl, None), (Cpu, Some(0))]
         );
-    }
-
-    #[test]
-    fn the_gpu_ordinal_counts_gpus_of_every_backend_in_ggml_order() {
-        let detected = detect(&inventory(
-            vec![
-                device(0, "Processor", Cpu, DeviceType::Cpu),
-                device(1, "NPU", Cuda, DeviceType::Accel),
-                device(2, "RTX", Cuda, DeviceType::Gpu),
-                device(3, "Odd", Vulkan, DeviceType::Unknown),
-                device(4, "Radeon", Vulkan, DeviceType::Igpu),
-            ],
-            &[Cuda, Vulkan, Cpu],
-        ));
-        let ordinals: Vec<_> = detected
-            .iter()
-            .filter_map(|d| match &d.target {
-                Target::Gpu(gpu) => Some((gpu.device_id, gpu.ordinal)),
-                Target::Cpu | Target::CoreMl => None,
-            })
-            .collect();
-        assert_eq!(ordinals, [(2, 0), (4, 1)]);
     }
 }

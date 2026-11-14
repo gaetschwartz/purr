@@ -1,16 +1,17 @@
 use whisper_rs::whisper_rs_sys::{ggml_backend_dev_get, ggml_backend_dev_init, ggml_backend_free};
 
-use crate::accel::{plan::GpuTarget, report::AttemptFailure};
+use super::devices::GpuHandle;
+use crate::accel::report::AttemptFailure;
 
 /// Initialise the device and release it again.
 ///
 /// whisper.cpp falls back to the CPU without telling its caller when a GPU backend fails to
 /// initialise, so a successful context creation does not prove the GPU is in use.
-pub fn probe_gpu(target: &GpuTarget) -> Result<(), AttemptFailure> {
+pub fn probe_gpu(gpu: &GpuHandle) -> Result<(), AttemptFailure> {
     let failure = || AttemptFailure::DeviceInit {
-        device: target.name.clone(),
+        device: gpu.name.clone(),
     };
-    let index = usize::try_from(target.device_id).map_err(|_negative_id| failure())?;
+    let index = usize::try_from(gpu.device_id).map_err(|_negative_id| failure())?;
     let device = unsafe { ggml_backend_dev_get(index) };
     if device.is_null() {
         return Err(failure());

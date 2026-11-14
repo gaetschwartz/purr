@@ -66,6 +66,15 @@ impl AccelBackend {
         }
     }
 
+    /// Whether the backend runs on a GPU the user can pick between.
+    #[must_use]
+    pub const fn is_gpu(self) -> bool {
+        match self {
+            Self::Cuda | Self::Hip | Self::Metal | Self::Sycl | Self::Vulkan => true,
+            Self::CoreMl | Self::Cpu => false,
+        }
+    }
+
     #[must_use]
     pub const fn build_status(self) -> BuildStatus {
         match self {

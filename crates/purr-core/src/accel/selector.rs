@@ -36,7 +36,7 @@ impl SelectorField {
 /// Which devices a user means: any subset of the fields, all of which must match.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct DeviceSelector {
-    /// The device index `purr sys` prints.
+    /// The device index `purr sys` prints: the position in the inventory this process enumerated.
     pub index: Option<i32>,
     /// The device id `purr sys` prints, such as `0000:01:00.0`; some devices report none.
     pub device_id: Option<String>,
@@ -229,7 +229,7 @@ impl DeviceSelector {
     /// Whether `device` has every field this selector gives.
     #[must_use]
     pub fn matches(&self, device: &DetectedDevice) -> bool {
-        self.index.is_none_or(|index| device.ggml_id == Some(index))
+        self.index.is_none_or(|index| device.index == Some(index))
             && self.device_id.as_ref().is_none_or(|id| {
                 device
                     .pci_id
@@ -272,7 +272,7 @@ impl DeviceSelector {
             values.iter().any(|value| *value != values[0])
         }
         let mut fields = Vec::new();
-        if self.index.is_none() && devices.iter().all(|d| d.ggml_id.is_some()) {
+        if self.index.is_none() && devices.iter().all(|d| d.index.is_some()) {
             fields.push(SelectorField::Index);
         }
         if self.device_id.is_none()
@@ -304,7 +304,7 @@ pub struct DeviceSummary {
 impl DeviceSummary {
     fn of(device: &DetectedDevice) -> Self {
         Self {
-            index: device.ggml_id,
+            index: device.index,
             backend: device.backend,
             kind: device.kind,
             device_id: device.pci_id.clone(),
@@ -391,9 +391,7 @@ mod tests {
 
     fn index_of(text: &str) -> Result<Option<i32>, SelectorError> {
         let devices = machine();
-        selector(text)
-            .resolve(&devices)
-            .map(|device| device.ggml_id)
+        selector(text).resolve(&devices).map(|device| device.index)
     }
 
     fn only(configure: impl FnOnce(&mut DeviceSelector)) -> DeviceSelector {
