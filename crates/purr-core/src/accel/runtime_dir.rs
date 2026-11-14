@@ -6,8 +6,10 @@
 //! 2. next to the executable, so a portable folder keeps working and matches the build it ships
 //!    with: the executable's own directory on Windows, `lib` on Linux, and a `runtime` folder on
 //!    both;
-//! 3. the per-user data directory, shared by every copy of Purr that the user runs;
-//! 4. the CUDA toolkit (`CUDA_PATH`) on Windows.
+//! 3. the build output directories a debug build knows of, so a development run finds the
+//!    libraries its build produced whatever folder the executable is copied or rebuilt into;
+//! 4. the per-user data directory, shared by every copy of Purr that the user runs;
+//! 5. the CUDA toolkit (`CUDA_PATH`) on Windows.
 //!
 //! Whatever is not found there is left to the system's own library search.
 
@@ -48,6 +50,7 @@ pub enum Origin {
     Executable,
     ExecutableRuntime,
     ExecutableLib,
+    BuildOutput,
     UserData,
     CudaToolkit,
 }
@@ -59,6 +62,7 @@ impl fmt::Display for Origin {
             Self::Executable => "next to the executable",
             Self::ExecutableRuntime => "runtime folder next to the executable",
             Self::ExecutableLib => "lib folder next to the executable",
+            Self::BuildOutput => "build output of this development build",
             Self::UserData => "per-user runtime folder",
             Self::CudaToolkit => "CUDA toolkit",
         })
@@ -77,6 +81,8 @@ pub struct Environment {
     pub os: Os,
     pub override_dirs: Vec<PathBuf>,
     pub executable_dir: Option<PathBuf>,
+    /// Where this build left its runtime libraries; only a development build has any.
+    pub build_output_dirs: Vec<PathBuf>,
     /// The per-user directory for local application data.
     pub user_data_dir: Option<PathBuf>,
     pub cuda_path: Option<PathBuf>,
@@ -97,6 +103,7 @@ impl Environment {
             executable_dir: std::env::current_exe()
                 .ok()
                 .and_then(|exe| exe.parent().map(Path::to_path_buf)),
+            build_output_dirs: Vec::new(),
             user_data_dir: directories::BaseDirs::new()
                 .map(|dirs| dirs.data_local_dir().to_path_buf()),
             cuda_path: std::env::var_os(CUDA_ENV).map(PathBuf::from),
@@ -142,6 +149,9 @@ pub fn search_dirs(env: &Environment) -> Vec<SearchDir> {
             Origin::ExecutableRuntime,
         );
     }
+    for dir in &env.build_output_dirs {
+        push_unique(&mut dirs, dir.clone(), Origin::BuildOutput);
+    }
     if let Some(user_dir) = env.user_runtime_dir() {
         push_unique(&mut dirs, user_dir, Origin::UserData);
     }
@@ -184,6 +194,7 @@ mod tests {
             os,
             override_dirs: Vec::new(),
             executable_dir: Some(path("/app")),
+            build_output_dirs: Vec::new(),
             user_data_dir: Some(path("/data")),
             cuda_path: Some(path("/cuda")),
         }
@@ -202,6 +213,27 @@ mod tests {
                 dir("/second", Origin::Override),
                 dir("/app", Origin::Executable),
                 dir("/app/runtime", Origin::ExecutableRuntime),
+                dir("/data/purr/runtime", Origin::UserData),
+                dir("/cuda/bin/x64", Origin::CudaToolkit),
+                dir("/cuda/bin", Origin::CudaToolkit),
+            ]
+        );
+    }
+
+    #[test]
+    fn build_output_comes_after_the_executable_and_before_the_user_directory() {
+        let env = Environment {
+            override_dirs: vec![path("/first")],
+            build_output_dirs: vec![path("/target/out/bin")],
+            ..environment(Os::Windows)
+        };
+        assert_eq!(
+            search_dirs(&env),
+            [
+                dir("/first", Origin::Override),
+                dir("/app", Origin::Executable),
+                dir("/app/runtime", Origin::ExecutableRuntime),
+                dir("/target/out/bin", Origin::BuildOutput),
                 dir("/data/purr/runtime", Origin::UserData),
                 dir("/cuda/bin/x64", Origin::CudaToolkit),
                 dir("/cuda/bin", Origin::CudaToolkit),
@@ -236,6 +268,7 @@ mod tests {
             os: Os::Windows,
             override_dirs: Vec::new(),
             executable_dir: None,
+            build_output_dirs: Vec::new(),
             user_data_dir: None,
             cuda_path: None,
         };

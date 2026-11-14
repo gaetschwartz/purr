@@ -1,4 +1,4 @@
-use std::process::ExitCode;
+use std::{path::Path, process::ExitCode};
 
 use crate::{
     error::DiscoveryError,
@@ -12,6 +12,12 @@ pub const CUDA_ENV: &str = "PURR_CUDA_RUNTIME_LIBS";
 pub const VULKAN_ENV: &str = "PURR_VULKAN_RUNTIME_LIBS";
 /// Environment variable carrying the transcribe.cpp library names into its engine crate.
 pub const TRANSCRIBE_ENV: &str = "PURR_TRANSCRIBE_RUNTIME_LIBS";
+
+/// Environment variable carrying the folder a development build left the transcribe.cpp
+/// libraries in, into its engine crate.
+pub const TRANSCRIBE_BUILD_DIR_ENV: &str = "PURR_TRANSCRIBE_BUILD_DIR";
+/// What cargo hands the engine crate: where the transcribe.cpp build put its runtime libraries.
+const TRANSCRIBE_RUNTIME_DIR_VAR: &str = "DEP_TRANSCRIBE_CPP_RUNTIME_DIR";
 
 const LINKER_IGNORE_UNUSED_DELAYLOAD: &str = "/IGNORE:4199";
 
@@ -88,6 +94,18 @@ pub fn env_directives(libraries: &RuntimeLibraries) -> Vec<String> {
     .collect()
 }
 
+/// The folder of the libraries a build tree holds, handed on only to a build with debug
+/// assertions: a shipped build never looks into the tree it was made in.
+#[must_use]
+pub fn build_dir_directive(runtime_dir: Option<&Path>, debug_assertions: bool) -> Option<String> {
+    runtime_dir.filter(|_| debug_assertions).map(|dir| {
+        format!(
+            "cargo::rustc-env={TRANSCRIBE_BUILD_DIR_ENV}={}",
+            dir.display()
+        )
+    })
+}
+
 fn print_all(directives: &[String]) {
     println!("cargo::rerun-if-env-changed=CUDA_PATH");
     for directive in directives {
@@ -120,7 +138,17 @@ pub fn emit_transcribe_env() -> Result<(), DiscoveryError> {
         transcribe: true,
         ..Request::from_cargo_env()
     };
-    print_all(&env_directives(&request.resolve()?));
+    println!("cargo::rerun-if-env-changed={TRANSCRIBE_RUNTIME_DIR_VAR}");
+    let runtime_dir = std::env::var_os(TRANSCRIBE_RUNTIME_DIR_VAR);
+    let debug_assertions = std::env::var_os("CARGO_CFG_DEBUG_ASSERTIONS").is_some();
+    let directives: Vec<String> = env_directives(&request.resolve()?)
+        .into_iter()
+        .chain(build_dir_directive(
+            runtime_dir.as_deref().map(Path::new),
+            debug_assertions,
+        ))
+        .collect();
+    print_all(&directives);
     Ok(())
 }
 
@@ -247,6 +275,27 @@ mod tests {
                 "cargo::rustc-env=PURR_TRANSCRIBE_RUNTIME_LIBS=transcribe.dll",
             ]
         );
+    }
+
+    #[test]
+    fn a_debug_build_hands_on_the_folder_of_its_libraries() {
+        assert_eq!(
+            build_dir_directive(Some(Path::new("/target/out/bin")), true).as_deref(),
+            Some("cargo::rustc-env=PURR_TRANSCRIBE_BUILD_DIR=/target/out/bin")
+        );
+    }
+
+    #[test]
+    fn a_build_without_debug_assertions_hands_on_nothing() {
+        assert_eq!(
+            build_dir_directive(Some(Path::new("/target/out/bin")), false),
+            None
+        );
+    }
+
+    #[test]
+    fn no_folder_means_no_directive() {
+        assert_eq!(build_dir_directive(None, true), None);
     }
 
     #[test]
