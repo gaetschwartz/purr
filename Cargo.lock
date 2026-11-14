@@ -5661,11 +5661,14 @@ dependencies = [
 name = "purr-engine-transcribe"
 version = "0.1.0"
 dependencies = [
+ "futures",
  "pretty_assertions",
  "purr-common",
  "purr-core",
  "purr-delayload",
+ "serde_json",
  "thiserror 2.0.21",
+ "tokio",
  "tracing",
  "transcribe-cpp",
 ]

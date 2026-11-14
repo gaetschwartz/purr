@@ -7,17 +7,20 @@ use purr_common::{
     model::engine::EngineId,
 };
 use purr_core::{
-    accel::build_info::BuildInfo,
+    accel::{backend::AccelBackend, build_info::BuildInfo},
     dev::Device,
     engine::{Engine, OpenSpec, decoder::WindowDecoder, error::OpenError, speech::SpeechDetector},
 };
+use transcribe_cpp::{Backend, Model, ModelOptions};
 
 use crate::{
     build_info::build_info,
+    decoder::ParakeetDecoder,
     devices::list_devices,
-    error::TranscribeEngineError,
+    error::{TranscribeEngineError, open_error},
     logging,
     runtime::{self, Unavailable},
+    vad::SileroDetector,
 };
 
 /// transcribe.cpp, with the ggml it was built with.
@@ -67,12 +70,29 @@ impl Engine for TranscribeEngine {
         }
     }
 
-    fn open(&self, _spec: &OpenSpec<'_>) -> Result<Box<dyn WindowDecoder>, OpenError> {
-        Err(TranscribeEngineError::CannotDecodeYet.into())
+    fn open(&self, spec: &OpenSpec<'_>) -> Result<Box<dyn WindowDecoder>, OpenError> {
+        runtime::get().map_err(TranscribeEngineError::Library)?;
+        match spec.candidate.backend {
+            AccelBackend::Cpu => {}
+            AccelBackend::CoreMl
+            | AccelBackend::Cuda
+            | AccelBackend::Hip
+            | AccelBackend::Metal
+            | AccelBackend::Sycl
+            | AccelBackend::Vulkan => return Err(OpenError::NoDevice),
+        }
+        let options = ModelOptions {
+            backend: Backend::Cpu,
+            ..ModelOptions::default()
+        };
+        let model = Model::load_with(spec.model, &options)
+            .map_err(|error| open_error(error, &spec.candidate.name))?;
+        Ok(Box::new(ParakeetDecoder::new(&model, spec.threads)?))
     }
 
-    fn open_speech_detector(&self, _model: &Path) -> Result<Box<dyn SpeechDetector>, OpenError> {
-        Err(TranscribeEngineError::CannotDecodeYet.into())
+    fn open_speech_detector(&self, model: &Path) -> Result<Box<dyn SpeechDetector>, OpenError> {
+        runtime::get().map_err(TranscribeEngineError::Library)?;
+        Ok(Box::new(SileroDetector::load(model)?))
     }
 
     fn install_logging(&self) {
@@ -90,13 +110,5 @@ mod tests {
     #[test]
     fn the_engine_is_transcribe_cpp() {
         assert_eq!(TranscribeEngine.id(), EngineId::TranscribeCpp);
-    }
-
-    #[test]
-    fn opening_a_model_says_the_engine_cannot_decode_yet() {
-        let error = TranscribeEngine
-            .open_speech_detector(Path::new("model.gguf"))
-            .err();
-        assert!(matches!(error, Some(OpenError::Engine(_))));
     }
 }
