@@ -142,6 +142,42 @@ mod tests {
         assert_eq!(decode(stored), Ok(expected));
     }
 
+    const STORED_WITH_ENGINE_KEY: &str = "{\"version\":2,\"entry\":{\"id\":\"abc-1\",\"title\":\"memo.ogg\",\"file_name\":\"memo.ogg\",\"created_at_ms\":1762848000000,\"audio_seconds\":12.5,\"language\":\"fr\",\"language_origin\":\"detected\",\"model_id\":\"tiny\",\"model_label\":\"Tiny\",\"processing_seconds\":2.0,\"preview\":\"Bonjour\",\"segments\":[{\"text\":\"Bonjour\",\"start_time\":0.0,\"end_time\":1.5,\"words\":[[0,7,10,140,230]]}],\"peaks\":[0,128,255],\"source\":{\"kind\":\"path\",\"path\":\"memo.ogg\"},\"engine\":{\"backend\":\"Vulkan\",\"hardware\":\"Test GPU\"}}}";
+
+    #[test]
+    fn an_entry_saved_under_the_engine_key_reads_as_its_compute() {
+        assert_eq!(decode(STORED_WITH_ENGINE_KEY), Ok(entry()));
+    }
+
+    #[test]
+    fn the_compute_is_written_under_the_compute_key_only() -> Result<(), serde_json::Error> {
+        let stored: serde_json::Value = serde_json::from_str(&encode(&entry())?)?;
+        assert_eq!(
+            stored["entry"]["compute"],
+            serde_json::json!({"backend": "Vulkan", "hardware": "Test GPU"})
+        );
+        assert_eq!(stored["entry"].get("engine"), None);
+        Ok(())
+    }
+
+    #[test]
+    fn an_entry_without_compute_writes_neither_key() -> Result<(), serde_json::Error> {
+        let mut without = entry();
+        without.compute = None;
+        let stored: serde_json::Value = serde_json::from_str(&encode(&without)?)?;
+        assert_eq!(stored["entry"].get("compute"), None);
+        assert_eq!(stored["entry"].get("engine"), None);
+        Ok(())
+    }
+
+    #[test]
+    fn a_key_this_build_does_not_know_is_ignored() {
+        let stored = STORED_WITH_ENGINE_KEY.replace("\"engine\":", "\"unknown\":");
+        let mut expected = entry();
+        expected.compute = None;
+        assert_eq!(decode(&stored), Ok(expected));
+    }
+
     #[test]
     fn a_version_1_entry_is_saved_again_as_version_2() {
         let mut read = entry();

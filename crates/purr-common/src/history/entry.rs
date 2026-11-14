@@ -121,7 +121,7 @@ pub struct HistoryEntry {
     pub source: HistorySource,
     /// What ran the transcription; absent for entries saved before it was recorded and in the
     /// browser.
-    #[serde(default, skip_serializing_if = "Option::is_none", rename = "engine")]
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "engine")]
     pub compute: Option<ComputeUsed>,
 }
 

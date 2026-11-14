@@ -1,5 +1,7 @@
 # Accelerators
 
+An engine is the speech-recognition software (whisper.cpp, or the browser's transformers.js engine); compute is the hardware a run executes on: devices, backends, CPU or GPU.
+
 ## Backends
 
 Purr runs Whisper through whisper.cpp and ggml. A backend is in a build only if it was compiled in; `purr sys` lists every backend with its state.
