@@ -345,6 +345,13 @@ async fn setup_model(cli: &Cli) -> Result<ModelRef, miette::Error> {
                 path = model_path;
             } else {
                 let model = model_manager.model(model_string)?;
+                if !engines::built().contains(&model.engine) {
+                    return Err(miette::miette!(
+                        "Model {} needs the {}, which this build does not include.",
+                        model.id,
+                        model.engine.label()
+                    ));
+                }
                 if model_manager.is_model_downloaded(model).await? {
                     path = model_manager.get_model_path(model);
                 } else if let Some(model_path) =
@@ -358,7 +365,10 @@ async fn setup_model(cli: &Cli) -> Result<ModelRef, miette::Error> {
                 }
             }
         }
-    } else if let Some(model) = model_manager.find_first_available_model().await? {
+    } else if let Some(model) = model_manager
+        .find_first_available_model(&engines::built())
+        .await?
+    {
         path = model;
     } else if let Some(model_path) = prompt_for_model_download(&model_manager, None).await? {
         path = model_path;
@@ -367,7 +377,7 @@ async fn setup_model(cli: &Cli) -> Result<ModelRef, miette::Error> {
             "No model specified and no downloaded models found."
         ));
     }
-    Ok(model_manager.reference(path))
+    Ok(model_manager.reference(path).await?)
 }
 
 fn handle_output(result: SyncTranscriptionResult, cli: &Cli) -> miette::Result<()> {

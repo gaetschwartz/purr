@@ -2,6 +2,7 @@
 
 use crate::cli::ModelCommands;
 use crate::color::Stream;
+use crate::engines;
 use crate::global;
 use crate::output;
 use crate::profile_text;
@@ -49,6 +50,13 @@ pub async fn handle_model_command(command: &ModelCommands) -> miette::Result<()>
     match command {
         ModelCommands::Download { model, force } => {
             let spec = model_manager.model(model)?;
+            if !engines::built().contains(&spec.engine) {
+                return Err(miette::miette!(
+                    "Model {} needs the {}, which this build does not include.",
+                    spec.id,
+                    spec.engine.label()
+                ));
+            }
             download(&model_manager, spec, *force).await?;
             ensure_vad(&model_manager).await;
             Ok(())
@@ -291,6 +299,21 @@ async fn info(manager: &ModelManager, spec: &ModelSpec) -> miette::Result<()> {
         resultln!("Features: none")?;
     } else {
         resultln!("Features: {}", features.join(", "))?;
+    }
+    let attribution = spec.family.attribution();
+    resultln!(
+        "License: {} ({})",
+        attribution.license.label(),
+        attribution.license.url()
+    )?;
+    resultln!(
+        "Credit: {} by {}, {}",
+        attribution.work,
+        attribution.author,
+        attribution.origin_url
+    )?;
+    if let Some(changes) = attribution.changes {
+        resultln!("Changes: {changes}")?;
     }
     resultln!("Filename: {}", spec.filename.path())?;
     resultln!(

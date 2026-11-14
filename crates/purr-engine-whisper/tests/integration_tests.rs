@@ -18,7 +18,11 @@ use std::{
 };
 
 async fn default_model() -> Option<PathBuf> {
-    ModelManager::new().ok()?.find_default_model().await.ok()
+    ModelManager::new()
+        .ok()?
+        .find_default_model(&[purr_common::model::engine::EngineId::WhisperCpp])
+        .await
+        .ok()
 }
 
 async fn transcribe_file_sync(

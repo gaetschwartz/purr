@@ -27,7 +27,10 @@ async fn test_transcribe_sample_files(#[files("../../samples/*")] sample_path: P
         return;
     }
     let Some(model) = (match ModelManager::new() {
-        Ok(manager) => manager.find_default_model().await.ok(),
+        Ok(manager) => manager
+            .find_default_model(&[purr_common::model::engine::EngineId::WhisperCpp])
+            .await
+            .ok(),
         Err(_) => None,
     }) else {
         println!("â­ Skipping {} - no model available", sample_path.display());

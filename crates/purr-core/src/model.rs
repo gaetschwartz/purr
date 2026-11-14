@@ -15,18 +15,18 @@ use crate::model::registry::{ModelSpec, Registry};
 use crate::model::status::{ModelFileStatus, ModelIntegrity};
 use directories::ProjectDirs;
 use purr_common::hugging_face_token::HuggingFaceToken;
-use purr_common::model::engine::EngineId;
+use purr_common::model::{engine::EngineId, format::ModelFormat};
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::fs;
+use tokio::{fs, io::AsyncReadExt as _};
 use tracing::{debug, info, warn};
 
 const HASH_BUFFER_BYTES: usize = 1 << 20;
 const HASH_REPORT_INTERVAL: Duration = Duration::from_millis(100);
 
-/// Model manager for downloading and managing Whisper models
+/// Model manager for downloading and managing speech recognition models
 pub struct ModelManager {
     models_dir: PathBuf,
     registry: Arc<Registry>,
@@ -149,27 +149,36 @@ impl ModelManager {
     }
 
     /// The model file at `path` with the engine that runs it: the catalog's engine when the file
-    /// is one of its models, otherwise whisper.cpp, which reads every other model file Purr takes.
-    #[must_use]
-    pub fn reference(&self, path: PathBuf) -> ModelRef {
-        let engine = path
-            .file_name()
-            .and_then(|name| {
-                self.registry
-                    .models()
-                    .iter()
-                    .find(|model| std::ffi::OsStr::new(&model.filename) == name)
-            })
-            .map_or(EngineId::WhisperCpp, |model| model.engine);
-        ModelRef::new(path, engine)
+    /// is one of its models, otherwise the engine that loads the format the file's first bytes
+    /// announce.
+    pub async fn reference(&self, path: PathBuf) -> Result<ModelRef> {
+        let listed = path.file_name().and_then(|name| {
+            self.registry
+                .models()
+                .iter()
+                .find(|model| std::ffi::OsStr::new(&model.filename) == name)
+        });
+        if let Some(model) = listed {
+            return Ok(ModelRef::new(path, model.engine));
+        }
+        let mut header = [0u8; 4];
+        let mut file = fs::File::open(&path).await?;
+        let read = file.read(&mut header).await?;
+        match ModelFormat::of_header(&header[..read]) {
+            Some(format) => Ok(ModelRef::new(path, EngineId::loading(format))),
+            None => Err(ConfigurationError::UnknownModelFile { path }.into()),
+        }
     }
 
-    /// Find the first available model (for auto-selection)
-    pub async fn find_first_available_model(&self) -> Result<Option<PathBuf>> {
+    /// Find the first available model (for auto-selection) among those `built` engines run
+    pub async fn find_first_available_model(&self, built: &[EngineId]) -> Result<Option<PathBuf>> {
         let preferred = self.registry.preferred();
         let all = self.registry.models().iter().map(|model| &**model);
 
-        for model in preferred.chain(all) {
+        for model in preferred
+            .chain(all)
+            .filter(|model| built.contains(&model.engine))
+        {
             if self.is_model_downloaded(model).await? {
                 return Ok(Some(self.get_model_path(model)));
             }
@@ -254,30 +263,11 @@ impl ModelManager {
         Ok(())
     }
 
-    /// Find a default model file
-    pub async fn find_default_model(&self) -> Result<PathBuf> {
-        if let Some(model_path) = self.find_first_available_model().await? {
-            return Ok(model_path);
-        }
-
-        // Fallback to legacy locations for backward compatibility
-        let possible_paths = [
-            "models/ggml-base.en.bin",
-            "models/ggml-base.bin",
-            "ggml-base.en.bin",
-            "ggml-base.bin",
-            "whisper-base.en.bin",
-            "whisper-base.bin",
-        ];
-
-        for path in &possible_paths {
-            let path_buf = PathBuf::from(path);
-            if path_buf.exists() {
-                return Ok(path_buf);
-            }
-        }
-
-        Err(Error::from(ConfigurationError::NoModelFound))
+    /// The default model file: the first downloaded model of the manifest that `built` engines run
+    pub async fn find_default_model(&self, built: &[EngineId]) -> Result<PathBuf> {
+        self.find_first_available_model(built)
+            .await?
+            .ok_or_else(|| Error::from(ConfigurationError::NoModelFound))
     }
 }
 

@@ -165,9 +165,13 @@ pub enum ConfigurationError {
         source: reqwest::Error,
     },
 
-    #[error("No Whisper model found")]
+    #[error("No model found that this build can run")]
     #[diagnostic(code(whisper::config::no_model_found))]
     NoModelFound,
+
+    #[error("{} is not a model file Purr reads (GGUF or ggml)", path.display())]
+    #[diagnostic(code(whisper::config::unknown_model_file))]
+    UnknownModelFile { path: PathBuf },
 }
 
 impl ConfigurationError {

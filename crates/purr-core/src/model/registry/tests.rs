@@ -1,8 +1,13 @@
 use super::*;
 use crate::model::digest::{Sha256Hasher, Sha256ParseError};
 use purr_common::language::support::LanguageSupport;
-use purr_common::model::family::WhisperSize;
 use purr_common::model::profile::{DetectionReport, HintEffect, InputLimit, Speakers, Timing};
+use purr_common::model::{
+    engine::EngineId,
+    family::{ModelFamily, ParakeetVariant, WhisperSize},
+    format::ModelFormat,
+    quantization::Quantization,
+};
 use std::str::FromStr;
 
 const DIGEST_A: &str = "be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21";
@@ -61,7 +66,7 @@ fn registry_with(edit: impl FnOnce(&mut serde_json::Value)) -> Result<Registry, 
 #[test]
 fn embedded_manifest_parses() -> Result<(), ManifestError> {
     let registry = Registry::embedded()?;
-    assert_eq!(registry.models().len(), 34);
+    assert_eq!(registry.models().len(), 37);
     assert_eq!(registry.vad().id, "silero-v6.2.0");
     assert_eq!(registry.default_model().id, "base");
     Ok(())
@@ -195,6 +200,57 @@ fn embedded_tdrz_model_resolves_to_its_own_repository() -> Result<(), Box<dyn st
 }
 
 #[test]
+fn embedded_parakeet_models_are_gguf_files_for_transcribe_cpp()
+-> Result<(), Box<dyn std::error::Error>> {
+    let registry = Registry::embedded()?;
+    let q4 = registry.get("parakeet-tdt-0.6b-v3-q4_k_m")?;
+    assert_eq!(q4.engine, EngineId::TranscribeCpp);
+    assert_eq!(q4.format, ModelFormat::Gguf);
+    assert_eq!(q4.family, ModelFamily::Parakeet(ParakeetVariant::TdtV3));
+    assert_eq!(q4.quantization, Quantization::Q4KM);
+    assert_eq!(q4.file.size_bytes, 485_425_504);
+    assert_eq!(
+        q4.url(),
+        "https://huggingface.co/handy-computer/parakeet-tdt-0.6b-v3-gguf/resolve/d8d8c32cb2017c57e5307767343e97870f8a7f53/parakeet-tdt-0.6b-v3-Q4_K_M.gguf"
+    );
+    let engines: Vec<EngineId> = registry
+        .groups()
+        .into_iter()
+        .filter(|group| matches!(group.family, ModelFamily::Parakeet(_)))
+        .flat_map(|group| group.models)
+        .map(|model| model.engine)
+        .collect();
+    assert_eq!(engines, [EngineId::TranscribeCpp; 3]);
+    Ok(())
+}
+
+#[test]
+fn embedded_parakeet_profile_says_it_finds_the_language_without_telling()
+-> Result<(), Box<dyn std::error::Error>> {
+    let registry = Registry::embedded()?;
+    let profile = &registry.get("parakeet-tdt-0.6b-v3")?.profile;
+    assert_eq!(profile.language_hint, HintEffect::Ignored);
+    assert_eq!(profile.detection, DetectionReport::Silent);
+    assert_eq!(profile.timing, Timing::Word);
+    assert_eq!(profile.input, InputLimit::Unbounded);
+    assert!(profile.languages.supports(&"pt-PT".parse()?));
+    assert!(!profile.languages.supports(&"ja".parse()?));
+    assert!(profile.can_detect());
+    Ok(())
+}
+
+#[test]
+fn no_embedded_preferred_model_needs_the_transcribe_engine() -> Result<(), ManifestError> {
+    let registry = Registry::embedded()?;
+    assert!(
+        registry
+            .preferred()
+            .all(|model| model.engine == EngineId::WhisperCpp)
+    );
+    Ok(())
+}
+
+#[test]
 fn lookup_of_unknown_id_is_a_typed_error() -> Result<(), ManifestError> {
     let registry = registry_with(|_| {})?;
     let error = registry.get("gamma").err();
@@ -301,7 +357,11 @@ fn rejects_the_fields_the_profile_replaced() {
 #[test]
 fn every_embedded_model_is_described_as_whisper_cpp_reports_it() -> Result<(), ManifestError> {
     let registry = Registry::embedded()?;
-    for model in registry.models() {
+    for model in registry
+        .models()
+        .iter()
+        .filter(|model| model.family != ModelFamily::Parakeet(ParakeetVariant::TdtV3))
+    {
         let english = model.id.starts_with("tiny.en")
             || model.id.starts_with("base.en")
             || model.id.starts_with("small.en")

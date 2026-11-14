@@ -2,6 +2,7 @@
 
 use std::sync::Arc;
 
+use purr_common::model::engine::EngineId;
 use purr_core::engine::Engine;
 use purr_engine_whisper::engine::WhisperEngine;
 
@@ -18,4 +19,9 @@ pub fn all() -> Vec<Arc<dyn Engine>> {
     {
         vec![Arc::new(WhisperEngine)]
     }
+}
+
+/// The ids of the engines this binary is built with.
+pub fn built() -> Vec<EngineId> {
+    all().iter().map(|engine| engine.id()).collect()
 }

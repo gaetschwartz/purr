@@ -1,4 +1,5 @@
 use parking_lot::Mutex;
+use purr_common::model::engine::EngineId;
 use purr_core::ModelManager;
 use purr_core::error::ConfigurationError;
 use purr_core::model::status::{ModelFileStatus, ModelIntegrity};
@@ -52,7 +53,12 @@ async fn absent_file_is_missing() -> Result<(), Box<dyn Error>> {
         fx.manager.verify_model(model).await?,
         ModelIntegrity::Missing
     );
-    assert_eq!(fx.manager.find_first_available_model().await?, None);
+    assert_eq!(
+        fx.manager
+            .find_first_available_model(&[EngineId::WhisperCpp])
+            .await?,
+        None
+    );
     assert_eq!(downloaded_ids(&fx.manager).await?, Vec::<String>::new());
     Ok(())
 }
@@ -74,7 +80,12 @@ async fn file_with_the_manifest_size_counts_as_downloaded_and_verifies()
         fx.manager.verify_model(model).await?,
         ModelIntegrity::Verified
     );
-    assert_eq!(fx.manager.find_first_available_model().await?, Some(path));
+    assert_eq!(
+        fx.manager
+            .find_first_available_model(&[EngineId::WhisperCpp])
+            .await?,
+        Some(path)
+    );
     assert_eq!(downloaded_ids(&fx.manager).await?, ["fixture"]);
     Ok(())
 }
@@ -92,7 +103,12 @@ async fn file_with_the_wrong_size_is_not_downloaded() -> Result<(), Box<dyn Erro
     };
     assert_eq!(fx.manager.file_status(model).await?, mismatch);
     assert!(!fx.manager.is_model_downloaded(model).await?);
-    assert_eq!(fx.manager.find_first_available_model().await?, None);
+    assert_eq!(
+        fx.manager
+            .find_first_available_model(&[EngineId::WhisperCpp])
+            .await?,
+        None
+    );
     assert_eq!(downloaded_ids(&fx.manager).await?, Vec::<String>::new());
     let local = fx.manager.local_models().await?;
     assert_eq!(
@@ -237,7 +253,12 @@ async fn the_voice_activity_model_is_not_one_of_the_models() -> Result<(), Box<d
             .collect::<Vec<_>>(),
         Vec::<&str>::new()
     );
-    assert_eq!(fx.manager.find_first_available_model().await?, None);
+    assert_eq!(
+        fx.manager
+            .find_first_available_model(&[EngineId::WhisperCpp])
+            .await?,
+        None
+    );
     let listed: Vec<&str> = fx
         .manager
         .registry()

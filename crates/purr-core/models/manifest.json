@@ -23,9 +23,51 @@
       "id": "whisper-vad",
       "repo": "ggml-org/whisper-vad",
       "revision": "9ffd54a1e1ee413ddf265af9913beaf518d1639b"
+    },
+    {
+      "id": "parakeet-tdt-0.6b-v3",
+      "repo": "handy-computer/parakeet-tdt-0.6b-v3-gguf",
+      "revision": "d8d8c32cb2017c57e5307767343e97870f8a7f53"
     }
   ],
   "profiles": {
+    "parakeet-tdt-v3": {
+      "languages": {
+        "only": [
+          "bg",
+          "hr",
+          "cs",
+          "da",
+          "nl",
+          "en",
+          "et",
+          "fi",
+          "fr",
+          "de",
+          "el",
+          "hu",
+          "it",
+          "lv",
+          "lt",
+          "mt",
+          "pl",
+          "pt",
+          "ro",
+          "sk",
+          "sl",
+          "es",
+          "sv",
+          "ru",
+          "uk"
+        ]
+      },
+      "language_hint": "ignored",
+      "detection": "silent",
+      "timing": "word",
+      "word_scores": true,
+      "speakers": "none",
+      "input": "unbounded"
+    },
     "whisper": {
       "languages": "any",
       "language_hint": "steers",
@@ -504,6 +546,45 @@
       "size_bytes": 874188075,
       "sha256": "317eb69c11673c9de1e1f0d459b253999804ec71ac4c23c17ecf5fbe24e259a1",
       "description": "Large v3 Turbo multilingual model, Q8_0 quantized for a smaller download"
+    },
+    {
+      "id": "parakeet-tdt-0.6b-v3",
+      "engine": "transcribe-cpp",
+      "format": "gguf",
+      "source": "parakeet-tdt-0.6b-v3",
+      "filename": "parakeet-tdt-0.6b-v3-F16.gguf",
+      "family": "parakeet-tdt-0.6b-v3",
+      "profile": "parakeet-tdt-v3",
+      "quantization": "f16",
+      "size_bytes": 1255869856,
+      "sha256": "d9ec7e2c39da7b4fec3e01e71e82c7f7bbe97741e08c0c054091bf3d520a41d3",
+      "description": "Parakeet TDT v3, 25 European languages with automatic language detection"
+    },
+    {
+      "id": "parakeet-tdt-0.6b-v3-q8_0",
+      "engine": "transcribe-cpp",
+      "format": "gguf",
+      "source": "parakeet-tdt-0.6b-v3",
+      "filename": "parakeet-tdt-0.6b-v3-Q8_0.gguf",
+      "family": "parakeet-tdt-0.6b-v3",
+      "profile": "parakeet-tdt-v3",
+      "quantization": "q8_0",
+      "size_bytes": 739508576,
+      "sha256": "5859f77944efcd8eafa23a6350731960b2b55b2203df51f319665c807d802cc7",
+      "description": "Parakeet TDT v3, Q8_0 quantized for a smaller download"
+    },
+    {
+      "id": "parakeet-tdt-0.6b-v3-q4_k_m",
+      "engine": "transcribe-cpp",
+      "format": "gguf",
+      "source": "parakeet-tdt-0.6b-v3",
+      "filename": "parakeet-tdt-0.6b-v3-Q4_K_M.gguf",
+      "family": "parakeet-tdt-0.6b-v3",
+      "profile": "parakeet-tdt-v3",
+      "quantization": "q4_k_m",
+      "size_bytes": 485425504,
+      "sha256": "b68557be1e3c40207fd7c4bd9d63f1d3316b963f15325bfb0cc16a8bb0ffd181",
+      "description": "Parakeet TDT v3, Q4_K_M quantized for the smallest download"
     }
   ],
   "vad": {

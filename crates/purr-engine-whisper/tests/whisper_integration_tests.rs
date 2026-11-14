@@ -34,7 +34,7 @@ fn engines() -> Vec<Arc<dyn Engine>> {
 async fn default_model() -> PathBuf {
     ModelManager::new()
         .unwrap()
-        .find_default_model()
+        .find_default_model(&[purr_common::model::engine::EngineId::WhisperCpp])
         .await
         .unwrap()
 }
@@ -166,7 +166,10 @@ mod whisper_fixtures {
             Ok(manager) => manager,
             Err(_) => return false,
         };
-        model_manager.find_default_model().await.is_ok()
+        model_manager
+            .find_default_model(&[purr_common::model::engine::EngineId::WhisperCpp])
+            .await
+            .is_ok()
     }
 }
 
