@@ -21,6 +21,9 @@ for dir in "$src"/purr-cli-*; do
       else
         (cd "$dir" && zip -qr "$out/$asset.zip" .)
       fi
+      if [ -e "$dir/transcribe.dll" ]; then
+        unzip -Z1 "$out/$asset.zip" | grep -x transcribe.dll > /dev/null || { echo "$asset.zip lacks transcribe.dll" >&2; exit 1; }
+      fi
       ;;
     *)
       chmod +x "$dir/purr"
@@ -40,6 +43,7 @@ for dir in "$src"/purr-desktop-*; do
       *-setup.exe) cp "$file" "$out/$asset-setup.exe" ;;
       *-portable.zip)
         cp "$file" "$out/$asset-portable.zip"
+        unzip -Z1 "$out/$asset-portable.zip" | grep -x transcribe.dll > /dev/null || { echo "$asset-portable.zip lacks transcribe.dll" >&2; exit 1; }
         if [ "${PURR_SPLIT_CUDA_RUNTIME:-false}" = true ]; then
           status=0
           zip -qd "$out/$asset-portable.zip" "${cuda_libraries[@]}" || status=$?

@@ -12,6 +12,20 @@ identifier = "dev.gaetans.purr"
 publisher = "Gaëtan Schwartz"
 icon = ["../../res/icons/icon.png"]
 category = "Utility"
+resources = [
+  "dist-runtime/transcribe.dll",
+  "dist-runtime/ggml.dll",
+  "dist-runtime/ggml-base.dll",
+  "dist-runtime/ggml-cpu-x64.dll",
+  "dist-runtime/ggml-cpu-sse42.dll",
+  "dist-runtime/ggml-cpu-sandybridge.dll",
+  "dist-runtime/ggml-cpu-haswell.dll",
+  "dist-runtime/ggml-cpu-skylakex.dll",
+  "dist-runtime/ggml-cpu-cannonlake.dll",
+  "dist-runtime/ggml-cpu-cascadelake.dll",
+  "dist-runtime/ggml-cpu-icelake.dll",
+  "dist-runtime/ggml-cpu-alderlake.dll",
+]
 
 
 [bundle.windows]
