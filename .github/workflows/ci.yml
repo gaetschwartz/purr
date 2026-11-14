@@ -56,8 +56,9 @@ jobs:
         run: cargo nextest run --workspace --features purr-core/static-ffmpeg
       - name: The transcribe.cpp engine lists its devices in the CLI
         run: |
-          cargo build -p purr-cli --features static-ffmpeg,transcribe
-          lib_dir="$(dirname "$(find target/debug/build -path '*/out/lib/libtranscribe.so' -print -quit)")"
+          cargo build -p purr-cli --features static-ffmpeg,transcribe --message-format=json-render-diagnostics > "$RUNNER_TEMP/cargo-messages.jsonl"
+          lib_dir="$(jq -rs '[.[] | select(.reason == "build-script-executed" and (.package_id | contains("transcribe-cpp-sys"))) | .out_dir] | unique | if length == 1 then .[0] else error("expected one transcribe-cpp-sys build script output") end' "$RUNNER_TEMP/cargo-messages.jsonl")/lib"
+          echo "TRANSCRIBE_LIB_DIR=$lib_dir" >> "$GITHUB_ENV"
           LD_LIBRARY_PATH="$lib_dir" target/debug/purr sys --json \
             | jq -e '.engines[] | select(.engine == "transcribe-cpp") | .status.ready.devices | length > 0'
           LD_LIBRARY_PATH="$lib_dir" target/debug/purr sys --json \
@@ -68,8 +69,8 @@ jobs:
             echo "::error::purr exports or imports ggml symbols, so libtranscribe can bind to the ggml inside the executable"
             exit 1
           fi
-          lib_dir="$(dirname "$(find target/debug/build -path '*/out/lib/libtranscribe.so' -print -quit)")"
-          LD_LIBRARY_PATH="$lib_dir" LD_DEBUG=bindings LD_DEBUG_OUTPUT=bindings target/debug/purr sys --json > /dev/null
+          LD_LIBRARY_PATH="$TRANSCRIBE_LIB_DIR" LD_DEBUG=bindings LD_DEBUG_OUTPUT=bindings target/debug/purr sys --json > /dev/null
+          test -n "$(cat bindings.*)" || { echo "::error::LD_DEBUG wrote no bindings"; exit 1; }
           if cat bindings.* | grep -E 'binding file [^ ]*lib(transcribe|ggml)[^ ]* \[0\] to [^ ]*/purr \[0\]'; then
             echo "::error::a transcribe.cpp library bound a symbol to the executable"
             exit 1

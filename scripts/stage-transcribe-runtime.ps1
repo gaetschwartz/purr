@@ -1,6 +1,10 @@
 param(
-    [Parameter(Mandatory, ParameterSetName = 'Stage')][string]$Source,
-    [Parameter(Mandatory, ParameterSetName = 'Stage')][string]$Destination,
+    [Parameter(Mandatory, ParameterSetName = 'Directory')][string]$Source,
+    [Parameter(Mandatory, ParameterSetName = 'Messages')][string]$CargoMessages,
+    [Parameter(Mandatory, ParameterSetName = 'BuildDirectory')][string]$BuildDirectory,
+    [Parameter(Mandatory, ParameterSetName = 'Directory')]
+    [Parameter(Mandatory, ParameterSetName = 'Messages')]
+    [Parameter(Mandatory, ParameterSetName = 'BuildDirectory')][string]$Destination,
     [Parameter(Mandatory, ParameterSetName = 'Check')][string]$Check
 )
 
@@ -30,7 +34,19 @@ function Fail([string]$message) {
     exit 1
 }
 
-if ($PSCmdlet.ParameterSetName -eq 'Stage') {
+if ($PSCmdlet.ParameterSetName -ne 'Check') {
+    if ($PSCmdlet.ParameterSetName -eq 'Messages') {
+        $outDirs = @(Get-Content -LiteralPath $CargoMessages | Where-Object { $_ -match '"build-script-executed"' -and $_ -match 'transcribe-cpp-sys' } |
+            ForEach-Object { ($_ | ConvertFrom-Json).out_dir } | Select-Object -Unique)
+        if ($outDirs.Count -ne 1) { Fail "$CargoMessages names $($outDirs.Count) build script outputs of transcribe-cpp-sys, expected 1" }
+        $Source = Join-Path $outDirs[0] 'bin'
+    }
+    elseif ($PSCmdlet.ParameterSetName -eq 'BuildDirectory') {
+        $bins = @(Get-ChildItem -Path (Join-Path $BuildDirectory 'build\transcribe-cpp-sys-*\out\bin') -Directory -ErrorAction SilentlyContinue |
+            Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName 'transcribe.dll') })
+        if ($bins.Count -ne 1) { Fail "$BuildDirectory holds $($bins.Count) transcribe-cpp-sys builds with transcribe.dll, expected 1" }
+        $Source = $bins[0].FullName
+    }
     if (-not (Test-Path -LiteralPath $Source -PathType Container)) { Fail "$Source is not a directory" }
     $missing = @($Libraries | Where-Object { -not (Test-Path -LiteralPath (Join-Path $Source $_) -PathType Leaf) })
     if ($missing.Count -gt 0) { Fail "$Source lacks $($missing -join ', ')" }

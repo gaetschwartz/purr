@@ -424,14 +424,14 @@ jobs:
         run: |
           export CFLAGS="-march=armv8.2-a+crypto+noi8mm"
           export CXXFLAGS="-march=armv8.2-a+crypto+noi8mm"
-          cargo build -p purr-cli --release --features static-ffmpeg${{ matrix.backend != 'none' && format(',{0}', matrix.backend) || '' }}${{ matrix.transcribe && ',transcribe' || '' }}
+          cargo build -p purr-cli --release --features static-ffmpeg${{ matrix.backend != 'none' && format(',{0}', matrix.backend) || '' }}${{ matrix.transcribe && ',transcribe' || '' }} --message-format=json-render-diagnostics > "$RUNNER_TEMP/cargo-messages.jsonl"
       - name: Prepare CLI artifact
         run: |
           mkdir -p artifacts/cli
           cp target/release/purr artifacts/cli/purr
           if [ "${{ matrix.transcribe }}" = "true" ]; then
             mkdir -p artifacts/cli/lib
-            lib_dir="$(dirname "$(find target/release/build -path '*/out/lib/libtranscribe.dylib' -print -quit)")"
+            lib_dir="$(jq -rs '[.[] | select(.reason == "build-script-executed" and (.package_id | contains("transcribe-cpp-sys"))) | .out_dir] | unique | if length == 1 then .[0] else error("expected one transcribe-cpp-sys build script output") end' "$RUNNER_TEMP/cargo-messages.jsonl")/lib"
             find "$lib_dir" -maxdepth 1 \( -type f -o -type l \) -exec cp -P {} artifacts/cli/lib/ \;
             install_name_tool -add_rpath @executable_path/lib artifacts/cli/purr
           fi
@@ -576,13 +576,14 @@ jobs:
           base-dir: ${{ env.CARGO_TARGET_DIR }}
       - name: Build the CLI
         run: |
-          cargo build -p purr-cli --release --features static-ffmpeg${{ matrix.backend != 'none' && format(',{0}', matrix.backend) || '' }}${{ matrix.transcribe && ',transcribe' || '' }}
+          cargo build -p purr-cli --release --features static-ffmpeg${{ matrix.backend != 'none' && format(',{0}', matrix.backend) || '' }}${{ matrix.transcribe && ',transcribe' || '' }} --message-format=json-render-diagnostics > "$env:RUNNER_TEMP\cargo-messages.jsonl"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Prepare CLI artifact
         run: |
           New-Item -ItemType Directory -Force -Path artifacts\cli
           Copy-Item "$env:CARGO_TARGET_DIR\release\purr.exe" artifacts\cli\purr.exe
           if ("${{ matrix.transcribe }}" -eq 'true') {
-            ./scripts/stage-transcribe-runtime.ps1 -Source "$env:CARGO_TARGET_DIR\release" -Destination artifacts\cli
+            ./scripts/stage-transcribe-runtime.ps1 -CargoMessages "$env:RUNNER_TEMP\cargo-messages.jsonl" -Destination artifacts\cli
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
           if ("${{ matrix.backend }}" -match "cuda") {
@@ -649,7 +650,7 @@ jobs:
       # Ninja runs nvcc on every core; the Visual Studio generator compiles the CUDA sources one at a time
       CMAKE_GENERATOR_x86_64_pc_windows_msvc: Ninja
       FEATURES: static-ffmpeg,cuda,vulkan
-      # on: the app is built with transcribe and the installer and the portable archive carry its libraries. Needs a run to prove the NSIS step first.
+      # on: the app is built with transcribe and the installer and the portable archive carry its libraries
       PURR_DESKTOP_TRANSCRIBE: "off"
     steps:
       - uses: actions/checkout@v7
@@ -690,7 +691,7 @@ jobs:
       - name: Add the transcribe.cpp libraries to the installer
         if: env.PURR_DESKTOP_TRANSCRIBE == 'on'
         run: |
-          ./scripts/stage-transcribe-runtime.ps1 -Source "$env:CARGO_TARGET_DIR\r" -Destination dist-runtime
+          ./scripts/stage-transcribe-runtime.ps1 -BuildDirectory "$env:CARGO_TARGET_DIR\r" -Destination dist-runtime
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           dx bundle --verbose --trace -p purr-app --release --profile r --windows --package-types nsis --out-dir dist-windows --features "$env:FEATURES,transcribe"
           $staging = Get-ChildItem "$env:CARGO_TARGET_DIR\dx\purr-app" -Recurse -Directory -Filter _staging | Select-Object -First 1
@@ -718,7 +719,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path $portable
           Copy-Item "$($appExe.DirectoryName)\*" $portable -Recurse
           if ($env:PURR_DESKTOP_TRANSCRIBE -eq 'on') {
-            ./scripts/stage-transcribe-runtime.ps1 -Source "$env:CARGO_TARGET_DIR\r" -Destination $portable
+            ./scripts/stage-transcribe-runtime.ps1 -BuildDirectory "$env:CARGO_TARGET_DIR\r" -Destination $portable
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
           $cudaBinPath = "$env:CUDA_PATH\bin\x64"
