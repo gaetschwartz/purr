@@ -15,7 +15,7 @@ use crate::{
     history::{export_source::export_source, store::use_history, wording::language_text},
     main_app::Route,
     platform::{self, IS_WEB, Platform as _, PlatformError, playback_source::AudioSource},
-    transcribe::{engine_label::EngineLabel, session::use_transcribe_session},
+    transcribe::{compute_label::ComputeLabel, session::use_transcribe_session},
     views::{
         history::{delete_dialog::DeleteDialog, rename_dialog::RenameDialog},
         result_frame::{
@@ -274,10 +274,10 @@ fn Entry(record: HistoryRecord, audio: ResultAudio) -> Element {
             facts: TranscriptionFacts {
                 model_label: entry.model_label.clone(),
                 language_text: language_text(entry.language.as_deref(), entry.language_origin),
-                engine_text: entry
-                    .engine
+                compute_text: entry
+                    .compute
                     .as_ref()
-                    .map(|engine| EngineLabel::saved(engine).to_string()),
+                    .map(|compute| ComputeLabel::saved(compute).to_string()),
             },
             more: vec![MoreAction::Rename, MoreAction::Delete],
             on_more: move |action| match action {

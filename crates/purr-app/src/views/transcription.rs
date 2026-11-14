@@ -1,6 +1,6 @@
 //! `/transcription/:id`: a transcription's address, which exists from the moment it starts.
 
-mod engine_notice;
+mod compute_notice;
 mod run_view;
 mod saved;
 

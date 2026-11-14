@@ -4,26 +4,26 @@ use crate::{
         button::{Button, ButtonSize},
         icon::IconName,
     },
-    transcribe::{engine::fallback_notice, session::RunRecord},
+    transcribe::{compute::fallback_notice, session::RunRecord},
     views::settings::{dialog_handle::use_settings_dialog, settings_page::SettingsPage},
 };
 use dioxus::prelude::*;
-use purr_common::browser_engine::BrowserEngine;
+use purr_common::browser_compute::BrowserCompute;
 
 /// Says, without blocking the run, that it used other hardware than the one asked for.
 #[component]
-pub fn EngineNotice(record: RunRecord) -> Element {
+pub fn ComputeNotice(record: RunRecord) -> Element {
     let dialog = use_settings_dialog();
-    if let Some(BrowserEngine::Cpu(reason)) = record.run.browser_engine {
+    if let Some(BrowserCompute::Cpu(reason)) = record.run.browser_compute {
         return rsx! {
             if let Some(notice) = reason.notice() {
-                p { class: "foot", role: "status", id: "engine-notice", style: "margin:0",
+                p { class: "foot", role: "status", id: "compute-notice", style: "margin:0",
                     "{notice}"
                 }
             }
         };
     }
-    let Some(notice) = record.run.engine.as_ref().and_then(fallback_notice) else {
+    let Some(notice) = record.run.compute.as_ref().and_then(fallback_notice) else {
         return rsx! {};
     };
 
@@ -33,7 +33,7 @@ pub fn EngineNotice(record: RunRecord) -> Element {
             icon: IconName::Bolt,
             title: notice.title,
             role: "status",
-            id: "engine-notice",
+            id: "compute-notice",
             actions: rsx! {
                 Button {
                     size: ButtonSize::Small,

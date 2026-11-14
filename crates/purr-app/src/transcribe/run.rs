@@ -2,7 +2,7 @@
 
 use super::transcript::Transcript;
 use purr_common::{
-    accel::LastRun, browser_engine::BrowserEngine, platform::TranscriptionStatus,
+    accel::LastRun, browser_compute::BrowserCompute, platform::TranscriptionStatus,
     progress::ProgressFrame,
 };
 
@@ -60,9 +60,9 @@ pub struct Run {
     pub stage: Stage,
     pub model_load: Option<ModelLoad>,
     /// What the engine ran on, once the model has loaded and the platform says.
-    pub engine: Option<LastRun>,
+    pub compute: Option<LastRun>,
     /// Where a browser run settled, once the platform says.
-    pub browser_engine: Option<BrowserEngine>,
+    pub browser_compute: Option<BrowserCompute>,
     pub transcript: Transcript,
     /// The Whisper code the platform recognised, when it was asked to detect the language.
     pub detected_language: Option<String>,
@@ -81,8 +81,8 @@ impl Run {
         Self {
             stage: Stage::LoadingModel,
             model_load: None,
-            engine: None,
-            browser_engine: None,
+            compute: None,
+            browser_compute: None,
             transcript: Transcript::default(),
             detected_language: None,
             progress: None,
@@ -107,11 +107,11 @@ impl Run {
                     total_bytes: *total_bytes,
                 });
             }
-            TranscriptionStatus::Engine { run } => {
-                self.engine = Some(run.clone());
+            TranscriptionStatus::Compute { run } => {
+                self.compute = Some(run.clone());
             }
-            TranscriptionStatus::BrowserEngine { engine } => {
-                self.browser_engine = Some(*engine);
+            TranscriptionStatus::BrowserCompute { compute } => {
+                self.browser_compute = Some(*compute);
             }
             TranscriptionStatus::Transcribing => {
                 self.transcribing_since_ms.get_or_insert(now_ms);
@@ -251,16 +251,16 @@ mod tests {
     }
 
     #[test]
-    fn the_engine_the_platform_reports_is_kept() {
+    fn the_compute_the_platform_reports_is_kept() {
         let mut run = Run::new(false, 0.0);
-        assert_eq!(run.engine, None);
+        assert_eq!(run.compute, None);
         let ran = LastRun {
             backend: purr_common::accel::AccelBackend::Vulkan,
             device: None,
             passed_over: Vec::new(),
         };
-        run.apply(&TranscriptionStatus::Engine { run: ran.clone() }, 1.0);
-        assert_eq!(run.engine, Some(ran));
+        run.apply(&TranscriptionStatus::Compute { run: ran.clone() }, 1.0);
+        assert_eq!(run.compute, Some(ran));
         assert_eq!(run.stage, Stage::LoadingModel);
     }
 

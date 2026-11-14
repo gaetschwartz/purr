@@ -25,7 +25,7 @@ use crate::{
     shortcuts::{Key, KeyChord, Shortcut, use_shortcut},
     transcribe::{
         chosen_file::OverviewState,
-        expected_browser_engine::expected_browser_engine,
+        expected_browser_compute::expected_browser_compute,
         language_choice::LanguageChoice,
         session::use_transcribe_session,
         start_plan::{FileReadiness, ModelChoice, StartPlan, plan_start},
@@ -36,7 +36,7 @@ use crate::{
 use cancelled_notice::CancelledNotice;
 use dioxus::{html::HasFileData, prelude::*};
 use model_notice::ModelNotice;
-use purr_common::browser_engine::BrowserEngine;
+use purr_common::browser_compute::BrowserCompute;
 use recent::Recent;
 use run_link::RunLink;
 
@@ -95,8 +95,8 @@ pub fn Home() -> Element {
     let running = running_id();
     let can_start = matches!(plan, StartPlan::Start(_)) && running.is_none();
     let devices = settings.with(|settings| settings.performance.device_order());
-    let browser_engine = IS_WEB.then(|| {
-        expected_browser_engine(
+    let browser_compute = IS_WEB.then(|| {
+        expected_browser_compute(
             &devices,
             &models.gpu.read(),
             selected
@@ -105,9 +105,9 @@ pub fn Home() -> Element {
         )
     });
     let mut advanced = use_signal(|| false);
-    let cpu_notice = match browser_engine {
-        Some(BrowserEngine::Cpu(reason)) => reason.notice(),
-        Some(BrowserEngine::WebGpu) | None => None,
+    let cpu_notice = match browser_compute {
+        Some(BrowserCompute::Cpu(reason)) => reason.notice(),
+        Some(BrowserCompute::WebGpu) | None => None,
     };
 
     let start = move |_| {

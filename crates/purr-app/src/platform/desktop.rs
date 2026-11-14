@@ -2,7 +2,7 @@
 /// This implementation uses direct file system access and native whisper transcription
 use super::{
     Platform, PlatformError, TranscriptionRequest, TranscriptionStatus,
-    engine_options::{apply_engine, backend_reports, last_run, probe},
+    compute_options::{apply_compute, backend_reports, last_run, probe},
     history_store::HistoryDir,
 };
 use bytes::Bytes;
@@ -152,14 +152,14 @@ impl Platform for DesktopPlatformImpl {
         if vad.is_none() {
             self.fetch_vad_in_background(request.hugging_face_token.clone());
         }
-        let config = apply_engine(
+        let config = apply_compute(
             purr_core::TranscriptionConfig::new()
                 .with_model_path(manager.get_model_path(model))
                 .with_vad_model(vad)
                 .with_opt_language(request.language)
                 .apply_output_format(|format| format.with_word_timestamps(true))
                 .with_tentative(TentativeText::Decoded),
-            &request.engine,
+            &request.compute,
         );
         info!(
             "Transcribing {} with {}",
@@ -592,7 +592,7 @@ impl DesktopRun {
                         let ran = last_run(stream.accel());
                         *self.last_run.lock() = Some(ran.clone());
                         self.pending
-                            .push_back(Ok(TranscriptionStatus::Engine { run: ran }));
+                            .push_back(Ok(TranscriptionStatus::Compute { run: ran }));
                         self.pending
                             .push_back(Ok(TranscriptionStatus::Transcribing));
                         self.phase = Phase::Decode(stream);

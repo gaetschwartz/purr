@@ -2,14 +2,14 @@
 //! WebGPU cannot start. Nothing is measured: the GPU is trusted until the worker says it failed.
 
 use crate::protocol::{FailureKind, Provider};
-use purr_common::browser_engine::{BrowserEngine, CpuReason};
+use purr_common::browser_compute::{BrowserCompute, CpuReason};
 use purr_common::devices::DeviceOrder;
 use purr_common::web_model::registry::WebModelSpec;
 
 /// Where a model runs.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Choice {
-    pub engine: BrowserEngine,
+    pub compute: BrowserCompute,
     cpu_can_run: bool,
 }
 
@@ -27,23 +27,23 @@ pub enum GpuFailure {
 impl Choice {
     #[must_use]
     pub const fn provider(&self) -> Provider {
-        match self.engine {
-            BrowserEngine::WebGpu => Provider::WebGpu,
-            BrowserEngine::Cpu(_) => Provider::Cpu,
+        match self.compute {
+            BrowserCompute::WebGpu => Provider::WebGpu,
+            BrowserCompute::Cpu(_) => Provider::Cpu,
         }
     }
 
     #[must_use]
     pub fn after_failure(&self, kind: FailureKind) -> GpuFailure {
-        match (self.engine, gpu_failure_reason(kind)) {
-            (BrowserEngine::WebGpu, Some(reason)) if self.cpu_can_run => {
+        match (self.compute, gpu_failure_reason(kind)) {
+            (BrowserCompute::WebGpu, Some(reason)) if self.cpu_can_run => {
                 GpuFailure::MoveToCpu(Self {
-                    engine: BrowserEngine::Cpu(reason),
+                    compute: BrowserCompute::Cpu(reason),
                     cpu_can_run: true,
                 })
             }
-            (BrowserEngine::WebGpu, Some(reason)) => GpuFailure::CannotRun(reason),
-            (BrowserEngine::WebGpu, None) | (BrowserEngine::Cpu(_), _) => GpuFailure::Unrelated,
+            (BrowserCompute::WebGpu, Some(reason)) => GpuFailure::CannotRun(reason),
+            (BrowserCompute::WebGpu, None) | (BrowserCompute::Cpu(_), _) => GpuFailure::Unrelated,
         }
     }
 }
@@ -68,16 +68,16 @@ pub const fn gpu_failure_reason(kind: FailureKind) -> Option<CpuReason> {
 /// ask for the CPU.
 pub fn choose(spec: &WebModelSpec, devices: &DeviceOrder) -> Result<Choice, CpuReason> {
     let cpu_can_run = spec.runs_on_cpu();
-    match BrowserEngine::requested(devices) {
-        BrowserEngine::WebGpu => Ok(Choice {
-            engine: BrowserEngine::WebGpu,
+    match BrowserCompute::requested(devices) {
+        BrowserCompute::WebGpu => Ok(Choice {
+            compute: BrowserCompute::WebGpu,
             cpu_can_run,
         }),
-        BrowserEngine::Cpu(reason) if cpu_can_run => Ok(Choice {
-            engine: BrowserEngine::Cpu(reason),
+        BrowserCompute::Cpu(reason) if cpu_can_run => Ok(Choice {
+            compute: BrowserCompute::Cpu(reason),
             cpu_can_run,
         }),
-        BrowserEngine::Cpu(reason) => Err(reason),
+        BrowserCompute::Cpu(reason) => Err(reason),
     }
 }
 
@@ -101,8 +101,8 @@ mod tests {
     fn the_default_policy_runs_on_webgpu() -> Result<(), Box<dyn std::error::Error>> {
         for id in [CPU_RUNNABLE, GPU_ONLY] {
             assert_eq!(
-                choose(&spec(id)?, &DeviceOrder::automatic()).map(|choice| choice.engine),
-                Ok(BrowserEngine::WebGpu),
+                choose(&spec(id)?, &DeviceOrder::automatic()).map(|choice| choice.compute),
+                Ok(BrowserCompute::WebGpu),
                 "{id}"
             );
         }
@@ -113,18 +113,18 @@ mod tests {
     fn the_cpu_policy_runs_on_the_cpu_when_the_model_can() -> Result<(), Box<dyn std::error::Error>>
     {
         assert_eq!(
-            choose(&spec(CPU_RUNNABLE)?, &DeviceOrder::cpu_only()).map(|choice| choice.engine),
-            Ok(BrowserEngine::Cpu(CpuReason::Chosen))
+            choose(&spec(CPU_RUNNABLE)?, &DeviceOrder::cpu_only()).map(|choice| choice.compute),
+            Ok(BrowserCompute::Cpu(CpuReason::Chosen))
         );
         assert_eq!(
-            choose(&spec(GPU_ONLY)?, &DeviceOrder::cpu_only()).map(|choice| choice.engine),
+            choose(&spec(GPU_ONLY)?, &DeviceOrder::cpu_only()).map(|choice| choice.compute),
             Err(CpuReason::Chosen)
         );
         Ok(())
     }
 
     #[test]
-    fn the_provider_follows_the_engine() -> Result<(), Box<dyn std::error::Error>> {
+    fn the_provider_follows_the_compute() -> Result<(), Box<dyn std::error::Error>> {
         assert_eq!(
             chosen(CPU_RUNNABLE, &DeviceOrder::automatic())?.provider(),
             Provider::WebGpu
@@ -148,7 +148,7 @@ mod tests {
             assert_eq!(
                 choice.after_failure(kind),
                 GpuFailure::MoveToCpu(Choice {
-                    engine: BrowserEngine::Cpu(reason),
+                    compute: BrowserCompute::Cpu(reason),
                     cpu_can_run: true,
                 }),
                 "{kind:?}"

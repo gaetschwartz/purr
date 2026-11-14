@@ -1,17 +1,17 @@
-//! A finished run's engine as the screens word it: the backend and the hardware it ran on.
+//! A finished run's compute as the screens word it: the backend and the hardware it ran on.
 
 use crate::hooks::use_system_probe::SystemProbe;
-use purr_common::accel::{AccelBackend, EngineUsed, LastRun};
+use purr_common::accel::{AccelBackend, ComputeUsed, LastRun};
 use std::fmt;
 
 /// The backend and the hardware name that go with it, when one is known.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct EngineLabel {
+pub struct ComputeLabel {
     pub backend: AccelBackend,
     pub hardware: Option<String>,
 }
 
-impl fmt::Display for EngineLabel {
+impl fmt::Display for ComputeLabel {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.hardware {
             Some(hardware) => write!(f, "{} · {hardware}", self.backend.label()),
@@ -20,20 +20,20 @@ impl fmt::Display for EngineLabel {
     }
 }
 
-impl EngineLabel {
+impl ComputeLabel {
     /// What a saved run ran on.
     #[must_use]
-    pub fn saved(engine: &EngineUsed) -> Self {
+    pub fn saved(compute: &ComputeUsed) -> Self {
         Self {
-            backend: engine.backend,
-            hardware: engine.hardware.clone(),
+            backend: compute.backend,
+            hardware: compute.hardware.clone(),
         }
     }
 
     /// What a run ended up on, as stored with its history entry.
     #[must_use]
-    pub fn used(last: &LastRun, probe: &SystemProbe) -> EngineUsed {
-        EngineUsed {
+    pub fn used(last: &LastRun, probe: &SystemProbe) -> ComputeUsed {
+        ComputeUsed {
             backend: last.backend,
             hardware: Self::ran(last, probe).hardware,
         }
@@ -83,8 +83,8 @@ mod tests {
         })
     }
 
-    fn label(backend: AccelBackend, hardware: Option<&str>) -> EngineLabel {
-        EngineLabel {
+    fn label(backend: AccelBackend, hardware: Option<&str>) -> ComputeLabel {
+        ComputeLabel {
             backend,
             hardware: hardware.map(str::to_owned),
         }
@@ -101,11 +101,11 @@ mod tests {
     #[test]
     fn a_gpu_run_is_named_after_the_device_it_reported() {
         assert_eq!(
-            EngineLabel::ran(&ran(AccelBackend::Vulkan, Some(GPU_NAME)), &machine()),
+            ComputeLabel::ran(&ran(AccelBackend::Vulkan, Some(GPU_NAME)), &machine()),
             label(AccelBackend::Vulkan, Some(GPU_NAME))
         );
         assert_eq!(
-            EngineLabel::ran(
+            ComputeLabel::ran(
                 &ran(AccelBackend::Cuda, Some(GPU_NAME)),
                 &SystemProbe::Unavailable
             ),
@@ -116,11 +116,11 @@ mod tests {
     #[test]
     fn a_run_on_the_processor_is_named_after_it() {
         assert_eq!(
-            EngineLabel::ran(&ran(AccelBackend::Cpu, None), &machine()),
+            ComputeLabel::ran(&ran(AccelBackend::Cpu, None), &machine()),
             label(AccelBackend::Cpu, Some(CPU_NAME))
         );
         assert_eq!(
-            EngineLabel::ran(&ran(AccelBackend::Cpu, None), &SystemProbe::Checking),
+            ComputeLabel::ran(&ran(AccelBackend::Cpu, None), &SystemProbe::Checking),
             label(AccelBackend::Cpu, None)
         );
     }
@@ -128,7 +128,7 @@ mod tests {
     #[test]
     fn a_saved_run_keeps_what_it_stored() {
         assert_eq!(
-            EngineLabel::saved(&EngineUsed {
+            ComputeLabel::saved(&ComputeUsed {
                 backend: AccelBackend::Vulkan,
                 hardware: Some(GPU_NAME.to_owned())
             }),
@@ -137,10 +137,10 @@ mod tests {
     }
 
     #[test]
-    fn the_stored_engine_follows_the_run() {
+    fn the_stored_compute_follows_the_run() {
         assert_eq!(
-            EngineLabel::used(&ran(AccelBackend::Cpu, None), &machine()),
-            EngineUsed {
+            ComputeLabel::used(&ran(AccelBackend::Cpu, None), &machine()),
+            ComputeUsed {
                 backend: AccelBackend::Cpu,
                 hardware: Some(CPU_NAME.to_owned())
             }

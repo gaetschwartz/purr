@@ -1,7 +1,7 @@
 //! Web platform implementation of the Platform trait
 
 use crate::audio;
-use crate::engine_choice::{self, GpuFailure};
+use crate::compute_choice::{self, GpuFailure};
 use crate::error::{IntegrityError, WebError, WebResult};
 use crate::local::run_local;
 use crate::model::WebModelManager;
@@ -18,7 +18,7 @@ use futures::StreamExt as _;
 use purr_common::accel::SystemReport;
 use purr_common::adapter_name::{AdapterStrings, adapter_name};
 use purr_common::audio_overview::{AudioOverview, peaks};
-use purr_common::browser_engine::CpuReason;
+use purr_common::browser_compute::CpuReason;
 use purr_common::devices::DeviceOrder;
 use purr_common::history::{
     audio::{AudioOutcome, HistoryAudio},
@@ -275,7 +275,7 @@ async fn run_transcription(
     );
 
     let mut mapper = TranscriptionMapper::new(&spec, model_cached);
-    let mut choice = match engine_choice::choose(&spec, &devices) {
+    let mut choice = match compute_choice::choose(&spec, &devices) {
         Ok(choice) => choice,
         Err(reason) => {
             send_status(&tx, cannot_run(reason));
@@ -284,11 +284,11 @@ async fn run_transcription(
     };
     let samples = decoded.samples;
     loop {
-        tracing::info!("Transcribing with {} on {:?}", spec.id, choice.engine);
+        tracing::info!("Transcribing with {} on {:?}", spec.id, choice.compute);
         if !send_status(
             &tx,
-            TranscriptionStatus::BrowserEngine {
-                engine: choice.engine,
+            TranscriptionStatus::BrowserCompute {
+                compute: choice.compute,
             },
         ) {
             return;
@@ -361,7 +361,7 @@ fn cannot_run(reason: CpuReason) -> TranscriptionStatus {
 fn load_request(
     worker: &WorkerClient,
     spec: &WebModelSpec,
-    choice: &engine_choice::Choice,
+    choice: &compute_choice::Choice,
     hugging_face_token: Option<&HuggingFaceToken>,
 ) -> WorkerRequest {
     WorkerRequest::LoadModel {
@@ -438,7 +438,7 @@ async fn run_preload(
         }
     };
 
-    let mut choice = match engine_choice::choose(&spec, &devices) {
+    let mut choice = match compute_choice::choose(&spec, &devices) {
         Ok(choice) => choice,
         Err(reason) => {
             if tx
@@ -631,7 +631,7 @@ impl Platform for WasmPlatformImpl {
                 bytes,
                 language,
                 hugging_face_token: request.hugging_face_token,
-                devices: request.engine.devices,
+                devices: request.compute.devices,
             },
             tx,
         ));

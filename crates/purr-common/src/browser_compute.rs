@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 /// The execution provider a browser transcription runs on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum BrowserEngine {
+pub enum BrowserCompute {
     WebGpu,
     Cpu(CpuReason),
 }
@@ -23,8 +23,8 @@ pub enum CpuReason {
     WebGpuFailed,
 }
 
-impl BrowserEngine {
-    /// The engine the settings ask for: the CPU when they say so, WebGPU otherwise.
+impl BrowserCompute {
+    /// The compute the settings ask for: the CPU when they say so, WebGPU otherwise.
     #[must_use]
     pub fn requested(devices: &DeviceOrder) -> Self {
         if devices.is_cpu_only() {
@@ -75,20 +75,20 @@ mod tests {
     #[test]
     fn a_fresh_profile_asks_for_webgpu() {
         assert_eq!(
-            BrowserEngine::requested(&Settings::default().performance.device_order()),
-            BrowserEngine::WebGpu
+            BrowserCompute::requested(&Settings::default().performance.device_order()),
+            BrowserCompute::WebGpu
         );
     }
 
     #[test]
     fn only_the_processor_asks_for_the_cpu() {
         assert_eq!(
-            BrowserEngine::requested(&DeviceOrder::cpu_only()),
-            BrowserEngine::Cpu(CpuReason::Chosen)
+            BrowserCompute::requested(&DeviceOrder::cpu_only()),
+            BrowserCompute::Cpu(CpuReason::Chosen)
         );
         assert_eq!(
-            BrowserEngine::requested(&DeviceOrder::automatic()),
-            BrowserEngine::WebGpu
+            BrowserCompute::requested(&DeviceOrder::automatic()),
+            BrowserCompute::WebGpu
         );
     }
 

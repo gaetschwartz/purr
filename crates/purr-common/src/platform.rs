@@ -17,7 +17,7 @@ use std::{
 use crate::{
     accel::{LastRun, SystemReport},
     audio_overview::AudioOverview,
-    browser_engine::BrowserEngine,
+    browser_compute::BrowserCompute,
     devices::{DeviceKey, DeviceOrder},
     history::{
         audio::{AudioOutcome, HistoryAudio},
@@ -351,22 +351,22 @@ pub struct TranscriptionRequest {
     pub model: ModelId,
     /// Optional language (auto-detect if None)
     pub language: Option<String>,
-    /// How the engine runs; platforms that do not choose their own hardware ignore it
-    pub engine: EngineOptions,
+    /// Which compute the run uses; platforms that do not choose their own hardware ignore it
+    pub compute: ComputeOptions,
     /// Authenticates the downloads of a model that is not stored yet; desktop only fetches its voice activity model with it
     pub hugging_face_token: Option<HuggingFaceToken>,
 }
 
-/// How the transcription engine runs, taken from the performance and model settings.
+/// Which compute a transcription runs on, taken from the performance and model settings.
 #[derive(Debug, Clone, PartialEq, Default)]
-pub struct EngineOptions {
+pub struct ComputeOptions {
     /// Which devices to try, and in what order
     pub devices: DeviceOrder,
     /// CPU threads, `None` to let the engine choose
     pub threads: Option<u32>,
 }
 
-impl EngineOptions {
+impl ComputeOptions {
     /// The options the user's settings ask for.
     #[must_use]
     pub fn from_settings(settings: &Settings) -> Self {
@@ -452,9 +452,9 @@ pub enum TranscriptionStatus {
     /// The model is ready and speech is being decoded; segments follow
     Transcribing,
     /// The hardware the engine settled on, reported once the model has loaded
-    Engine { run: LastRun },
+    Compute { run: LastRun },
     /// The execution provider a browser run settled on, reported before the model runs
-    BrowserEngine { engine: BrowserEngine },
+    BrowserCompute { compute: BrowserCompute },
     /// The platform recognised the spoken language (a Whisper language code)
     LanguageDetected { language: String },
     /// Transcription in progress; `text` is the whole current text of segment `chunk_index`, and
@@ -1221,7 +1221,7 @@ pub trait Platform: Send + Sync + 'static {
 }
 
 #[cfg(test)]
-mod engine_options_tests {
+mod compute_options_tests {
     use super::*;
     use crate::{
         accel::AccelBackend,
@@ -1229,7 +1229,7 @@ mod engine_options_tests {
     };
 
     #[test]
-    fn the_engine_follows_the_performance_and_model_settings() {
+    fn the_compute_follows_the_performance_and_model_settings() {
         let list = vec![
             DevicePreference {
                 key: DeviceKey::new(AccelBackend::Vulkan, "Radeon", 0),
@@ -1241,8 +1241,8 @@ mod engine_options_tests {
         settings.performance.devices = list.clone();
         settings.performance.threads = Some(3);
         assert_eq!(
-            EngineOptions::from_settings(&settings),
-            EngineOptions {
+            ComputeOptions::from_settings(&settings),
+            ComputeOptions {
                 devices: DeviceOrder::saved(list),
                 threads: Some(3),
             }
@@ -1250,10 +1250,10 @@ mod engine_options_tests {
     }
 
     #[test]
-    fn the_default_settings_leave_the_engine_to_choose() {
+    fn the_default_settings_leave_the_compute_to_choose() {
         assert_eq!(
-            EngineOptions::from_settings(&Settings::default()),
-            EngineOptions::default()
+            ComputeOptions::from_settings(&Settings::default()),
+            ComputeOptions::default()
         );
     }
 }

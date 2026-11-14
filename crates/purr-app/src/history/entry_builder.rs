@@ -1,7 +1,7 @@
 //! Turns a finished run into the entry that is saved to History.
 
 use purr_common::{
-    accel::EngineUsed,
+    accel::ComputeUsed,
     history::{
         entry::{
             HistoryEntry, HistoryId, HistorySource, InvalidHistoryId, LanguageOrigin,
@@ -32,7 +32,7 @@ pub struct Finished {
     pub segments: Vec<TranscriptSegment>,
     /// Waveform bars between 0 and 1, when the decoder reported them.
     pub peaks: Vec<f32>,
-    pub engine: Option<EngineUsed>,
+    pub compute: Option<ComputeUsed>,
 }
 
 /// A fresh id for an entry.
@@ -60,7 +60,7 @@ pub fn build(run: Finished) -> HistoryEntry {
         model_label: run.model_label,
         processing_seconds: run.processing_seconds,
         segments: run.segments,
-        engine: run.engine,
+        compute: run.compute,
     }
 }
 
@@ -95,7 +95,7 @@ mod tests {
                 },
             ],
             peaks: vec![0.0, 0.5, 1.0],
-            engine: Some(EngineUsed {
+            compute: Some(ComputeUsed {
                 backend: purr_common::accel::AccelBackend::Cpu,
                 hardware: None,
             }),
@@ -103,8 +103,8 @@ mod tests {
     }
 
     #[test]
-    fn the_engine_the_run_used_is_kept() {
-        assert_eq!(build(finished()).engine, finished().engine);
+    fn the_compute_the_run_used_is_kept() {
+        assert_eq!(build(finished()).compute, finished().compute);
     }
 
     #[test]

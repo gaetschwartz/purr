@@ -3,7 +3,7 @@
 mod glide_driver;
 mod status;
 
-use super::engine_notice::EngineNotice;
+use super::compute_notice::ComputeNotice;
 use crate::{
     components::{
         audio_card::WaveMode,
@@ -22,7 +22,7 @@ use crate::{
     shortcuts::{Key, KeyChord, Shortcut, use_shortcut},
     transcribe::{
         chosen_file::OverviewState,
-        engine_label::EngineLabel,
+        compute_label::ComputeLabel,
         eta::EtaText,
         language_choice::LanguageChoice,
         run::{RunOutcome, Stage},
@@ -244,7 +244,7 @@ pub fn RunView(record: RunRecord) -> Element {
             file_name: record.file.name.clone(),
             duration_seconds: duration,
             notice: rsx! {
-                EngineNotice { record: record.clone() }
+                ComputeNotice { record: record.clone() }
                 if let Some(failure) = failure {
                     Banner {
                         tone: BannerTone::Bad,
@@ -328,10 +328,10 @@ pub fn RunView(record: RunRecord) -> Element {
             facts: TranscriptionFacts {
                 model_label: record.model.label.clone(),
                 language_text: language_text(&record),
-                engine_text: run
-                    .engine
+                compute_text: run
+                    .compute
                     .as_ref()
-                    .map(|last| EngineLabel::ran(last, &probe.read()).to_string()),
+                    .map(|last| ComputeLabel::ran(last, &probe.read()).to_string()),
             },
             more,
             on_more: move |action| match action {

@@ -5,7 +5,7 @@ use purr_common::{
         AccelBackend, BackendReport, BackendStatus, BackendUnavailable, LastRun, PassedOver,
         PassedReason, SystemReport,
     },
-    platform::{DeviceInfo, DeviceType, EngineOptions},
+    platform::{ComputeOptions, DeviceInfo, DeviceType},
 };
 use purr_core::{
     TranscriptionConfig,
@@ -21,10 +21,10 @@ use purr_core::{
 };
 use std::collections::HashMap;
 
-/// `config` run the way `engine` asks.
-pub fn apply_engine(config: TranscriptionConfig, engine: &EngineOptions) -> TranscriptionConfig {
-    let config = config.with_devices(engine.devices.clone());
-    match engine.threads {
+/// `config` run the way `compute` asks.
+pub fn apply_compute(config: TranscriptionConfig, compute: &ComputeOptions) -> TranscriptionConfig {
+    let config = config.with_devices(compute.devices.clone());
+    match compute.threads {
         Some(threads) => config.with_threads(threads as usize),
         None => config,
     }
@@ -163,10 +163,10 @@ mod tests {
     };
 
     #[test]
-    fn the_engine_options_reach_the_core_configuration() {
-        let config = apply_engine(
+    fn the_compute_options_reach_the_core_configuration() {
+        let config = apply_compute(
             TranscriptionConfig::new(),
-            &EngineOptions {
+            &ComputeOptions {
                 devices: DeviceOrder::cpu_only(),
                 threads: Some(5),
             },
@@ -177,7 +177,7 @@ mod tests {
 
     #[test]
     fn without_threads_the_core_chooses() {
-        let config = apply_engine(TranscriptionConfig::new(), &EngineOptions::default());
+        let config = apply_compute(TranscriptionConfig::new(), &ComputeOptions::default());
         assert_eq!(config.num_threads, None);
         assert_eq!(config.devices, DeviceOrder::automatic());
     }

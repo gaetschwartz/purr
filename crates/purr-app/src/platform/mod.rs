@@ -33,7 +33,7 @@ pub mod log_export;
 
 /// Settings and machine probes as purr-core configuration and reports
 #[cfg(feature = "desktop")]
-mod engine_options;
+mod compute_options;
 
 /// Re-export the appropriate platform implementation
 #[cfg(feature = "desktop")]

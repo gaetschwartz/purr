@@ -47,7 +47,7 @@ impl Transcript {
             TranscriptionStatus::Segments { segments } => {
                 self.settled = Some(segments.clone());
             }
-            TranscriptionStatus::BrowserEngine { .. } => {
+            TranscriptionStatus::BrowserCompute { .. } => {
                 self.live.clear();
                 self.tentative = None;
             }
@@ -56,7 +56,7 @@ impl Transcript {
             | TranscriptionStatus::ProcessingAudio
             | TranscriptionStatus::LoadingModel { .. }
             | TranscriptionStatus::Transcribing
-            | TranscriptionStatus::Engine { .. }
+            | TranscriptionStatus::Compute { .. }
             | TranscriptionStatus::LanguageDetected { .. }
             | TranscriptionStatus::Progress(_)
             | TranscriptionStatus::Error { .. }

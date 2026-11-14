@@ -278,7 +278,7 @@ pub struct LastRun {
 
 /// The backend and hardware a saved transcription ran on.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct EngineUsed {
+pub struct ComputeUsed {
     pub backend: AccelBackend,
     /// The device or processor name, when the system gave one.
     pub hardware: Option<String>,

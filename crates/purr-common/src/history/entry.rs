@@ -1,7 +1,7 @@
 //! A saved transcription, and the lighter views of it the lists use.
 
 use super::preview::search_text;
-use crate::{accel::EngineUsed, platform::TranscriptSegment};
+use crate::{accel::ComputeUsed, platform::TranscriptSegment};
 use serde::{Deserialize, Serialize};
 use std::{fmt, path::PathBuf, str::FromStr};
 
@@ -121,8 +121,8 @@ pub struct HistoryEntry {
     pub source: HistorySource,
     /// What ran the transcription; absent for entries saved before it was recorded and in the
     /// browser.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub engine: Option<EngineUsed>,
+    #[serde(default, skip_serializing_if = "Option::is_none", rename = "engine")]
+    pub compute: Option<ComputeUsed>,
 }
 
 impl HistoryEntry {

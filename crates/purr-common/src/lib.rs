@@ -1,7 +1,7 @@
 pub mod accel;
 pub mod adapter_name;
 pub mod audio_overview;
-pub mod browser_engine;
+pub mod browser_compute;
 pub mod devices;
 pub mod export_format;
 pub mod history;

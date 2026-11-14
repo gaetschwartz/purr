@@ -7,7 +7,7 @@ use purr_common::{
 
 /// A non-blocking explanation for a run that moved on to another device.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct EngineNotice {
+pub struct ComputeNotice {
     pub title: String,
     pub detail: String,
 }
@@ -68,13 +68,13 @@ fn capitalised(text: &str) -> String {
     })
 }
 
-fn notice(skipped: &PassedOver, ran: &LastRun) -> EngineNotice {
+fn notice(skipped: &PassedOver, ran: &LastRun) -> ComputeNotice {
     let used = if ran.backend == AccelBackend::Cpu {
         "the CPU".to_owned()
     } else {
         device_phrase(ran.backend, ran.device.as_deref())
     };
-    EngineNotice {
+    ComputeNotice {
         title: format!(
             "{} isn't available, so Purr is using {used}",
             key_phrase(&skipped.key)
@@ -88,7 +88,7 @@ fn notice(skipped: &PassedOver, ran: &LastRun) -> EngineNotice {
 
 /// The notice for a run that moved past a device that could not be used, if one is due.
 #[must_use]
-pub fn fallback_notice(ran: &LastRun) -> Option<EngineNotice> {
+pub fn fallback_notice(ran: &LastRun) -> Option<ComputeNotice> {
     ran.passed_over
         .iter()
         .find(|passed| !routinely_skipped(&passed.reason))
@@ -127,7 +127,7 @@ mod tests {
         );
         assert_eq!(
             fallback_notice(&run),
-            Some(EngineNotice {
+            Some(ComputeNotice {
                 title: "CUDA · NVIDIA GeForce RTX 2070 SUPER isn't available, so Purr is using Vulkan · AMD Radeon(TM) Graphics"
                     .to_owned(),
                 detail: "It was not found on this computer. You can change the device order in Settings."

@@ -2,8 +2,8 @@
 
 use super::{
     chosen_file::{ChosenFile, FileProblem, OverviewState, WAVEFORM_BARS},
+    compute_label::ComputeLabel,
     device_rows::{device_rows, override_for},
-    engine_label::EngineLabel,
     language_choice::LanguageChoice,
     run::{Completion, Run, RunOutcome},
     start_plan::{Blocker, Preparation, blocked_text, prepare},
@@ -36,14 +36,14 @@ use dioxus::{
 };
 use futures::{StreamExt as _, channel::oneshot};
 use purr_common::{
-    accel::EngineUsed,
+    accel::ComputeUsed,
     devices::DeviceKey,
     history::{
         audio::HistoryAudio,
         entry::{HistoryEntry, HistoryId, InvalidHistoryId, LanguageOrigin},
     },
     platform::{
-        EngineOptions, FileId, FileSource, ModelId, Platform as _, PlatformError,
+        ComputeOptions, FileId, FileSource, ModelId, Platform as _, PlatformError,
         TranscriptionRequest, TranscriptionStatus,
     },
 };
@@ -437,7 +437,7 @@ impl TranscribeSession {
     ) -> Option<HistoryId> {
         let language = language.for_model(model.language == Language::EnglishOnly);
         let settings = self.settings.peek();
-        let mut engine = EngineOptions::from_settings(&settings);
+        let mut compute = ComputeOptions::from_settings(&settings);
         let picked = self.device_override.peek().clone();
         let first = match &*self.probe.peek() {
             SystemProbe::Ready(report) => {
@@ -445,12 +445,12 @@ impl TranscribeSession {
             }
             SystemProbe::Checking | SystemProbe::Unavailable => picked,
         };
-        engine.devices = std::mem::take(&mut engine.devices).with_first(first);
+        compute.devices = std::mem::take(&mut compute.devices).with_first(first);
         let request = TranscriptionRequest {
             file: FileSource::Uploaded(file.id.clone()),
             model: ModelId::new(model.id.clone()),
             language: language.request_code(),
-            engine,
+            compute,
             hugging_face_token: settings.model.hugging_face_token.clone(),
         };
         let run = Run::new(language == LanguageChoice::Automatic, now_ms());
@@ -599,16 +599,16 @@ impl TranscribeSession {
 
     fn save_to_history(self, record: &RunRecord, completion: Completion) {
         let overview = self.overviews.peek().get(&record.file.id).cloned();
-        let engine = record
+        let compute = record
             .run
-            .engine
+            .compute
             .as_ref()
-            .map(|last| EngineLabel::used(last, &self.probe.peek()));
+            .map(|last| ComputeLabel::used(last, &self.probe.peek()));
         let entry = entry_builder::build(finished(
             record,
             completion,
             overview.as_ref(),
-            engine,
+            compute,
             unix_ms(),
         ));
         let audio = IS_WEB.then(|| HistoryAudio {
@@ -721,7 +721,7 @@ fn finished(
     record: &RunRecord,
     completion: Completion,
     overview: Option<&OverviewState>,
-    engine: Option<EngineUsed>,
+    compute: Option<ComputeUsed>,
     created_at_ms: i64,
 ) -> Finished {
     let (audio_seconds, peaks) = match overview {
@@ -751,7 +751,7 @@ fn finished(
         audio_seconds,
         segments: record.run.transcript.segments(),
         peaks,
-        engine,
+        compute,
     }
 }
 
