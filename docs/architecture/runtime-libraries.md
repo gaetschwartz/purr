@@ -40,10 +40,14 @@ The command line and the desktop app share one order (`purr_core::accel::runtime
 2. next to the executable: the executable's own folder on Windows, `lib` on Linux, and a `runtime`
    folder on both. This keeps the all-in-one archives working and prefers the libraries that
    shipped with the build;
-3. the per-user folder: `%LOCALAPPDATA%\purr\runtime` on Windows, `~/.local/share/purr/runtime` on
+3. in a build with debug assertions only, the folder the transcribe.cpp build left its libraries in
+   (`Origin::BuildOutput`, see [transcribe.cpp](#transcribecpp-cargo-feature-transcribe)): a
+   `cargo run` or `dx serve` finds them without any setting, wherever the executable was copied to
+   or `dx` rebuilt it;
+4. the per-user folder: `%LOCALAPPDATA%\purr\runtime` on Windows, `~/.local/share/purr/runtime` on
    Linux, shared by every copy of Purr the user runs;
-4. on Windows, `%CUDA_PATH%\bin\x64` and `%CUDA_PATH%\bin`;
-5. the system's own search (`PATH`, the system folders, `ld.so` paths).
+5. on Windows, `%CUDA_PATH%\bin\x64` and `%CUDA_PATH%\bin`;
+6. the system's own search (`PATH`, the system folders, `ld.so` paths).
 
 For each backend the libraries are opened from the first folder that holds all of them, dependencies
 first, so one backend never mixes versions from two places. They stay mapped, so the delay-load
@@ -84,6 +88,20 @@ backend, so it is not in `AccelBackend` or `detect_missing`. It has its own ggml
   the system's search: `ggml.dll` is a name other software puts on `PATH`. The delay-load helper then binds
   to the module that was opened. The failure hook of `purr-core` aborts for any delay-loaded library other
   than the Vulkan loader, so no code path may reach transcribe.cpp unguarded.
+- Only a success is kept for the life of the process. A library that is missing or cannot be opened is looked for
+  again on the next call (the desktop app's "Try again" relies on it): a missing library costs a few file checks and
+  opens nothing, and a library that was opened stays mapped and is never unloaded. A backend registration that found
+  no compute backend is kept too, because transcribe.cpp scans a folder once and answers the same afterwards.
+  `get` loads one call at a time, so the backends are registered once and the log callback is set once.
+- A build with debug assertions also searches the folder where `transcribe-cpp-sys` installed its libraries (`bin`
+  under its `OUT_DIR` on Windows). The build script of `purr-engine-transcribe` reads it from the
+  `DEP_TRANSCRIBE_CPP_RUNTIME_DIR` that cargo hands to the crate depending on `transcribe-cpp`, and `purr-delayload`
+  turns it into `PURR_TRANSCRIBE_BUILD_DIR` only when `CARGO_CFG_DEBUG_ASSERTIONS` is set; the engine reads the variable
+  only under `cfg!(debug_assertions)`. `dx serve` runs the executable from a folder it empties at every build, so
+  without this the libraries in the profile folder are out of reach. A release build has neither the variable nor the
+  folder in its search, and the folder appears in the searched list of the error and of `purr sys` like the others.
+  Consequence: a debug executable copied alone to an empty folder still finds its libraries, so
+  `check-windows-sys.ps1 -ExpectTranscribe` is meant for release builds.
 - `purr sys` prints the outcome under "Engines": loaded (with the folder and the version), `transcribe.dll`
   not found (with the folders searched), found but not loadable (a library it needs, such as the Visual C++
   runtime, is missing), or no compute backend. Its devices appear in the one device list, next to
