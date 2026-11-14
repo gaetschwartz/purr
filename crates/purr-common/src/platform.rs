@@ -351,8 +351,6 @@ pub struct TranscriptionRequest {
     pub model: ModelId,
     /// Optional language (auto-detect if None)
     pub language: Option<String>,
-    /// Whether to translate to English
-    pub translate: bool,
     /// How the engine runs; platforms that do not choose their own hardware ignore it
     pub engine: EngineOptions,
     /// Authenticates the downloads of a model that is not stored yet; desktop only fetches its voice activity model with it

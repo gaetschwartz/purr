@@ -38,10 +38,6 @@ pub struct Cli {
     #[arg(short, long)]
     pub language: Option<Language>,
 
-    /// Translate to English (like whisper.cpp --translate)
-    #[arg(long)]
-    pub translate: bool,
-
     /// Which backend's devices to try first. `auto` keeps the usual order (CUDA, ROCm, CoreML,
     /// Metal, SYCL, Vulkan, CPU). A named backend goes first and the other devices follow as
     /// fallbacks, so `--accel cpu` runs on the CPU alone. Run `purr sys` to see what this build
@@ -415,7 +411,6 @@ impl TranscriptionConfigWithCliExt for purr_core::TranscriptionConfig {
     fn with_cli_options(self, cli: &Cli) -> Self {
         self.with_verbose(cli.verbosity.is_verbose())
             .with_opt_language(cli.language.as_ref().map(Language::code))
-            .with_translate(cli.translate)
             .with_threads(cli.threads.unwrap_or_else(purr_core::config::auto_threads))
             .with_temperature(cli.temperature)
             .with_sample_rate(cli.sample_rate)

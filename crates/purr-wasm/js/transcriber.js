@@ -64,7 +64,7 @@ function createStreamer(transcriber, requestId, segments) {
 }
 
 export async function transcribe(transcriber, request) {
-    const { request_id: requestId, audio, language, translate, english_only: englishOnly } = request;
+    const { request_id: requestId, audio, language, english_only: englishOnly } = request;
     const startedAt = performance.now();
     const segments = [];
     const streamer = createStreamer(transcriber, requestId, segments);
@@ -79,7 +79,7 @@ export async function transcribe(transcriber, request) {
         streamer,
     };
     if (!englishOnly) {
-        options.task = translate ? "translate" : "transcribe";
+        options.task = "transcribe";
         options.language = language ?? (await detectLanguage(transcriber, audio));
         if (!language) {
             emit({ type: "LanguageDetected", request_id: requestId, language: options.language });

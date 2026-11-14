@@ -53,9 +53,6 @@ pub struct ModelSettings {
     pub default_model: Option<String>,
     /// Temperature for model randomness (0.0 = deterministic, 1.0 = creative)
     pub temperature: f64,
-    /// Write English text whatever language is spoken
-    #[serde(default)]
-    pub translate: bool,
     /// Token that authenticates Hugging Face downloads
     #[serde(default, deserialize_with = "HuggingFaceToken::deserialize_optional")]
     pub hugging_face_token: Option<HuggingFaceToken>,
@@ -155,7 +152,6 @@ impl Default for ModelSettings {
             model_name: "base".to_owned(),
             default_model: None,
             temperature: 0.0,
-            translate: false,
             hugging_face_token: None,
         }
     }
@@ -413,20 +409,6 @@ mod tests {
         assert_eq!(ui.export_format, ExportFormat::Srt);
     }
 
-    #[test]
-    fn model_settings_saved_before_translate_still_load() {
-        let saved = r#"{"model_name":"small","temperature":0.0}"#;
-        let model: ModelSettings = serde_json::from_str(saved).unwrap();
-        assert_eq!(
-            model,
-            ModelSettings {
-                model_name: "small".to_owned(),
-                translate: false,
-                ..ModelSettings::default()
-            }
-        );
-    }
-
     fn migrated(saved: &str) -> Settings {
         let mut settings: Settings = toml::from_str(saved).unwrap();
         let stored = settings.version;
@@ -661,13 +643,32 @@ log_file_path = "C:/logs/purr.log"
         );
     }
 
-    fn keys_of(table: &toml::Table, section: &[&str]) -> Vec<String> {
+    fn toml_keys(table: &toml::Table, section: &str) -> Vec<String> {
         let mut at = table;
-        for name in section {
-            at = at[*name].as_table().unwrap();
+        for name in section.split('.') {
+            at = at[name].as_table().unwrap();
         }
         at.keys().cloned().collect()
     }
+
+    fn json_keys(value: &serde_json::Value, section: &str) -> Vec<String> {
+        let mut at = value;
+        for name in section.split('.') {
+            at = &at[name];
+        }
+        let mut keys: Vec<String> = at.as_object().unwrap().keys().cloned().collect();
+        keys.sort_unstable();
+        keys
+    }
+
+    const WRITTEN_MODEL_KEYS: [&str; 2] = ["model_name", "temperature"];
+    const WRITTEN_TRANSCRIPT_KEYS: [&str; 5] = [
+        "layout",
+        "mark_unsure",
+        "show_times",
+        "unsure_share",
+        "word_seek",
+    ];
 
     #[test]
     fn keys_of_removed_options_load_and_are_never_written_again() {
@@ -677,6 +678,7 @@ version = 3
 [model]
 model_name = "small"
 temperature = 0.0
+translate = true
 
 [ui]
 theme = "Dark"
@@ -695,42 +697,36 @@ level = "Info"
 "#;
         let mut settings: Settings = toml::from_str(saved).unwrap();
         assert_eq!(settings.migrate_from_version(3), Ok(()));
+        assert_eq!(settings.model.model_name, "small");
         assert_eq!(settings.ui.transcript.layout, TranscriptLayout::Reading);
         let written: toml::Table =
             toml::from_str(&toml::to_string_pretty(&settings).unwrap()).unwrap();
+        assert_eq!(toml_keys(&written, "model"), WRITTEN_MODEL_KEYS);
         assert_eq!(
-            keys_of(&written, &["ui", "transcript"]),
-            [
-                "layout",
-                "mark_unsure",
-                "show_times",
-                "unsure_share",
-                "word_seek"
-            ]
+            toml_keys(&written, "ui.transcript"),
+            WRITTEN_TRANSCRIPT_KEYS
         );
 
-        let browser = r#"{"version":3,"model":{"model_name":"small","temperature":0.0},
+        let browser = r#"{"version":3,
+            "model":{"model_name":"small","temperature":0.0,"translate":true},
             "ui":{"theme":"Dark","compact_mode":false,"language":"fr",
                   "transcript":{"layout":"Reading","show_beams":true}},
             "performance":{},"logging":{"level":"Info"}}"#;
         let settings: Settings = serde_json::from_str(browser).unwrap();
+        assert_eq!(settings.model.model_name, "small");
         let written = serde_json::to_value(&settings).unwrap();
-        let mut keys: Vec<&str> = written["ui"]["transcript"]
-            .as_object()
-            .unwrap()
-            .keys()
-            .map(String::as_str)
-            .collect();
-        keys.sort_unstable();
         assert_eq!(
-            keys,
-            [
-                "layout",
-                "mark_unsure",
-                "show_times",
-                "unsure_share",
-                "word_seek"
-            ]
+            written["model"],
+            serde_json::json!({
+                "model_name": "small",
+                "default_model": null,
+                "temperature": 0.0,
+                "hugging_face_token": null,
+            })
+        );
+        assert_eq!(
+            json_keys(&written, "ui.transcript"),
+            WRITTEN_TRANSCRIPT_KEYS
         );
     }
 
@@ -755,7 +751,6 @@ level = "Info"
     #[test]
     fn every_setting_survives_a_save_and_a_load() {
         let mut settings = Settings::default();
-        settings.model.translate = true;
         settings.performance.device_defaults = defaults(true, &[AccelBackend::Vulkan]);
         settings.performance.threads = Some(6);
         settings.performance.devices = vec![
@@ -823,8 +818,8 @@ level = "Info"
         let saved = toml::to_string_pretty(&Settings::default())
             .unwrap()
             .replace(
-                "translate = false",
-                "translate = false\nhugging_face_token = \"  \"",
+                "model_name = \"base\"",
+                "model_name = \"base\"\nhugging_face_token = \"  \"",
             );
         let settings: Settings = toml::from_str(&saved).unwrap();
         assert_eq!(settings, Settings::default());
@@ -850,7 +845,7 @@ level = "Info"
         };
         assert_eq!(
             format!("{model:?}"),
-            "ModelSettings { model_name: \"base\", default_model: None, temperature: 0.0, translate: false, \
+            "ModelSettings { model_name: \"base\", default_model: None, temperature: 0.0, \
              hugging_face_token: Some(HuggingFaceToken(<redacted>)) }"
         );
     }

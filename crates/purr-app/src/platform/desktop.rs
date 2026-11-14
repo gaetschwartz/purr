@@ -154,7 +154,6 @@ impl Platform for DesktopPlatformImpl {
         }
         let config = apply_engine(
             purr_core::TranscriptionConfig::new()
-                .with_translate(request.translate)
                 .with_model_path(manager.get_model_path(model))
                 .with_vad_model(vad)
                 .with_opt_language(request.language)

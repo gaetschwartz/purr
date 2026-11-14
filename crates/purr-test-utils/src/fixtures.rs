@@ -121,8 +121,7 @@ impl ConfigFixtures {
         serde_json::json!({
             "model": {
                 "name": "large-v3",
-                "language": "en",
-                "translate": false
+                "language": "en"
             },
             "audio": {
                 "sample_rate": 16000,

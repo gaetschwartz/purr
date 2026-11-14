@@ -8,7 +8,6 @@ use crate::{
         model_picker::ModelPill,
         pick_target::PickTarget,
         slider::Slider,
-        switch::Switch,
         toast::use_toasts,
     },
     platform::IS_WEB,
@@ -16,13 +15,12 @@ use crate::{
 };
 use dioxus::prelude::*;
 
-/// Spoken language, model, translation and decoding options.
+/// Spoken language, model and decoding options.
 #[component]
 pub fn TranscriptionPage() -> Element {
     let settings = use_settings();
     let toasts = use_toasts();
-    let (translate, temperature) =
-        settings.with(|settings| (settings.model.translate, settings.model.temperature));
+    let temperature = settings.with(|settings| settings.model.temperature);
     let temperature_text = format!("{temperature:.1}");
 
     rsx! {
@@ -42,16 +40,6 @@ pub fn TranscriptionPage() -> Element {
                 },
             }
             HuggingFaceTokenItem {}
-            Item {
-                title: "Translate to English",
-                control: rsx! {
-                    Switch {
-                        label: "Translate to English",
-                        checked: translate,
-                        onchange: move |value| report(toasts, settings.update(|s| s.model.translate = value)),
-                    }
-                },
-            }
             if !IS_WEB {
                 Item {
                     title: "Temperature",

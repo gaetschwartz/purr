@@ -450,7 +450,6 @@ impl TranscribeSession {
             file: FileSource::Uploaded(file.id.clone()),
             model: ModelId::new(model.id.clone()),
             language: language.request_code(),
-            translate: settings.model.translate,
             engine,
             hugging_face_token: settings.model.hugging_face_token.clone(),
         };

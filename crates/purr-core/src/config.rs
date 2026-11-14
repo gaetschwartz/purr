@@ -24,9 +24,6 @@ pub struct TranscriptionConfig {
     /// Language code (e.g., "en", "es", "fr")
     pub language: Option<Cow<'static, str>>,
 
-    /// Translate to English (like whisper.cpp --translate flag)
-    pub translate: bool,
-
     /// The devices to try, first to last; the processor is the last resort
     pub devices: DeviceOrder,
 
@@ -105,7 +102,6 @@ impl Default for TranscriptionConfig {
         Self {
             model_path: None, // Will use default model
             language: None,   // Auto-detect
-            translate: false,
             devices: DeviceOrder::automatic(),
             num_threads: None,  // Use system default
             sample_rate: 16000, // Whisper's preferred sample rate
@@ -194,13 +190,6 @@ impl TranscriptionConfig {
     #[must_use]
     pub fn with_verbose(mut self, verbose: bool) -> Self {
         self.verbose = verbose;
-        self
-    }
-
-    /// Enable or disable translation to English
-    #[must_use]
-    pub fn with_translate(mut self, translate: bool) -> Self {
-        self.translate = translate;
         self
     }
 

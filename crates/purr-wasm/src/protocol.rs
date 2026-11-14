@@ -80,7 +80,6 @@ pub enum WorkerRequest {
         model: WorkerModel,
         provider: Provider,
         language: Option<String>,
-        translate: bool,
         english_only: bool,
         #[serde(default, deserialize_with = "HuggingFaceToken::deserialize_optional")]
         hugging_face_token: Option<HuggingFaceToken>,
@@ -256,7 +255,6 @@ mod tests {
             model: model(),
             provider: Provider::Cpu,
             language: Some("fr".to_owned()),
-            translate: false,
             english_only: false,
             hugging_face_token: None,
         };
@@ -274,7 +272,6 @@ mod tests {
                 },
                 "provider": "Cpu",
                 "language": "fr",
-                "translate": false,
                 "english_only": false,
                 "hugging_face_token": null,
             })
@@ -306,7 +303,6 @@ mod tests {
             model: model(),
             provider: Provider::WebGpu,
             language: None,
-            translate: false,
             english_only: false,
             hugging_face_token: HuggingFaceToken::new("hf_dummy"),
         };
@@ -316,7 +312,7 @@ mod tests {
              repo: \"onnx-community/whisper-tiny\", \
              revision: \"ff4177021cc41f7db950912b73ea4fdf7d01d8e7\", \
              encoder_dtype: Fp32, decoder_dtype: Q4, requires_shader_f16: false }, \
-             provider: WebGpu, language: None, translate: false, english_only: false, \
+             provider: WebGpu, language: None, english_only: false, \
              hugging_face_token: Some(HuggingFaceToken(<redacted>)) }"
         );
     }
@@ -328,7 +324,6 @@ mod tests {
             model: model(),
             provider: Provider::WebGpu,
             language: None,
-            translate: true,
             english_only: true,
             hugging_face_token: None,
         };

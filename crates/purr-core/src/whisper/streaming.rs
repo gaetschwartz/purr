@@ -285,7 +285,6 @@ impl Session {
             FullParams::new(SamplingStrategy::Greedy { best_of: 5 })
         };
         params.set_language(Some(language));
-        params.set_translate(self.config.translate);
         params.set_temperature(self.config.temperature);
         params.set_n_threads(self.threads as i32);
         params.set_print_timestamps(false);

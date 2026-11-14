@@ -228,7 +228,6 @@ struct Transcription {
     model_cached: bool,
     bytes: Bytes,
     language: Option<String>,
-    translate: bool,
     hugging_face_token: Option<HuggingFaceToken>,
     devices: DeviceOrder,
 }
@@ -244,7 +243,6 @@ async fn run_transcription(
         model_cached,
         bytes,
         language,
-        translate,
         hugging_face_token,
         devices,
     } = job;
@@ -300,7 +298,6 @@ async fn run_transcription(
             model: WorkerModel::from(&spec),
             provider: choice.provider(),
             language: language.clone(),
-            translate,
             english_only: spec.english_only(),
             hugging_face_token: hugging_face_token.clone(),
         };
@@ -633,7 +630,6 @@ impl Platform for WasmPlatformImpl {
                 model_cached,
                 bytes,
                 language,
-                translate: request.translate,
                 hugging_face_token: request.hugging_face_token,
                 devices: request.engine.devices,
             },
