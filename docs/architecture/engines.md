@@ -24,7 +24,8 @@ purr-cli, purr-app   composition roots: list the engines (`engines.rs`) and forw
 
 ## The engine boundary (`purr_core::engine`)
 
-- `Engine`: `id`, `build_info` (backends and CPU instruction sets compiled in), `devices` (its own
+- `Engine`: `id`, `availability` (whether its software can be used, see below), `build_info`
+  (backends and CPU instruction sets compiled in), `devices` (its own
   device list; a device's id is its index there), `open` (load a model on one planned device),
   `open_speech_detector`, `install_logging`.
 - `WindowDecoder`: one loaded model. `decode(DecodeRequest)` takes 16 kHz mono samples, a
@@ -48,6 +49,33 @@ the devices it listed.
 devices. The order matters: listing devices registers ggml's backends, and their delay-loaded
 imports must bind to the libraries Purr opened from its search directories. Anything that makes an
 engine touch its devices goes through `Inventory::detect` first.
+
+## Devices across engines
+
+Each engine has its own ggml, so a device's index is a position in one engine's list and a saved
+device (`DeviceKey`: backend, name, occurrence) means the same device to every engine.
+
+- `Engine::availability` says whether the engine's software can be used: `Loaded` (with a version
+  and the folder it came from, when it has them) or the typed `EngineUnavailable` (library missing,
+  library not loadable, no compute backend). An engine linked into the executable is always loaded.
+- `accel::engine_report::EngineReport::of(engine)` is one engine's whole report: availability, its
+  `Inventory` (build, devices, runtime libraries) and the devices a run can use. `reports(engines,
+  expected)` makes one per engine, and one marked `NotBuilt` for each `expected` engine that is not
+  in the list. Only a loaded engine lists devices; asking it is what loads its library.
+- `accel::hardware::merge(reports)` is the union that `purr sys` and the Hardware page show: one
+  `HardwareDevice` per physical device, with a `Sighting` (engine, the engine's own key and index)
+  for every engine that lists it. Two entries are the same device when the backend and name agree
+  and, if both report a PCI id, the ids agree, else the position among devices of that name agrees;
+  the processor is always one device. A merged key is the first engine's key and is unique in the
+  list. `hardware::backend_status` says a backend runs when any loaded engine runs it.
+- The union is for reporting and for the user's order. A run never builds it: `open_on_best_device`
+  asks only the engine that runs the model, so the plan, `OpenSpec::devices` and the device indexes
+  are that engine's. A device of the saved order that this engine does not list is a skipped step
+  with the engine's own reason, recorded in the `AccelReport`.
+- `--device` is resolved against the engine that runs the model (`DeviceSelector::resolve` takes its
+  `EngineDevices` and the other engines'). Matching nothing there is `SelectorError::NoMatch`, or
+  `SelectorError::NotOnEngine` when another engine lists a device the selector describes; an index is
+  never looked for in another engine's list.
 
 ## The pipeline (`purr_core::pipeline`)
 
@@ -101,8 +129,8 @@ Input (file, URL, AudioStream)
   the system's search, then has transcribe.cpp load its backend modules from that folder. See there for why.
 - `id`, `build_info` and `install_logging` do not touch the library (`install_logging` only records the
   request; the log callback is set right after the library is loaded). `devices` loads it and lists the
-  devices of transcribe.cpp's own registry, which are not the ones `--device` indexes. `availability()`
-  is the typed outcome that `purr sys` prints under "Other engines".
+  devices of transcribe.cpp's own registry, which are not the ones `--device` indexes for a whisper.cpp
+  model. `availability()` is the typed outcome that `purr sys` prints under "Engines".
 - `open` and `open_speech_detector` return an `OpenError::Engine` that says the engine cannot decode yet.
 
 ## Adding an engine

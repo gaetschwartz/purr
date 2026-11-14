@@ -84,10 +84,11 @@ backend, so it is not in `AccelBackend` or `detect_missing`. It has its own ggml
   the system's search: `ggml.dll` is a name other software puts on `PATH`. The delay-load helper then binds
   to the module that was opened. The failure hook of `purr-core` aborts for any delay-loaded library other
   than the Vulkan loader, so no code path may reach transcribe.cpp unguarded.
-- `purr sys` prints the outcome under "Other engines": loaded (with the folder, the version and the
-  devices), `transcribe.dll` not found (with the folders searched), found but not loadable (a library it
-  needs, such as the Visual C++ runtime, is missing), or no compute backend. `scripts/check-windows-sys.ps1
-  -ExpectTranscribe` checks the first two on a copy of the executable alone and on one with the libraries.
+- `purr sys` prints the outcome under "Engines": loaded (with the folder and the version), `transcribe.dll`
+  not found (with the folders searched), found but not loadable (a library it needs, such as the Visual C++
+  runtime, is missing), or no compute backend. Its devices appear in the one device list, next to
+  whisper.cpp's, with the engines that see each. `scripts/check-windows-sys.ps1 -ExpectTranscribe` checks
+  the first two on a copy of the executable alone and on one with the libraries.
 - The libraries are built with the dynamic C and C++ runtime (`/MD`, `transcribe-cpp-sys` does not follow
   `crt-static`), so they import `VCRUNTIME140.dll`, `VCRUNTIME140_1.dll` and `MSVCP140.dll`. The
   executable still does not. Without the Visual C++ Redistributable the engine reports itself as not loadable
