@@ -89,9 +89,8 @@ scores it, and does not translate. `purr models download <id>` fetches one of:
 | Whisper (`tiny` to `large-v3-turbo`) | MIT | [OpenAI](https://github.com/openai/whisper) |
 | Parakeet TDT v3 | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | [NVIDIA parakeet-tdt-0.6b-v3](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3), converted to GGUF by [handy-computer](https://huggingface.co/handy-computer/parakeet-tdt-0.6b-v3-gguf) for transcribe.cpp; the quantized files store the weights at reduced numeric precision, and nothing was retrained |
 
-`purr models list --available` shows each model's engine, languages, quantization, size and license,
-and `purr models info <id>` prints the same license and credit for a model. The Models screen shows the
-credit under the Parakeet section.
+`purr models info <id>` prints the license and credit for a model. The app lists the credit under
+the Models section of its Licenses page.
 
 ## Installation
 

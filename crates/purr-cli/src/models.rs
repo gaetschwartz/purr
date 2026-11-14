@@ -164,14 +164,13 @@ async fn list_downloaded(manager: &ModelManager) -> miette::Result<()> {
         let path = manager.get_model_path(spec);
         match status {
             ModelFileStatus::Present => resultln!(
-                "  {} - {} ({}, {}, {}, {}, {})",
+                "  {} - {} ({}, {}, {}, {})",
                 spec.id.name(),
                 spec.description.muted(),
                 HumanBytes(spec.file.size_bytes).quantity(),
                 spec.engine,
                 profile_text::languages_summary(&spec.profile.languages),
-                spec.quantization,
-                spec.family.attribution().license.label()
+                spec.quantization
             )?,
             ModelFileStatus::SizeMismatch { expected, actual } => resultln!(
                 "  {} - {} (has {}, expected {}; download it again)",
@@ -210,13 +209,10 @@ async fn list_available(manager: &ModelManager) -> miette::Result<()> {
         .unwrap_or_default();
 
     for group in registry.groups() {
-        let attribution = group.family.attribution();
         resultln!(
-            "  {} - {} ({}, {})",
+            "  {} - {}",
             group.family.to_string().name(),
-            group.family.summary(),
-            attribution.license.label(),
-            attribution.author
+            group.family.summary()
         )?;
 
         for spec in group.models {
