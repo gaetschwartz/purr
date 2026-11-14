@@ -60,3 +60,5 @@ jobs:
           lib_dir="$(dirname "$(find target/debug/build -name 'libtranscribe.so*' -print -quit)")"
           LD_LIBRARY_PATH="$lib_dir" target/debug/purr sys --json \
             | jq -e '.engines[] | select(.engine == "transcribe-cpp") | .status.ready.devices | length > 0'
+          LD_LIBRARY_PATH="$lib_dir" target/debug/purr sys --json \
+            | jq -e '[.hardware[] | select(.seen_by | map(.engine) | index("whisper-cpp") and index("transcribe-cpp"))] | length > 0'

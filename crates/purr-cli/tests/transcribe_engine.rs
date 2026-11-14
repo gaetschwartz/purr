@@ -33,4 +33,17 @@ fn sys_json_lists_the_transcribe_engine_with_its_devices() {
             .iter()
             .any(|device| device["backend"] == "cpu")
     );
+
+    let engines_of_cpu: Vec<&str> = report["hardware"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|device| device["backend"] == "cpu")
+        .unwrap()["seen_by"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|sighting| sighting["engine"].as_str().unwrap())
+        .collect();
+    assert_eq!(engines_of_cpu, ["whisper-cpp", "transcribe-cpp"]);
 }

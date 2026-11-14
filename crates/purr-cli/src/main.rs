@@ -5,7 +5,7 @@ mod build_info;
 mod cli;
 mod color;
 mod download_prompt;
-mod engine_report;
+mod engine_status;
 mod engines;
 mod global;
 mod json;
@@ -30,8 +30,11 @@ use cli::{ASCII_ART, Cli, Commands, OutputFormat};
 use futures::StreamExt as _;
 use indicatif::{ProgressBar, ProgressFinish, ProgressStyle};
 use miette::IntoDiagnostic as _;
+use purr_common::devices::DeviceOrder;
 use purr_common::platform::ChunkKind;
-use purr_core::accel::inventory::Inventory;
+use purr_core::accel::engine_report::{EngineReport, reports};
+use purr_core::accel::selector::EngineDevices;
+use purr_core::engine::Engine;
 use purr_core::{
     ModelManager,
     config::{ModelRef, RunConfig, Windowing},
@@ -46,6 +49,7 @@ use purr_core::{
 use std::borrow::Cow;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+use std::sync::Arc;
 use tracing::{debug, info};
 
 const APP_NAME: &str = env!("CARGO_BIN_NAME");
@@ -103,7 +107,7 @@ async fn main_impl() -> miette::Result<()> {
     info!("Input: {audio_input} ({kind})");
     statusln!("{} {} ({kind})", "Transcribing:".info(), audio_input.path());
 
-    let (config, model) = setup_config(cli).await?;
+    let (config, model) = setup_config(cli, &engines).await?;
 
     if let Some(lang) = &config.language {
         info!("Language: {lang}");
@@ -277,13 +281,41 @@ fn format_srt_time(seconds: f64) -> String {
     format!("{hours:02}:{minutes:02}:{secs:02},{millis:03}")
 }
 
-async fn setup_config(cli: &Cli) -> miette::Result<(RunConfig, ModelRef)> {
+/// `--device` resolved against the devices of the engine that runs `model`.
+fn device_order_for(
+    cli: &Cli,
+    engines: &[Arc<dyn Engine>],
+    model: &ModelRef,
+) -> miette::Result<DeviceOrder> {
+    let found = reports(engines, &[]);
+    let nothing = [];
+    let own = found
+        .iter()
+        .find(|report| report.engine == model.engine)
+        .map_or(
+            EngineDevices {
+                engine: model.engine,
+                devices: &nothing,
+            },
+            EngineReport::listed,
+        );
+    let others: Vec<EngineDevices<'_>> = found
+        .iter()
+        .filter(|report| report.engine != model.engine)
+        .map(EngineReport::listed)
+        .collect();
+    cli.device_order_among(own, &others).into_diagnostic()
+}
+
+async fn setup_config(
+    cli: &Cli,
+    engines: &[Arc<dyn Engine>],
+) -> miette::Result<(RunConfig, ModelRef)> {
     let model = setup_model(cli).await?;
 
     let mut config = cli.run_config();
     if cli.device.is_some() {
-        let detected = purr_core::accel::devices::detect(&Inventory::detect(&engines::hardware()));
-        config = config.with_devices(cli.device_order_among(&detected).into_diagnostic()?);
+        config = config.with_devices(device_order_for(cli, engines, &model)?);
     }
 
     if config.vad_model.is_none() {

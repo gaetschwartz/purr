@@ -1,148 +1,149 @@
-//! What `purr sys` says about the engines other than the one whose devices it lists.
+//! What `purr sys` says about each engine: its status lines and its place in the JSON report.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-use purr_common::model::engine::EngineId;
-use purr_core::dev::Device;
+use purr_common::{
+    accel::{EngineAvailability, EngineUnavailable, LoadedEngine},
+    model::engine::EngineId,
+};
+use purr_core::{accel::engine_report::EngineReport, dev::Device};
 use serde::Serialize;
 
-use crate::sys_report;
-
-#[derive(Debug, Clone, Serialize)]
-pub struct EngineReport {
-    pub engine: EngineId,
-    pub status: EngineStatus,
+#[derive(Debug, Serialize)]
+pub struct EngineJson<'a> {
+    engine: EngineId,
+    status: StatusJson<'a>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Serialize)]
 #[serde(rename_all = "snake_case")]
-#[cfg_attr(
-    not(feature = "transcribe"),
-    allow(dead_code, reason = "only the engines built in construct them")
-)]
-pub enum EngineStatus {
+enum StatusJson<'a> {
     Ready {
-        version: String,
-        directory: Option<PathBuf>,
-        devices: Vec<Device>,
+        version: Option<&'a str>,
+        directory: Option<&'a Path>,
+        devices: &'a [Device],
     },
     LibraryMissing {
-        library: String,
-        searched: Vec<PathBuf>,
+        library: &'a str,
+        searched: &'a [PathBuf],
     },
     LibraryUnloadable {
-        library: String,
-        directory: PathBuf,
+        library: &'a str,
+        directory: &'a Path,
     },
     NoBackend {
-        reason: String,
+        reason: &'a str,
     },
+    NotBuilt,
 }
 
-impl EngineReport {
-    /// The lines of the report, the first one naming the engine and its state.
-    pub fn lines(&self) -> Vec<String> {
-        let name = self.engine.label();
-        match &self.status {
-            EngineStatus::Ready {
-                version,
+impl<'a> From<&'a EngineReport> for EngineJson<'a> {
+    fn from(report: &'a EngineReport) -> Self {
+        let status = match &report.availability {
+            EngineAvailability::Loaded(loaded) => StatusJson::Ready {
+                version: loaded.version.as_deref(),
+                directory: loaded.directory.as_deref(),
+                devices: &report.inventory.devices,
+            },
+            EngineAvailability::NotBuilt => StatusJson::NotBuilt,
+            EngineAvailability::Unavailable(EngineUnavailable::LibraryMissing {
+                library,
+                searched,
+            }) => StatusJson::LibraryMissing { library, searched },
+            EngineAvailability::Unavailable(EngineUnavailable::LibraryUnloadable {
+                library,
                 directory,
-                devices,
-            } => {
-                let origin = directory.as_ref().map_or_else(
-                    || "linked into the executable".to_owned(),
-                    |dir| format!("loaded from {}", dir.display()),
-                );
-                let mut lines = vec![format!("{name} - Available (version {version}, {origin})")];
-                if devices.is_empty() {
-                    lines.push("  No devices found.".to_owned());
-                }
-                for device in devices {
-                    lines.push(String::new());
-                    lines.extend(
-                        sys_report::device_lines(device, &[])
-                            .into_iter()
-                            .map(|line| format!("  {line}")),
-                    );
-                }
-                lines
+            }) => StatusJson::LibraryUnloadable { library, directory },
+            EngineAvailability::Unavailable(EngineUnavailable::NoBackend { detail }) => {
+                StatusJson::NoBackend { reason: detail }
             }
-            EngineStatus::LibraryMissing { library, searched } => {
-                let searched = searched
-                    .iter()
-                    .map(|dir| dir.display().to_string())
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                vec![
-                    format!("{name} - Not loadable: the library {library} was not found"),
-                    format!("  looked in {searched}"),
-                ]
-            }
-            EngineStatus::LibraryUnloadable { library, directory } => vec![format!(
-                "{name} - Not loadable: {library} in {} cannot be loaded, a library it needs may be missing",
-                directory.display()
-            )],
-            EngineStatus::NoBackend { reason } => {
-                vec![format!(
-                    "{name} - Not loadable: it registered no compute backend ({reason})"
-                )]
-            }
+        };
+        Self {
+            engine: report.engine,
+            status,
         }
     }
 }
 
-#[cfg(feature = "transcribe")]
-pub fn transcribe() -> EngineReport {
-    use purr_core::engine::Engine as _;
-    use purr_engine_transcribe::{engine::TranscribeEngine, runtime::Unavailable};
+fn loaded_line(name: &str, loaded: &LoadedEngine) -> String {
+    let origin = loaded.directory.as_ref().map_or_else(
+        || "linked into the executable".to_owned(),
+        |dir| format!("loaded from {}", dir.display()),
+    );
+    match &loaded.version {
+        Some(version) => format!("{name} - Available (version {version}, {origin})"),
+        None => format!("{name} - Available ({origin})"),
+    }
+}
 
-    let engine = TranscribeEngine;
-    let status = match engine.availability() {
-        Ok(runtime) => EngineStatus::Ready {
-            version: runtime.version.clone(),
-            directory: runtime.directory.clone(),
-            devices: engine.devices(),
-        },
-        Err(Unavailable::LibraryMissing { library, searched }) => EngineStatus::LibraryMissing {
-            library: library.clone(),
-            searched: searched.clone(),
-        },
-        Err(Unavailable::LibraryUnloadable { library, directory }) => {
-            EngineStatus::LibraryUnloadable {
-                library: library.clone(),
-                directory: directory.clone(),
+/// The lines of the report, the first one naming the engine and its state.
+pub fn lines(report: &EngineReport) -> Vec<String> {
+    let name = report.engine.label();
+    match &report.availability {
+        EngineAvailability::Loaded(loaded) => {
+            let mut lines = vec![loaded_line(name, loaded)];
+            if report.inventory.devices.is_empty() {
+                lines.push("  No devices found.".to_owned());
             }
+            lines
         }
-        Err(error @ Unavailable::Backends(_)) => EngineStatus::NoBackend {
-            reason: error.to_string(),
-        },
-    };
-    EngineReport {
-        engine: engine.id(),
-        status,
+        EngineAvailability::NotBuilt => vec![format!("{name} - Not built into this copy of Purr")],
+        EngineAvailability::Unavailable(EngineUnavailable::LibraryMissing {
+            library,
+            searched,
+        }) => {
+            let searched = searched
+                .iter()
+                .map(|dir| dir.display().to_string())
+                .collect::<Vec<_>>()
+                .join(", ");
+            vec![
+                format!("{name} - Not loadable: the library {library} was not found"),
+                format!("  looked in {searched}"),
+            ]
+        }
+        EngineAvailability::Unavailable(EngineUnavailable::LibraryUnloadable {
+            library,
+            directory,
+        }) => vec![format!(
+            "{name} - Not loadable: {library} in {} cannot be loaded, a library it needs may be missing",
+            directory.display()
+        )],
+        EngineAvailability::Unavailable(EngineUnavailable::NoBackend { detail }) => {
+            vec![format!(
+                "{name} - Not loadable: it registered no compute backend ({detail})"
+            )]
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use pretty_assertions::assert_eq;
+    use purr_core::accel::inventory::Inventory;
+    use serde_json::json;
 
     use super::*;
 
-    fn report(status: EngineStatus) -> EngineReport {
-        EngineReport {
-            engine: EngineId::TranscribeCpp,
-            status,
-        }
+    fn report(availability: EngineAvailability) -> EngineReport {
+        EngineReport::new(EngineId::TranscribeCpp, availability, Inventory::default())
+    }
+
+    fn loaded(version: Option<&str>, directory: Option<&str>) -> EngineAvailability {
+        EngineAvailability::Loaded(LoadedEngine {
+            version: version.map(str::to_owned),
+            directory: directory.map(PathBuf::from),
+        })
     }
 
     #[test]
     fn a_missing_library_names_it_and_where_it_was_looked_for() {
-        let lines = report(EngineStatus::LibraryMissing {
-            library: "transcribe.dll".to_owned(),
-            searched: vec![PathBuf::from("/a"), PathBuf::from("/b")],
-        })
-        .lines();
+        let lines = lines(&report(EngineAvailability::Unavailable(
+            EngineUnavailable::LibraryMissing {
+                library: "transcribe.dll".to_owned(),
+                searched: vec![PathBuf::from("/a"), PathBuf::from("/b")],
+            },
+        )));
         assert_eq!(
             lines,
             [
@@ -153,15 +154,26 @@ mod tests {
     }
 
     #[test]
-    fn a_loaded_engine_without_devices_says_so() {
-        let lines = report(EngineStatus::Ready {
-            version: "0.4.2".to_owned(),
-            directory: None,
-            devices: Vec::new(),
-        })
-        .lines();
+    fn a_loaded_engine_says_where_it_came_from() {
         assert_eq!(
-            lines,
+            lines(&report(loaded(Some("0.4.2"), Some("/runtime"))))
+                .into_iter()
+                .next(),
+            Some(
+                "transcribe.cpp engine - Available (version 0.4.2, loaded from /runtime)"
+                    .to_owned()
+            )
+        );
+        assert_eq!(
+            lines(&report(loaded(None, None))).into_iter().next(),
+            Some("transcribe.cpp engine - Available (linked into the executable)".to_owned())
+        );
+    }
+
+    #[test]
+    fn a_loaded_engine_without_devices_says_so() {
+        assert_eq!(
+            lines(&report(loaded(Some("0.4.2"), None))),
             [
                 "transcribe.cpp engine - Available (version 0.4.2, linked into the executable)",
                 "  No devices found.",
@@ -170,32 +182,37 @@ mod tests {
     }
 
     #[test]
-    fn a_loaded_engine_lists_each_device_indented() {
-        let device = Device {
-            id: 0,
-            name: "CPU".to_owned(),
-            description: String::new(),
-            device_id: None,
-            vram_free: 0,
-            vram_total: 0,
-            tpe: purr_common::platform::DeviceType::Cpu,
-            backend: Some(purr_core::accel::backend::AccelBackend::Cpu),
-            caps: None,
-            vulkan_driver: None,
-        };
-        let lines = report(EngineStatus::Ready {
-            version: "0.4.2".to_owned(),
-            directory: Some(PathBuf::from("/runtime")),
-            devices: vec![device],
-        })
-        .lines();
+    fn an_engine_that_is_not_built_says_so() {
         assert_eq!(
-            lines.into_iter().take(3).collect::<Vec<_>>(),
-            [
-                "transcribe.cpp engine - Available (version 0.4.2, loaded from /runtime)",
-                "",
-                "  Device 0 - CPU",
-            ]
+            lines(&report(EngineAvailability::NotBuilt)),
+            ["transcribe.cpp engine - Not built into this copy of Purr"]
+        );
+    }
+
+    #[test]
+    fn the_json_keeps_the_status_names_ci_looks_for() {
+        let missing = serde_json::to_value(EngineJson::from(&report(
+            EngineAvailability::Unavailable(EngineUnavailable::LibraryMissing {
+                library: "transcribe.dll".to_owned(),
+                searched: Vec::new(),
+            }),
+        )))
+        .unwrap();
+        assert_eq!(
+            missing,
+            json!({
+                "engine": "transcribe-cpp",
+                "status": { "library_missing": { "library": "transcribe.dll", "searched": [] } }
+            })
+        );
+        let ready =
+            serde_json::to_value(EngineJson::from(&report(loaded(Some("0.4.2"), None)))).unwrap();
+        assert_eq!(
+            ready,
+            json!({
+                "engine": "transcribe-cpp",
+                "status": { "ready": { "version": "0.4.2", "directory": null, "devices": [] } }
+            })
         );
     }
 }

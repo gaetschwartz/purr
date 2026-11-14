@@ -1,5 +1,6 @@
 //! `purr sys`: the report is the command's result, on stdout in every mode.
 
+use crate::engine_status;
 use crate::resultln;
 use crate::runtime;
 use crate::sys_report;
@@ -7,6 +8,7 @@ use crate::theme::{self, Role, Themed as _};
 use miette::IntoDiagnostic as _;
 use purr_core::SystemInfo;
 use purr_core::accel::backend::AccelBackend;
+use purr_core::accel::engine_report;
 use purr_core::dev::FeatureStatus;
 use std::borrow::Cow;
 
@@ -33,11 +35,11 @@ fn feature_status(
 }
 
 pub fn handle(json: bool) -> miette::Result<()> {
-    let sys = SystemInfo::get(&crate::engines::hardware());
-    let engines = crate::engines::reports();
+    let reports = engine_report::reports(&crate::engines::all(), &[]);
+    let sys = SystemInfo::of(&reports);
 
     if json {
-        resultln!("{}", sys_report::json(&sys, &engines).into_diagnostic()?)?;
+        resultln!("{}", sys_report::json(&sys, &reports).into_diagnostic()?)?;
         return Ok(());
     }
 
@@ -70,13 +72,25 @@ pub fn handle(json: bool) -> miette::Result<()> {
     }
     resultln!()?;
 
+    if sys_report::is_union(&reports) {
+        resultln!("{}", "Engines:".heading())?;
+        resultln!()?;
+        for report in &reports {
+            for line in engine_status::lines(report) {
+                resultln!("{line}")?;
+            }
+        }
+        resultln!()?;
+    }
+
     resultln!(
         "{}",
         "Devices (pick one with --device INDEX, or --device BACKEND/TYPE/ID):".heading()
     )?;
     resultln!()?;
 
-    if sys.devices.is_empty() {
+    let blocks = sys_report::device_blocks(&sys, &reports);
+    if blocks.is_empty() {
         resultln!("{}", "No devices found.".warning())?;
         resultln!("To enable GPU support, ensure:")?;
         resultln!("  • Vulkan drivers are installed")?;
@@ -84,17 +98,9 @@ pub fn handle(json: bool) -> miette::Result<()> {
         resultln!("  • Vulkan feature is enabled (use --features vulkan)")?;
         resultln!()?;
     } else {
-        for device in &sys.devices {
-            let picked_for: Vec<_> = AccelBackend::DEFAULT_PRIORITY
-                .iter()
-                .copied()
-                .filter(|backend| sys.picked_gpus.get(backend) == Some(&device.id))
-                .collect();
-            let mut lines = sys_report::device_lines(device, &picked_for).into_iter();
-            if let Some(headline) = lines.next() {
-                resultln!("{}", headline.name())?;
-            }
-            for line in lines {
+        for block in blocks {
+            resultln!("{}", block.headline.name())?;
+            for line in block.details {
                 resultln!("{line}")?;
             }
             resultln!()?;
@@ -109,17 +115,6 @@ pub fn handle(json: bool) -> miette::Result<()> {
     }
     for line in lines {
         resultln!("{line}")?;
-    }
-
-    if !engines.is_empty() {
-        resultln!()?;
-        resultln!("{}", "Other engines:".heading())?;
-        for report in &engines {
-            resultln!()?;
-            for line in report.lines() {
-                resultln!("{line}")?;
-            }
-        }
     }
 
     Ok(())

@@ -13,8 +13,7 @@ use purr_common::language::choice::LanguageChoice;
 use purr_core::{
     accel::{
         backend::AccelBackend,
-        devices::DetectedDevice,
-        selector::{DeviceSelector, SelectorError},
+        selector::{DeviceSelector, EngineDevices, SelectorError},
     },
     config::{InputConfig, RunConfig},
 };
@@ -383,16 +382,18 @@ impl Cli {
         })
     }
 
-    /// [`Self::device_order`] with the `--device` device in front, found among `detected`.
+    /// [`Self::device_order`] with the `--device` device in front, found among the devices of the
+    /// engine that runs the model.
     pub fn device_order_among(
         &self,
-        detected: &[DetectedDevice],
+        own: EngineDevices<'_>,
+        others: &[EngineDevices<'_>],
     ) -> Result<DeviceOrder, SelectorError> {
         let order = self.device_order();
         match &self.device {
             None => Ok(order),
             Some(selector) => {
-                let device = selector.resolve(detected)?;
+                let device = selector.resolve(own, others)?;
                 Ok(order.with_first(Some(device.key.clone())))
             }
         }
@@ -445,6 +446,8 @@ pub const ASCII_ART: &str = r"
 #[cfg(test)]
 mod tests {
     use super::*;
+    use purr_common::model::engine::EngineId;
+    use purr_core::accel::devices::DetectedDevice;
 
     fn cli_of(args: &[&str]) -> Cli {
         let args = ["purr", "audio.wav"]
@@ -466,6 +469,13 @@ mod tests {
             .into_iter()
             .chain(args.iter().copied());
         Cli::try_parse_from(args).unwrap_err().kind()
+    }
+
+    fn whisper(devices: &[DetectedDevice]) -> EngineDevices<'_> {
+        EngineDevices {
+            engine: EngineId::WhisperCpp,
+            devices,
+        }
     }
 
     fn detected_workstation() -> Vec<DetectedDevice> {
@@ -576,7 +586,7 @@ mod tests {
     fn the_selected_device_goes_first_among_the_detected_ones() {
         let detected = detected_workstation();
         let order = cli_of(&["--device", "type=igpu"])
-            .device_order_among(&detected)
+            .device_order_among(whisper(&detected), &[])
             .unwrap();
         let igpu = detected
             .iter()
@@ -589,8 +599,27 @@ mod tests {
     fn an_ambiguous_device_is_an_error_not_a_guess() {
         let detected = detected_workstation();
         assert!(matches!(
-            cli_of(&["--device", "backend=vulkan"]).device_order_among(&detected),
+            cli_of(&["--device", "backend=vulkan"]).device_order_among(whisper(&detected), &[]),
             Err(SelectorError::Ambiguous { .. })
+        ));
+    }
+
+    #[test]
+    fn a_device_the_models_engine_lacks_is_an_error_not_a_silent_fallback() {
+        let detected = detected_workstation();
+        let processor_only: Vec<_> = detected
+            .iter()
+            .filter(|device| device.backend == AccelBackend::Cpu)
+            .cloned()
+            .collect();
+        let transcribe = EngineDevices {
+            engine: EngineId::TranscribeCpp,
+            devices: &processor_only,
+        };
+        assert!(matches!(
+            cli_of(&["--device", "type=igpu"])
+                .device_order_among(transcribe, &[whisper(&detected)]),
+            Err(SelectorError::NotOnEngine { .. })
         ));
     }
 

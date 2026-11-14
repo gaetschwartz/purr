@@ -79,9 +79,12 @@ if ($ExpectTranscribe) {
     Require ($null -ne $engine) 'purr sys --json does not list the transcribe.cpp engine'
     Require ($engine.status.library_missing.library -eq 'transcribe.dll') 'the transcribe.cpp engine is not reported as missing transcribe.dll'
     Require ($human -match 'transcribe\.cpp engine - Not loadable') 'purr sys does not say the transcribe.cpp engine is not loadable'
+    Require (@(($json | ConvertFrom-Json).hardware | Where-Object { $_.seen_by.engine -contains 'transcribe-cpp' }).Count -eq 0) 'purr sys --json lists a device for the transcribe.cpp engine that cannot be loaded'
     Require ($loadedExitCode -eq 0) "purr sys exited with $loadedExitCode next to the transcribe.cpp libraries"
     $loaded = @(($loadedJson | ConvertFrom-Json).engines) | Where-Object { $_.engine -eq 'transcribe-cpp' }
     Require ($loaded.status.ready.version -match '^\d+\.\d+\.\d+') 'the transcribe.cpp engine is not loaded next to its libraries'
     Require (@($loaded.status.ready.devices).Count -ge 1) 'the transcribe.cpp engine lists no device next to its libraries'
+    $shared = @(($loadedJson | ConvertFrom-Json).hardware | Where-Object { $_.seen_by.engine -contains 'whisper-cpp' -and $_.seen_by.engine -contains 'transcribe-cpp' })
+    Require ($shared.Count -ge 1) 'no device is seen by both the whisper.cpp and the transcribe.cpp engine next to the libraries'
 }
 if ($failed) { exit 1 }
