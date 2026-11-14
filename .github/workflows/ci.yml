@@ -57,8 +57,20 @@ jobs:
       - name: The transcribe.cpp engine lists its devices in the CLI
         run: |
           cargo build -p purr-cli --features static-ffmpeg,transcribe
-          lib_dir="$(dirname "$(find target/debug/build -name 'libtranscribe.so*' -print -quit)")"
+          lib_dir="$(dirname "$(find target/debug/build -path '*/out/lib/libtranscribe.so' -print -quit)")"
           LD_LIBRARY_PATH="$lib_dir" target/debug/purr sys --json \
             | jq -e '.engines[] | select(.engine == "transcribe-cpp") | .status.ready.devices | length > 0'
           LD_LIBRARY_PATH="$lib_dir" target/debug/purr sys --json \
             | jq -e '[.hardware[] | select(.seen_by | map(.engine) | index("whisper-cpp") and index("transcribe-cpp"))] | length > 0'
+      - name: The two engines keep their own ggml
+        run: |
+          if nm -D target/debug/purr | grep -E ' (ggml|gguf)_'; then
+            echo "::error::purr exports or imports ggml symbols, so libtranscribe can bind to the ggml inside the executable"
+            exit 1
+          fi
+          lib_dir="$(dirname "$(find target/debug/build -path '*/out/lib/libtranscribe.so' -print -quit)")"
+          LD_LIBRARY_PATH="$lib_dir" LD_DEBUG=bindings LD_DEBUG_OUTPUT=bindings target/debug/purr sys --json > /dev/null
+          if cat bindings.* | grep -E 'binding file [^ ]*lib(transcribe|ggml)[^ ]* \[0\] to [^ ]*/purr \[0\]'; then
+            echo "::error::a transcribe.cpp library bound a symbol to the executable"
+            exit 1
+          fi
