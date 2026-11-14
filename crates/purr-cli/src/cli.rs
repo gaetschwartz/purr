@@ -19,7 +19,7 @@ use purr_core::{
 };
 use std::{ffi::OsStr, path::PathBuf, str::FromStr as _};
 
-const ABOUT: &str = "😸 Transcribe audio files and URLs using Whisper AI";
+const ABOUT: &str = "😸 Transcribe audio files and URLs on this computer";
 #[derive(Parser, Debug)]
 #[command(name = env!("CARGO_BIN_NAME"), bin_name = env!("CARGO_BIN_NAME"), author = env!("CARGO_PKG_AUTHORS"))]
 #[command(about = ABOUT)]
@@ -37,14 +37,12 @@ pub struct Cli {
     #[arg(short, long)]
     pub model: Option<String>,
 
-    /// Spoken language: a name (french), a code (fr) or a tag (pt-BR). Auto-detect if not specified
+    /// Spoken language: a name (french), code (fr) or tag (pt-BR); detected when omitted
     #[arg(short, long, value_name = "LANGUAGE", value_parser = parse_language)]
     pub language: Option<LanguageChoice>,
 
-    /// Which backend's devices to try first. `auto` keeps the usual order (CUDA, ROCm, CoreML,
-    /// Metal, SYCL, Vulkan, CPU). A named backend goes first and the other devices follow as
-    /// fallbacks, so `--accel cpu` runs on the CPU alone. Run `purr sys` to see what this build
-    /// supports
+    /// Backend to try first; the others stay as fallbacks (`cpu`: the CPU alone, `auto`: the
+    /// usual order)
     #[arg(
         long,
         value_name = "BACKEND",
@@ -53,8 +51,7 @@ pub struct Cli {
     )]
     pub accel: Option<AccelChoice>,
 
-    /// Backends whose devices are tried first, best first, comma separated (e.g. vulkan,cuda);
-    /// the other devices follow in the usual order
+    /// Backends to try first, best first, comma separated (e.g. vulkan,cuda)
     #[arg(
         long,
         value_name = "BACKENDS",
@@ -64,12 +61,8 @@ pub struct Cli {
     )]
     pub accel_priority: Vec<AccelBackend>,
 
-    /// Run on one device first; the others stay as fallbacks. Give a device index as `purr sys`
-    /// prints it (`--device 2`), or describe it with tokens joined by `/` in any order: a
-    /// backend (cuda, vulkan, rocm, ...), a type (gpu, igpu, cpu, accel) and a device id such as
-    /// 0000:01:00.0 (`--device vulkan/igpu`, `--device cuda/0000:01:00.0`, `--device gpu`).
-    /// The explicit `backend=`, `type=`, `id=` and `index=` forms also work. It
-    /// must match exactly one device; otherwise the candidates are listed
+    /// Device to try first: an index from `purr sys` (2) or BACKEND/TYPE/ID tokens (vulkan/igpu,
+    /// cuda/0000:01:00.0)
     #[arg(long, value_name = "DEVICE", conflicts_with = "no_gpu")]
     pub device: Option<DeviceSelector>,
 
@@ -93,44 +86,35 @@ pub struct Cli {
     #[arg(long)]
     pub timestamps: bool,
 
-    /// Time every word, and add each segment's words (text, start, end, score) to --output json
+    /// Add each word's start, end and score to --output json
     #[arg(long)]
     pub word_timestamps: bool,
 
-    /// While streaming, show how far the transcription has come, as position / duration
-    /// (`2:51 / 7:30`; the duration shows once the whole audio has been read), in a line under
-    /// the text. Only on a terminal: with --plain or a redirected stdout there is no progress
-    /// and the text is not broken into lines
+    /// Show position / duration under the streamed text (terminal only)
     #[arg(long)]
     pub progress: bool,
 
-    /// Stream transcription results in real-time
+    /// Print the transcript at the end instead of streaming it
     #[arg(short = 'S', long)]
     pub no_stream: bool,
 
     #[clap(flatten)]
     pub verbosity: Verbosity,
 
-    /// When to colour the output. `always` and `never` override the environment. `auto` follows,
-    /// in this order: NO_COLOR (any non-empty value disables colours), CLICOLOR_FORCE (any value
-    /// but 0 enables them), CLICOLOR=0 (disables them), then whether the stream is a terminal.
-    /// Standard output and standard error are decided separately
+    /// When to colour the output; `auto` follows NO_COLOR, CLICOLOR_FORCE, CLICOLOR and the
+    /// terminal
     #[arg(long, global = true, value_enum, default_value_t, value_name = "WHEN")]
     pub color: ColorChoice,
 
-    /// Print only the command's result on stdout: no banner, status lines or progress bars. This
-    /// is already the case whenever stdout is not a terminal (a pipe or a file); the flag
-    /// forces it on a terminal too
+    /// Print only the result on stdout, as when stdout is not a terminal
     #[arg(long, global = true)]
     pub plain: bool,
 
-    /// Append the diagnostic log to PATH as plain text, never coloured, whatever the terminal
-    /// shows. Each line is written as it happens, so nothing is lost if the run ends abruptly
+    /// Append the diagnostic log to PATH as plain text
     #[arg(long, global = true, value_name = "PATH")]
     pub log_file: Option<PathBuf>,
 
-    /// Level of what --log-file records: error, warn, info, debug or trace. It does not depend
-    /// on -v, which only controls the terminal [default: info]
+    /// Level --log-file records, independent of -v [default: info]
     #[arg(
         long,
         global = true,
@@ -140,14 +124,11 @@ pub struct Cli {
     )]
     pub log_level: Option<LogLevel>,
 
-    /// Seconds of new audio to gather before looking for a pause to decode up to while streaming
-    /// (only with a voice activity model)
+    /// Seconds of audio to gather before decoding up to a pause (with a voice activity model)
     #[arg(long, default_value = "4.0")]
     pub chunk_size: f32,
 
-    /// Silero voice activity model (ggml-silero-*.bin from whisper.cpp): streaming decodes up to
-    /// pauses in speech and skips audio without speech. Defaults to the one fetched alongside
-    /// downloaded models, when present
+    /// Silero voice activity model (ggml-silero-*.bin); defaults to the downloaded one
     #[arg(long, value_name = "PATH")]
     pub vad_model: Option<PathBuf>,
 
@@ -170,8 +151,7 @@ pub enum Commands {
     /// System commands
     #[clap(alias = "s")]
     Sys {
-        /// Print one JSON document instead of text; each backend is "Disabled",
-        /// "EnabledButNotAvailable", {"Available":null} or {"RuntimeLibraryMissing":{library,searched}}
+        /// Print one JSON document instead of text
         #[arg(long)]
         json: bool,
     },
@@ -184,7 +164,7 @@ pub enum Commands {
 
 #[derive(Subcommand, Debug)]
 pub enum RuntimeCommands {
-    /// Show where GPU runtime libraries are searched, in order, and what each place holds
+    /// Show where GPU runtime libraries are searched and what each place holds
     Status,
     /// Print the directory a runtime pack should be unpacked into
     Path,
@@ -202,9 +182,9 @@ pub enum ModelCommands {
         #[arg(short, long)]
         force: bool,
     },
-    /// List models (downloaded by default, use --available to list all available models)
+    /// List downloaded models
     List {
-        /// List all available models instead of downloaded models
+        /// List every available model
         #[arg(short, long)]
         available: bool,
     },

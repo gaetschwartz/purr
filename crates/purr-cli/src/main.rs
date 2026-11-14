@@ -83,18 +83,14 @@ async fn main_impl() -> miette::Result<()> {
 
     let Some(audio_input) = cli.audio_input.clone() else {
         statusln!("{ASCII_ART}\n");
-        return Err(miette::miette!(
-            "No audio file or URL specified. Please provide an audio file path or URL to transcribe."
-        ));
+        return Err(miette::miette!("No audio file or URL given"));
     };
 
     let is_url = is_valid_url(&audio_input);
     let is_path = is_file_path(&audio_input);
 
     if !is_url && !is_path {
-        return Err(miette::miette!(
-            "Invalid input: '{audio_input}'. Please provide a valid file path or URL."
-        ));
+        return Err(miette::miette!("Not a file path or URL: '{audio_input}'"));
     }
 
     if is_path {
@@ -256,7 +252,8 @@ async fn handle_streaming_output(mut stream: Transcription, cli: &Cli) -> miette
 
     if all_chunks.is_empty() {
         return Err(miette::miette!(
-            "No audio content was transcribed. The file may not be a valid audio file."
+            help = "Check that it is a valid audio file",
+            "Nothing was transcribed"
         ));
     }
 

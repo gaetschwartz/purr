@@ -34,7 +34,7 @@ pub async fn prompt_for_model_download(
             )
         } else {
             miette::miette!(
-                "No Whisper model found. Download one with: {program} models download {}",
+                "No model downloaded. Download one with: {program} models download {}",
                 wanted.id
             )
         });
@@ -48,8 +48,7 @@ pub async fn prompt_for_model_download(
             model.id.name()
         );
     } else {
-        statusln!("{} No Whisper model found!", "Notice:".warning());
-        statusln!("To transcribe audio, you need to download a Whisper model first.");
+        statusln!("{} No model downloaded.", "Notice:".warning());
         statusln!();
         statusln!(
             "The {} model is recommended for most users:",
@@ -97,7 +96,7 @@ pub async fn prompt_for_model_download(
             }
         }
     } else {
-        statusln!("Model download cancelled. You can download a model later with:");
+        statusln!("Cancelled. Download a model later with:");
         statusln!(
             "  {}",
             format_args!("{program} models download <model>").command()

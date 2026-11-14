@@ -92,10 +92,6 @@ pub fn handle(json: bool) -> miette::Result<()> {
     let blocks = sys_report::device_blocks(&sys, &reports);
     if blocks.is_empty() {
         resultln!("{}", "No devices found.".warning())?;
-        resultln!("To enable GPU support, ensure:")?;
-        resultln!("  • Vulkan drivers are installed")?;
-        resultln!("  • Compatible GPU hardware is available")?;
-        resultln!("  • Vulkan feature is enabled (use --features vulkan)")?;
         resultln!()?;
     } else {
         for block in blocks {
