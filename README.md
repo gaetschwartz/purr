@@ -74,7 +74,8 @@ Builds with the `transcribe` cargo feature also run NVIDIA Parakeet TDT v3 throu
 European languages (Bulgarian, Croatian, Czech, Danish, Dutch, English, Estonian, Finnish, French,
 German, Greek, Hungarian, Italian, Latvian, Lithuanian, Maltese, Polish, Portuguese, Romanian,
 Russian, Slovak, Slovenian, Spanish, Swedish, Ukrainian), finds the language itself and does not
-report it, so a language you choose is only checked against that list. It times every word and
+report it, so `--language` is checked against that list (an unlisted language is an error) and
+then warned about and not passed on, and transcripts and History show no language. It times every word and
 scores it, and does not translate. `purr models download <id>` fetches one of:
 
 - `parakeet-tdt-0.6b-v3` - F16, 1.26 GB
@@ -88,7 +89,9 @@ scores it, and does not translate. `purr models download <id>` fetches one of:
 | Whisper (`tiny` to `large-v3-turbo`) | MIT | [OpenAI](https://github.com/openai/whisper) |
 | Parakeet TDT v3 | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | [NVIDIA parakeet-tdt-0.6b-v3](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3), converted to GGUF by [handy-computer](https://huggingface.co/handy-computer/parakeet-tdt-0.6b-v3-gguf) for transcribe.cpp; the quantized files store the weights at reduced numeric precision, and nothing was retrained |
 
-`purr models info <id>` prints the same license and credit for a model.
+`purr models list --available` shows each model's engine, languages, quantization, size and license,
+and `purr models info <id>` prints the same license and credit for a model. The Models screen shows the
+credit under the Parakeet section.
 
 ## Installation
 

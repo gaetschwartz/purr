@@ -160,6 +160,35 @@ Input (file, URL, AudioStream)
   repository pinned in the manifest, CC BY 4.0. `ModelFamily::attribution` carries who made a
   family and what the downloaded files change; `purr models info` prints it.
 
+## What the app and the CLI take from the model
+
+Nothing in the screens or the commands names an engine or a family to decide what to show; they
+read the model's descriptor and `ModelProfile`, and the engine is the model's (`ModelDescriptor::engine`,
+`ModelRef::engine`). There is no engine setting and no `--engine` flag: a model file has one format,
+a format has one engine (`EngineId::loading`), and `ModelManager::reference` reads the engine from
+the catalog or from the file's first bytes.
+
+- Language control (`transcribe::language_choice`): `Only(list)` offers exactly that list; a model
+  with `language_hint: ignored` offers "Automatic" and the list read-only, with a note that choosing
+  one does not steer it; one with `detection: silent` never makes a run wait for a detected language
+  and every place that shows a language (More menu, History rows, JSON export) says "not reported"
+  or shows nothing. Stored languages are rewritten under their current spelling when settings load
+  (`Settings::canonicalize_languages`).
+- CLI `--language` is checked against the catalog model's profile before the model loads
+  (`language_arg::check`): a language the model does not list is `LanguageProblem::Unsupported`, one it
+  lists but ignores is a warning and the hint is dropped from the run. A file outside the catalog has
+  no profile, so the pipeline's own `supports` check applies.
+- Models (`model_catalog`): sections per size for Whisper and one for Parakeet; a section whose
+  licence asks for credit (`ModelLicense::requires_attribution`) shows `ModelFamily::attribution`
+  under it, including what the files change. The picker heads each line of models when it lists
+  several, with the licence beside the line. A model whose engine is not in `engines::all()` shows
+  "Not in this build" and cannot be picked.
+- Devices: the Transcribe screen's device override offers the devices the selected model's engine can
+  use (`DeviceRow::usable_by`, from `seen_by`); a pick that the new model's engine cannot use is dropped.
+- An engine that is built in but cannot be used when a run starts (`Engine::availability`) fails the
+  run with `TranscriptionError::EngineUnavailable` / `PlatformError::EngineUnavailable`, which names the
+  folders searched; the Transcribe screen shows it as the failure message with the reason as its hint.
+
 ## Adding an engine
 
 1. Create `crates/purr-engine-<name>` depending on `purr-core` and `purr-common`, with its own
