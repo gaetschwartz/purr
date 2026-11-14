@@ -33,15 +33,17 @@ pub fn UnreadableNotice(unreadable: Vec<UnreadableEntry>) -> Element {
                     "Dismiss"
                 }
             },
+            details: rsx! {
+                ul { style: "margin:0;padding-left:18px",
+                    for entry in unreadable.iter().take(SHOWN) {
+                        li { key: "{entry.name}", "{entry.name}: {entry.reason}" }
+                    }
+                    if count > SHOWN {
+                        li { "and {count - SHOWN} more" }
+                    }
+                }
+            },
             "Clear all removes them."
-            ul { style: "margin:6px 0 0;padding-left:18px",
-                for entry in unreadable.iter().take(SHOWN) {
-                    li { key: "{entry.name}", "{entry.name}: {entry.reason}" }
-                }
-                if count > SHOWN {
-                    li { "and {count - SHOWN} more" }
-                }
-            }
         }
     }
 }

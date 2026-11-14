@@ -134,9 +134,7 @@ pub fn History() -> Element {
                     }
                 }
                 if shown.is_empty() {
-                    EmptyState { icon: IconName::Search, title: "Nothing matches", inline: true,
-                        "No saved transcription has “{query().trim()}” in its name or text."
-                    }
+                    EmptyState { icon: IconName::Search, title: "Nothing matches", inline: true }
                 } else {
                     section {
                         class: "group surface",

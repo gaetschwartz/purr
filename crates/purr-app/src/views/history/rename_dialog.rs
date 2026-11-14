@@ -59,7 +59,7 @@ pub fn RenameDialog(id: HistoryId, title: String, on_close: EventHandler<()>) ->
                 autocomplete: "off",
                 spellcheck: "false",
                 aria_invalid: problem().is_some().then_some("true"),
-                aria_describedby: if problem().is_some() { "rename-problem rename-help" } else { "rename-help" },
+                aria_describedby: problem().is_some().then_some("rename-problem"),
                 onmounted: move |_| {
                     document::eval(&format!("document.getElementById({INPUT_ID:?})?.select()"));
                 },
@@ -82,8 +82,6 @@ pub fn RenameDialog(id: HistoryId, title: String, on_close: EventHandler<()>) ->
                     style: "color:var(--danger)",
                     "{problem_text(found)}"
                 }
-            }
-            p { class: "foot", id: "rename-help",
             }
         }
     }
