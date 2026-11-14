@@ -9,19 +9,21 @@ pub enum ModelGroup {
     Small,
     Base,
     Tiny,
+    Parakeet,
     /// Models whose family this app does not know.
     Other,
 }
 
 impl ModelGroup {
     /// The sections in the order the list shows them.
-    pub const ORDER: [Self; 7] = [
+    pub const ORDER: [Self; 8] = [
         Self::Turbo,
         Self::Large,
         Self::Medium,
         Self::Small,
         Self::Base,
         Self::Tiny,
+        Self::Parakeet,
         Self::Other,
     ];
 
@@ -37,6 +39,7 @@ impl ModelGroup {
                 WhisperSize::LargeV1 | WhisperSize::LargeV2 | WhisperSize::LargeV3 => Self::Large,
                 WhisperSize::LargeV3Turbo => Self::Turbo,
             },
+            ModelFamily::Parakeet(_) => Self::Parakeet,
         }
     }
 
@@ -50,6 +53,7 @@ impl ModelGroup {
             Self::Small => "Small",
             Self::Base => "Base",
             Self::Tiny => "Tiny",
+            Self::Parakeet => "Parakeet",
             Self::Other => "Other models",
         }
     }
@@ -68,6 +72,7 @@ pub const fn superseded(family: ModelFamily) -> bool {
             | WhisperSize::LargeV3
             | WhisperSize::LargeV3Turbo => false,
         },
+        ModelFamily::Parakeet(_) => false,
     }
 }
 

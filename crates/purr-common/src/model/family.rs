@@ -1,3 +1,4 @@
+use super::license::{Attribution, ModelLicense};
 use serde_with::{DeserializeFromStr, SerializeDisplay};
 use std::{fmt, str::FromStr};
 use strum::{Display, EnumString};
@@ -67,12 +68,50 @@ impl WhisperSize {
     }
 }
 
+/// NVIDIA Parakeet's checkpoints. Declaration order is the order they are listed in.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Display,
+    EnumString,
+    SerializeDisplay,
+    DeserializeFromStr,
+)]
+pub enum ParakeetVariant {
+    #[strum(serialize = "parakeet-tdt-0.6b-v3")]
+    TdtV3,
+}
+
+impl ParakeetVariant {
+    #[must_use]
+    pub const fn summary(self) -> &'static str {
+        match self {
+            Self::TdtV3 => "fast and accurate, 25 European languages",
+        }
+    }
+
+    /// The name people know it by.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::TdtV3 => "Parakeet TDT v3",
+        }
+    }
+}
+
 /// A model family: the line of models a model belongs to, and its size class within it.
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, SerializeDisplay, DeserializeFromStr,
 )]
 pub enum ModelFamily {
     Whisper(WhisperSize),
+    Parakeet(ParakeetVariant),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -86,6 +125,7 @@ impl ModelFamily {
     pub const fn summary(self) -> &'static str {
         match self {
             Self::Whisper(size) => size.summary(),
+            Self::Parakeet(variant) => variant.summary(),
         }
     }
 
@@ -94,6 +134,34 @@ impl ModelFamily {
     pub const fn label(self) -> &'static str {
         match self {
             Self::Whisper(size) => size.label(),
+            Self::Parakeet(variant) => variant.label(),
+        }
+    }
+}
+
+impl ModelFamily {
+    /// Who made the family's models and under which terms they may be used.
+    #[must_use]
+    pub const fn attribution(self) -> Attribution {
+        match self {
+            Self::Whisper(_) => Attribution {
+                license: ModelLicense::Mit,
+                author: "OpenAI",
+                work: "Whisper",
+                origin_url: "https://github.com/openai/whisper",
+                changes: None,
+            },
+            Self::Parakeet(ParakeetVariant::TdtV3) => Attribution {
+                license: ModelLicense::CcBy4,
+                author: "NVIDIA",
+                work: "parakeet-tdt-0.6b-v3",
+                origin_url: "https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3",
+                changes: Some(
+                    "Converted to GGUF by handy-computer for transcribe.cpp; the quantized \
+                     files also store the weights at reduced numeric precision. The weights \
+                     were not retrained or fine-tuned.",
+                ),
+            },
         }
     }
 }
@@ -102,6 +170,7 @@ impl fmt::Display for ModelFamily {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Whisper(size) => fmt::Display::fmt(size, f),
+            Self::Parakeet(variant) => fmt::Display::fmt(variant, f),
         }
     }
 }
@@ -112,6 +181,7 @@ impl FromStr for ModelFamily {
     fn from_str(name: &str) -> Result<Self, Self::Err> {
         WhisperSize::from_str(name)
             .map(Self::Whisper)
+            .or_else(|_| ParakeetVariant::from_str(name).map(Self::Parakeet))
             .map_err(|_| UnknownFamily {
                 name: name.to_owned(),
             })
@@ -133,6 +203,38 @@ mod tests {
             serde_json::from_str::<ModelFamily>("\"tiny\"").unwrap(),
             ModelFamily::Whisper(WhisperSize::Tiny)
         );
+    }
+
+    #[test]
+    fn a_parakeet_is_stored_under_its_checkpoint_name() {
+        let family = ModelFamily::Parakeet(ParakeetVariant::TdtV3);
+        assert_eq!(
+            serde_json::to_string(&family).unwrap(),
+            "\"parakeet-tdt-0.6b-v3\""
+        );
+        assert_eq!(
+            serde_json::from_str::<ModelFamily>("\"parakeet-tdt-0.6b-v3\"").unwrap(),
+            family
+        );
+    }
+
+    #[test]
+    fn parakeet_is_listed_after_every_whisper() {
+        assert!(
+            ModelFamily::Whisper(WhisperSize::LargeV3Turbo)
+                < ModelFamily::Parakeet(ParakeetVariant::TdtV3)
+        );
+    }
+
+    #[test]
+    fn models_carry_the_terms_of_their_makers() {
+        let whisper = ModelFamily::Whisper(WhisperSize::Tiny).attribution();
+        assert_eq!(whisper.license, ModelLicense::Mit);
+        assert_eq!(whisper.changes, None);
+        let parakeet = ModelFamily::Parakeet(ParakeetVariant::TdtV3).attribution();
+        assert_eq!(parakeet.license, ModelLicense::CcBy4);
+        assert_eq!(parakeet.author, "NVIDIA");
+        assert!(parakeet.changes.is_some());
     }
 
     #[test]

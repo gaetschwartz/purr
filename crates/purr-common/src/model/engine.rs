@@ -37,6 +37,16 @@ impl EngineId {
         }
     }
 
+    /// The engine that loads files of `format`.
+    #[must_use]
+    pub const fn loading(format: ModelFormat) -> Self {
+        match format {
+            ModelFormat::GgmlBin => Self::WhisperCpp,
+            ModelFormat::Gguf => Self::TranscribeCpp,
+            ModelFormat::Onnx => Self::Browser,
+        }
+    }
+
     /// The engine as a sentence names it.
     #[must_use]
     pub const fn label(self) -> &'static str {
@@ -65,6 +75,13 @@ mod tests {
         assert!(!EngineId::TranscribeCpp.supports(ModelFormat::Onnx));
         assert!(EngineId::Browser.supports(ModelFormat::Onnx));
         assert!(!EngineId::Browser.supports(ModelFormat::GgmlBin));
+    }
+
+    #[test]
+    fn each_format_is_loaded_by_the_engine_that_lists_it() {
+        for format in [ModelFormat::GgmlBin, ModelFormat::Gguf, ModelFormat::Onnx] {
+            assert!(EngineId::loading(format).supports(format));
+        }
     }
 
     #[test]
