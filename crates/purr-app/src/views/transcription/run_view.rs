@@ -273,10 +273,8 @@ pub fn RunView(record: RunRecord) -> Element {
                                 "View logs"
                             }
                         },
+                        details: failure.hint.clone().map(|hint| rsx! { "{hint}" }),
                         "{failure.message}"
-                        if let Some(hint) = &failure.hint {
-                            " {hint}"
-                        }
                     }
                 }
                 if save_failed {
@@ -292,7 +290,7 @@ pub fn RunView(record: RunRecord) -> Element {
                                 "Try again"
                             }
                         },
-                        "The transcript is kept until you start another transcription."
+                        "Kept until your next transcription."
                     }
                 }
             },

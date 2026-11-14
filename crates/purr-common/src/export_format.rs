@@ -38,14 +38,14 @@ impl ExportFormat {
         }
     }
 
-    /// One sentence on when to pick it.
+    /// A few words on what it holds.
     #[must_use]
     pub const fn description(self) -> &'static str {
         match self {
-            Self::Txt => "Plain text, one line per segment.",
-            Self::Srt => "Subtitles for video players and editors.",
-            Self::Vtt => "Subtitles for web video.",
-            Self::Json => "Segments with start and end times, for scripts and other apps.",
+            Self::Txt => "Plain text, one line per segment",
+            Self::Srt => "Subtitles for video players",
+            Self::Vtt => "Subtitles for web video",
+            Self::Json => "Segments with timestamps",
         }
     }
 

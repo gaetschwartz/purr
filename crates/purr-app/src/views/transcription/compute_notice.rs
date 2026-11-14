@@ -38,10 +38,10 @@ pub fn ComputeNotice(record: RunRecord) -> Element {
                 Button {
                     size: ButtonSize::Small,
                     onclick: move |_| dialog.open(SettingsPage::Hardware),
-                    "Open Hardware settings"
+                    "Hardware settings"
                 }
             },
-            "{notice.detail}"
+            details: rsx! { "{notice.detail}" },
         }
     }
 }

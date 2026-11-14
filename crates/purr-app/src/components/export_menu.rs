@@ -97,10 +97,7 @@ pub fn copy_export(source: &ExportSource, format: ExportFormat, toasts: Toasts) 
                 toasts.success("Transcript copied", what);
             }
             Err(error) => {
-                toasts.error(
-                    "Couldn't copy the transcript",
-                    format!("{error}. Use Export to save it as a file instead."),
-                );
+                toasts.error("Couldn't copy the transcript", error);
             }
         }
     });

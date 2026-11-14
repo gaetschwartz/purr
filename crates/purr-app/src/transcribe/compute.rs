@@ -79,10 +79,7 @@ fn notice(skipped: &PassedOver, ran: &LastRun) -> ComputeNotice {
             "{} isn't available, so Purr is using {used}",
             key_phrase(&skipped.key)
         ),
-        detail: format!(
-            "{}. You can change the device order in Settings.",
-            capitalised(&why_passed_over(&skipped.reason))
-        ),
+        detail: capitalised(&why_passed_over(&skipped.reason)),
     }
 }
 
@@ -130,8 +127,7 @@ mod tests {
             Some(ComputeNotice {
                 title: "CUDA · NVIDIA GeForce RTX 2070 SUPER isn't available, so Purr is using Vulkan · AMD Radeon(TM) Graphics"
                     .to_owned(),
-                detail: "It was not found on this computer. You can change the device order in Settings."
-                    .to_owned(),
+                detail: "It was not found on this computer".to_owned(),
             })
         );
     }
@@ -183,7 +179,7 @@ mod tests {
         );
         assert_eq!(
             fallback_notice(&run).map(|notice| notice.detail),
-            Some("The driver is too old. You can change the device order in Settings.".to_owned())
+            Some("The driver is too old".to_owned())
         );
     }
 

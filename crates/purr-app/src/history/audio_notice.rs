@@ -8,10 +8,7 @@ use purr_common::history::audio::{AudioDropReason, AudioOutcome};
 pub fn announce(toasts: Toasts, outcome: &AudioOutcome) {
     match outcome {
         AudioOutcome::Dropped(AudioDropReason::StorageFull) => {
-            toasts.warning(
-                "Couldn't keep the audio",
-                "The browser has no room left for it. Free up space, or clear the saved audio in Settings.",
-            );
+            toasts.warning("Couldn't keep the audio", "This browser is out of storage.");
         }
         AudioOutcome::NotOffered
         | AudioOutcome::Kept

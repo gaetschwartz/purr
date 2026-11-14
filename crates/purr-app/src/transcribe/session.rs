@@ -10,7 +10,7 @@ use super::{
     timing,
 };
 use crate::{
-    components::toast::{Toasts, use_toasts},
+    components::toast::{Toast, ToastKind, Toasts, use_toasts},
     history::{
         audio_notice,
         entry_builder::{self, Finished},
@@ -394,10 +394,8 @@ impl TranscribeSession {
     /// this device; the English-only lock applies to `language`. Returns the new run's id.
     pub fn start(self, model: ModelEntry, language: LanguageChoice) -> Option<HistoryId> {
         let Some(file) = self.file.peek().clone() else {
-            self.toasts.error(
-                "Choose a file first",
-                "There is no audio to transcribe yet.",
-            );
+            self.toasts
+                .show(Toast::new(ToastKind::Error, "Choose a file first"));
             return None;
         };
         let running = self
@@ -406,10 +404,10 @@ impl TranscribeSession {
             .as_ref()
             .is_some_and(|record| record.run.outcome == RunOutcome::Running);
         if running {
-            self.toasts.error(
+            self.toasts.show(Toast::new(
+                ToastKind::Error,
                 "A transcription is already running",
-                "Wait for it to finish or stop it first.",
-            );
+            ));
             return None;
         }
         self.launch(file, model, language)
@@ -776,20 +774,15 @@ fn starts_over(outcome: Option<&RunOutcome>, saved: &SaveState) -> bool {
     }
 }
 
-/// The message of a failed run and what to try, when the error says.
+/// The message of a failed run, and its cause when the error gives one.
 fn describe(error: &PlatformError) -> (String, Option<String>) {
     match error {
-        PlatformError::ModelNotFound { model_id } => (
-            format!(
-                "The model {model_id} is not on this device. Download it or choose another one."
-            ),
-            None,
-        ),
+        PlatformError::ModelNotFound { model_id } => {
+            (format!("Model {model_id} isn't downloaded"), None)
+        }
         PlatformError::EngineUnavailable { engine, reason } => (
             format!("The {} can't run on this computer", engine.label()),
-            Some(format!(
-                "{reason}. Choose a model another engine runs, or reinstall Purr."
-            )),
+            Some(reason.to_string()),
         ),
         other => (other.to_string(), None),
     }
@@ -880,10 +873,7 @@ mod tests {
             describe(&error),
             (
                 "The transcribe.cpp engine can't run on this computer".to_owned(),
-                Some(
-                    "transcribe.dll was not found in runtime. Choose a model another engine runs, or reinstall Purr."
-                        .to_owned()
-                )
+                Some("transcribe.dll was not found in runtime".to_owned())
             )
         );
     }
@@ -893,11 +883,7 @@ mod tests {
         let error = PlatformError::model_not_found("tiny".to_owned());
         assert_eq!(
             describe(&error),
-            (
-                "The model tiny is not on this device. Download it or choose another one."
-                    .to_owned(),
-                None
-            )
+            ("Model tiny isn't downloaded".to_owned(), None)
         );
     }
 

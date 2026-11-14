@@ -160,15 +160,11 @@ fn audio_note(source: &HistorySource, audio: AudioAvailability) -> &'static str 
     match audio {
         AudioAvailability::Available => "",
         AudioAvailability::Missing => match source {
-            HistorySource::StoredInBrowser => {
-                "The audio stored for this transcription is gone from this browser."
-            }
-            HistorySource::Path { .. } | HistorySource::NotKept => {
-                "The original audio file was moved or deleted."
-            }
+            HistorySource::StoredInBrowser => "Audio no longer in this browser",
+            HistorySource::Path { .. } | HistorySource::NotKept => "Audio file moved or deleted",
         },
-        AudioAvailability::NotKept if IS_WEB => "This audio isn't stored.",
-        AudioAvailability::NotKept => "Where this audio came from wasn't recorded.",
+        AudioAvailability::NotKept if IS_WEB => "Audio not stored",
+        AudioAvailability::NotKept => "Audio source not recorded",
     }
 }
 
@@ -193,8 +189,7 @@ fn Opened(loaded: Loaded) -> Element {
             AudioAvailability::Available,
             StoredAudio::Unreadable(reason),
         ) => {
-            let audio =
-                ResultAudio::Unavailable(format!("The stored audio can't be read: {reason}."));
+            let audio = ResultAudio::Unavailable(format!("Stored audio unreadable: {reason}"));
             rsx! {
                 Entry { record: record.clone(), audio }
             }
