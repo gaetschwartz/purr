@@ -10,7 +10,7 @@ Triggers: pushes to any branch, pull requests, manual runs. A newer run on the s
 |---|---|---|
 | `fmt` | ubuntu-24.04 | `cargo fmt --all --check` |
 | `scripts` | ubuntu-24.04 | `scripts/test-prune-rust-caches.sh` and `scripts/test-drop-ggml-build.sh`, the tests of the cache pruning script and of the ggml build tree removal |
-| `test (linux)` | ubuntu-24.04 | `cargo clippy` (reports warnings without failing on them), then `cargo nextest run --workspace` with static FFmpeg. Tests that need a model skip themselves; the Whisper golden and live-stream tests in `purr-engine-whisper` are `#[ignore]`d and run by hand with `--run-ignored only`. `.config/nextest.toml` filters out the `slow_` tests. No Rust cache: about 10 minutes, against 3 to 4 with one. |
+| `test (linux)` | ubuntu-24.04 | `cargo clippy` (reports warnings without failing on them), then `cargo nextest run --workspace` with static FFmpeg. Tests that need a model skip themselves; the Whisper golden and live-stream tests in `purr-engine-whisper` are `#[ignore]`d and run by hand with `--run-ignored only`. `.config/nextest.toml` filters out the `slow_` tests. No Rust cache: about 10 minutes, against 3 to 4 with one. The workspace build includes `purr-engine-transcribe`, so it also compiles transcribe.cpp. A last step builds `purr-cli` with `transcribe` and checks that `purr sys --json` lists the engine with a device, see [transcribe.cpp](#transcribecpp-the-second-ggml). |
 
 ## `build.yml`: artifacts and releases
 
@@ -219,6 +219,28 @@ Off by default. The Rust caches hold the ggml build tree a second time. With `PU
 - The cost is a cmake configure, bindgen, the link and a rebuild of `whisper-rs-sys` on every run, a few minutes per job, instead of a cold ggml build only when a Rust cache is lost.
 - It is only safe while the ccache entry holds those objects. Jobs whose objects the writer does not produce (the Linux `cuda` and `vulkan` CLIs) are not marked. If the ccache entry is lost, the next run of a shrunk job compiles ggml cold, as it did before any cache.
 - The job summary lists the removed directories and their uncompressed size. The saved cache space is what `gh cache list` shows for the families before and after.
+
+## transcribe.cpp, the second ggml
+
+The `transcribe` feature of `purr-cli` and `purr-app` adds `purr-engine-transcribe`, whose `transcribe-cpp-sys` builds a second, separate ggml (CPU only, `dynamic-backends`: `transcribe.dll` or `libtranscribe.so`, `ggml`, `ggml-base` and one CPU module per instruction set tier). It is on in three jobs, none of which ships or saves a Rust cache, so the CUDA jobs and the cache families above are unchanged:
+
+| Job | Artifact | What it adds |
+|---|---|---|
+| `test (linux)` | none | the workspace build compiles the crate and runs its tests; a last step runs a CLI built with the feature with `LD_LIBRARY_PATH` set to the library folder |
+| `cli (windows, cpu)` | `purr-dev-cli-windows-x64-cpu` | `--features static-ffmpeg,transcribe`; the import check requires the delay-load of `transcribe.dll`; the start check runs `purr sys` on the executable alone (engine not loadable) and next to the DLLs (engine loaded, a device listed) |
+| `cli (macos, cpu)` | `purr-dev-cli-macos-arm64-cpu` | `--features static-ffmpeg,transcribe`; the libraries are copied to `lib` and `@executable_path/lib` is added as an rpath before `purr --version` and a `purr sys --json` check |
+
+Nothing in these edits has been run on a runner. The Windows job is the one that proves the delay-load; the macOS and Linux steps are written from the build scripts of `transcribe-cpp-sys` and may need a path fixed.
+
+### Cache hygiene
+
+- The Rust cache keys name the ggml configuration by hand, and none of them knew a second ggml. `cli (windows, cpu)` now adds `-transcribe` to its key. That job never saves, so the suffix only keeps it from restoring an entry that was saved without the feature.
+- `rust-cache` hashes `Cargo.lock` into the key, so a new `transcribe-cpp-sys` version changes the lockfile hash like any other crate. The restore key drops only that hash, so a restored `target` still holds the old `transcribe-cpp-sys-<hash>` directories; cargo's fingerprint decides what rebuilds. Not validated on a runner.
+- `scripts/drop-ggml-build.sh` removes `build/whisper-rs-sys-*` and `.fingerprint/whisper-rs-sys-*` only. A job with `shrink` that also built transcribe.cpp would keep its build tree, about 100 MB uncompressed per CPU build. No shrinking job builds it, so nothing changes; extend the script's patterns before one does.
+- `whisper-rs-sys` forwards every `CMAKE_*`, `GGML_*` and `WHISPER_*` variable to cmake. `transcribe-cpp-sys` forwards none of them, only `TRANSCRIBE_CMAKE_ARGS` and `CMAKE_ARGS`: `GGML_NATIVE`, `GGML_CUDA_NO_VMM`, `GGML_CPU_ARM_ARCH` and the CMake runtime library settings of `.cargo/config.toml` do not reach it. Its dynamic backends force `GGML_NATIVE=OFF` themselves. cmake itself reads `CMAKE_<LANG>_COMPILER_LAUNCHER` and `CMAKE_GENERATOR*` from the environment, which is how ccache and Ninja would reach it (unproven). `.cargo/config.toml` sets `TRANSCRIBE_CMAKE_ARGS=-DGGML_CCACHE=OFF` so a ccache on a developer's `PATH` is not picked up.
+- ccache: `transcribe-cpp-sys` builds through a junction `%LOCALAPPDATA%\tcs\<hash>` on Windows to stay under `MAX_PATH`. That path is outside `CCACHE_BASEDIR` (`D:\t`), so its absolute paths are hashed as they are and hit only while `<hash>`, derived from `OUT_DIR`, does not change. Each CPU tier (nine on Windows x86-64) is its own module and compiles the ggml CPU sources again, so one transcribe.cpp build holds several times the objects of a whisper.cpp CPU build.
+- The compiler cache is one entry per OS, restored by prefix and capped at 2 GiB (1 GiB on macOS). A writer job that compiled transcribe.cpp would fill it with objects the other jobs do not use and push whisper.cpp's out. The three jobs above are not writers, so they restore the entry and compile transcribe.cpp cold, a few minutes on four cores.
+- A feature, profile or flag difference makes cargo build `transcribe-cpp-sys` again: two `cargo build` invocations on one machine built it twice (two `out` directories of about 100 MB). Each CI job runs one invocation per feature set, except `test (linux)`, whose last step may build it a second time.
 
 ## Running one variant by hand
 

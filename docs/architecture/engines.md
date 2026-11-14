@@ -1,7 +1,8 @@
 # Engines and the pipeline
 
 An engine is speech recognition software that runs a model on a device: today whisper.cpp
-(`purr-engine-whisper`). The browser's engine (`purr-wasm`) stays outside this design. Everything
+(`purr-engine-whisper`), and, as a stub that cannot decode yet, transcribe.cpp
+(`purr-engine-transcribe`, behind the `transcribe` feature). The browser's engine (`purr-wasm`) stays outside this design. Everything
 else, from cutting audio into windows to deciding what text is final, is one pipeline in
 `purr-core` that does not know which engine it drives.
 
@@ -13,9 +14,12 @@ purr-core            audio, models, hardware (plan, report, runtime libraries, d
                      the engine traits and the pipeline; no ggml, no whisper-rs
 purr-engine-whisper  whisper-rs: model loading, ggml devices and probe, token-to-word grouping,
                      Silero VAD, whisper.cpp logging, abort callback, CoreML encoder path
+purr-engine-transcribe  transcribe.cpp (transcribe-cpp, with its own ggml in shared libraries):
+                     guarded loading of those libraries, backend and device listing, logging; no
+                     decoding yet
 purr-cli, purr-app   composition roots: list the engines (`engines.rs`) and forward the cargo
-                     features cuda, vulkan, metal, coreml to the engine crate, static-ffmpeg to
-                     purr-core
+                     features cuda, vulkan, metal, coreml to the whisper engine crate,
+                     static-ffmpeg to purr-core, and `transcribe` to add the transcribe.cpp engine
 ```
 
 ## The engine boundary (`purr_core::engine`)
@@ -84,6 +88,22 @@ Input (file, URL, AudioStream)
   yields no segment; an aborted whole-file decode keeps the segments of the 30 s stretches it
   finished.
 - Beam search with 5 beams, always.
+
+## transcribe.cpp (`purr-engine-transcribe`)
+
+- The two engines never share a ggml. whisper.cpp's is linked statically into the executable;
+  transcribe.cpp is built by `transcribe-cpp-sys` with its `dynamic-backends` feature: `transcribe.dll`
+  (`libtranscribe.so`) with `ggml` and `ggml-base` next to it, and each CPU instruction set tier (and
+  Vulkan, when built) as a loadable module that the library registers at run time. On Windows the
+  executable imports nothing from `ggml.dll`, only `transcribe.dll`.
+- Nothing of transcribe.cpp may be called before `runtime::get()` has opened the library. It opens
+  `transcribe.dll` from the runtime folders of [runtime-libraries.md](runtime-libraries.md), never through
+  the system's search, then has transcribe.cpp load its backend modules from that folder. See there for why.
+- `id`, `build_info` and `install_logging` do not touch the library (`install_logging` only records the
+  request; the log callback is set right after the library is loaded). `devices` loads it and lists the
+  devices of transcribe.cpp's own registry, which are not the ones `--device` indexes. `availability()`
+  is the typed outcome that `purr sys` prints under "Other engines".
+- `open` and `open_speech_detector` return an `OpenError::Engine` that says the engine cannot decode yet.
 
 ## Adding an engine
 

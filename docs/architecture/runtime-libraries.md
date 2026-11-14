@@ -63,6 +63,43 @@ version string and Vulkan API version (`purr_core::accel::vulkan_probe`, which l
 without linking it). It creates one Vulkan instance, only when ggml has a Vulkan device, and
 is never run for a transcription.
 
+## transcribe.cpp (cargo feature `transcribe`)
+
+The transcribe.cpp engine (`purr-engine-transcribe`, see [engines.md](engines.md)) is an engine, not a GPU
+backend, so it is not in `AccelBackend` or `detect_missing`. It has its own ggml, built by
+`transcribe-cpp-sys` with `dynamic-backends`, so the two ggml versions stay apart.
+
+- Windows: the binaries delay-load `transcribe.dll`. `purr-delayload` adds `/DELAYLOAD:transcribe.dll` for
+  a binary built with `transcribe` and hands the name to the engine crate as
+  `PURR_TRANSCRIBE_RUNTIME_LIBS`. `purr.exe` imports nothing from `ggml.dll`: whisper.cpp's ggml is
+  inside it, and a DLL import names its DLL, so the two never bind to each other. `check-windows-imports.ps1`
+  forbids `transcribe.dll` and `ggml*` among the hard imports and, with `-ExpectDelayLoaded transcribe.dll`,
+  requires the delay-load.
+- `/DELAYLOAD` only covers imports of the executable, which is all there is: `transcribe.dll` is the one
+  library the executable imports. Its `ggml.dll`, `ggml-base.dll` and the backend modules are found by
+  `transcribe.dll` itself, from its own folder, so they must sit next to it.
+- Before any call into transcribe.cpp, `purr_engine_transcribe::runtime::get` opens `transcribe.dll` from
+  the folders of [Search order](#search-order) (`LoadLibraryExW` with the DLL's folder as the load
+  directory) and then has transcribe.cpp register its backend modules from that folder. It never falls back to
+  the system's search: `ggml.dll` is a name other software puts on `PATH`. The delay-load helper then binds
+  to the module that was opened. The failure hook of `purr-core` aborts for any delay-loaded library other
+  than the Vulkan loader, so no code path may reach transcribe.cpp unguarded.
+- `purr sys` prints the outcome under "Other engines": loaded (with the folder, the version and the
+  devices), `transcribe.dll` not found (with the folders searched), found but not loadable (a library it
+  needs, such as the Visual C++ runtime, is missing), or no compute backend. `scripts/check-windows-sys.ps1
+  -ExpectTranscribe` checks the first two on a copy of the executable alone and on one with the libraries.
+- The libraries are built with the dynamic C and C++ runtime (`/MD`, `transcribe-cpp-sys` does not follow
+  `crt-static`), so they import `VCRUNTIME140.dll`, `VCRUNTIME140_1.dll` and `MSVCP140.dll`. The
+  executable still does not. Without the Visual C++ Redistributable the engine reports itself as not loadable
+  and everything else works; a package can put app-local copies of those DLLs next to `transcribe.dll`.
+- Linux and macOS have no delay-load: the binary lists `libtranscribe.so` (`libtranscribe.dylib`) as needed,
+  so it must sit in `lib` next to the binary (the `$ORIGIN/lib` rpath that the Linux jobs already set) or on
+  the library path, together with the `libggml*` libraries and backend modules of the same folder. A binary
+  built with `transcribe` does not start without them.
+- Not verified on Linux: `libggml.so` exports `ggml_*` symbols and the executable carries whisper.cpp's static
+  ggml, so the dynamic linker may bind the former's callers to the executable's copy if the executable
+  exports its ggml symbols. Check `nm -D` on a build with both engines before shipping one.
+
 ## Runtime pack (Windows)
 
 `purr-runtime-cuda-windows-x64.zip` holds `cublas64_*.dll` and `cublasLt64_*.dll` at its root and is
@@ -77,4 +114,17 @@ leave those DLLs out and the pack is the only place they ship.
 - Scoop: a `purr-cuda-runtime` package that extracts the pack into `$persist_dir\runtime`, and a
   `env_set` of `PURR_RUNTIME_DIR` to that folder.
 - Homebrew and macOS: nothing, Metal is part of the system.
+- A package built with `transcribe` ships the set the `transcribe-cpp-sys` build script stages next to the
+  executable in the target directory: on Windows `transcribe.dll`, `ggml.dll`, `ggml-base.dll` and
+  `ggml-cpu-<tier>.dll` for each instruction set tier (`x64`, `sse42`, `sandybridge`, `haswell`, `skylakex`,
+  `cannonlake`, `cascadelake`, `icelake`, `alderlake`), all in one folder next to `purr.exe` (or in a
+  `runtime` folder, or the per-user one). The Windows jobs already copy `release\*.dll` into the archive. The
+  release scripts zip or tar the CLI artifact folder whole and the CUDA split only leaves out the cuBLAS and
+  cudart libraries, so the set travels with the archive; the portable desktop archive copies `r\*.dll` the
+  same way. A target directory that has seen other feature sets may hold stale modules, so a package built outside CI
+  lists these names instead of a glob.
+- NSIS installer with `transcribe`: `dx bundle` does not list DLLs, so the set above has to be added as bundle
+  resources next to `purr-app.exe`, or unpacked into `%LOCALAPPDATA%\purr\runtime` like the CUDA pack. Not done: no
+  desktop job builds the feature. On Debian the `.so` files would go under `/usr/lib/purr-desktop` with the CUDA
+  runtime, which is on the binary's rpath.
 - Debian package: keeps shipping the CUDA runtime under `/usr/lib/purr-desktop`.
