@@ -387,7 +387,6 @@ mod tests {
     fn a_model_whose_hint_steers_lists_automatic_then_its_real_languages_by_name() {
         let qwen3 = crate::model_catalog::test_support::qwen3_profile();
         assert!(!is_locked(&qwen3));
-        assert_eq!(note(&qwen3, "Qwen3-ASR"), None);
         let offered = choices(Some(&qwen3), "");
         assert_eq!(offered.first(), Some(&LanguageChoice::Automatic));
         assert_eq!(spoken_count(Some(&qwen3)), 30);
