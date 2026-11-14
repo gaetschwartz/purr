@@ -1,4 +1,7 @@
-use super::icon::{Icon, IconName, IconSize};
+use super::{
+    icon::{Icon, IconName, IconSize},
+    info_tip::InfoTip,
+};
 use crate::{main_app::Route, utils::dom_id::use_dom_id};
 use dioxus::prelude::*;
 
@@ -37,11 +40,13 @@ pub enum ItemAction {
 ///
 /// With an `action` the whole row is a link or a button and shows a chevron; `control` holds a
 /// switch, select or stepper (name it with the same words as the title); `children` render under
-/// the row, for wide controls such as a slider.
+/// the row, for wide controls such as a slider. `hint` puts a one-line explanation behind an info
+/// icon; it cannot go on a row with an `action`, which is a button already.
 #[component]
 pub fn Item(
     #[props(into)] title: String,
     #[props(into)] subtitle: Option<String>,
+    #[props(into)] hint: Option<String>,
     #[props(into)] value: Option<String>,
     control: Option<Element>,
     action: Option<ItemAction>,
@@ -65,6 +70,9 @@ pub fn Item(
     let head = rsx! {
         span { class: "txt",
             b { "{title}" }
+            if let Some(hint) = hint.filter(|_| action.is_none()) {
+                InfoTip { about: title.clone(), text: hint }
+            }
             if let Some(subtitle) = &subtitle {
                 span { "{subtitle}" }
             }

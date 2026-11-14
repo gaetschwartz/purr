@@ -1,4 +1,7 @@
-use super::icon::{Icon, IconName};
+use super::{
+    icon::{Icon, IconName},
+    more_details::MoreDetails,
+};
 use dioxus::prelude::*;
 
 /// Meaning and colour of a [`Banner`].
@@ -33,7 +36,8 @@ impl BannerTone {
     }
 }
 
-/// An inline message with an icon, a bold title, a body and optional action buttons.
+/// An inline message with an icon, a bold title, a body, optional action buttons and `details`
+/// behind a closed disclosure.
 ///
 /// Pass `role: "alert"` for errors that appear after an action, `role: "status"` for progress news.
 #[component]
@@ -42,6 +46,7 @@ pub fn Banner(
     icon: Option<IconName>,
     #[props(into)] title: String,
     actions: Option<Element>,
+    details: Option<Element>,
     #[props(extends = GlobalAttributes)] attributes: Vec<Attribute>,
     children: Element,
 ) -> Element {
@@ -53,6 +58,9 @@ pub fn Banner(
                 b { "{title}" }
                 if has_body {
                     p { {children} }
+                }
+                if let Some(details) = details {
+                    MoreDetails { {details} }
                 }
                 if let Some(actions) = actions {
                     div { class: "acts", {actions} }
