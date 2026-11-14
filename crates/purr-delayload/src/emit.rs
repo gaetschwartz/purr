@@ -10,6 +10,8 @@ use crate::{
 pub const CUDA_ENV: &str = "PURR_CUDA_RUNTIME_LIBS";
 /// Environment variable carrying the Vulkan runtime library names into `purr-core`.
 pub const VULKAN_ENV: &str = "PURR_VULKAN_RUNTIME_LIBS";
+/// Environment variable carrying the transcribe.cpp library names into its engine crate.
+pub const TRANSCRIBE_ENV: &str = "PURR_TRANSCRIBE_RUNTIME_LIBS";
 
 const LINKER_IGNORE_UNUSED_DELAYLOAD: &str = "/IGNORE:4199";
 
@@ -64,11 +66,15 @@ pub fn link_directives(target: LinkTarget, libraries: &RuntimeLibraries) -> Vec<
 
 #[must_use]
 pub fn env_directives(libraries: &RuntimeLibraries) -> Vec<String> {
-    [(CUDA_ENV, &libraries.cuda), (VULKAN_ENV, &libraries.vulkan)]
-        .into_iter()
-        .filter(|(_, dlls)| !dlls.is_empty())
-        .map(|(name, dlls)| format!("cargo::rustc-env={name}={}", dlls.join(",")))
-        .collect()
+    [
+        (CUDA_ENV, &libraries.cuda),
+        (VULKAN_ENV, &libraries.vulkan),
+        (TRANSCRIBE_ENV, &libraries.transcribe),
+    ]
+    .into_iter()
+    .filter(|(_, dlls)| !dlls.is_empty())
+    .map(|(name, dlls)| format!("cargo::rustc-env={name}={}", dlls.join(",")))
+    .collect()
 }
 
 fn print_all(directives: &[String]) {
@@ -93,6 +99,16 @@ pub fn emit_runtime_env() -> Result<(), DiscoveryError> {
     Ok(())
 }
 
+/// Tell the transcribe.cpp engine crate which of its libraries its binaries load on demand.
+pub fn emit_transcribe_env() -> Result<(), DiscoveryError> {
+    let request = Request {
+        transcribe: true,
+        ..Request::from_cargo_env()
+    };
+    print_all(&env_directives(&request.resolve()?));
+    Ok(())
+}
+
 /// Turn the outcome of an emitter into the exit code of a build script.
 #[must_use]
 pub fn report(outcome: Result<(), DiscoveryError>) -> ExitCode {
@@ -113,6 +129,7 @@ mod tests {
         RuntimeLibraries {
             cuda: vec!["cublasLt64_13.dll".to_owned(), "cublas64_13.dll".to_owned()],
             vulkan: vec!["vulkan-1.dll".to_owned()],
+            transcribe: vec!["transcribe.dll".to_owned()],
         }
     }
 
@@ -124,6 +141,7 @@ mod tests {
                 "cargo::rustc-link-arg-bins=/DELAYLOAD:cublasLt64_13.dll",
                 "cargo::rustc-link-arg-bins=/DELAYLOAD:cublas64_13.dll",
                 "cargo::rustc-link-arg-bins=/DELAYLOAD:vulkan-1.dll",
+                "cargo::rustc-link-arg-bins=/DELAYLOAD:transcribe.dll",
                 "cargo::rustc-link-arg-bins=delayimp.lib",
                 "cargo::rustc-link-arg-bins=/IGNORE:4199",
             ]
@@ -145,6 +163,7 @@ mod tests {
         let libraries = RuntimeLibraries {
             cuda: vec!["libcuda.so.1".to_owned()],
             vulkan: vec!["libvulkan.so.1".to_owned()],
+            transcribe: Vec::new(),
         };
         assert_eq!(
             link_directives(LinkTarget::LinuxGnu, &libraries),
@@ -164,6 +183,7 @@ mod tests {
         let libraries = RuntimeLibraries {
             cuda: vec!["libcuda.so.1".to_owned()],
             vulkan: Vec::new(),
+            transcribe: Vec::new(),
         };
         assert_eq!(
             link_directives(LinkTarget::LinuxGnu, &libraries),
@@ -186,6 +206,7 @@ mod tests {
             [
                 "cargo::rustc-env=PURR_CUDA_RUNTIME_LIBS=cublasLt64_13.dll,cublas64_13.dll",
                 "cargo::rustc-env=PURR_VULKAN_RUNTIME_LIBS=vulkan-1.dll",
+                "cargo::rustc-env=PURR_TRANSCRIBE_RUNTIME_LIBS=transcribe.dll",
             ]
         );
     }
@@ -194,6 +215,7 @@ mod tests {
     fn env_directives_skip_backends_without_libraries() {
         let vulkan_only = RuntimeLibraries {
             cuda: Vec::new(),
+            transcribe: Vec::new(),
             ..libraries()
         };
         assert_eq!(
