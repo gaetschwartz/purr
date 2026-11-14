@@ -37,7 +37,7 @@ pub fn HardwarePage() -> Element {
         Group {
             Item {
                 title: "CPU threads",
-                subtitle: "Auto uses all available threads.",
+                subtitle: "Auto uses one thread per physical core.",
                 control: rsx! {
                     Stepper {
                         label: "CPU threads",

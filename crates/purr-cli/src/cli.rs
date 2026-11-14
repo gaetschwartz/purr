@@ -78,7 +78,7 @@ pub struct Cli {
     #[arg(long)]
     pub no_gpu: bool,
 
-    /// Number of threads to use
+    /// Number of threads to use (default: one per physical core)
     #[arg(short, long)]
     pub threads: Option<usize>,
 
@@ -422,7 +422,7 @@ impl TranscriptionConfigWithCliExt for purr_core::TranscriptionConfig {
         self.with_verbose(cli.verbosity.is_verbose())
             .with_opt_language(cli.language.as_ref().map(Language::code))
             .with_translate(cli.translate)
-            .with_threads(cli.threads.unwrap_or_else(num_cpus::get))
+            .with_threads(cli.threads.unwrap_or_else(purr_core::config::auto_threads))
             .with_temperature(cli.temperature)
             .with_sample_rate(cli.sample_rate)
             .with_chunk_size(cli.chunk_size)

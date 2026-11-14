@@ -32,7 +32,6 @@ indicatif = "0.18"
 owo-colors = "4.2.2"
 tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
 tracing-core = "0.1.34"
-num_cpus = "1.17.0"
 konst = { version = "0.4.1", features = ["alloc"] }
 const-str = { version = "1.1.0", features = ["proc"] }
 shadow-rs = { version = "2.0.0", default-features = false }

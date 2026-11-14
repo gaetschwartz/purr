@@ -185,7 +185,7 @@ Options:
                                    by `/` (backend, type gpu/igpu/cpu/accel, device id such as
                                    0000:01:00.0). It must match exactly one device
       --no-gpu                     Disable GPU acceleration (same as --accel cpu)
-  -t, --threads <THREADS>          Number of threads to use
+  -t, --threads <THREADS>          Number of threads to use (default: one per physical core)
   -o, --output <OUTPUT>            Output format [default: text] [possible values: text, json, srt]
       --timestamps                 Include timestamps in output (text format only)
       --word-timestamps            Time every word, and add each segment's words

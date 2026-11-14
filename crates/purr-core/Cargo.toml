@@ -43,6 +43,7 @@ rustls = { version = "0.23", default-features = false, features = ["ring", "std"
 purr-common = { path = "../purr-common" }
 parking_lot = "0.13.0"
 ash = { version = "0.38.0", default-features = false, features = ["loaded", "std"] }
+num_cpus = "1.17.0"
 
 [dev-dependencies]
 tempfile = "3.21"

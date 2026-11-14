@@ -160,10 +160,9 @@ impl Session {
         config: Arc<TranscriptionConfig>,
         out: Events,
     ) -> crate::Result<Self> {
-        let threads = match config.num_threads {
-            Some(threads) => threads,
-            None => crate::config::auto_threads()?,
-        };
+        let threads = config
+            .num_threads
+            .unwrap_or_else(crate::config::auto_threads);
         let language = match config.language.as_deref() {
             None | Some("auto") => StreamLanguage::Detecting,
             Some(code) => StreamLanguage::Chosen(

@@ -9,9 +9,11 @@ use std::{
 
 use purr_common::devices::DeviceOrder;
 
-/// The threads a transcription uses when none is asked for: every one the processor runs at once.
-pub fn auto_threads() -> std::io::Result<usize> {
-    std::thread::available_parallelism().map(std::num::NonZeroUsize::get)
+/// The threads a transcription uses when none is asked for: one per physical core, because
+/// ggml's threads wait on each other and a second hardware thread per core slows them down.
+#[must_use]
+pub fn auto_threads() -> usize {
+    num_cpus::get_physical().max(1)
 }
 
 /// Configuration for transcription operations
@@ -307,6 +309,12 @@ impl OutputFormat {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn auto_threads_never_exceed_the_logical_threads() {
+        let logical = std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get);
+        assert!((1..=logical).contains(&auto_threads()));
+    }
 
     #[test]
     fn every_device_is_tried_by_default() {
