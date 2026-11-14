@@ -33,7 +33,17 @@ impl LanguageSupport {
     pub fn supports(&self, tag: &LanguageTag) -> bool {
         match self {
             Self::Any => true,
-            Self::Only(listed) => listed.iter().any(|listed| matches(listed, tag)),
+            Self::Only(_) => self.listed(tag).is_some(),
+        }
+    }
+
+    /// The listed language `tag` matches, by the rule of [`Self::supports`]; `None` when the
+    /// model takes any language, as none is listed.
+    #[must_use]
+    pub fn listed(&self, tag: &LanguageTag) -> Option<&LanguageTag> {
+        match self {
+            Self::Any => None,
+            Self::Only(listed) => listed.iter().find(|listed| matches(listed, tag)),
         }
     }
 
@@ -69,6 +79,15 @@ mod tests {
     #[test]
     fn any_supports_every_language() {
         assert!(LanguageSupport::Any.supports(&tag("yue")));
+    }
+
+    #[test]
+    fn the_listed_language_is_the_one_the_tag_matches() {
+        let support = only(&["en-US", "fr", "pt-BR"]);
+        assert_eq!(support.listed(&tag("fr-CH")), Some(&tag("fr")));
+        assert_eq!(support.listed(&tag("en")), Some(&tag("en-US")));
+        assert_eq!(support.listed(&tag("pt-PT")), None);
+        assert_eq!(LanguageSupport::Any.listed(&tag("fr")), None);
     }
 
     #[test]

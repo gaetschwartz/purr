@@ -15,7 +15,7 @@ use transcribe_cpp::{Backend, Model, ModelOptions};
 
 use crate::{
     build_info::build_info,
-    decoder::ParakeetDecoder,
+    decoder::TranscribeDecoder,
     devices::list_devices,
     error::{TranscribeEngineError, open_error},
     logging,
@@ -87,7 +87,7 @@ impl Engine for TranscribeEngine {
         };
         let model = Model::load_with(spec.model, &options)
             .map_err(|error| open_error(error, &spec.candidate.name))?;
-        Ok(Box::new(ParakeetDecoder::new(&model, spec.threads)?))
+        Ok(Box::new(TranscribeDecoder::new(&model, spec.threads)?))
     }
 
     fn open_speech_detector(&self, model: &Path) -> Result<Box<dyn SpeechDetector>, OpenError> {

@@ -5,7 +5,7 @@ use purr_core::engine::{
     hypothesis::{Hypothesis, LanguageEstimate, Segmentation, Span},
     text::TextAssembler,
 };
-use transcribe_cpp::{Segment, Token, Transcript};
+use transcribe_cpp::{Segment, TimestampKind, Token, Transcript};
 
 use crate::error::TranscribeEngineError;
 
@@ -13,7 +13,9 @@ const SAMPLES_PER_MILLISECOND: i64 = 16;
 
 /// What `transcript` recognised, with the language the library reports when `report_language`.
 ///
-/// The segments are left for the pipeline to split from the word times.
+/// A model that times its words gives long segments for the pipeline to split from the word
+/// times; one that gives no word times gives segments as it means them, with spans when it
+/// times them and without when it does not.
 pub fn hypothesis(
     transcript: &Transcript,
     report_language: bool,
@@ -32,8 +34,15 @@ pub fn hypothesis(
     Ok(Hypothesis {
         segments,
         language,
-        segmentation: Segmentation::Synthesize,
+        segmentation: segmentation(transcript.timestamp_kind),
     })
+}
+
+fn segmentation(kind: TimestampKind) -> Segmentation {
+    match kind {
+        TimestampKind::Word | TimestampKind::Token => Segmentation::Synthesize,
+        TimestampKind::None | TimestampKind::Auto | TimestampKind::Segment => Segmentation::Native,
+    }
 }
 
 fn estimate(code: Option<&str>) -> Result<Option<LanguageEstimate>, TranscribeEngineError> {
@@ -160,6 +169,7 @@ mod tests {
     fn so_my_friend() -> Transcript {
         Transcript {
             text: "So, my friend".to_owned(),
+            timestamp_kind: TimestampKind::Token,
             segments: vec![segment(0, 3, 240, 1_760, "So, my friend")],
             words: vec![
                 word("So,", 240, 1_040, 0, 2),
@@ -262,11 +272,51 @@ mod tests {
     }
 
     #[test]
-    fn silence_is_an_empty_hypothesis_to_synthesize() {
+    fn silence_is_an_empty_hypothesis() {
+        let silence = Transcript {
+            timestamp_kind: TimestampKind::Token,
+            ..Transcript::default()
+        };
         assert_eq!(
-            hypothesis(&Transcript::default(), true).unwrap(),
+            hypothesis(&silence, true).unwrap(),
             Hypothesis::empty(Segmentation::Synthesize)
         );
+    }
+
+    #[test]
+    fn words_with_times_are_split_by_the_pipeline_and_coarser_timing_is_kept_as_given() {
+        let kinds = [
+            (TimestampKind::Token, Segmentation::Synthesize),
+            (TimestampKind::Word, Segmentation::Synthesize),
+            (TimestampKind::Segment, Segmentation::Native),
+            (TimestampKind::None, Segmentation::Native),
+        ];
+        for (kind, expected) in kinds {
+            let transcript = Transcript {
+                timestamp_kind: kind,
+                ..so_my_friend()
+            };
+            assert_eq!(
+                hypothesis(&transcript, false).unwrap().segmentation,
+                expected
+            );
+        }
+    }
+
+    #[test]
+    fn text_without_times_is_one_untimed_segment() {
+        let transcript = Transcript {
+            text: "Bonjour tout le monde".to_owned(),
+            timestamp_kind: TimestampKind::None,
+            segments: vec![segment(0, 0, 0, 0, " Bonjour tout le monde")],
+            ..Transcript::default()
+        };
+        let hypothesis = hypothesis(&transcript, false).unwrap();
+        assert_eq!(hypothesis.segmentation, Segmentation::Native);
+        let segment = only_segment(hypothesis);
+        assert_eq!(segment.text, "Bonjour tout le monde");
+        assert_eq!(segment.span, None);
+        assert_eq!(segment.words, Vec::new());
     }
 
     #[test]
