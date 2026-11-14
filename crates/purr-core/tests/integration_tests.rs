@@ -92,8 +92,7 @@ async fn test_transcription_output_formats() {
         .with_gpu(false)
         .with_language("en");
 
-    // Test with timestamps enabled
-    config.output_format.include_timestamps = true;
+    // Test with word timestamps enabled
     config.output_format.word_timestamps = true;
 
     let result = transcribe_file_sync(sample_path, Some(config)).await;

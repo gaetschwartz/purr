@@ -414,10 +414,7 @@ impl TranscriptionConfigWithCliExt for purr_core::TranscriptionConfig {
             .with_devices(cli.device_order())
             .with_http_timeout(cli.http_timeout)
             .with_http_connect_timeout(cli.http_connect_timeout)
-            .apply_output_format(|f| {
-                f.with_timestamps(cli.timestamps)
-                    .with_word_timestamps(cli.word_timestamps)
-            })
+            .apply_output_format(|f| f.with_word_timestamps(cli.word_timestamps))
     }
 }
 

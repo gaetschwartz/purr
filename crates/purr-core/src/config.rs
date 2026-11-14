@@ -33,9 +33,6 @@ pub struct TranscriptionConfig {
     /// Sample rate to use in Hz. 16'000 is the recommended and default value.
     pub sample_rate: u32,
 
-    /// Maximum audio duration in seconds
-    pub max_duration: Option<f32>,
-
     /// Beam size for beam search
     pub beam_size: Option<usize>,
 
@@ -84,14 +81,8 @@ pub enum TentativeText {
 /// Output format options
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OutputFormat {
-    /// Include timestamps in the output
-    pub include_timestamps: bool,
-
     /// Include word-level timestamps
     pub word_timestamps: bool,
-
-    /// Include confidence scores
-    pub include_confidence: bool,
 }
 
 impl Default for TranscriptionConfig {
@@ -102,7 +93,6 @@ impl Default for TranscriptionConfig {
             devices: DeviceOrder::automatic(),
             num_threads: None,  // Use system default
             sample_rate: 16000, // Whisper's preferred sample rate
-            max_duration: None,
             beam_size: Some(5), // Default to beam search with 5 beams for better quality
             output_format: OutputFormat::default(),
             verbose: false,
@@ -118,9 +108,7 @@ impl Default for TranscriptionConfig {
 impl Default for OutputFormat {
     fn default() -> Self {
         Self {
-            include_timestamps: true,
             word_timestamps: false,
-            include_confidence: false,
         }
     }
 }
@@ -249,24 +237,10 @@ impl OutputFormat {
         Self::default()
     }
 
-    /// Enable or disable timestamps in the output
-    #[must_use]
-    pub fn with_timestamps(mut self, include: bool) -> Self {
-        self.include_timestamps = include;
-        self
-    }
-
     /// Enable or disable word-level timestamps
     #[must_use]
     pub fn with_word_timestamps(mut self, include: bool) -> Self {
         self.word_timestamps = include;
-        self
-    }
-
-    /// Enable or disable confidence scores in the output
-    #[must_use]
-    pub fn with_confidence(mut self, include: bool) -> Self {
-        self.include_confidence = include;
         self
     }
 }
