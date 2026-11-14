@@ -1,0 +1,213 @@
+[
+  {
+    "progress": {
+      "frame": {
+        "decoding": [
+          0.0,
+          11.0
+        ],
+        "phase": "DetectingLanguage",
+        "transcribed_to": 0.0
+      },
+      "received": 11.0,
+      "source_ended": true
+    }
+  },
+  {
+    "chunk": {
+      "chunk_index": 0,
+      "end": 8.0,
+      "final_stats": null,
+      "is_final": false,
+      "kind": "Committed",
+      "language": "en",
+      "start": 0.0,
+      "text": "And so, my fellow Americans, ask not what your country can do for you,",
+      "words": [
+        [
+          0,
+          3,
+          32,
+          37,
+          172
+        ],
+        [
+          4,
+          7,
+          37,
+          86,
+          253
+        ],
+        [
+          8,
+          10,
+          86,
+          111,
+          251
+        ],
+        [
+          11,
+          17,
+          111,
+          185,
+          254
+        ],
+        [
+          18,
+          28,
+          185,
+          349,
+          242
+        ],
+        [
+          29,
+          32,
+          349,
+          424,
+          186
+        ],
+        [
+          33,
+          36,
+          424,
+          430,
+          207
+        ],
+        [
+          37,
+          41,
+          503,
+          535,
+          214
+        ],
+        [
+          42,
+          46,
+          541,
+          574,
+          250
+        ],
+        [
+          47,
+          54,
+          574,
+          639,
+          254
+        ],
+        [
+          55,
+          58,
+          639,
+          663,
+          249
+        ],
+        [
+          59,
+          61,
+          664,
+          692,
+          250
+        ],
+        [
+          62,
+          65,
+          701,
+          727,
+          247
+        ],
+        [
+          66,
+          70,
+          727,
+          797,
+          250
+        ]
+      ]
+    }
+  },
+  {
+    "chunk": {
+      "chunk_index": 1,
+      "end": 11.0,
+      "final_stats": {
+        "audio_duration": 11.0,
+        "segment_count": 2,
+        "word_count": 22
+      },
+      "is_final": true,
+      "kind": "Committed",
+      "language": "en",
+      "start": 8.0,
+      "text": "ask what you can do for your country.",
+      "words": [
+        [
+          0,
+          3,
+          831,
+          831,
+          226
+        ],
+        [
+          4,
+          8,
+          834,
+          872,
+          248
+        ],
+        [
+          9,
+          12,
+          872,
+          903,
+          252
+        ],
+        [
+          13,
+          16,
+          903,
+          924,
+          254
+        ],
+        [
+          17,
+          19,
+          937,
+          954,
+          254
+        ],
+        [
+          20,
+          23,
+          954,
+          985,
+          254
+        ],
+        [
+          24,
+          28,
+          985,
+          1010,
+          254
+        ],
+        [
+          29,
+          37,
+          1010,
+          1100,
+          255
+        ]
+      ]
+    }
+  },
+  {
+    "progress": {
+      "frame": {
+        "decoding": null,
+        "phase": "Transcribing",
+        "transcribed_to": 11.0
+      },
+      "received": 11.0,
+      "source_ended": true
+    }
+  }
+]

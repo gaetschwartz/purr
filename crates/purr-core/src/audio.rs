@@ -73,6 +73,25 @@ impl AudioStream {
     pub(crate) fn new(receiver: mpsc::UnboundedReceiver<Result<AudioChunk>>) -> Self {
         Self { receiver }
     }
+
+    /// A stream that already holds all of `samples` (mono, 16 kHz), in chunks of the usual size.
+    #[must_use]
+    pub fn from_samples(samples: &[f32]) -> Self {
+        let (tx, rx) = mpsc::unbounded_channel();
+        let parts = samples.chunks(AudioChunk::TARGET_SAMPLES).count();
+        for (index, part) in samples.chunks(AudioChunk::TARGET_SAMPLES).enumerate() {
+            let chunk = AudioChunk::new(
+                part.to_vec(),
+                index,
+                index as f32 * AudioChunk::TARGET_DURATION,
+                index + 1 == parts,
+            );
+            if tx.send(Ok(chunk)).is_err() {
+                break;
+            }
+        }
+        Self::new(rx)
+    }
 }
 
 impl Stream for AudioStream {
