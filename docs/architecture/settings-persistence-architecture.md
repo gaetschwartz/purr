@@ -88,19 +88,12 @@ pub struct ModelSettings {
     /// Selected model name/ID
     pub selected_model: String,
 
-    /// Temperature for transcription (0.0 - 1.0)
-    #[serde(deserialize_with = "deserialize_bounded_f64::<0, 100>")]
-    pub temperature: f64,
-
     /// Maximum tokens to generate
     #[serde(deserialize_with = "deserialize_bounded_u32::<256, 8192>")]
     pub max_tokens: u32,
 
     /// Preferred language for transcription (None = auto-detect)
     pub preferred_language: Option<String>,
-
-    /// Automatically translate to English
-    pub auto_translate: bool,
 
     /// Model download directory (desktop only)
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -286,10 +279,8 @@ impl Default for ModelSettings {
     fn default() -> Self {
         Self {
             selected_model: "whisper-1".to_string(),
-            temperature: 0.0,
             max_tokens: 4096,
             preferred_language: None,
-            auto_translate: false,
             model_directory: None,
         }
     }
@@ -777,13 +768,11 @@ async fn start_transcription_process(
     let request = TranscriptionRequest {
         file: FileSource::Uploaded(file_id),
         language: settings.model.preferred_language.clone(),
-        translate: settings.model.auto_translate,
     };
 
     // Configure model with settings
     platform.configure_model(ModelConfig {
         model_id: &settings.model.selected_model,
-        temperature: settings.model.temperature,
         max_tokens: settings.model.max_tokens,
         device_id: settings.performance.device_id,
         devices: settings.performance.device_order(),
@@ -960,9 +949,9 @@ mod tests {
 
     #[test]
     fn test_bounded_values() {
-        let json = r#"{"model": {"temperature": 2.0}}"#;
+        let json = r#"{"model": {"max_tokens": 100000}}"#;
         let settings: Settings = serde_json::from_str(json).unwrap();
-        assert_eq!(settings.model.temperature, 1.0); // Clamped to max
+        assert_eq!(settings.model.max_tokens, 8192); // Clamped to max
     }
 }
 ```

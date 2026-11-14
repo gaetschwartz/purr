@@ -28,7 +28,6 @@ pub enum Offer {
     Switch,
     /// A line saying why the option is not there
     Reason(&'static str),
-    Absent,
 }
 
 /// The "Details" rows of the More menu.

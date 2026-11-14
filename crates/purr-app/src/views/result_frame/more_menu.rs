@@ -106,7 +106,6 @@ fn OfferRow(
         Offer::Reason(reason) => rsx! {
             ReasonRow { title, reason }
         },
-        Offer::Absent => rsx! {},
     }
 }
 
