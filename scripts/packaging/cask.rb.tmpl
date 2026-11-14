@@ -4,7 +4,7 @@ cask "$token" do
 
   url "$url"
   name "Purr"
-  desc "Transcribe audio files and URLs with Whisper"
+  desc "Transcribe audio files and URLs on this computer"
   homepage "https://github.com/$repo"
 
   livecheck do
@@ -18,8 +18,8 @@ $livecheck
   app "$app_bundle"
 
   # The app is not notarized, so Gatekeeper would refuse to open it.
-  postflight do
-    system_command "/usr/bin/xattr",
-                   args: ["-dr", "com.apple.quarantine", "#{appdir}/$app_bundle"]
+  postflight_steps do
+    run "/usr/bin/xattr",
+        args: ["-dr", "com.apple.quarantine", "{{appdir}}/$app_bundle"]
   end
 end
