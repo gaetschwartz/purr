@@ -7,7 +7,7 @@
 use futures::StreamExt;
 use purr_common::{devices::DeviceOrder, model::engine::EngineId, platform::ChunkKind};
 use purr_core::{
-    AudioStream, ModelManager,
+    AudioChunk, AudioStream, ModelManager,
     audio::AudioProcessor,
     config::{ModelRef, RunConfig, TentativeText, Windowing},
     engine::Engine,
@@ -21,7 +21,9 @@ use purr_engine_transcribe::engine::TranscribeEngine;
 use std::{
     path::{Path, PathBuf},
     sync::Arc,
+    time::Duration,
 };
+use tokio::sync::mpsc;
 
 type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
 
@@ -182,4 +184,64 @@ fn is_in_order(lines: &[Line], limit: f64) -> bool {
         .iter()
         .all(|line| line.start < line.end && line.end <= limit)
         && lines.windows(2).all(|pair| pair[0].end <= pair[1].start)
+}
+
+const HALF_SECOND: usize = SAMPLE_RATE / 2;
+
+/// Feeds `samples` in half seconds at the pace of speech, from a thread of its own.
+fn paced(samples: Vec<f32>) -> AudioStream {
+    let (tx, rx) = mpsc::unbounded_channel();
+    std::thread::spawn(move || {
+        let parts = samples.chunks(HALF_SECOND).count();
+        for (i, part) in samples.chunks(HALF_SECOND).enumerate() {
+            std::thread::sleep(Duration::from_millis(500));
+            let chunk = AudioChunk::new(part.to_vec(), i, i as f32 * 0.5, i + 1 == parts);
+            if tx.send(Ok(chunk)).is_err() {
+                return;
+            }
+        }
+    });
+    AudioStream::new(rx)
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "needs the Parakeet model and feeds 11 s of audio at the pace of speech"]
+async fn tentative_text_carries_words_and_scores() -> TestResult {
+    let models = ModelManager::new()?;
+    let model = models.models_dir().join(MODEL);
+    if !model.exists() {
+        println!("skipping: no model at {}", model.display());
+        return Ok(());
+    }
+    let config = config(None).with_tentative(TentativeText::WhileWaiting { every_seconds: 2.0 });
+    let mut stream = transcribe(
+        Input::Audio(paced(jfk().await?)),
+        config,
+        &ModelRef::new(&model, EngineId::TranscribeCpp),
+        &engines(),
+    )
+    .await?;
+    let mut tentative = Vec::new();
+    let mut committed = Vec::new();
+    while let Some(event) = stream.next().await {
+        if let StreamEvent::Chunk(chunk) = event? {
+            match chunk.kind {
+                ChunkKind::Tentative => tentative.push(chunk),
+                ChunkKind::Committed => committed.push(chunk),
+            }
+        }
+    }
+    for chunk in &tentative {
+        println!(
+            "tentative [{:.1}-{:.1}] {}",
+            chunk.start, chunk.end, chunk.text
+        );
+        assert!(!chunk.words.is_empty());
+        assert!(chunk.words.iter().all(|word| word.score.is_some()));
+        assert_eq!(chunk.language, None);
+    }
+    assert!(!tentative.is_empty());
+    let finals: Vec<_> = committed.iter().map(|chunk| chunk.text.as_str()).collect();
+    assert_eq!(finals.join(" "), JFK);
+    Ok(())
 }

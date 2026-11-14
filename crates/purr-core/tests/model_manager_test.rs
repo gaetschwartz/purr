@@ -266,7 +266,7 @@ async fn the_voice_activity_model_is_not_one_of_the_models() -> Result<(), Box<d
         .iter()
         .map(|model| model.id.as_str())
         .collect();
-    assert_eq!(listed, ["fixture"]);
+    assert_eq!(listed, ["fixture", "fixture-gguf"]);
     let grouped: Vec<&str> = fx
         .manager
         .registry()
@@ -274,7 +274,7 @@ async fn the_voice_activity_model_is_not_one_of_the_models() -> Result<(), Box<d
         .iter()
         .flat_map(|group| group.models.iter().map(|model| model.id.as_str()))
         .collect();
-    assert_eq!(grouped, ["fixture"]);
+    assert_eq!(grouped, ["fixture", "fixture-gguf"]);
     Ok(())
 }
 
@@ -290,6 +290,77 @@ async fn deleting_a_model_leaves_the_voice_activity_model() -> Result<(), Box<dy
     assert_eq!(
         fx.manager.vad_model_path().await?,
         Some(fx.manager.get_vad_path())
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_downloaded_model_is_skipped_when_its_engine_is_not_built() -> Result<(), Box<dyn Error>>
+{
+    let fx = fixture()?;
+    let gguf = fx.manager.model("fixture-gguf")?;
+    let path = fx.manager.get_model_path(gguf);
+    std::fs::write(&path, &fx.content)?;
+
+    assert_eq!(
+        fx.manager
+            .find_first_available_model(&[EngineId::WhisperCpp])
+            .await?,
+        None
+    );
+    assert_eq!(
+        fx.manager
+            .find_first_available_model(&[EngineId::WhisperCpp, EngineId::TranscribeCpp])
+            .await?,
+        Some(path)
+    );
+    assert!(matches!(
+        fx.manager.find_default_model(&[EngineId::WhisperCpp]).await,
+        Err(purr_core::Error::Configuration {
+            source: ConfigurationError::NoModelFound
+        })
+    ));
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_file_outside_the_catalog_is_run_by_the_engine_for_its_format()
+-> Result<(), Box<dyn Error>> {
+    let fx = fixture()?;
+    let dir = tempfile::tempdir()?;
+    let gguf = dir.path().join("mine.bin");
+    std::fs::write(&gguf, b"GGUF\x03\0\0\0rest")?;
+    let ggml = dir.path().join("mine.gguf");
+    std::fs::write(&ggml, 0x6767_6d6c_u32.to_le_bytes())?;
+    let neither = dir.path().join("mine.onnx");
+    std::fs::write(&neither, b"\x08\x07onnx")?;
+
+    assert_eq!(
+        fx.manager.reference(gguf).await?.engine,
+        EngineId::TranscribeCpp
+    );
+    assert_eq!(
+        fx.manager.reference(ggml).await?.engine,
+        EngineId::WhisperCpp
+    );
+    assert!(matches!(
+        fx.manager.reference(neither).await,
+        Err(purr_core::Error::Configuration {
+            source: ConfigurationError::UnknownModelFile { .. }
+        })
+    ));
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_catalog_file_keeps_the_engine_of_its_model() -> Result<(), Box<dyn Error>> {
+    let fx = fixture()?;
+    let path = fx.manager.get_model_path(fx.manager.model("fixture-gguf")?);
+    std::fs::write(&path, b"not a model at all")?;
+
+    assert_eq!(
+        fx.manager.reference(path).await?.engine,
+        EngineId::TranscribeCpp
     );
     Ok(())
 }
