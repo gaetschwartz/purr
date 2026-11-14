@@ -1,4 +1,4 @@
-use crate::{
+use purr_core::{
     accel::{devices::display_name, plan::Candidate},
     dev::Device,
 };
@@ -50,13 +50,60 @@ pub fn locate(candidate: &Candidate, devices: &[Device]) -> Option<GpuHandle> {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use super::*;
-    use crate::accel::{
-        backend::AccelBackend::{self, Cpu, Cuda, Vulkan},
-        devices::fixtures::{device, inventory, with_pci},
+    use purr_common::{devices::DeviceOrder, platform::DeviceType};
+    use purr_core::accel::{
+        backend::{
+            AccelBackend::{self, Cpu, Cuda, Vulkan},
+            BuildStatus,
+        },
+        build_info::BuildInfo,
+        inventory::Inventory,
         plan::resolve,
     };
-    use purr_common::{devices::DeviceOrder, platform::DeviceType};
+
+    fn device(id: i32, name: &str, backend: AccelBackend, tpe: DeviceType) -> Device {
+        Device {
+            id,
+            name: format!("{backend}{id}"),
+            description: name.to_owned(),
+            device_id: None,
+            vram_free: 0,
+            vram_total: 0,
+            tpe,
+            backend: Some(backend),
+            caps: None,
+            vulkan_driver: None,
+        }
+    }
+
+    fn with_pci(mut device: Device, pci: &str) -> Device {
+        device.device_id = Some(pci.to_owned());
+        device
+    }
+
+    fn inventory(devices: Vec<Device>, built: &[AccelBackend]) -> Inventory {
+        Inventory {
+            devices,
+            build: BuildInfo {
+                backends: AccelBackend::ALL
+                    .iter()
+                    .map(|backend| {
+                        let status = if built.contains(backend) {
+                            BuildStatus::Built
+                        } else {
+                            BuildStatus::NotBuilt
+                        };
+                        (*backend, status)
+                    })
+                    .collect::<HashMap<_, _>>(),
+                cpu: Vec::new(),
+            },
+            ..Inventory::default()
+        }
+    }
 
     fn candidates(devices: Vec<Device>) -> Vec<Candidate> {
         let machine = inventory(devices, &[Cuda, Vulkan, Cpu]);

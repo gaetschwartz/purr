@@ -10,8 +10,8 @@ use purr_core::{
         events::StreamEvent,
         run::{Input, transcribe},
     },
-    whisper::engine::WhisperEngine,
 };
+use purr_engine_whisper::engine::WhisperEngine;
 use std::{
     sync::Arc,
     time::{Duration, Instant},

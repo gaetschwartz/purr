@@ -5,14 +5,14 @@ use std::{ffi::c_void, time::Duration};
 use purr_common::{language::tag::LanguageTag, model::profile::InputLimit};
 use whisper_rs::{FullParams, SamplingStrategy, WhisperState};
 
-use crate::engine::{
+use purr_core::engine::{
     cancel::CancelToken,
     decoder::{DecodeRequest, LanguageRequest, WindowDecoder, WindowLimits},
     error::DecodeError,
     hypothesis::{Completion, Decoded, Hypothesis, LanguageEstimate, Segmentation},
 };
 
-use super::{
+use crate::{
     error::WhisperEngineError,
     language::{detected_tag, whisper_code},
     segments,

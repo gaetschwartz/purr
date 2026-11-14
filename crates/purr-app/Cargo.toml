@@ -18,6 +18,7 @@ path = "src/main.rs"
 [dependencies]
 # Desktop-only dependencies
 purr-core = { path = "../purr-core", optional = true }
+purr-engine-whisper = { path = "../purr-engine-whisper", optional = true }
 purr-common = { path = "../purr-common" }
 tokio = { version = "1.47.1", default-features = false }
 tracing-subscriber = { version = "0.3" }
@@ -83,6 +84,7 @@ desktop = [
   "dioxus/desktop",
   "tokio/full",
   "purr-core",
+  "purr-engine-whisper",
   "rfd",
   "cached",
   "serde_json",
@@ -95,10 +97,10 @@ desktop = [
 # Mobile feature
 mobile = ["dioxus/mobile"]
 
-vulkan = ["purr-core/vulkan"]
-cuda = ["purr-core/cuda"]
-metal = ["purr-core/metal"]
-coreml = ["purr-core/coreml"]
+vulkan = ["purr-engine-whisper/vulkan"]
+cuda = ["purr-engine-whisper/cuda"]
+metal = ["purr-engine-whisper/metal"]
+coreml = ["purr-engine-whisper/coreml"]
 static-ffmpeg = ["purr-core/static-ffmpeg"]
 gloo-timers = ["dep:gloo-timers"]
 parking_lot = ["dep:parking_lot"]

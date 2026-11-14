@@ -1,7 +1,7 @@
 use whisper_rs::whisper_rs_sys::{ggml_backend_dev_get, ggml_backend_dev_init, ggml_backend_free};
 
-use super::devices::GpuHandle;
-use crate::accel::report::AttemptFailure;
+use crate::devices::GpuHandle;
+use purr_core::accel::report::AttemptFailure;
 
 /// Initialise the device and release it again.
 ///

@@ -9,8 +9,8 @@ use purr_core::{
         result::collect,
         run::{Input, transcribe},
     },
-    whisper::engine::WhisperEngine,
 };
+use purr_engine_whisper::engine::WhisperEngine;
 use rstest::rstest;
 use std::{path::PathBuf, sync::Arc};
 
@@ -23,14 +23,14 @@ async fn test_transcribe_sample_files(#[files("../../samples/*")] sample_path: P
         .unwrap_or("")
         .to_lowercase();
     if !matches!(extension.as_str(), "wav" | "mp3" | "ogg" | "flac") {
-        println!("⏭ Skipping {}", sample_path.display());
+        println!("â­ Skipping {}", sample_path.display());
         return;
     }
     let Some(model) = (match ModelManager::new() {
         Ok(manager) => manager.find_default_model().await.ok(),
         Err(_) => None,
     }) else {
-        println!("⏭ Skipping {} - no model available", sample_path.display());
+        println!("â­ Skipping {} - no model available", sample_path.display());
         return;
     };
 
@@ -50,7 +50,7 @@ async fn test_transcribe_sample_files(#[files("../../samples/*")] sample_path: P
     .await
     .unwrap();
 
-    assert!(!transcription.text.is_empty(), "{}", sample_path.display());
+    assert_ne!(transcription.text, "", "{}", sample_path.display());
     assert!(transcription.audio_duration > 0.0);
     assert!(transcription.processing_time > 0.0);
     assert!(!transcription.segments.is_empty());

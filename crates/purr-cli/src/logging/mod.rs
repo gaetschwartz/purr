@@ -74,7 +74,7 @@ fn shown_when_verbose(metadata: &Metadata<'_>) -> bool {
     let target = metadata.target();
     *metadata.level() <= Level::INFO
         && target != FATAL_TARGET
-        && [APP_NAME, purr_core::PKG_NAME]
+        && [APP_NAME, purr_core::PKG_NAME, purr_engine_whisper::PKG_NAME]
             .iter()
             .any(|prefix| target.starts_with(prefix))
 }
@@ -286,7 +286,7 @@ mod tests {
     }
 
     #[test]
-    fn verbose_shows_this_program_and_purr_core_but_not_the_fatal_record()
+    fn verbose_shows_this_program_and_its_engines_but_not_the_fatal_record()
     -> Result<(), LoggingError> {
         let terminal = run(
             LogConfig {
@@ -296,7 +296,7 @@ mod tests {
             },
             || {
                 tracing::info!(target: "purr", "app");
-                tracing::info!(target: "purr-core::logging::trampoline::ggml", "ggml");
+                tracing::info!(target: "purr-engine-whisper::logging::trampoline::ggml", "ggml");
                 tracing::info!(target: "hyper", "dependency");
                 tracing::error!(target: FATAL_TARGET, "fatal");
             },

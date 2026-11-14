@@ -6,13 +6,13 @@ use purr_common::model::engine::EngineId;
 use tracing::debug;
 use whisper_rs::{WhisperContext, WhisperContextParameters};
 
-use crate::{
+use purr_core::{
     accel::{backend::AccelBackend, build_info::BuildInfo, report::AttemptFailure},
     dev::Device,
     engine::{Engine, OpenSpec, decoder::WindowDecoder, error::OpenError, speech::SpeechDetector},
 };
 
-use super::{
+use crate::{
     build_info::build_info, coreml, decoder::WhisperDecoder, devices::locate,
     inventory::list_devices, logging::install_logging_hooks, probe::probe_gpu, vad::SileroDetector,
 };

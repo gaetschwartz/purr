@@ -3,7 +3,7 @@ use std::ffi::CStr;
 use purr_common::platform::DeviceType;
 use whisper_rs::whisper_rs_sys as ggml;
 
-use crate::{
+use purr_core::{
     accel::backend::AccelBackend,
     dev::{Device, caps::DeviceCaps},
 };

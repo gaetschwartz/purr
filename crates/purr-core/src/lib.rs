@@ -15,7 +15,6 @@ pub mod model;
 pub mod pipeline;
 mod resample;
 pub mod url;
-pub mod whisper;
 
 pub use audio::{AudioChunk, AudioProcessor, AudioStream};
 pub use dev::{Device, SystemInfo};

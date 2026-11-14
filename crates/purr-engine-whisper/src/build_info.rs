@@ -1,7 +1,7 @@
 use purr_common::accel::CpuFeature;
 use whisper_rs::whisper_rs_sys as ggml;
 
-use crate::accel::{
+use purr_core::accel::{
     backend::{AccelBackend, BuildStatus},
     build_info::BuildInfo,
 };

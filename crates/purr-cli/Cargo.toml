@@ -10,6 +10,7 @@ path = "src/main.rs"
 [dependencies]
 # Core library
 purr-core.workspace = true
+purr-engine-whisper = { path = "../purr-engine-whisper" }
 purr-common = { path = "../purr-common" }
 
 # CLI argument parsing
@@ -50,10 +51,10 @@ strum = { version = "0.28.0", features = ["derive"] }
 parking_lot = "0.13.0"
 
 [features]
-cuda = ["purr-core/cuda"]
-vulkan = ["purr-core/vulkan"]
-metal = ["purr-core/metal"]
-coreml = ["purr-core/coreml"]
+cuda = ["purr-engine-whisper/cuda"]
+vulkan = ["purr-engine-whisper/vulkan"]
+metal = ["purr-engine-whisper/metal"]
+coreml = ["purr-engine-whisper/coreml"]
 static-ffmpeg = ["purr-core/static-ffmpeg"]
 
 [build-dependencies]

@@ -2,7 +2,7 @@
 
 use purr_common::language::{tag::LanguageTag, whisper};
 
-use super::error::WhisperEngineError;
+use crate::error::WhisperEngineError;
 
 /// Whisper's own spelling of `tag`, when whisper.cpp knows the language.
 pub fn whisper_code(tag: &LanguageTag) -> Option<&'static str> {

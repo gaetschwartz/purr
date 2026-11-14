@@ -1,10 +1,10 @@
 //! The segments of the last `full()` call, with their words.
 
-use crate::engine::hypothesis::{Segment, Span};
+use purr_core::engine::hypothesis::{Segment, Span};
 use tracing::debug;
 use whisper_rs::WhisperState;
 
-use super::{
+use crate::{
     error::WhisperEngineError,
     words::{Token, group},
 };

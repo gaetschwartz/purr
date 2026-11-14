@@ -9,8 +9,8 @@ use purr_core::{
         result::{SyncTranscriptionResult, collect},
         run::{Input, transcribe},
     },
-    whisper::engine::WhisperEngine,
 };
+use purr_engine_whisper::engine::WhisperEngine;
 use rstest::rstest;
 use std::{
     path::{Path, PathBuf},

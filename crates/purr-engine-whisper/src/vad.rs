@@ -4,9 +4,9 @@ use std::path::Path;
 
 use whisper_rs::{WhisperVadContext, WhisperVadContextParams, WhisperVadParams};
 
-use crate::engine::{error::DetectError, hypothesis::Span, speech::SpeechDetector};
+use purr_core::engine::{error::DetectError, hypothesis::Span, speech::SpeechDetector};
 
-use super::error::WhisperEngineError;
+use crate::error::WhisperEngineError;
 
 const SAMPLES_PER_CENTISECOND: f32 = 160.0;
 

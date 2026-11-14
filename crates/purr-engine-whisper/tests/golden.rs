@@ -1,7 +1,7 @@
 //! What the Whisper pipeline produces on two samples, compared with recorded goldens.
 //!
 //! Needs `ggml-base.bin` (and the Silero model for the runs that use it) in Purr's model cache.
-//! Run with `cargo nextest run -p purr-core --test golden --run-ignored only`; set
+//! Run with `cargo nextest run -p purr-engine-whisper --test golden --run-ignored only`; set
 //! `PURR_GOLDEN=update` to record the goldens again.
 
 use futures::StreamExt;
@@ -16,8 +16,8 @@ use purr_core::{
         result::collect,
         run::{Input, transcribe},
     },
-    whisper::engine::WhisperEngine,
 };
+use purr_engine_whisper::engine::WhisperEngine;
 use serde_json::{Value, json};
 use std::{
     path::{Path, PathBuf},

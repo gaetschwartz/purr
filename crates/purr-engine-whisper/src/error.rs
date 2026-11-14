@@ -1,4 +1,4 @@
-use crate::engine::error::{DecodeError, DetectError, OpenError};
+use purr_core::engine::error::{DecodeError, DetectError, OpenError};
 
 /// What goes wrong inside whisper.cpp.
 #[derive(Debug, thiserror::Error)]

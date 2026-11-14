@@ -1,0 +1,29 @@
+[package]
+name = "purr-engine-whisper"
+version.workspace = true
+edition = "2024"
+description = "whisper.cpp as a Purr speech recognition engine"
+
+[lints]
+workspace = true
+
+[dependencies]
+purr-common = { path = "../purr-common" }
+purr-core = { path = "../purr-core" }
+thiserror = "2.0"
+tracing = "0.1.41"
+whisper-rs = { version = "0.16.0", default-features = false, features = ["tracing_backend", "raw-api"] }
+
+[dev-dependencies]
+futures = "0.3"
+pretty_assertions = "1.4.1"
+rstest = "0.28"
+serde_json = "1.0"
+tempfile = "3.21"
+tokio = { version = "1.47", features = ["full"] }
+
+[features]
+cuda = ["whisper-rs/cuda", "purr-core/cuda"]
+vulkan = ["whisper-rs/vulkan", "purr-core/vulkan"]
+metal = ["whisper-rs/metal"]
+coreml = ["whisper-rs/coreml"]

@@ -27,8 +27,8 @@ pub fn install_logging_hooks() {
     install_ggml_logging_hook();
 }
 
-pub const WHISPER_LOG_TARGET: &str = "purr-core::logging::trampoline::whisper";
-pub const GGML_LOG_TARGET: &str = "purr-core::logging::trampoline::ggml";
+pub const WHISPER_LOG_TARGET: &str = "purr-engine-whisper::logging::trampoline::whisper";
+pub const GGML_LOG_TARGET: &str = "purr-engine-whisper::logging::trampoline::ggml";
 
 macro_rules! generic_error {
     ($($expr:tt)*) => {
