@@ -205,7 +205,7 @@ pub fn TranscriptCard(
                 }
             }
             div { class: "tbody",
-                if segments.is_empty() && !live {
+                if moment.reports_no_speech(!segments.is_empty()) {
                     p { class: "faint", style: "margin:0;padding:6px 10px", "No speech was recognised in this audio." }
                 } else {
                     match view.layout {

@@ -13,6 +13,19 @@ pub enum Moment {
     Saved,
 }
 
+impl Moment {
+    /// Whether an empty transcript is worth the note that no speech was recognised: only a run
+    /// that completed, or a saved one, found nothing. A run still going has not, and one that
+    /// stopped with an error did not get to look.
+    #[must_use]
+    pub const fn reports_no_speech(self, has_text: bool) -> bool {
+        match self {
+            Self::Finished | Self::Saved => !has_text,
+            Self::Running | Self::Stopped => false,
+        }
+    }
+}
+
 /// What the transcript and its audio hold.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Evidence {
@@ -104,6 +117,34 @@ mod tests {
 
     fn browser() -> ModelDescriptor {
         descriptor("tiny", weights(Some("fp32/q4")), false)
+    }
+
+    #[test]
+    fn only_a_completed_run_without_text_reports_no_speech() {
+        assert_eq!(
+            [
+                Moment::Running,
+                Moment::Stopped,
+                Moment::Finished,
+                Moment::Saved
+            ]
+            .map(|moment| moment.reports_no_speech(false)),
+            [false, false, true, true]
+        );
+    }
+
+    #[test]
+    fn a_transcript_with_text_never_reports_no_speech() {
+        assert_eq!(
+            [
+                Moment::Running,
+                Moment::Stopped,
+                Moment::Finished,
+                Moment::Saved
+            ]
+            .map(|moment| moment.reports_no_speech(true)),
+            [false; 4]
+        );
     }
 
     #[test]
