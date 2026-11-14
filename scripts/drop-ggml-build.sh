@@ -19,12 +19,12 @@ while IFS= read -r -d '' directory; do
   total=$((total + kib))
 done < <(
   find "$target" -mindepth 3 -maxdepth 5 -type d \
-    \( -path '*/build/whisper-rs-sys-*' -o -path '*/.fingerprint/whisper-rs-sys-*' \) \
+    \( -path '*/build/whisper-rs-sys-*' -o -path '*/.fingerprint/whisper-rs-sys-*'        -o -path '*/build/transcribe-cpp-sys-*' -o -path '*/.fingerprint/transcribe-cpp-sys-*' \) \
     -prune -print0
 )
 
 if [ "$count" -eq 0 ]; then
-  echo "no whisper-rs-sys build or fingerprint directory under $target"
+  echo "no whisper-rs-sys or transcribe-cpp-sys build or fingerprint directory under $target"
 else
   echo "removed $count directories, $((total / 1024)) MiB uncompressed"
 fi

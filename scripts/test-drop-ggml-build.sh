@@ -19,6 +19,13 @@ for profile in release r x86_64-unknown-linux-gnu/release; do
   make "$target/$profile/build/whisper-rs-0000/output"
   make "$target/$profile/.fingerprint/whisper-rs-0000/lib-whisper_rs"
   make "$target/$profile/build/ring-1111/output"
+  make "$target/$profile/build/transcribe-cpp-sys-ffff/out/build/libtranscribe.a"
+  make "$target/$profile/build/transcribe-cpp-sys-ffff/output"
+  make "$target/$profile/.fingerprint/transcribe-cpp-sys-ffff/run-build-script-build-script-build"
+  make "$target/$profile/.fingerprint/transcribe-cpp-sys-9999/lib-transcribe_cpp_sys"
+  make "$target/$profile/build/transcribe-cpp-0000/output"
+  make "$target/$profile/.fingerprint/transcribe-cpp-0000/lib-transcribe_cpp"
+  make "$target/$profile/deps/libtranscribe_cpp_sys-9999.rlib"
   make "$target/$profile/deps/libwhisper_rs_sys-cccc.rlib"
 done
 make "$target/release/build/whisper-rs-sys-dddd/out/whisper-rs-sys-eeee/file"
@@ -30,13 +37,13 @@ check() {
 output="$("$here/drop-ggml-build.sh" "$target")"
 echo "$output" | sed 's/^/     /'
 
-left="$(cd "$target" && find . -type d \( -name 'whisper-rs-sys-*' \) | wc -l | tr -d ' ')"
-check "every whisper-rs-sys build and fingerprint directory is gone" "$left" "0"
+left="$(cd "$target" && find . -type d \( -name 'whisper-rs-sys-*' -o -name 'transcribe-cpp-sys-*' \) | wc -l | tr -d ' ')"
+check "every whisper-rs-sys and transcribe-cpp-sys build and fingerprint directory is gone" "$left" "0"
 
-kept="$(cd "$target" && find . -type f | grep -c -E 'whisper-rs-0000|ring-1111|libwhisper_rs_sys-cccc' | tr -d ' ')"
-check "other crates and the compiled rlibs stay" "$kept" "12"
+kept="$(cd "$target" && find . -type f | grep -c -E 'whisper-rs-0000|ring-1111|libwhisper_rs_sys-cccc|transcribe-cpp-0000|libtranscribe_cpp_sys-9999' | tr -d ' ')"
+check "other crates and the compiled rlibs stay" "$kept" "21"
 
-case "$output" in *"removed 16 directories"*) echo "ok   the summary counts the directories" ;; *) echo "FAIL summary: $output"; failures=$((failures + 1)) ;; esac
+case "$output" in *"removed 25 directories"*) echo "ok   the summary counts the directories" ;; *) echo "FAIL summary: $output"; failures=$((failures + 1)) ;; esac
 
 output="$("$here/drop-ggml-build.sh" "$target")"
 case "$output" in *"no whisper-rs-sys"*) echo "ok   a second run finds nothing" ;; *) echo "FAIL second run: $output"; failures=$((failures + 1)) ;; esac
