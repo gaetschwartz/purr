@@ -27,10 +27,14 @@ pub fn fixture_registry(bytes: &[u8]) -> Result<Arc<Registry>, Box<dyn Error>> {
         "schema": 3,
         "preferred": ["fixture"],
         "sources": [{"id": "main", "repo": "owner/repo", "revision": REVISION}],
+        "profiles": {"whisper": {
+            "languages": "any", "language_hint": "steers", "detection": "reported",
+            "timing": "word", "word_scores": true, "speakers": "none", "input": "unbounded"
+        }},
         "models": [{
             "id": "fixture", "engine": "whisper-cpp", "format": "ggml-bin", "source": "main", "filename": "ggml-fixture.bin",
-            "family": "tiny", "language": "multilingual", "quantization": "f16",
-            "features": [], "size_bytes": bytes.len(), "sha256": digest_of(bytes).to_string(),
+            "family": "tiny", "profile": "whisper", "quantization": "f16",
+            "size_bytes": bytes.len(), "sha256": digest_of(bytes).to_string(),
             "description": "Fixture"
         }],
         "vad": {
