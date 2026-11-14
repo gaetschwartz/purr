@@ -92,3 +92,16 @@ Each of these needs something this machine cannot give; the exact check is in
 2. Turn on `PURR_DESKTOP_TRANSCRIBE` once a run shows the second `dx bundle` and the `_staging` check pass.
 3. Linux and macOS packages of the libraries, and a macOS `purr sys --json` run.
 4. Parakeet goldens, if the output should be pinned the way Whisper's is.
+
+## Model comparison (2026-11-14)
+
+CLI debug build, CPU, 4 threads, VAD on, stream mode, Q8_0 for Qwen3-ASR and Parakeet, F16 Whisper. Agreement is a proxy: word error rate of each model against Whisper large-v3-turbo on the same input (case and punctuation removed), not against a reference transcript. Speed is audio seconds per decode second; Whisper ran from this build's statically linked whisper.cpp, whose numbers here are far below what the model should reach and are not a statement about Whisper.
+
+| Input | Parakeet v3 | Qwen3-ASR 0.6B | Qwen3-ASR 1.7B | Whisper base | Whisper turbo |
+|---|---|---|---|---|---|
+| JFK, 11 s (English) | 0% , 18x | 0%, 7.8x | 0%, 3.7x | 0%, 4.5x | reference, 0.3x |
+| Apollo 13, first 60 s (English, noisy) | 29%, 14x | 32%, 6.8x | 30%, 3.4x | 61%, 6.8x | reference, 0.7x |
+| French voice note, 39 s | 83%, English output | 6%, 4.5x, French | 7%, 2.6x, French | 10%, 5.3x | reference, 0.5x |
+| French voice note, first 60 s | 79%, English output | 8%, 5.5x, French | 5%, 2.6x, French | 8%, 7.6x | reference, 0.7x |
+
+Qwen3-ASR with `--language fr` gives the same French text. With `--language en` on the French note the 0.6B model answers in English and the 1.7B model keeps transcribing French. A 179 s file with `--no-stream` on the 0.6B model ran as seven pause-cut windows in 24 s. No truncated or repeating output was seen in any run.
