@@ -125,7 +125,7 @@ impl Segmenter {
             else {
                 continue;
             };
-            let from = head.range.start as usize;
+            let from = if n == 0 { 0 } else { head.range.start as usize };
             let to = starts
                 .get(n + 1)
                 .and_then(|next| segment.words.get(*next))
@@ -133,14 +133,18 @@ impl Segmenter {
             let Some(slice) = segment.text.get(from..to) else {
                 continue;
             };
-            let text = slice.trim_end().to_owned();
+            let text = slice.trim().to_owned();
+            let Ok(offset) = u32::try_from(from + slice.len() - slice.trim_start().len()) else {
+                continue;
+            };
             let words = segment
                 .words
                 .get(first..=last)
                 .unwrap_or_default()
                 .iter()
                 .map(|word| Word {
-                    range: word.range.start - head.range.start..word.range.end - head.range.start,
+                    range: word.range.start.saturating_sub(offset)
+                        ..word.range.end.saturating_sub(offset),
                     ..word.clone()
                 })
                 .collect();
@@ -236,6 +240,23 @@ mod tests {
                 vec![Some("¿Qué"), Some("tal?")],
                 vec![Some("مرحبا؟")]
             ]
+        );
+    }
+
+    #[test]
+    fn text_before_the_first_word_stays_with_it() {
+        let mut segment = timed(&[("Hi.\"", 0, 40), (" Bye", 50, 90)]);
+        segment.text.insert(0, '"');
+        for word in &mut segment.words {
+            word.range = word.range.start + 1..word.range.end + 1;
+        }
+        let parts = Segmenter::default().parts(synthesized(segment), 3 * SECOND);
+        assert_eq!(texts(&parts), ["\"Hi.\"", "Bye"]);
+        assert_eq!(
+            parts
+                .first()
+                .and_then(|part| part.words.first().and_then(|word| word.text(&part.text))),
+            Some("Hi.\"")
         );
     }
 

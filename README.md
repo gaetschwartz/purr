@@ -199,25 +199,36 @@ You can also use the core library in your own Rust projects:
 ```toml
 [dependencies]
 purr-core = { path = "path/to/purr-core" }
+purr-engine-whisper = { path = "path/to/purr-engine-whisper" }
 tokio = { version = "1.0", features = ["full"] }
 ```
 
 ```rust
-use purr_core::{transcribe_audio_file, TranscriptionConfig};
+use std::{path::PathBuf, sync::Arc};
+
+use purr_core::{
+    config::{ModelRef, RunConfig, Windowing},
+    engine::Engine,
+    pipeline::{result::collect, run::{Input, transcribe}},
+};
+use purr_engine_whisper::engine::WhisperEngine;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let config = TranscriptionConfig::new()
-        .with_language("en")
-        .with_gpu(true)
-        .with_threads(4);
+    let engines: Vec<Arc<dyn Engine>> = vec![Arc::new(WhisperEngine)];
+    let model = purr_core::ModelManager::new()?.reference(PathBuf::from("ggml-base.bin"));
+    let config = RunConfig::new()
+        .with_language("en".parse()?)
+        .with_threads(4)
+        .with_windowing(Windowing::Whole);
 
-    let result = transcribe_audio_file("audio.wav", Some(config)).await?;
-    
+    let transcription = transcribe(Input::File("audio.wav".into()), config, &model, &engines).await?;
+    let result = collect(transcription).await?;
+
     println!("Transcription: {}", result.text);
     println!("Duration: {:.2}s", result.audio_duration);
     println!("Processing time: {:.2}s", result.processing_time);
-    
+
     Ok(())
 }
 ```

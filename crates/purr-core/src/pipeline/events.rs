@@ -138,7 +138,8 @@ impl Transcription {
         &self.accel
     }
 
-    /// Stops the transcription; the stream ends with what the engine finished before it stopped.
+    /// Stops the transcription. A window being decoded ends with what the engine finished of it,
+    /// committed as the stream's last chunk; otherwise the stream just ends.
     pub fn cancel(&self) {
         self.cancel.cancel();
     }
