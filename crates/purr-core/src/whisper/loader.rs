@@ -7,13 +7,12 @@ use whisper_rs::{WhisperContext, WhisperContextParameters, WhisperState};
 use crate::{
     Error, ModelManager, TranscriptionConfig,
     accel::{
-        coreml,
         inventory::Inventory,
         plan::{Candidate, Step, Target, resolve},
-        probe::probe_gpu,
         report::{AccelAttempt, AccelReport, AttemptFailure, AttemptOutcome},
     },
     error::{AccelerationError, Result},
+    whisper::{coreml, probe::probe_gpu},
 };
 use purr_common::devices::DeviceOrder;
 

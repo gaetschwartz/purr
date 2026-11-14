@@ -1,7 +1,10 @@
 mod commit;
+mod coreml;
+pub(crate) mod inventory;
 mod language;
 pub mod loader;
 pub mod logging;
+mod probe;
 mod segments;
 mod speech;
 pub mod streaming;

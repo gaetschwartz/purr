@@ -21,7 +21,7 @@ use crate::whisper::{
 };
 pub use audio::{AudioChunk, AudioProcessor, AudioStream};
 pub use config::TranscriptionConfig;
-pub use dev::{Device, SystemInfo, list_devices};
+pub use dev::{Device, SystemInfo};
 pub use error::{Error, Result};
 pub use model::ModelManager;
 use reqwest::IntoUrl;

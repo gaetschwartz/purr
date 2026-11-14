@@ -1,6 +1,6 @@
 use std::{collections::HashMap, path::PathBuf};
 
-use crate::dev::{Device, list_devices};
+use crate::{dev::Device, whisper::inventory::list_devices};
 
 use super::{
     backend::{AccelBackend, BuildStatus},

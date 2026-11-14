@@ -88,20 +88,6 @@ impl AccelBackend {
             Self::Cuda | Self::Hip | Self::CoreMl | Self::Metal | Self::Sycl | Self::Cpu => None,
         }
     }
-
-    /// Backend owning a ggml device, from the name of its ggml backend registry.
-    #[must_use]
-    pub fn from_ggml_registry_name(name: &str) -> Option<Self> {
-        match name {
-            "CUDA" => Some(Self::Cuda),
-            "ROCm" => Some(Self::Hip),
-            "Metal" => Some(Self::Metal),
-            "SYCL" => Some(Self::Sycl),
-            "Vulkan" => Some(Self::Vulkan),
-            "CPU" => Some(Self::Cpu),
-            _ => None,
-        }
-    }
 }
 
 impl From<purr_common::accel::AccelBackend> for AccelBackend {

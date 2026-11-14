@@ -1,6 +1,6 @@
 use whisper_rs::whisper_rs_sys::{ggml_backend_dev_get, ggml_backend_dev_init, ggml_backend_free};
 
-use super::{plan::GpuTarget, report::AttemptFailure};
+use crate::accel::{plan::GpuTarget, report::AttemptFailure};
 
 /// Initialise the device and release it again.
 ///
