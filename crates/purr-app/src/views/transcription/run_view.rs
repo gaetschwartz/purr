@@ -24,11 +24,11 @@ use crate::{
         chosen_file::OverviewState,
         compute_label::ComputeLabel,
         eta::EtaText,
+        language_choice::run_language_text,
         run::{RunOutcome, Stage},
         session::{RunRecord, TranscribeSession, use_transcribe_session},
         timing,
     },
-    utils::language_label::language_label,
     views::result_frame::{
         ResultAudio, ResultFrame, ViewPhase,
         more_menu::{MORE_ID, MoreAction, TranscriptionFacts},
@@ -36,7 +36,6 @@ use crate::{
 };
 use dioxus::{prelude::*, router::Navigator};
 use glide_driver::{GlideDriver, GlideInput, GlidePhase};
-use purr_common::language::choice::LanguageChoice;
 use status::RunStatus;
 use std::rc::Rc;
 
@@ -44,22 +43,12 @@ const FAIL_MODEL_ID: &str = "fail-model";
 
 /// The language line of the More menu.
 fn language_text(record: &RunRecord) -> String {
-    match (
+    run_language_text(
         &record.language,
         record.language_code(),
         &record.run.outcome,
-    ) {
-        (LanguageChoice::Automatic, Some(code), _) => {
-            format!("{} (detected)", language_label(code.as_str()))
-        }
-        (LanguageChoice::Automatic, None, RunOutcome::Running) => {
-            "Language not known yet".to_owned()
-        }
-        (LanguageChoice::Automatic, None, RunOutcome::Completed(_) | RunOutcome::Failed(_)) => {
-            "Language not reported".to_owned()
-        }
-        (LanguageChoice::Spoken(_), _, _) => record.language.label(),
-    }
+        record.model.descriptor.profile.detection,
+    )
 }
 
 /// The heading of the error banner.

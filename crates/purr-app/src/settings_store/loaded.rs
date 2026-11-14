@@ -10,6 +10,7 @@ pub fn accept_loaded(loaded: Result<Settings, PlatformError>) -> Result<Settings
     settings
         .migrate_from_version(stored_version)
         .map_err(LoadFailure::Unsupported)?;
+    settings.canonicalize_languages();
     let errors = settings.validate();
     if errors.is_empty() {
         Ok(settings)
@@ -70,6 +71,16 @@ mod tests {
                 }
             ))
         );
+    }
+
+    #[test]
+    fn a_language_stored_under_an_old_spelling_is_loaded_under_the_current_one() {
+        let mut stored = Settings::default();
+        "iw".clone_into(&mut stored.ui.language);
+        stored.ui.default_language = Some("jw".to_owned());
+        let loaded = accept_loaded(Ok(stored)).unwrap();
+        assert_eq!(loaded.ui.language, "he");
+        assert_eq!(loaded.ui.default_language.as_deref(), Some("jv"));
     }
 
     #[test]

@@ -20,16 +20,12 @@ pub fn engine_note(summary: &EngineSummary) -> Option<String> {
             "This build of Purr does not include {}.",
             engine.to_lowercase()
         )),
-        EngineAvailability::Unavailable(EngineUnavailable::LibraryMissing { library, .. }) => Some(
-            format!("{engine} is not installed: {library} was not found."),
-        ),
-        EngineAvailability::Unavailable(EngineUnavailable::LibraryUnloadable {
-            library,
-            directory,
-        }) => Some(format!(
-            "{engine} cannot be loaded: {library} in {} cannot be opened, a library it needs may be missing.",
-            directory.display()
-        )),
+        EngineAvailability::Unavailable(why @ EngineUnavailable::LibraryMissing { .. }) => {
+            Some(format!("{engine} is not installed: {why}."))
+        }
+        EngineAvailability::Unavailable(why @ EngineUnavailable::LibraryUnloadable { .. }) => {
+            Some(format!("{engine} cannot be loaded: {why}."))
+        }
         EngineAvailability::Unavailable(EngineUnavailable::NoBackend { .. }) => Some(format!(
             "{engine} cannot be loaded: it found no way to compute."
         )),
@@ -106,6 +102,20 @@ mod tests {
             })),
             Some(
                 "The transcribe.cpp engine is not installed: transcribe.dll was not found."
+                    .to_owned()
+            )
+        );
+    }
+
+    #[test]
+    fn a_missing_library_names_the_folders_that_were_searched() {
+        assert_eq!(
+            engine_note(&unavailable(EngineUnavailable::LibraryMissing {
+                library: "transcribe.dll".to_owned(),
+                searched: vec![PathBuf::from("runtime"), PathBuf::from("bin")],
+            })),
+            Some(
+                "The transcribe.cpp engine is not installed: transcribe.dll was not found in runtime, bin."
                     .to_owned()
             )
         );

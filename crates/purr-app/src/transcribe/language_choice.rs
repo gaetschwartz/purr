@@ -1,12 +1,15 @@
 //! The list the language picker offers.
 
+use super::run::RunOutcome;
+use crate::utils::language_label::language_label;
 use purr_common::{
     language::{
         choice::LanguageChoice,
         known::{self, KnownLanguage},
         support::LanguageSupport,
+        tag::LanguageTag,
     },
-    model::profile::{HintEffect, ModelProfile},
+    model::profile::{DetectionReport, HintEffect, ModelProfile},
 };
 
 /// The picker's list for `query`: "Automatic" first, then every language whose name or code
@@ -14,10 +17,7 @@ use purr_common::{
 #[must_use]
 pub fn options(query: &str) -> Vec<LanguageChoice> {
     let query = query.trim().to_lowercase();
-    let automatic = query.is_empty()
-        || ["automatic", "detect"]
-            .iter()
-            .any(|word| word.starts_with(&query));
+    let automatic = query.is_empty() || matches_automatic(&query);
     let languages = known::all()
         .iter()
         .filter(|language| query.is_empty() || matches_language(language, &query))
@@ -39,42 +39,131 @@ pub fn is_locked(profile: &ModelProfile) -> bool {
 }
 
 /// The picker's list for `query` with the model of `profile`; any language when no model is known.
+///
+/// A model that finds the language itself lists "Automatic", which is what applies, and the
+/// languages it knows to read; choosing one of them changes nothing.
 #[must_use]
 pub fn choices(profile: Option<&ModelProfile>, query: &str) -> Vec<LanguageChoice> {
     let Some(profile) = profile else {
         return options(query);
     };
-    match profile.language_hint {
-        HintEffect::Ignored => vec![LanguageChoice::Automatic],
-        HintEffect::Steers | HintEffect::Required => {
-            let mut list = match &profile.languages {
-                LanguageSupport::Any => options(query),
-                LanguageSupport::Only(tags) => match profile.languages.single() {
-                    Some(tag) => vec![LanguageChoice::Spoken(tag.clone())],
-                    None => std::iter::once(LanguageChoice::Automatic)
-                        .chain(tags.iter().cloned().map(LanguageChoice::Spoken))
-                        .collect(),
-                },
-            };
+    let query = query.trim().to_lowercase();
+    let listed = |tags: &[LanguageTag]| -> Vec<LanguageChoice> {
+        tags.iter()
+            .cloned()
+            .map(LanguageChoice::Spoken)
+            .filter(|choice| query.is_empty() || matches_choice(choice, &query))
+            .collect()
+    };
+    let automatic =
+        (query.is_empty() || matches_automatic(&query)).then_some(LanguageChoice::Automatic);
+    match (&profile.language_hint, &profile.languages) {
+        (HintEffect::Ignored, LanguageSupport::Any) => vec![LanguageChoice::Automatic],
+        (HintEffect::Ignored, LanguageSupport::Only(tags)) => {
+            automatic.into_iter().chain(listed(tags)).collect()
+        }
+        (HintEffect::Steers | HintEffect::Required, LanguageSupport::Any) => {
+            let mut list = options(&query);
             if !profile.can_detect() {
                 list.retain(|choice| *choice != LanguageChoice::Automatic);
             }
             list
         }
+        (HintEffect::Steers | HintEffect::Required, LanguageSupport::Only(tags)) => {
+            match profile.languages.single() {
+                Some(tag) => vec![LanguageChoice::Spoken(tag.clone())],
+                None => automatic
+                    .filter(|_| profile.can_detect())
+                    .into_iter()
+                    .chain(listed(tags))
+                    .collect(),
+            }
+        }
     }
 }
 
-/// What the picker says about a model that restricts the choice.
+/// How many spoken languages the model of `profile` offers; every known language without one.
 #[must_use]
-pub fn note(profile: &ModelProfile) -> Option<String> {
+pub fn spoken_count(profile: Option<&ModelProfile>) -> usize {
+    choices(profile, "")
+        .iter()
+        .filter(|choice| matches!(choice, LanguageChoice::Spoken(_)))
+        .count()
+}
+
+/// What the picker says about a model that restricts the choice; `name` is how the model is called.
+#[must_use]
+pub fn note(profile: &ModelProfile, name: &str) -> Option<String> {
     match profile.language_hint {
-        HintEffect::Ignored => Some("This model detects the language itself.".to_owned()),
+        HintEffect::Ignored => Some(match &profile.languages {
+            LanguageSupport::Any => format!("{name} finds the language itself."),
+            LanguageSupport::Only(tags) => format!(
+                "{name} finds the language itself, so choosing one does not steer it.                  It transcribes the {} languages below.",
+                tags.len()
+            ),
+        }),
         HintEffect::Steers | HintEffect::Required => profile.languages.single().map(|tag| {
             format!(
                 "This model only transcribes {}.",
                 LanguageChoice::Spoken(tag.clone()).label()
             )
         }),
+    }
+}
+
+/// What "Automatic" does with `profile`: it detects the language and says which, or the model
+/// finds the language itself and does not say.
+#[must_use]
+pub fn automatic_hint(profile: Option<&ModelProfile>, name: &str) -> String {
+    match profile.map(|profile| profile.detection) {
+        Some(DetectionReport::Silent) => {
+            format!("{name} finds the language itself and doesn't report it")
+        }
+        Some(DetectionReport::Reported) | None => {
+            "Detects the language from the first 30 seconds".to_owned()
+        }
+    }
+}
+
+/// Whether a run asked for `choice` with the model of `profile` will say which language it found.
+#[must_use]
+pub fn reports_language(choice: &LanguageChoice, profile: &ModelProfile) -> bool {
+    match (choice, profile.detection) {
+        (LanguageChoice::Automatic, DetectionReport::Reported) => true,
+        (LanguageChoice::Automatic, DetectionReport::Silent)
+        | (LanguageChoice::Spoken(_), DetectionReport::Reported | DetectionReport::Silent) => false,
+    }
+}
+
+/// The language line of a run: the language that applied, or what is known of it while the model
+/// finds it by itself.
+#[must_use]
+pub fn run_language_text(
+    choice: &LanguageChoice,
+    language: Option<LanguageTag>,
+    outcome: &RunOutcome,
+    detection: DetectionReport,
+) -> String {
+    match (choice, language, outcome, detection) {
+        (LanguageChoice::Automatic, Some(code), _, _) => {
+            format!("{} (detected)", language_label(code.as_str()))
+        }
+        (LanguageChoice::Automatic, None, RunOutcome::Running, DetectionReport::Reported) => {
+            "Language not known yet".to_owned()
+        }
+        (
+            LanguageChoice::Automatic,
+            None,
+            RunOutcome::Running | RunOutcome::Completed(_) | RunOutcome::Failed(_),
+            DetectionReport::Silent,
+        )
+        | (
+            LanguageChoice::Automatic,
+            None,
+            RunOutcome::Completed(_) | RunOutcome::Failed(_),
+            DetectionReport::Reported,
+        ) => "Language not reported".to_owned(),
+        (LanguageChoice::Spoken(_), _, _, _) => choice.label(),
     }
 }
 
@@ -88,12 +177,30 @@ pub fn for_model(choice: LanguageChoice, profile: Option<&ModelProfile>) -> Lang
 }
 
 fn matches_language(language: &KnownLanguage, query: &str) -> bool {
-    language.tag.as_str() == query
-        || language
-            .name
-            .split_whitespace()
-            .any(|word| word.starts_with(query))
-        || language.name.starts_with(query)
+    matches_name(language.tag.as_str(), language.name, query)
+}
+
+fn matches_choice(choice: &LanguageChoice, query: &str) -> bool {
+    match choice {
+        LanguageChoice::Automatic => matches_automatic(query),
+        LanguageChoice::Spoken(tag) => matches_name(
+            &tag.as_str().to_lowercase(),
+            &choice.label().to_lowercase(),
+            query,
+        ),
+    }
+}
+
+fn matches_automatic(query: &str) -> bool {
+    ["automatic", "detect"]
+        .iter()
+        .any(|word| word.starts_with(query))
+}
+
+fn matches_name(tag: &str, name: &str, query: &str) -> bool {
+    tag == query
+        || name.split_whitespace().any(|word| word.starts_with(query))
+        || name.starts_with(query)
 }
 
 #[cfg(test)]
@@ -124,7 +231,7 @@ mod tests {
         assert!(is_locked(&english));
         assert_eq!(choices(Some(&english), "fr"), vec![spoken("en")]);
         assert_eq!(
-            note(&english),
+            note(&english, "Tiny"),
             Some("This model only transcribes English.".to_owned())
         );
     }
@@ -135,8 +242,119 @@ mod tests {
         assert!(is_locked(&ignored));
         assert_eq!(choices(Some(&ignored), ""), vec![LanguageChoice::Automatic]);
         assert_eq!(
-            note(&ignored),
-            Some("This model detects the language itself.".to_owned())
+            note(&ignored, "Moonshine"),
+            Some("Moonshine finds the language itself.".to_owned())
+        );
+    }
+
+    fn parakeet() -> ModelProfile {
+        crate::model_catalog::test_support::parakeet_profile()
+    }
+
+    #[test]
+    fn a_model_that_finds_the_language_itself_lists_automatic_then_the_languages_it_knows() {
+        let profile = parakeet();
+        assert!(is_locked(&profile));
+        let offered = choices(Some(&profile), "");
+        assert_eq!(offered.first(), Some(&LanguageChoice::Automatic));
+        assert_eq!(offered.len(), 26);
+        assert_eq!(spoken_count(Some(&profile)), 25);
+        assert_eq!(offered.get(1), Some(&spoken("bg")));
+        assert!(!offered.contains(&spoken("ja")));
+    }
+
+    #[test]
+    fn searching_the_languages_of_such_a_model_filters_that_list_only() {
+        let profile = parakeet();
+        assert_eq!(choices(Some(&profile), "fre"), vec![spoken("fr")]);
+        assert_eq!(choices(Some(&profile), "jap"), Vec::<LanguageChoice>::new());
+        assert_eq!(
+            choices(Some(&profile), "de"),
+            vec![LanguageChoice::Automatic, spoken("de")]
+        );
+    }
+
+    #[test]
+    fn only_automatic_with_a_model_that_reports_it_waits_for_a_detected_language() {
+        let whisper = crate::model_catalog::test_support::whisper_profile(false, false);
+        assert!(reports_language(&LanguageChoice::Automatic, &whisper));
+        assert!(!reports_language(&spoken("fr"), &whisper));
+        assert!(!reports_language(&LanguageChoice::Automatic, &parakeet()));
+    }
+
+    #[test]
+    fn a_run_with_a_model_that_never_names_the_language_says_so_from_the_start() {
+        let say = |detection, outcome: &RunOutcome| {
+            run_language_text(&LanguageChoice::Automatic, None, outcome, detection)
+        };
+        assert_eq!(
+            say(DetectionReport::Silent, &RunOutcome::Running),
+            "Language not reported"
+        );
+        assert_eq!(
+            say(DetectionReport::Reported, &RunOutcome::Running),
+            "Language not known yet"
+        );
+        assert_eq!(
+            say(
+                DetectionReport::Reported,
+                &RunOutcome::Failed(crate::transcribe::run::RunFailure {
+                    message: String::new(),
+                    hint: None
+                })
+            ),
+            "Language not reported"
+        );
+    }
+
+    #[test]
+    fn a_detected_language_is_named_and_a_chosen_one_is_not_called_detected() {
+        let french = Some("fr".parse().unwrap());
+        assert_eq!(
+            run_language_text(
+                &LanguageChoice::Automatic,
+                french.clone(),
+                &RunOutcome::Running,
+                DetectionReport::Reported
+            ),
+            "French (detected)"
+        );
+        assert_eq!(
+            run_language_text(
+                &spoken("fr"),
+                french,
+                &RunOutcome::Running,
+                DetectionReport::Reported
+            ),
+            "French"
+        );
+    }
+
+    #[test]
+    fn the_note_of_such_a_model_says_the_choice_does_not_steer_it() {
+        assert_eq!(
+            note(&parakeet(), "Parakeet TDT v3"),
+            Some(
+                "Parakeet TDT v3 finds the language itself, so choosing one does not steer it.                  It transcribes the 25 languages below."
+                    .to_owned()
+            )
+        );
+    }
+
+    #[test]
+    fn automatic_says_nothing_about_detecting_when_the_model_never_reports_a_language() {
+        assert_eq!(
+            automatic_hint(Some(&parakeet()), "Parakeet TDT v3"),
+            "Parakeet TDT v3 finds the language itself and doesn't report it"
+        );
+        let whisper = crate::model_catalog::test_support::whisper_profile(false, false);
+        assert_eq!(
+            automatic_hint(Some(&whisper), "Base"),
+            "Detects the language from the first 30 seconds"
+        );
+        assert_eq!(
+            automatic_hint(None, "Base"),
+            "Detects the language from the first 30 seconds"
         );
     }
 
@@ -165,7 +383,22 @@ mod tests {
             choices(Some(&few), ""),
             vec![LanguageChoice::Automatic, spoken("en"), spoken("fr")]
         );
-        assert_eq!(note(&few), None);
+        assert_eq!(note(&few, "Few"), None);
+    }
+
+    #[test]
+    fn searching_the_languages_of_a_model_with_a_few_filters_them() {
+        let few = profile(
+            HintEffect::Steers,
+            LanguageSupport::Only(
+                ["en", "fr"]
+                    .iter()
+                    .map(|tag| tag.parse().unwrap())
+                    .collect(),
+            ),
+        );
+        assert_eq!(choices(Some(&few), "fr"), vec![spoken("fr")]);
+        assert_eq!(spoken_count(Some(&few)), 2);
     }
 
     #[test]

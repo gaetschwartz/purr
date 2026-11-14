@@ -4,6 +4,7 @@ use super::{
     chosen_file::{ChosenFile, FileProblem, OverviewState, WAVEFORM_BARS},
     compute_label::ComputeLabel,
     device_rows::{device_rows, override_for},
+    language_choice::reports_language,
     run::{Completion, Run, RunOutcome},
     start_plan::{Blocker, Preparation, blocked_text, prepare},
     timing,
@@ -437,9 +438,11 @@ impl TranscribeSession {
         let mut compute = ComputeOptions::from_settings(&settings);
         let picked = self.device_override.peek().clone();
         let first = match &*self.probe.peek() {
-            SystemProbe::Ready(report) => {
-                override_for(picked.as_ref(), &device_rows(&settings.performance, report))
-            }
+            SystemProbe::Ready(report) => override_for(
+                picked.as_ref(),
+                &device_rows(&settings.performance, report),
+                Some(model.descriptor.engine),
+            ),
             SystemProbe::Checking | SystemProbe::Unavailable => picked,
         };
         compute.devices = std::mem::take(&mut compute.devices).with_first(first);
@@ -450,7 +453,10 @@ impl TranscribeSession {
             compute,
             hugging_face_token: settings.model.hugging_face_token.clone(),
         };
-        let run = Run::new(language == LanguageChoice::Automatic, now_ms());
+        let run = Run::new(
+            reports_language(&language, &model.descriptor.profile),
+            now_ms(),
+        );
         let model_id = model.id.clone();
         let record = match RunRecord::begin(file.clone(), model, language, run) {
             Ok(record) => record,
@@ -529,7 +535,8 @@ impl TranscribeSession {
             Ok(stream) => stream,
             Err(error) => {
                 tracing::error!("Could not start the transcription: {error}");
-                self.fail(describe(&error));
+                let (message, hint) = describe(&error);
+                self.fail(message, hint);
                 return;
             }
         };
@@ -551,19 +558,23 @@ impl TranscribeSession {
                 }
                 Err(error) => {
                     tracing::error!("The transcription failed: {error}");
-                    self.fail(describe(&error));
+                    let (message, hint) = describe(&error);
+                    self.fail(message, hint);
                     break;
                 }
             }
         }
-        self.fail("The transcription stopped before it finished.".to_owned());
+        self.fail(
+            "The transcription stopped before it finished.".to_owned(),
+            None,
+        );
         self.task.set(None);
         self.announce_end();
     }
 
-    fn fail(mut self, message: String) {
+    fn fail(mut self, message: String, hint: Option<String>) {
         if let Some(record) = self.record.write().as_mut() {
-            record.run.fail(message, None);
+            record.run.fail(message, hint);
         }
     }
 
@@ -765,11 +776,22 @@ fn starts_over(outcome: Option<&RunOutcome>, saved: &SaveState) -> bool {
     }
 }
 
-fn describe(error: &PlatformError) -> String {
-    if let PlatformError::ModelNotFound { model_id } = error {
-        format!("The model {model_id} is not on this device. Download it or choose another one.")
-    } else {
-        error.to_string()
+/// The message of a failed run and what to try, when the error says.
+fn describe(error: &PlatformError) -> (String, Option<String>) {
+    match error {
+        PlatformError::ModelNotFound { model_id } => (
+            format!(
+                "The model {model_id} is not on this device. Download it or choose another one."
+            ),
+            None,
+        ),
+        PlatformError::EngineUnavailable { engine, reason } => (
+            format!("The {} can't run on this computer", engine.label()),
+            Some(format!(
+                "{reason}. Choose a model another engine runs, or reinstall Purr."
+            )),
+        ),
+        other => (other.to_string(), None),
     }
 }
 
@@ -843,6 +865,40 @@ mod tests {
             Run::new(true, 0.0),
         )
         .unwrap()
+    }
+
+    #[test]
+    fn an_engine_that_cannot_run_is_described_with_its_reason_as_the_hint() {
+        let error = PlatformError::EngineUnavailable {
+            engine: purr_common::model::engine::EngineId::TranscribeCpp,
+            reason: purr_common::accel::EngineUnavailable::LibraryMissing {
+                library: "transcribe.dll".to_owned(),
+                searched: vec![PathBuf::from("runtime")],
+            },
+        };
+        assert_eq!(
+            describe(&error),
+            (
+                "The transcribe.cpp engine can't run on this computer".to_owned(),
+                Some(
+                    "transcribe.dll was not found in runtime. Choose a model another engine runs, or reinstall Purr."
+                        .to_owned()
+                )
+            )
+        );
+    }
+
+    #[test]
+    fn a_missing_model_is_described_without_a_hint() {
+        let error = PlatformError::model_not_found("tiny".to_owned());
+        assert_eq!(
+            describe(&error),
+            (
+                "The model tiny is not on this device. Download it or choose another one."
+                    .to_owned(),
+                None
+            )
+        );
     }
 
     #[test]

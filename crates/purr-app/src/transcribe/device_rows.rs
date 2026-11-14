@@ -44,6 +44,14 @@ impl DeviceRow {
     pub const fn usable(&self) -> bool {
         matches!(self.state, DeviceState::Available)
     }
+
+    /// Whether `engine` can run on it; any engine can when none is named. A platform that does
+    /// not say which engines see its devices leaves every device open to every engine.
+    #[must_use]
+    pub fn usable_by(&self, engine: Option<EngineId>) -> bool {
+        self.usable()
+            && engine.is_none_or(|engine| self.seen_by.is_empty() || self.seen_by.contains(&engine))
+    }
 }
 
 /// Where a device moves in the list.
@@ -238,14 +246,14 @@ pub enum DeviceChoice {
     Device(DeviceKey),
 }
 
-/// The choices the Transcribe screen offers: the settings order, then every device that is
-/// switched on and can run, in list order.
+/// The choices the Transcribe screen offers for a model that `engine` runs, any model when it is `None`: the settings order,
+/// then every device that is switched on and `engine` can run on, in list order.
 #[must_use]
-pub fn choices(rows: &[DeviceRow]) -> Vec<DeviceChoice> {
+pub fn choices(rows: &[DeviceRow], engine: Option<EngineId>) -> Vec<DeviceChoice> {
     std::iter::once(DeviceChoice::Automatic)
         .chain(
             rows.iter()
-                .filter(|row| row.enabled && row.usable())
+                .filter(|row| row.enabled && row.usable_by(engine))
                 .map(|row| DeviceChoice::Device(row.key.clone())),
         )
         .collect()
@@ -253,12 +261,18 @@ pub fn choices(rows: &[DeviceRow]) -> Vec<DeviceChoice> {
 
 /// The device a run starts on when `picked` was chosen: `None` when it is no longer a choice.
 #[must_use]
-pub fn override_for(picked: Option<&DeviceKey>, rows: &[DeviceRow]) -> Option<DeviceKey> {
+pub fn override_for(
+    picked: Option<&DeviceKey>,
+    rows: &[DeviceRow],
+    engine: Option<EngineId>,
+) -> Option<DeviceKey> {
     let picked = picked?;
-    choices(rows).into_iter().find_map(|choice| match choice {
-        DeviceChoice::Device(key) if key == *picked => Some(key),
-        DeviceChoice::Device(_) | DeviceChoice::Automatic => None,
-    })
+    choices(rows, engine)
+        .into_iter()
+        .find_map(|choice| match choice {
+            DeviceChoice::Device(key) if key == *picked => Some(key),
+            DeviceChoice::Device(_) | DeviceChoice::Automatic => None,
+        })
 }
 
 /// The row for `key`.
@@ -297,7 +311,15 @@ mod tests {
             memory_total: Some(memory),
             capabilities: None,
             key: Some(DeviceKey::new(backend, name, 0)),
-            seen_by: vec![EngineId::WhisperCpp],
+            seen_by: match backend {
+                AccelBackend::Cpu => vec![EngineId::WhisperCpp, EngineId::TranscribeCpp],
+                AccelBackend::Cuda
+                | AccelBackend::Hip
+                | AccelBackend::CoreMl
+                | AccelBackend::Metal
+                | AccelBackend::Sycl
+                | AccelBackend::Vulkan => vec![EngineId::WhisperCpp],
+            },
         }
     }
 
@@ -634,7 +656,7 @@ mod tests {
         ]);
         let rows = device_rows(&saved, &system());
         assert_eq!(
-            choices(&rows),
+            choices(&rows, Some(EngineId::WhisperCpp)),
             [
                 DeviceChoice::Automatic,
                 DeviceChoice::Device(vulkan()),
@@ -645,16 +667,71 @@ mod tests {
     }
 
     #[test]
+    fn a_model_is_offered_only_the_devices_its_engine_runs_on() {
+        let rows = device_rows(&PerformanceSettings::default(), &system());
+        assert_eq!(
+            choices(&rows, Some(EngineId::TranscribeCpp)),
+            [
+                DeviceChoice::Automatic,
+                DeviceChoice::Device(DeviceKey::cpu()),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_device_the_new_models_engine_cannot_use_is_forgotten() {
+        let rows = device_rows(&PerformanceSettings::default(), &system());
+        assert_eq!(
+            override_for(Some(&vulkan()), &rows, Some(EngineId::WhisperCpp)),
+            Some(vulkan())
+        );
+        assert_eq!(
+            override_for(Some(&vulkan()), &rows, Some(EngineId::TranscribeCpp)),
+            None
+        );
+        assert_eq!(
+            override_for(
+                Some(&DeviceKey::cpu()),
+                &rows,
+                Some(EngineId::TranscribeCpp)
+            ),
+            Some(DeviceKey::cpu())
+        );
+    }
+
+    #[test]
+    fn a_platform_that_does_not_say_which_engines_see_a_device_leaves_it_open() {
+        let mut rows = device_rows(&PerformanceSettings::default(), &system());
+        for row in &mut rows {
+            row.seen_by.clear();
+        }
+        assert_eq!(
+            choices(&rows, Some(EngineId::TranscribeCpp)).len(),
+            choices(&rows, None).len()
+        );
+    }
+
+    #[test]
     fn a_picked_device_that_was_switched_off_or_removed_is_forgotten() {
         let saved = performance(vec![pref(cuda(), false), pref(DeviceKey::cpu(), true)]);
         let rows = device_rows(&saved, &system());
-        assert_eq!(override_for(Some(&cuda()), &rows), None);
         assert_eq!(
-            override_for(Some(&DeviceKey::new(AccelBackend::Cuda, "Other", 0)), &rows),
+            override_for(Some(&cuda()), &rows, Some(EngineId::WhisperCpp)),
             None
         );
-        assert_eq!(override_for(Some(&vulkan()), &rows), Some(vulkan()));
-        assert_eq!(override_for(None, &rows), None);
+        assert_eq!(
+            override_for(
+                Some(&DeviceKey::new(AccelBackend::Cuda, "Other", 0)),
+                &rows,
+                Some(EngineId::WhisperCpp)
+            ),
+            None
+        );
+        assert_eq!(
+            override_for(Some(&vulkan()), &rows, Some(EngineId::WhisperCpp)),
+            Some(vulkan())
+        );
+        assert_eq!(override_for(None, &rows, Some(EngineId::WhisperCpp)), None);
     }
 
     #[test]

@@ -27,7 +27,7 @@ use purr_core::Error;
 use purr_core::accel::engine_report::reports;
 use purr_core::config::{ModelRef, RunConfig, TentativeText};
 use purr_core::engine::Engine;
-use purr_core::error::ConfigurationError;
+use purr_core::error::{ConfigurationError, TranscriptionError};
 use purr_core::model::registry::ModelSpec;
 use purr_core::model::status::ModelIntegrity as CoreIntegrity;
 use purr_core::model::{ModelManager, vad_or_none};
@@ -625,8 +625,7 @@ impl DesktopRun {
                     }
                     Err(error) => {
                         error!("Failed to start transcription: {error}");
-                        self.pending
-                            .push_back(Err(PlatformError::transcription(error)));
+                        self.pending.push_back(Err(transcription_error(error)));
                     }
                 }
             }
@@ -666,8 +665,7 @@ impl DesktopRun {
                 }
                 Some(Err(error)) => {
                     error!("Transcription error: {error}");
-                    self.pending
-                        .push_back(Err(PlatformError::transcription(error)));
+                    self.pending.push_back(Err(transcription_error(error)));
                 }
                 None => {
                     let processing_time = self.started.elapsed().as_secs_f64();
@@ -726,6 +724,17 @@ fn transcription_stream(
             run.advance().await;
         }
     }))
+}
+
+/// The platform's error for a transcription that could not start: an engine that cannot be used
+/// keeps its typed reason.
+fn transcription_error(error: Error) -> PlatformError {
+    match error {
+        Error::Transcription {
+            source: TranscriptionError::EngineUnavailable { engine, reason },
+        } => PlatformError::EngineUnavailable { engine, reason },
+        other => PlatformError::transcription(other),
+    }
 }
 
 fn failure_kind(error: &Error) -> ModelFailureKind {
