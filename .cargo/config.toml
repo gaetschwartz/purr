@@ -22,3 +22,4 @@ SCCACHE_DISABLE = "1"
 # whisper.cpp's CMake predates CMP0091 and builds nvcc host objects with /MD; keep in step with crt-static
 CMAKE_POLICY_DEFAULT_CMP0091 = "NEW"
 CMAKE_MSVC_RUNTIME_LIBRARY = "MultiThreaded"
+TRANSCRIBE_CMAKE_ARGS = "-DGGML_CCACHE=OFF"

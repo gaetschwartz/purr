@@ -5530,6 +5530,7 @@ dependencies = [
  "purr-common",
  "purr-core",
  "purr-delayload",
+ "purr-engine-transcribe",
  "purr-engine-whisper",
  "purr-wasm",
  "rfd 0.18.0",
@@ -5571,6 +5572,7 @@ dependencies = [
  "purr-common",
  "purr-core",
  "purr-delayload",
+ "purr-engine-transcribe",
  "purr-engine-whisper",
  "rstest",
  "serde",
@@ -5653,6 +5655,19 @@ version = "0.1.0"
 dependencies = [
  "tempfile",
  "thiserror 2.0.21",
+]
+
+[[package]]
+name = "purr-engine-transcribe"
+version = "0.1.0"
+dependencies = [
+ "pretty_assertions",
+ "purr-common",
+ "purr-core",
+ "purr-delayload",
+ "thiserror 2.0.21",
+ "tracing",
+ "transcribe-cpp",
 ]
 
 [[package]]
@@ -7635,6 +7650,27 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "transcribe-cpp"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6cf6687b4c73890aea4515632afb1586d48998f22f38e02e3cfbcd7d1543cd4a"
+dependencies = [
+ "log",
+ "thiserror 2.0.21",
+ "transcribe-cpp-sys",
+]
+
+[[package]]
+name = "transcribe-cpp-sys"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "32f94fb1e9a3033101bbd500d02993cfc95e315f24417038fd42f1fd80e1059a"
+dependencies = [
+ "cmake",
+ "serde_json",
 ]
 
 [[package]]

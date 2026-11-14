@@ -1,0 +1,21 @@
+[package]
+name = "purr-engine-transcribe"
+edition = "2024"
+version.workspace = true
+description = "transcribe.cpp as a Purr speech recognition engine"
+
+[dependencies]
+purr-common = { version = "0.1.0", path = "../purr-common" }
+purr-core = { version = "0.1.0", path = "../purr-core" }
+thiserror = "2.0"
+tracing = "0.1.41"
+transcribe-cpp = { version = "0.4.2", default-features = false, features = ["dynamic-backends"] }
+
+[lints]
+workspace = true
+
+[build-dependencies]
+purr-delayload = { version = "0.1.0", path = "../purr-delayload" }
+
+[dev-dependencies]
+pretty_assertions = "1.4.1"
