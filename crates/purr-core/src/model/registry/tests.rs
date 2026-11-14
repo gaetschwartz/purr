@@ -4,7 +4,7 @@ use purr_common::language::support::LanguageSupport;
 use purr_common::model::profile::{DetectionReport, HintEffect, InputLimit, Speakers, Timing};
 use purr_common::model::{
     engine::EngineId,
-    family::{ModelFamily, ParakeetVariant, WhisperSize},
+    family::{ModelFamily, ParakeetVariant, Qwen3AsrSize, WhisperSize},
     format::ModelFormat,
     quantization::Quantization,
 };
@@ -66,7 +66,7 @@ fn registry_with(edit: impl FnOnce(&mut serde_json::Value)) -> Result<Registry, 
 #[test]
 fn embedded_manifest_parses() -> Result<(), ManifestError> {
     let registry = Registry::embedded()?;
-    assert_eq!(registry.models().len(), 37);
+    assert_eq!(registry.models().len(), 43);
     assert_eq!(registry.vad().id, "silero-v6.2.0");
     assert_eq!(registry.default_model().id, "base");
     Ok(())
@@ -240,6 +240,63 @@ fn embedded_parakeet_profile_says_it_finds_the_language_without_telling()
 }
 
 #[test]
+fn embedded_qwen3_asr_models_are_gguf_files_of_two_sizes_pinned_to_their_repositories()
+-> Result<(), Box<dyn std::error::Error>> {
+    let registry = Registry::embedded()?;
+    let small = registry.get("qwen3-asr-0.6b-q8_0")?;
+    assert_eq!(small.engine, EngineId::TranscribeCpp);
+    assert_eq!(small.format, ModelFormat::Gguf);
+    assert_eq!(small.family, ModelFamily::Qwen3Asr(Qwen3AsrSize::B0_6));
+    assert_eq!(small.quantization, Quantization::Q8_0);
+    assert_eq!(small.file.size_bytes, 850_423_456);
+    assert_eq!(
+        small.url(),
+        "https://huggingface.co/handy-computer/Qwen3-ASR-0.6B-gguf/resolve/7e7c69a577fa2725dfedbe34b5e999336e30a19b/Qwen3-ASR-0.6B-Q8_0.gguf"
+    );
+    let large = registry.get("qwen3-asr-1.7b-q4_k_m")?;
+    assert_eq!(large.family, ModelFamily::Qwen3Asr(Qwen3AsrSize::B1_7));
+    assert_eq!(
+        large.url(),
+        "https://huggingface.co/handy-computer/Qwen3-ASR-1.7B-gguf/resolve/0e0a596e3959c3f3f2ab7d443a5b6f0f4a4bba6f/Qwen3-ASR-1.7B-Q4_K_M.gguf"
+    );
+    let per_family: Vec<(ModelFamily, usize)> = registry
+        .groups()
+        .into_iter()
+        .filter(|group| matches!(group.family, ModelFamily::Qwen3Asr(_)))
+        .map(|group| (group.family, group.models.len()))
+        .collect();
+    assert_eq!(
+        per_family,
+        [
+            (ModelFamily::Qwen3Asr(Qwen3AsrSize::B0_6), 3),
+            (ModelFamily::Qwen3Asr(Qwen3AsrSize::B1_7), 3)
+        ]
+    );
+    Ok(())
+}
+
+#[test]
+fn embedded_qwen3_asr_profile_says_the_choice_steers_and_the_text_has_no_times()
+-> Result<(), Box<dyn std::error::Error>> {
+    let registry = Registry::embedded()?;
+    let profile = &registry.get("qwen3-asr-1.7b")?.profile;
+    assert_eq!(profile.language_hint, HintEffect::Steers);
+    assert_eq!(profile.detection, DetectionReport::Reported);
+    assert_eq!(profile.timing, Timing::None);
+    assert!(!profile.word_scores);
+    assert!(matches!(profile.input, InputLimit::UpTo(_)));
+    assert!(profile.languages.supports(&"fr".parse()?));
+    assert!(profile.languages.supports(&"yue".parse()?));
+    assert!(!profile.languages.supports(&"he".parse()?));
+    assert!(profile.can_detect());
+    assert_eq!(
+        registry.get("qwen3-asr-0.6b")?.profile,
+        registry.get("qwen3-asr-1.7b")?.profile
+    );
+    Ok(())
+}
+
+#[test]
 fn no_embedded_preferred_model_needs_the_transcribe_engine() -> Result<(), ManifestError> {
     let registry = Registry::embedded()?;
     assert!(
@@ -360,7 +417,7 @@ fn every_embedded_model_is_described_as_whisper_cpp_reports_it() -> Result<(), M
     for model in registry
         .models()
         .iter()
-        .filter(|model| model.family != ModelFamily::Parakeet(ParakeetVariant::TdtV3))
+        .filter(|model| matches!(model.family, ModelFamily::Whisper(_)))
     {
         let english = model.id.starts_with("tiny.en")
             || model.id.starts_with("base.en")

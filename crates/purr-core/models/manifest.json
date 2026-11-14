@@ -28,6 +28,16 @@
       "id": "parakeet-tdt-0.6b-v3",
       "repo": "handy-computer/parakeet-tdt-0.6b-v3-gguf",
       "revision": "d8d8c32cb2017c57e5307767343e97870f8a7f53"
+    },
+    {
+      "id": "qwen3-asr-0.6b",
+      "repo": "handy-computer/Qwen3-ASR-0.6B-gguf",
+      "revision": "7e7c69a577fa2725dfedbe34b5e999336e30a19b"
+    },
+    {
+      "id": "qwen3-asr-1.7b",
+      "repo": "handy-computer/Qwen3-ASR-1.7B-gguf",
+      "revision": "0e0a596e3959c3f3f2ab7d443a5b6f0f4a4bba6f"
     }
   ],
   "profiles": {
@@ -102,6 +112,50 @@
       "word_scores": true,
       "speakers": "turn-markers",
       "input": "unbounded"
+    },
+    "qwen3-asr": {
+      "languages": {
+        "only": [
+          "zh",
+          "en",
+          "yue",
+          "ar",
+          "de",
+          "fr",
+          "es",
+          "pt",
+          "id",
+          "it",
+          "ko",
+          "ru",
+          "th",
+          "vi",
+          "ja",
+          "tr",
+          "hi",
+          "ms",
+          "nl",
+          "sv",
+          "da",
+          "fi",
+          "pl",
+          "cs",
+          "fil",
+          "fa",
+          "el",
+          "ro",
+          "hu",
+          "mk"
+        ]
+      },
+      "language_hint": "steers",
+      "detection": "reported",
+      "timing": "none",
+      "word_scores": false,
+      "speakers": "none",
+      "input": {
+        "up-to": 5218
+      }
     }
   },
   "models": [
@@ -585,6 +639,84 @@
       "size_bytes": 485425504,
       "sha256": "b68557be1e3c40207fd7c4bd9d63f1d3316b963f15325bfb0cc16a8bb0ffd181",
       "description": "Fast and accurate"
+    },
+    {
+      "id": "qwen3-asr-0.6b",
+      "engine": "transcribe-cpp",
+      "format": "gguf",
+      "source": "qwen3-asr-0.6b",
+      "filename": "Qwen3-ASR-0.6B-F16.gguf",
+      "family": "qwen3-asr-0.6b",
+      "profile": "qwen3-asr",
+      "quantization": "f16",
+      "size_bytes": 1579793056,
+      "sha256": "5c90e4b1a72a4c59cd12afa5ebb0cc8628848148f2b337d025cc5121ae4d2eea",
+      "description": "Good accuracy, light"
+    },
+    {
+      "id": "qwen3-asr-0.6b-q8_0",
+      "engine": "transcribe-cpp",
+      "format": "gguf",
+      "source": "qwen3-asr-0.6b",
+      "filename": "Qwen3-ASR-0.6B-Q8_0.gguf",
+      "family": "qwen3-asr-0.6b",
+      "profile": "qwen3-asr",
+      "quantization": "q8_0",
+      "size_bytes": 850423456,
+      "sha256": "f081b2d5e23bd669d92cc331d722a8a0681943b8e6f34b48996fd5c319b5acd8",
+      "description": "Good accuracy, light"
+    },
+    {
+      "id": "qwen3-asr-0.6b-q4_k_m",
+      "engine": "transcribe-cpp",
+      "format": "gguf",
+      "source": "qwen3-asr-0.6b",
+      "filename": "Qwen3-ASR-0.6B-Q4_K_M.gguf",
+      "family": "qwen3-asr-0.6b",
+      "profile": "qwen3-asr",
+      "quantization": "q4_k_m",
+      "size_bytes": 589560480,
+      "sha256": "5b58f32a58ffa2c8783e0b0963485623e286e6272d953dfc9e28bc3447dee0c0",
+      "description": "Good accuracy, light"
+    },
+    {
+      "id": "qwen3-asr-1.7b",
+      "engine": "transcribe-cpp",
+      "format": "gguf",
+      "source": "qwen3-asr-1.7b",
+      "filename": "Qwen3-ASR-1.7B-F16.gguf",
+      "family": "qwen3-asr-1.7b",
+      "profile": "qwen3-asr",
+      "quantization": "f16",
+      "size_bytes": 4091390944,
+      "sha256": "edb09c29b8f73822c639168d5ef72aa2dccdf8b4e48fc4b8518885352ff62c71",
+      "description": "High accuracy"
+    },
+    {
+      "id": "qwen3-asr-1.7b-q8_0",
+      "engine": "transcribe-cpp",
+      "format": "gguf",
+      "source": "qwen3-asr-1.7b",
+      "filename": "Qwen3-ASR-1.7B-Q8_0.gguf",
+      "family": "qwen3-asr-1.7b",
+      "profile": "qwen3-asr",
+      "quantization": "q8_0",
+      "size_bytes": 2185030624,
+      "sha256": "9a0d81792dfea2d5f278b8a63deb3ea6e02139ce42c2301f32ea19c4f77526b7",
+      "description": "High accuracy"
+    },
+    {
+      "id": "qwen3-asr-1.7b-q4_k_m",
+      "engine": "transcribe-cpp",
+      "format": "gguf",
+      "source": "qwen3-asr-1.7b",
+      "filename": "Qwen3-ASR-1.7B-Q4_K_M.gguf",
+      "family": "qwen3-asr-1.7b",
+      "profile": "qwen3-asr",
+      "quantization": "q4_k_m",
+      "size_bytes": 1319830496,
+      "sha256": "b7afe3674f653fa84f712ed2440353c6e7cf7f93697fef76b05a26538b24844e",
+      "description": "High accuracy"
     }
   ],
   "vad": {
