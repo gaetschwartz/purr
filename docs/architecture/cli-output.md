@@ -11,7 +11,6 @@ channel decides the stream, the stream decides the colours, and the theme decide
 | Result | what the command produces: the transcript (text, SRT, JSON), `purr sys`, `models list`, `runtime status` | stdout, always |
 | Status | messages to a person: the banner, `Transcribing:` / `Language:` lines, progress bars, notices, the download prompt, the statistics block | stdout in interactive mode, dropped in plain mode |
 | Error | the error that ends the run (`Error: ...`, exit code 1) | stderr, always |
-| Trace | diagnostic lines a flag asks for (`--trace-beams`) | stderr, in both modes |
 | Log | the `tracing` events, whisper and ggml text included | stderr with `-v`, nothing otherwise |
 
 `channel::route(channel, mode, verbosity)` is the one place that maps a channel to a stream (or to
@@ -40,10 +39,9 @@ use crate::{resultln, statusln};
 resultln!("{}", report_line)?;      // fallible: a failed write fails the command
 statusln!("{} {}", "Info:".info(), text);
 errorln!("{}: {}", "Error".error(), error);
-traceln!("{line}");
 ```
 
-`result!`, `resultln!`, `status!`, `statusln!`, `errorln!` and `traceln!` take format arguments.
+`result!`, `resultln!`, `status!`, `statusln!` and `errorln!` take format arguments.
 The text is formatted after the channel has chosen its stream, inside `scope::on_stderr` when that
 is stderr, so styled values get the right colour decision without the call site knowing. A
 channel that routes nowhere does not even format.

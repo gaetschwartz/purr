@@ -10,10 +10,7 @@ use crate::{
         toast::use_toasts,
     },
     settings_store::use_settings,
-    transcribe::{
-        session::use_transcribe_session,
-        view_options::{BROWSER_REASON, Details, Offer},
-    },
+    transcribe::view_options::{BROWSER_REASON, Details, Offer},
     views::settings::changes::report,
 };
 use dioxus::prelude::*;
@@ -126,7 +123,6 @@ pub fn MoreMenu(
     on_close: EventHandler<()>,
 ) -> Element {
     let settings = use_settings();
-    let session = use_transcribe_session();
     let toasts = use_toasts();
     let view = settings.with(|settings| settings.ui.transcript);
     let (beside, below): (Vec<MoreAction>, Vec<MoreAction>) = actions
@@ -202,9 +198,9 @@ pub fn MoreMenu(
                 div { class: "ph", "Details" }
                 match details {
                     Details::Browser => rsx! {
-                        ReasonRow { title: "Unsure words, word playback, beams", reason: BROWSER_REASON }
+                        ReasonRow { title: "Unsure words and word playback", reason: BROWSER_REASON }
                     },
-                    Details::Desktop { unsure, word_seek, beams } => rsx! {
+                    Details::Desktop { unsure, word_seek } => rsx! {
                         OfferRow {
                             title: "Mark unsure words",
                             label_id: "unsure-label",
@@ -237,16 +233,6 @@ pub fn MoreMenu(
                             offer: word_seek,
                             checked: view.word_seek,
                             on_toggle: move |on| report(toasts, settings.update(|s| s.ui.transcript.word_seek = on)),
-                        }
-                        OfferRow {
-                            title: "Decoder beams",
-                            label_id: "beams-label",
-                            offer: beams,
-                            checked: view.show_beams,
-                            on_toggle: move |on| {
-                                session.set_beam_telemetry(on);
-                                report(toasts, settings.update(|s| s.ui.transcript.show_beams = on));
-                            },
                         }
                     },
                 }

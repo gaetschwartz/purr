@@ -1,7 +1,6 @@
 pub mod accel;
 pub mod adapter_name;
 pub mod audio_overview;
-pub mod beams;
 pub mod browser_engine;
 pub mod devices;
 pub mod export_format;

@@ -1,5 +1,4 @@
 use super::{
-    beam_panel::{BeamsView, InlineBeams},
     marked_text::MarkedText,
     more_menu::{MORE_ID, MoreAction, MoreMenu, TranscriptionFacts},
     segment_row::{SegmentRow, TentativeRow},
@@ -79,7 +78,6 @@ pub fn TranscriptCard(
     #[props(default)]
     live: bool,
     moment: Moment,
-    beams: BeamsView,
     export: ExportSource,
     /// Export waits in its place until the transcript is final.
     #[props(default = true)]
@@ -203,9 +201,6 @@ pub fn TranscriptCard(
                     aria_expanded: more_open(),
                     onclick: move |_| more_open.toggle(),
                 }
-            }
-            if !IS_WEB {
-                InlineBeams { beams }
             }
             div { class: "tbody",
                 if segments.is_empty() && !live {

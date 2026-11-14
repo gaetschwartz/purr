@@ -11,8 +11,6 @@ pub enum Channel {
     Status,
     /// The error that ends the run. Stderr
     Error,
-    /// Diagnostic lines a flag asks for (`--trace-beams`). Stderr in both modes
-    Trace,
     /// The `tracing` events. Stderr with `-v`, nothing otherwise; the log file is separate
     Log,
 }
@@ -25,7 +23,7 @@ pub const fn route(channel: Channel, mode: Mode, verbosity: Verbosity) -> Option
             Mode::Interactive => Some(Stream::Stdout),
             Mode::Plain => None,
         },
-        Channel::Error | Channel::Trace => Some(Stream::Stderr),
+        Channel::Error => Some(Stream::Stderr),
         Channel::Log => {
             if verbosity.shows_diagnostics() {
                 Some(Stream::Stderr)
@@ -41,11 +39,10 @@ mod tests {
     use super::*;
     use crate::verbosity::VerbosityLevel;
 
-    const CHANNELS: [Channel; 5] = [
+    const CHANNELS: [Channel; 4] = [
         Channel::Result,
         Channel::Status,
         Channel::Error,
-        Channel::Trace,
         Channel::Log,
     ];
 
@@ -66,16 +63,10 @@ mod tests {
     #[test]
     fn the_matrix_of_mode_verbosity_and_channel() {
         use Stream::{Stderr, Stdout};
-        let interactive = [Some(Stdout), Some(Stdout), Some(Stderr), Some(Stderr), None];
-        let interactive_verbose = [
-            Some(Stdout),
-            Some(Stdout),
-            Some(Stderr),
-            Some(Stderr),
-            Some(Stderr),
-        ];
-        let plain = [Some(Stdout), None, Some(Stderr), Some(Stderr), None];
-        let plain_verbose = [Some(Stdout), None, Some(Stderr), Some(Stderr), Some(Stderr)];
+        let interactive = [Some(Stdout), Some(Stdout), Some(Stderr), None];
+        let interactive_verbose = [Some(Stdout), Some(Stdout), Some(Stderr), Some(Stderr)];
+        let plain = [Some(Stdout), None, Some(Stderr), None];
+        let plain_verbose = [Some(Stdout), None, Some(Stderr), Some(Stderr)];
         let table = [
             (Mode::Interactive, 0, interactive),
             (Mode::Interactive, 1, interactive_verbose),

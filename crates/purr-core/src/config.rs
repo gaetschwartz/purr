@@ -1,6 +1,5 @@
 //! Configuration options for transcription
 
-use purr_common::beams::BeamSwitch;
 use serde::{Deserialize, Serialize};
 use std::{
     borrow::Cow,
@@ -63,10 +62,6 @@ pub struct TranscriptionConfig {
     /// Whether and when the stream shows text it has not committed yet
     pub tentative: TentativeText,
 
-    /// Sends the decoder's beams as stream events while on, read at the start of each window
-    #[serde(skip)]
-    pub beam_telemetry: BeamSwitch,
-
     /// HTTP timeout for URL requests (in seconds)
     pub http_timeout: u64,
 
@@ -122,7 +117,6 @@ impl Default for TranscriptionConfig {
             chunk_size: 4.0, // 4 seconds
             vad_model_path: None,
             tentative: TentativeText::Off,
-            beam_telemetry: BeamSwitch::default(),
             http_timeout: 30,         // 30 seconds
             http_connect_timeout: 10, // 10 seconds
         }
@@ -242,13 +236,6 @@ impl TranscriptionConfig {
     #[must_use]
     pub fn with_tentative(mut self, tentative: TentativeText) -> Self {
         self.tentative = tentative;
-        self
-    }
-
-    /// Share `switch`, which turns the beam telemetry on and off while the stream runs
-    #[must_use]
-    pub fn with_beam_telemetry(mut self, switch: BeamSwitch) -> Self {
-        self.beam_telemetry = switch;
         self
     }
 

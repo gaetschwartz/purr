@@ -59,7 +59,6 @@ impl Transcript {
             | TranscriptionStatus::Engine { .. }
             | TranscriptionStatus::LanguageDetected { .. }
             | TranscriptionStatus::Progress(_)
-            | TranscriptionStatus::Telemetry(_)
             | TranscriptionStatus::Error { .. }
             | TranscriptionStatus::InitFailed { .. } => {}
         }

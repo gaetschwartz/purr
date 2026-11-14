@@ -115,11 +115,6 @@ pub fn error(args: fmt::Arguments<'_>) {
     best_effort(current().write(Channel::Error, args));
 }
 
-/// A diagnostic line the user asked for with a flag.
-pub fn trace(args: fmt::Arguments<'_>) {
-    best_effort(current().write(Channel::Trace, args));
-}
-
 /// Dropping the failure is the point: the line was a courtesy and stderr may be what is broken.
 fn best_effort(written: Result<(), OutputError>) {
     if written.is_err() {
@@ -168,13 +163,6 @@ macro_rules! errorln {
     };
 }
 
-#[macro_export]
-macro_rules! traceln {
-    ($($arg:tt)*) => {
-        $crate::output::trace(::std::format_args!("{}\n", ::std::format_args!($($arg)*)))
-    };
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -196,7 +184,6 @@ mod tests {
         output.write(Channel::Result, format_args!("result;"))?;
         output.write(Channel::Status, format_args!("status;"))?;
         output.write(Channel::Error, format_args!("error;"))?;
-        output.write(Channel::Trace, format_args!("trace;"))?;
         output.write(Channel::Log, format_args!("log;"))?;
         Ok(())
     }
@@ -207,7 +194,7 @@ mod tests {
         let (output, sink) = output(false, true, VerbosityLevel::NORMAL);
         write_everywhere(&output)?;
         assert_eq!(sink.stdout(), "result;status;");
-        assert_eq!(sink.stderr(), "error;trace;");
+        assert_eq!(sink.stderr(), "error;");
         Ok(())
     }
 
@@ -216,7 +203,7 @@ mod tests {
         let (output, sink) = output(false, false, VerbosityLevel::NORMAL);
         write_everywhere(&output)?;
         assert_eq!(sink.stdout(), "result;");
-        assert_eq!(sink.stderr(), "error;trace;");
+        assert_eq!(sink.stderr(), "error;");
         Ok(())
     }
 
@@ -225,7 +212,7 @@ mod tests {
         let (output, sink) = output(true, true, VerbosityLevel::NORMAL);
         write_everywhere(&output)?;
         assert_eq!(sink.stdout(), "result;");
-        assert_eq!(sink.stderr(), "error;trace;");
+        assert_eq!(sink.stderr(), "error;");
         Ok(())
     }
 
@@ -241,7 +228,7 @@ mod tests {
                 stdout,
                 "--plain={plain_flag} terminal={terminal}"
             );
-            assert_eq!(sink.stderr(), "error;trace;log;");
+            assert_eq!(sink.stderr(), "error;log;");
         }
         Ok(())
     }

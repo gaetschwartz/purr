@@ -73,8 +73,6 @@ pub struct TranscriptView {
     pub unsure_share: UnsureShare,
     /// Let a click on a word play the audio from there
     pub word_seek: bool,
-    /// Show the decoder's competing hypotheses while a transcription runs
-    pub show_beams: bool,
 }
 
 impl Default for TranscriptView {
@@ -85,7 +83,6 @@ impl Default for TranscriptView {
             mark_unsure: false,
             unsure_share: UnsureShare::default(),
             word_seek: false,
-            show_beams: false,
         }
     }
 }
@@ -116,7 +113,6 @@ mod tests {
         assert!(!view.mark_unsure);
         assert_eq!(view.unsure_share.percent(), 10);
         assert!(!view.word_seek);
-        assert!(!view.show_beams);
     }
 
     #[test]
@@ -136,7 +132,6 @@ mod tests {
             mark_unsure: true,
             unsure_share: UnsureShare::new(20),
             word_seek: true,
-            show_beams: true,
         };
         let saved = toml::to_string_pretty(&view).unwrap();
         assert_eq!(toml::from_str::<TranscriptView>(&saved).unwrap(), view);

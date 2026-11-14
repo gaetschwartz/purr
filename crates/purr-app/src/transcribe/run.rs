@@ -2,8 +2,8 @@
 
 use super::transcript::Transcript;
 use purr_common::{
-    accel::LastRun, beams::BeamSnapshot, browser_engine::BrowserEngine,
-    platform::TranscriptionStatus, progress::ProgressFrame,
+    accel::LastRun, browser_engine::BrowserEngine, platform::TranscriptionStatus,
+    progress::ProgressFrame,
 };
 
 /// The step a running transcription is in, in the order they happen.
@@ -68,8 +68,6 @@ pub struct Run {
     pub detected_language: Option<String>,
     /// The latest progress the platform reported, apart from the transcript.
     pub progress: Option<ProgressFrame>,
-    /// The decoder's latest hypotheses, while beam telemetry is on.
-    pub beams: Option<BeamSnapshot>,
     pub outcome: RunOutcome,
     detect_language: bool,
     started_ms: f64,
@@ -88,7 +86,6 @@ impl Run {
             transcript: Transcript::default(),
             detected_language: None,
             progress: None,
-            beams: None,
             outcome: RunOutcome::Running,
             detect_language,
             started_ms: now_ms,
@@ -130,7 +127,6 @@ impl Run {
                 self.advance(Stage::Transcribing);
             }
             TranscriptionStatus::Progress(frame) => self.progress = Some(*frame),
-            TranscriptionStatus::Telemetry(snapshot) => self.beams = Some(snapshot.clone()),
             TranscriptionStatus::InProgress { .. } | TranscriptionStatus::Segments { .. } => {
                 self.transcribing_since_ms.get_or_insert(now_ms);
                 self.advance(Stage::Transcribing);

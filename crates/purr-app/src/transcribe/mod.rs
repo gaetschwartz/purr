@@ -1,6 +1,5 @@
 //! The Transcribe flow: choosing a file, running a transcription and working with the result.
 
-pub mod beam_lanes;
 pub mod chosen_file;
 pub mod device_rows;
 pub mod engine;

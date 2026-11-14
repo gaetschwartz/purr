@@ -3,7 +3,6 @@
 //! A run in progress, its result, a failed run and a saved transcription all render through it,
 //! so a run that ends changes attributes in place instead of mounting a new page.
 
-pub mod beam_panel;
 mod marked_text;
 pub mod more_menu;
 mod playback_shortcut;
@@ -18,11 +17,9 @@ use crate::{
         page::{Page, TitleStyle},
         toast::use_toasts,
     },
-    platform::IS_WEB,
     shortcuts::{Key, KeyChord, Shortcut, use_shortcut},
     transcribe::view_options::Moment,
 };
-use beam_panel::{BeamsView, SideBeams};
 use dioxus::prelude::*;
 use more_menu::{MoreAction, TranscriptionFacts};
 use playback_shortcut::PlaybackShortcut;
@@ -114,7 +111,6 @@ pub fn ResultFrame(
     /// The uncommitted end of a run, shown after the segments while the run goes.
     tentative: Option<TranscriptSegment>,
     #[props(default)] origin: ResultOrigin,
-    #[props(default)] beams: BeamsView,
     export: ExportSource,
     facts: TranscriptionFacts,
     more: Vec<MoreAction>,
@@ -143,17 +139,12 @@ pub fn ResultFrame(
         ResultAudio::Unavailable(_) => None,
     };
     let seekable = player.filter(|_| phase == ViewPhase::Finished);
-    let class = if beams.on {
-        format!("{} beams-on", phase.class())
-    } else {
-        phase.class().to_owned()
-    };
 
     rsx! {
         Page {
             title,
             title_style: TitleStyle::Hidden,
-            class,
+            class: phase.class(),
             {notice}
             match audio {
                 ResultAudio::Player { player, peaks } => rsx! {
@@ -175,24 +166,18 @@ pub fn ResultFrame(
             if let Some(player) = player.filter(|_| !live) {
                 PlaybackShortcut { player }
             }
-            div { class: "runcols",
-                TranscriptCard {
-                    segments: Rc::clone(&segments),
-                    tentative,
-                    player: seekable,
-                    playable: player.is_some(),
-                    live,
-                    moment: phase.moment(origin),
-                    beams: beams.clone(),
-                    export,
-                    export_shown: !live,
-                    facts,
-                    more,
-                    on_more,
-                }
-                if !IS_WEB {
-                    SideBeams { beams }
-                }
+            TranscriptCard {
+                segments: Rc::clone(&segments),
+                tentative,
+                player: seekable,
+                playable: player.is_some(),
+                live,
+                moment: phase.moment(origin),
+                export,
+                export_shown: !live,
+                facts,
+                more,
+                on_more,
             }
         }
     }

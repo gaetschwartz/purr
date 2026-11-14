@@ -1,4 +1,3 @@
-pub mod beams;
 mod commit;
 mod language;
 pub mod loader;
@@ -10,7 +9,7 @@ pub mod sync;
 mod tentative;
 pub mod words;
 
-use purr_common::{beams::BeamSnapshot, platform::ChunkKind, progress::ProgressFrame, word::Word};
+use purr_common::{platform::ChunkKind, progress::ProgressFrame, word::Word};
 use serde::{Deserialize, Serialize};
 use std::future::Future;
 
@@ -132,8 +131,6 @@ pub enum StreamEvent {
     Chunk(StreamingChunk),
     /// How far the stream has come, sent before and after each decoded window
     Progress(StreamProgress),
-    /// The decoder's hypotheses, at most ten times a second while the beam switch is on
-    Beams(BeamSnapshot),
 }
 
 impl StreamEvent {
@@ -142,7 +139,7 @@ impl StreamEvent {
     pub fn into_chunk(self) -> Option<StreamingChunk> {
         match self {
             Self::Chunk(chunk) => Some(chunk),
-            Self::Progress(_) | Self::Beams(_) => None,
+            Self::Progress(_) => None,
         }
     }
 }

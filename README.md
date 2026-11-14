@@ -129,9 +129,6 @@ cargo test -p purr-cli
 # Show how far the transcription has come on stderr (2:51 / 7:30)
 ./target/release/purr audio.wav --progress
 
-# Print the decoder's beams on stderr, one line per decoding step (at most ten a second)
-./target/release/purr audio.wav --trace-beams
-
 # Disable GPU acceleration (same as --accel cpu)
 ./target/release/purr audio.wav --no-gpu
 
@@ -191,7 +188,6 @@ Options:
       --word-timestamps            Time every word, and add each segment's words
                                    (text, start, end, score) to --output json
       --progress                   Show position / duration on stderr while streaming
-      --trace-beams                Print the decoder's beams on stderr while streaming
       --temperature <TEMPERATURE>  Temperature for sampling [default: 0.0]
   -v, --verbose                    Verbose output
   -h, --help                       Print help

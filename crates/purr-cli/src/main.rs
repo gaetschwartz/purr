@@ -17,7 +17,6 @@ mod stats;
 mod sys_command;
 mod sys_report;
 mod theme;
-mod trace;
 mod verbosity;
 mod vt;
 
@@ -164,10 +163,6 @@ async fn handle_streaming_output(
                 if let Some(bar) = &progress_bar {
                     bar.set_message(progress::line(&progress).muted().to_string());
                 }
-                continue;
-            }
-            StreamEvent::Beams(snapshot) => {
-                traceln!("{}", trace::line(&snapshot));
                 continue;
             }
             StreamEvent::Chunk(chunk) => chunk,

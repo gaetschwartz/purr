@@ -661,6 +661,79 @@ log_file_path = "C:/logs/purr.log"
         );
     }
 
+    fn keys_of(table: &toml::Table, section: &[&str]) -> Vec<String> {
+        let mut at = table;
+        for name in section {
+            at = at[*name].as_table().unwrap();
+        }
+        at.keys().cloned().collect()
+    }
+
+    #[test]
+    fn keys_of_removed_options_load_and_are_never_written_again() {
+        let saved = r#"
+version = 3
+
+[model]
+model_name = "small"
+temperature = 0.0
+
+[ui]
+theme = "Dark"
+compact_mode = false
+language = "fr"
+
+[ui.transcript]
+layout = "Reading"
+show_beams = true
+
+[performance]
+threads = 4
+
+[logging]
+level = "Info"
+"#;
+        let mut settings: Settings = toml::from_str(saved).unwrap();
+        assert_eq!(settings.migrate_from_version(3), Ok(()));
+        assert_eq!(settings.ui.transcript.layout, TranscriptLayout::Reading);
+        let written: toml::Table =
+            toml::from_str(&toml::to_string_pretty(&settings).unwrap()).unwrap();
+        assert_eq!(
+            keys_of(&written, &["ui", "transcript"]),
+            [
+                "layout",
+                "mark_unsure",
+                "show_times",
+                "unsure_share",
+                "word_seek"
+            ]
+        );
+
+        let browser = r#"{"version":3,"model":{"model_name":"small","temperature":0.0},
+            "ui":{"theme":"Dark","compact_mode":false,"language":"fr",
+                  "transcript":{"layout":"Reading","show_beams":true}},
+            "performance":{},"logging":{"level":"Info"}}"#;
+        let settings: Settings = serde_json::from_str(browser).unwrap();
+        let written = serde_json::to_value(&settings).unwrap();
+        let mut keys: Vec<&str> = written["ui"]["transcript"]
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect();
+        keys.sort_unstable();
+        assert_eq!(
+            keys,
+            [
+                "layout",
+                "mark_unsure",
+                "show_times",
+                "unsure_share",
+                "word_seek"
+            ]
+        );
+    }
+
     #[test]
     fn the_defaults_leave_every_device_in_the_usual_order() {
         assert_eq!(

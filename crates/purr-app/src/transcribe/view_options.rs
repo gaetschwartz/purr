@@ -39,11 +39,10 @@ pub enum Details {
     Desktop {
         unsure: Offer,
         word_seek: Offer,
-        beams: Offer,
     },
 }
 
-pub const BROWSER_REASON: &str = "The browser engine reports no word scores, word times or beams.";
+pub const BROWSER_REASON: &str = "The browser engine reports no word scores or word times.";
 const NOT_RECORDED: &str = "Not recorded for this transcription.";
 
 /// The rows to show for a transcript at `moment`.
@@ -75,16 +74,7 @@ pub const fn details(web: bool, moment: Moment, evidence: Evidence) -> Details {
             }
         }
     };
-    let beams = match moment {
-        Moment::Running => Offer::Switch,
-        Moment::Stopped | Moment::Finished => Offer::Reason("Shown only while transcribing."),
-        Moment::Saved => Offer::Absent,
-    };
-    Details::Desktop {
-        unsure,
-        word_seek,
-        beams,
-    }
+    Details::Desktop { unsure, word_seek }
 }
 
 #[cfg(test)]
@@ -110,7 +100,7 @@ mod tests {
     }
 
     #[test]
-    fn a_running_transcript_offers_marks_and_beams_but_not_playback() {
+    fn a_running_transcript_offers_marks_but_not_playback() {
         assert_eq!(
             details(
                 false,
@@ -124,31 +114,17 @@ mod tests {
             Details::Desktop {
                 unsure: Offer::Switch,
                 word_seek: Offer::Reason("Available when the transcription ends."),
-                beams: Offer::Switch,
             }
         );
     }
 
     #[test]
-    fn a_finished_transcript_offers_marks_and_playback_but_not_beams() {
+    fn a_finished_transcript_offers_marks_and_playback() {
         assert_eq!(
             details(false, Moment::Finished, FULL),
             Details::Desktop {
                 unsure: Offer::Switch,
                 word_seek: Offer::Switch,
-                beams: Offer::Reason("Shown only while transcribing."),
-            }
-        );
-    }
-
-    #[test]
-    fn a_saved_transcript_has_no_beams_row() {
-        assert_eq!(
-            details(false, Moment::Saved, FULL),
-            Details::Desktop {
-                unsure: Offer::Switch,
-                word_seek: Offer::Switch,
-                beams: Offer::Absent,
             }
         );
     }
@@ -168,7 +144,6 @@ mod tests {
             Details::Desktop {
                 unsure: Offer::Reason("Not recorded for this transcription."),
                 word_seek: Offer::Reason("Not recorded for this transcription."),
-                beams: Offer::Absent,
             }
         );
         assert_eq!(
@@ -183,7 +158,6 @@ mod tests {
             Details::Desktop {
                 unsure: Offer::Switch,
                 word_seek: Offer::Reason("The audio isn't available."),
-                beams: Offer::Absent,
             }
         );
     }
@@ -195,7 +169,6 @@ mod tests {
             Details::Desktop {
                 unsure: Offer::Switch,
                 word_seek: Offer::Reason("Not available after a stopped transcription."),
-                beams: Offer::Reason("Shown only while transcribing."),
             }
         );
     }

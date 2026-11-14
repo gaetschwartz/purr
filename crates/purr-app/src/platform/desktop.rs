@@ -159,7 +159,6 @@ impl Platform for DesktopPlatformImpl {
                 .with_vad_model(vad)
                 .with_opt_language(request.language)
                 .apply_output_format(|format| format.with_word_timestamps(true))
-                .with_beam_telemetry(request.beam_telemetry.clone())
                 .with_tentative(TentativeText::Decoded),
             &request.engine,
         );
@@ -610,11 +609,6 @@ impl DesktopRun {
                 Some(Ok(purr_core::StreamEvent::Progress(progress))) => {
                     self.pending
                         .push_back(Ok(TranscriptionStatus::Progress(progress.frame)));
-                    self.phase = Phase::Decode(stream);
-                }
-                Some(Ok(purr_core::StreamEvent::Beams(snapshot))) => {
-                    self.pending
-                        .push_back(Ok(TranscriptionStatus::Telemetry(snapshot)));
                     self.phase = Phase::Decode(stream);
                 }
                 Some(Ok(purr_core::StreamEvent::Chunk(chunk))) => {
