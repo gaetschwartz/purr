@@ -267,9 +267,6 @@ pub fn ModelListRow(
                     if let Some(tag) = entry.quantization_tag() {
                         Chip { "{tag}" }
                     }
-                    if let Some(tag) = entry.license_tag() {
-                        Chip { "{tag}" }
-                    }
                 }
                 {notice}
             }

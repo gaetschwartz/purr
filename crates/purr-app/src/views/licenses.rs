@@ -1,7 +1,8 @@
-//! The Licenses view: the third-party crates and the font Purr ships with, grouped by licence.
+//! The Licenses view: the third-party crates, the font and the models Purr uses, grouped by licence.
 
 mod catalog;
 mod group;
+mod models;
 
 use crate::{
     components::{
@@ -17,6 +18,7 @@ use crate::{
 use catalog::Licence;
 use dioxus::prelude::*;
 use group::{FontGroup, LicenceGroup};
+use models::ModelCredits;
 use std::rc::Rc;
 
 /// The page that lists every licence, with the crates released under it and the full text.
@@ -59,6 +61,7 @@ pub fn Licenses() -> Element {
                     }
                     LicenceList { licences: Rc::clone(licences), query: query() }
                     if query().trim().is_empty() {
+                        ModelCredits {}
                         FontGroup {}
                     }
                 },
@@ -69,6 +72,7 @@ pub fn Licenses() -> Element {
                         role: "alert",
                         "{error}"
                     }
+                    ModelCredits {}
                     FontGroup {}
                 },
             }

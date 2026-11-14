@@ -119,13 +119,6 @@ impl ModelEntry {
         ModelLine::of(self.descriptor.family)
     }
 
-    /// The tag text of the licence, for a family whose licence asks for credit.
-    #[must_use]
-    pub fn license_tag(&self) -> Option<&'static str> {
-        let license = self.descriptor.family.attribution().license;
-        license.requires_attribution().then(|| license.label())
-    }
-
     /// The tag text of how the weights are stored.
     #[must_use]
     pub fn quantization_tag(&self) -> Option<String> {
@@ -250,14 +243,6 @@ mod tests {
             tag(info("base", "base", 1, Some("q4/q4"), false)),
             Some("Quantized Q4".to_owned())
         );
-    }
-
-    #[test]
-    fn only_a_family_whose_licence_asks_for_credit_carries_a_licence_tag() {
-        let parakeet = ModelEntry::from_info(&parakeet_info("p", "f16", 1, false));
-        assert_eq!(parakeet.license_tag(), Some("CC BY 4.0"));
-        let whisper = ModelEntry::from_info(&info("base", "base", 1, None, false));
-        assert_eq!(whisper.license_tag(), None);
     }
 
     #[test]

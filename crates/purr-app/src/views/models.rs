@@ -107,7 +107,6 @@ fn Catalog(models: ModelsHandle, rows: Vec<ModelRow>, selected: Option<String>) 
             ModelSection {
                 key: "{section.group.label()}",
                 title: section.group.label(),
-                credit: section.credit,
                 for cluster in section.clusters {
                     ModelClusterRow {
                         key: "{cluster.primary.entry.id}",

@@ -1,7 +1,6 @@
 use super::{
     clusters::cluster,
     copy,
-    credit::heading,
     entry::languages_label,
     family::{ModelGroup, ModelLine, superseded},
     format::percent,
@@ -177,21 +176,11 @@ impl PickerModel {
         self.versions.first().map(|row| row.entry.line())
     }
 
-    /// What the line says about the model beyond its name, for its tooltip: the languages, and the
-    /// licence when it asks for credit.
+    /// What the line says about the model beyond its name, for its tooltip: the languages.
     #[must_use]
     pub fn details(&self) -> Option<String> {
         let first = self.versions.first()?;
-        let mut parts = vec![languages_label(first.entry.languages())];
-        let attribution = first.entry.family().attribution();
-        if attribution.license.requires_attribution() {
-            parts.push(format!(
-                "{} by {}",
-                attribution.license.label(),
-                attribution.author
-            ));
-        }
-        Some(parts.join(" · "))
+        Some(languages_label(first.entry.languages()))
     }
 
     fn group(&self) -> ModelGroup {
@@ -362,14 +351,7 @@ impl PickerList {
             match sections.last_mut() {
                 Some((last, section)) if *last == line => section.models.push(model),
                 Some(_) | None => {
-                    let title = headed
-                        .then(|| {
-                            model
-                                .versions
-                                .first()
-                                .map(|row| heading(row.entry.family()))
-                        })
-                        .flatten();
+                    let title = line.filter(|_| headed).map(|line| line.label().to_owned());
                     sections.push((
                         line,
                         LineSection {
@@ -784,10 +766,7 @@ mod tests {
                 .iter()
                 .map(|section| (section.heading.as_deref(), section.models.len()))
                 .collect::<Vec<_>>(),
-            [
-                (Some("Whisper"), 4),
-                (Some("Parakeet · NVIDIA · CC BY 4.0"), 1)
-            ]
+            [(Some("Whisper"), 4), (Some("Parakeet"), 1)]
         );
         let plain = PickerList::sections(list.available, false);
         assert_eq!(
@@ -807,12 +786,9 @@ mod tests {
     }
 
     #[test]
-    fn a_model_says_its_languages_and_the_licence_that_asks_for_credit() {
+    fn a_model_says_its_languages() {
         let list = picker_list(&with_parakeet(), PickerScope::All, "", "");
-        assert_eq!(
-            list.available[4].details().as_deref(),
-            Some("25 languages · CC BY 4.0 by NVIDIA")
-        );
+        assert_eq!(list.available[4].details().as_deref(), Some("25 languages"));
         assert_eq!(list.available[1].details().as_deref(), Some("Multilingual"));
     }
 

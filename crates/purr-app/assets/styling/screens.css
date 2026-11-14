@@ -164,7 +164,6 @@ mark.cur{background:var(--accent);color:#fff}
 .state-ok{display:inline-flex;align-items:center;gap:5px;color:var(--success);font-size:13px;font-weight:600}
 .fam-h{display:flex;align-items:baseline;gap:10px;margin:0 0 8px 16px}
 .fam-h h2{font-size:13px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--fg-2);margin:0}
-.fam-note{margin:8px 16px 0;font-size:13px;color:var(--fg-2);overflow-wrap:anywhere}
 .fam-toggle{display:inline-flex;align-items:center;gap:4px;font:inherit;letter-spacing:inherit;text-transform:inherit;color:inherit;margin-left:-4px}
 .fam-toggle:hover{color:var(--fg)}
 .fam-toggle .count{font-variant-numeric:tabular-nums;margin-left:4px}

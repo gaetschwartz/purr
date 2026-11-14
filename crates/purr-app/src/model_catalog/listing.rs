@@ -1,6 +1,5 @@
 use super::{
     clusters::{ModelCluster, cluster},
-    credit::{Credit, credit},
     entry::ModelEntry,
     family::ModelGroup,
     state::ModelState,
@@ -86,8 +85,6 @@ impl ModelQuery {
 pub struct GroupListing {
     pub group: ModelGroup,
     pub clusters: Vec<ModelCluster>,
-    /// Who made the section's models, when their licence asks for credit.
-    pub credit: Option<Credit>,
 }
 
 /// The list the Models screen shows.
@@ -152,7 +149,6 @@ pub fn build_listing(rows: &[ModelRow], query: &ModelQuery) -> Listing {
                 Some(section) => section.clusters.push(cluster),
                 None => listing.groups.push(GroupListing {
                     group,
-                    credit: credit(cluster.primary.entry.family()),
                     clusters: vec![cluster],
                 }),
             }
@@ -455,7 +451,7 @@ mod tests {
     }
 
     #[test]
-    fn parakeet_gets_a_section_of_its_own_after_the_whisper_ones_with_its_credit() {
+    fn parakeet_gets_a_section_of_its_own_after_the_whisper_ones() {
         let listing = build_listing(&with_parakeet(), &ModelQuery::default());
         let order: Vec<ModelGroup> = listing.groups.iter().map(|section| section.group).collect();
         assert_eq!(
@@ -466,12 +462,6 @@ mod tests {
             section(&listing, ModelGroup::Parakeet),
             [("p-f16", vec!["p-q8"])]
         );
-        let credits: Vec<bool> = listing
-            .groups
-            .iter()
-            .map(|section| section.credit.is_some())
-            .collect();
-        assert_eq!(credits, [false, false, true]);
     }
 
     #[test]

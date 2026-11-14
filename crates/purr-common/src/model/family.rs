@@ -1,7 +1,7 @@
 use super::license::{Attribution, ModelLicense};
 use serde_with::{DeserializeFromStr, SerializeDisplay};
 use std::{fmt, str::FromStr};
-use strum::{Display, EnumString};
+use strum::{Display, EnumString, VariantArray};
 
 /// Whisper's model size class. Declaration order is ascending size and drives group ordering.
 #[derive(
@@ -15,6 +15,7 @@ use strum::{Display, EnumString};
     Hash,
     Display,
     EnumString,
+    VariantArray,
     SerializeDisplay,
     DeserializeFromStr,
 )]
@@ -80,6 +81,7 @@ impl WhisperSize {
     Hash,
     Display,
     EnumString,
+    VariantArray,
     SerializeDisplay,
     DeserializeFromStr,
 )]
@@ -121,6 +123,20 @@ pub struct UnknownFamily {
 }
 
 impl ModelFamily {
+    /// Every family, in listing order.
+    pub fn all() -> impl Iterator<Item = Self> {
+        WhisperSize::VARIANTS
+            .iter()
+            .copied()
+            .map(Self::Whisper)
+            .chain(
+                ParakeetVariant::VARIANTS
+                    .iter()
+                    .copied()
+                    .map(Self::Parakeet),
+            )
+    }
+
     #[must_use]
     pub const fn summary(self) -> &'static str {
         match self {
@@ -235,6 +251,13 @@ mod tests {
         assert_eq!(parakeet.license, ModelLicense::CcBy4);
         assert_eq!(parakeet.author, "NVIDIA");
         assert!(parakeet.changes.is_some());
+    }
+
+    #[test]
+    fn every_family_is_listed_in_ascending_order() {
+        let all: Vec<ModelFamily> = ModelFamily::all().collect();
+        assert_eq!(all.len(), 9);
+        assert!(all.is_sorted());
     }
 
     #[test]
