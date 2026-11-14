@@ -161,6 +161,7 @@ mod tests {
         VulkanDriverStatus, VulkanDriverUnavailable,
     };
     use purr_core::dev::FeatureStatus;
+    use purr_core::dev::caps::DeviceCaps;
     use serde_json::json;
 
     fn cpu(built_with: &[CpuFeature], detected: Option<&[CpuFeature]>) -> CpuReport {
@@ -454,6 +455,38 @@ mod tests {
                     "backend": "vulkan",
                     "caps": null
                 }]
+            })
+        );
+    }
+
+    #[test]
+    fn the_capabilities_of_a_json_device_keep_their_keys() {
+        let device = Device {
+            caps: Some(DeviceCaps {
+                asynchronous: false,
+                host_buffer: true,
+                buffer_from_host_ptr: true,
+                events: false,
+            }),
+            ..device(DeviceType::Cpu, None)
+        };
+        assert_eq!(
+            serde_json::to_value(&device).expect("serializes"),
+            json!({
+                "id": 2,
+                "name": "Vulkan0",
+                "description": "Intel(R) Iris(R) Xe Graphics",
+                "device_id": null,
+                "vram_free": 3_221_225_472_u64,
+                "vram_total": 8_589_934_592_u64,
+                "tpe": "Cpu",
+                "backend": "vulkan",
+                "caps": {
+                    "async_": false,
+                    "host_buffer": true,
+                    "buffer_from_host_ptr": true,
+                    "events": false
+                }
             })
         );
     }

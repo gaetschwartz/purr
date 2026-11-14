@@ -49,18 +49,10 @@ fn unavailable(reason: UnavailableReason) -> BackendUnavailable {
 
 fn capabilities(device: &Device) -> Option<HashMap<String, serde_json::Value>> {
     device.caps.map(|caps| {
-        HashMap::from([
-            ("async".to_owned(), serde_json::Value::Bool(caps.async_)),
-            (
-                "host_buffer".to_owned(),
-                serde_json::Value::Bool(caps.host_buffer),
-            ),
-            (
-                "buffer_from_host_ptr".to_owned(),
-                serde_json::Value::Bool(caps.buffer_from_host_ptr),
-            ),
-            ("events".to_owned(), serde_json::Value::Bool(caps.events)),
-        ])
+        caps.flags()
+            .into_iter()
+            .map(|(name, set)| (name.to_owned(), serde_json::Value::Bool(set)))
+            .collect()
     })
 }
 
