@@ -7,7 +7,17 @@ use purr_engine_whisper::engine::WhisperEngine;
 
 /// Every engine, for transcriptions to pick the one their model names.
 pub fn all() -> Vec<Arc<dyn Engine>> {
-    vec![Arc::new(WhisperEngine)]
+    #[cfg(feature = "transcribe")]
+    {
+        vec![
+            Arc::new(WhisperEngine),
+            Arc::new(purr_engine_transcribe::engine::TranscribeEngine),
+        ]
+    }
+    #[cfg(not(feature = "transcribe"))]
+    {
+        vec![Arc::new(WhisperEngine)]
+    }
 }
 
 /// The engine whose devices the compute settings list.

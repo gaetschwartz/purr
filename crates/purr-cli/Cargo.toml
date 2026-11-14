@@ -41,6 +41,7 @@ paste = { package = "pastey", version = "0.2" }
 phf = { version = "0.14.0", features = ["macros"] }
 serde = { version = "1.0.229", features = ["derive"] }
 thiserror = "2.0"
+purr-engine-transcribe = { version = "0.1.0", path = "../purr-engine-transcribe", optional = true }
 
 [dev-dependencies]
 tempfile = "3.21"
@@ -56,6 +57,7 @@ vulkan = ["purr-engine-whisper/vulkan"]
 metal = ["purr-engine-whisper/metal"]
 coreml = ["purr-engine-whisper/coreml"]
 static-ffmpeg = ["purr-core/static-ffmpeg"]
+transcribe = ["dep:purr-engine-transcribe"]
 
 [build-dependencies]
 purr-delayload = { path = "../purr-delayload" }

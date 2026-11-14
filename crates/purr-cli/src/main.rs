@@ -5,6 +5,7 @@ mod build_info;
 mod cli;
 mod color;
 mod download_prompt;
+mod engine_report;
 mod engines;
 mod global;
 mod json;

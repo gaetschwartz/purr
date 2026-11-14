@@ -34,9 +34,10 @@ fn feature_status(
 
 pub fn handle(json: bool) -> miette::Result<()> {
     let sys = SystemInfo::get(&crate::engines::hardware());
+    let engines = crate::engines::reports();
 
     if json {
-        resultln!("{}", sys_report::json(&sys).into_diagnostic()?)?;
+        resultln!("{}", sys_report::json(&sys, &engines).into_diagnostic()?)?;
         return Ok(());
     }
 
@@ -108,6 +109,17 @@ pub fn handle(json: bool) -> miette::Result<()> {
     }
     for line in lines {
         resultln!("{line}")?;
+    }
+
+    if !engines.is_empty() {
+        resultln!()?;
+        resultln!("{}", "Other engines:".heading())?;
+        for report in &engines {
+            resultln!()?;
+            for line in report.lines() {
+                resultln!("{line}")?;
+            }
+        }
     }
 
     Ok(())

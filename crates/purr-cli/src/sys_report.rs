@@ -6,9 +6,19 @@ use purr_common::{
 };
 use purr_core::{SystemInfo, accel::backend::AccelBackend, dev::Device};
 
-/// The whole report as one JSON document.
-pub fn json(sys: &SystemInfo) -> serde_json::Result<String> {
-    serde_json::to_string_pretty(sys)
+use crate::engine_report::EngineReport;
+
+/// The whole report as one JSON document. The `engines` key only exists when other engines have
+/// something to report.
+pub fn json(sys: &SystemInfo, engines: &[EngineReport]) -> serde_json::Result<String> {
+    if engines.is_empty() {
+        return serde_json::to_string_pretty(sys);
+    }
+    let mut report = serde_json::to_value(sys)?;
+    if let serde_json::Value::Object(fields) = &mut report {
+        fields.insert("engines".to_owned(), serde_json::to_value(engines)?);
+    }
+    serde_json::to_string_pretty(&report)
 }
 
 /// Format file size in human readable format
@@ -399,7 +409,7 @@ mod tests {
                 },
             ),
         ]);
-        let printed = json(&sys).expect("serializes");
+        let printed = json(&sys, &[]).expect("serializes");
         let parsed: SystemInfo = serde_json::from_str(&printed).expect("parses back");
         assert_eq!(parsed.backends, sys.backends);
         assert_eq!(parsed.cpu, sys.cpu);
@@ -408,6 +418,30 @@ mod tests {
             serde_json::to_value(&parsed.devices).expect("serializes"),
             serde_json::to_value(&sys.devices).expect("serializes")
         );
+    }
+
+    #[test]
+    fn other_engines_add_an_engines_key_and_none_leave_the_report_unchanged() {
+        let sys = report(&[(AccelBackend::Cpu, FeatureStatus::Available(None))]);
+        let engines = [EngineReport {
+            engine: purr_common::model::engine::EngineId::TranscribeCpp,
+            status: crate::engine_report::EngineStatus::LibraryMissing {
+                library: "transcribe.dll".to_owned(),
+                searched: Vec::new(),
+            },
+        }];
+        let with: serde_json::Value =
+            serde_json::from_str(&json(&sys, &engines).expect("serializes")).expect("parses");
+        assert_eq!(
+            with["engines"],
+            json!([{
+                "engine": "transcribe-cpp",
+                "status": { "library_missing": { "library": "transcribe.dll", "searched": [] } }
+            }])
+        );
+        let without: serde_json::Value =
+            serde_json::from_str(&json(&sys, &[]).expect("serializes")).expect("parses");
+        assert_eq!(without.get("engines"), None);
     }
 
     #[test]
@@ -423,7 +457,7 @@ mod tests {
             ),
         ]);
         let printed: serde_json::Value =
-            serde_json::from_str(&json(&sys).expect("serializes")).expect("is JSON");
+            serde_json::from_str(&json(&sys, &[]).expect("serializes")).expect("is JSON");
         assert_eq!(
             printed,
             json!({
