@@ -23,6 +23,18 @@ crates/purr-app/
 The visual design is specified by `docs/design/purr-redesign-opus-v2.html`; the stylesheets are plain
 CSS with no build step.
 
+### UI copy
+
+A control explains itself by its label, state and icon. Explanatory text is the exception:
+
+- Labels, not sentences; no subtitle that restates its heading.
+- At most one short visible line (about six words) where a touch user needs the information.
+- Anything longer is a one-line tooltip mirrored in `aria-description`: `Item { hint }` puts it
+  behind an info icon that also opens on a tap; a disabled control takes its `title` on a wrapper.
+- An error is a one-line headline with its action buttons; its cause (paths, libraries, raw
+  messages) goes in `details` on `Banner`, a closed Details disclosure, never in a paragraph.
+- Empty states are an icon, a title and the way out; model descriptions stay neutral and short.
+
 ### Serving the app
 
 The `dx` CLI must match the Dioxus version of the workspace (see `DIOXUS_VERSION` in
