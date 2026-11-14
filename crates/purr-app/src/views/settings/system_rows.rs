@@ -33,22 +33,22 @@ pub struct SystemRow {
 #[must_use]
 pub fn browser_rows(gpu: &GpuSupport) -> Vec<SystemRow> {
     let (name, detail, badge) = match gpu {
-        GpuSupport::Checking => ("Checking this browser…".to_owned(), None, Badge::Unavailable),
+        GpuSupport::Checking => (
+            "Checking this browser…".to_owned(),
+            None,
+            Badge::Unavailable,
+        ),
         GpuSupport::Unavailable => (
             "No WebGPU adapter found".to_owned(),
-            Some(
-                "Purr uses the CPU here, which is slower. Use a current Chrome, Edge or another browser with WebGPU enabled."
-                    .to_owned(),
-            ),
+            Some("Runs on the CPU; try a WebGPU browser".to_owned()),
             Badge::Unavailable,
         ),
         GpuSupport::Available { name, shader_f16 } => (
-            name.clone()
-                .unwrap_or_else(|| "WebGPU adapter".to_owned()),
+            name.clone().unwrap_or_else(|| "WebGPU adapter".to_owned()),
             Some(if *shader_f16 {
                 "16-bit floats supported".to_owned()
             } else {
-                "No 16-bit floats: the Large v3 Turbo model is unavailable".to_owned()
+                "No 16-bit floats".to_owned()
             }),
             Badge::Available,
         ),
@@ -96,7 +96,7 @@ mod tests {
             [row(
                 "WebGPU",
                 "Some Adapter",
-                Some("No 16-bit floats: the Large v3 Turbo model is unavailable"),
+                Some("No 16-bit floats"),
                 Badge::Available
             )]
         );

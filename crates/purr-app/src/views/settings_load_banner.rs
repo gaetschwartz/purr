@@ -36,7 +36,8 @@ pub fn SettingsLoadBanner() -> Element {
                         "Reset settings"
                     }
                 },
-                "Purr is running on the defaults and left the stored settings untouched. Changes are not saved until you reset them. Details: {failure}"
+                details: rsx! { "{failure}" },
+                "Using defaults; changes aren't saved until you reset."
             }
         }
     }

@@ -1,40 +1,73 @@
 //! What the Hardware page says about the engines that run models: the ones that cannot run, and
-//! which engines run on a device.
+//! the devices only some engines use.
 
 use purr_common::{
     accel::{EngineAvailability, EngineSummary, EngineUnavailable},
     model::engine::EngineId,
 };
 
-fn the(engine: EngineId) -> String {
-    format!("The {}", engine.label())
+/// Why an engine cannot run, in the headline of its note.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EngineProblem {
+    NotBuilt,
+    NotInstalled,
+    CannotLoad,
 }
 
-/// The sentence about an engine that cannot run, `None` for one that can.
-#[must_use]
-pub fn engine_note(summary: &EngineSummary) -> Option<String> {
-    let engine = the(summary.engine);
-    match &summary.availability {
-        EngineAvailability::Loaded(_) => None,
-        EngineAvailability::NotBuilt => Some(format!(
-            "This build of Purr does not include {}.",
-            engine.to_lowercase()
-        )),
-        EngineAvailability::Unavailable(why @ EngineUnavailable::LibraryMissing { .. }) => {
-            Some(format!("{engine} is not installed: {why}."))
+impl EngineProblem {
+    /// The words after the engine's name.
+    #[must_use]
+    pub const fn words(self) -> &'static str {
+        match self {
+            Self::NotBuilt => "not in this build",
+            Self::NotInstalled => "not installed",
+            Self::CannotLoad => "can't be loaded",
         }
-        EngineAvailability::Unavailable(why @ EngineUnavailable::LibraryUnloadable { .. }) => {
-            Some(format!("{engine} cannot be loaded: {why}."))
-        }
-        EngineAvailability::Unavailable(EngineUnavailable::NoBackend { .. }) => Some(format!(
-            "{engine} cannot be loaded: it found no way to compute."
-        )),
     }
 }
 
-/// One sentence for each engine that cannot run.
+/// An engine that cannot run: what is wrong, and the cause behind a disclosure.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EngineNote {
+    pub engine: EngineId,
+    pub problem: EngineProblem,
+    pub detail: Option<String>,
+}
+
+impl EngineNote {
+    #[must_use]
+    pub fn headline(&self) -> String {
+        format!("{} {}", self.engine.label(), self.problem.words())
+    }
+}
+
+/// The note about an engine that cannot run, `None` for one that can.
 #[must_use]
-pub fn engine_notes(engines: &[EngineSummary]) -> Vec<String> {
+pub fn engine_note(summary: &EngineSummary) -> Option<EngineNote> {
+    let (problem, detail) = match &summary.availability {
+        EngineAvailability::Loaded(_) => return None,
+        EngineAvailability::NotBuilt => (EngineProblem::NotBuilt, None),
+        EngineAvailability::Unavailable(why @ EngineUnavailable::LibraryMissing { .. }) => {
+            (EngineProblem::NotInstalled, Some(why.to_string()))
+        }
+        EngineAvailability::Unavailable(why @ EngineUnavailable::LibraryUnloadable { .. }) => {
+            (EngineProblem::CannotLoad, Some(why.to_string()))
+        }
+        EngineAvailability::Unavailable(EngineUnavailable::NoBackend { detail }) => (
+            EngineProblem::CannotLoad,
+            (!detail.trim().is_empty()).then(|| detail.clone()),
+        ),
+    };
+    Some(EngineNote {
+        engine: summary.engine,
+        problem,
+        detail,
+    })
+}
+
+/// One note for each engine that cannot run.
+#[must_use]
+pub fn engine_notes(engines: &[EngineSummary]) -> Vec<EngineNote> {
     engines.iter().filter_map(engine_note).collect()
 }
 
@@ -45,22 +78,11 @@ fn loaded(engines: &[EngineSummary]) -> usize {
         .count()
 }
 
-/// Which engines run on a device, said only when several engines can run at all.
+/// The engines that use a device, when some engine that runs does not.
 #[must_use]
-pub fn seen_by_note(seen_by: &[EngineId], engines: &[EngineSummary]) -> Option<String> {
-    if loaded(engines) < 2 || seen_by.is_empty() {
-        return None;
-    }
-    let names: Vec<String> = seen_by
-        .iter()
-        .map(|engine| format!("the {}", engine.label()))
-        .collect();
-    let only = if seen_by.len() < loaded(engines) {
-        " only"
-    } else {
-        ""
-    };
-    Some(format!("Used by {}{only}", names.join(" and ")))
+pub fn only_used_by(seen_by: &[EngineId], engines: &[EngineSummary]) -> Option<Vec<EngineId>> {
+    (loaded(engines) >= 2 && !seen_by.is_empty() && seen_by.len() < loaded(engines))
+        .then(|| seen_by.to_vec())
 }
 
 #[cfg(test)]
@@ -88,50 +110,40 @@ mod tests {
         }
     }
 
+    fn note(problem: EngineProblem, detail: Option<String>) -> Option<EngineNote> {
+        Some(EngineNote {
+            engine: EngineId::TranscribeCpp,
+            problem,
+            detail,
+        })
+    }
+
     #[test]
     fn an_engine_that_runs_has_no_note() {
         assert_eq!(engine_note(&loaded_engine(EngineId::WhisperCpp)), None);
     }
 
     #[test]
-    fn a_missing_library_says_the_engine_is_not_installed() {
+    fn a_missing_library_keeps_the_error_as_the_detail() {
+        let why = EngineUnavailable::LibraryMissing {
+            library: "transcribe.dll".to_owned(),
+            searched: vec![PathBuf::from("runtime"), PathBuf::from("bin")],
+        };
         assert_eq!(
-            engine_note(&unavailable(EngineUnavailable::LibraryMissing {
-                library: "transcribe.dll".to_owned(),
-                searched: Vec::new(),
-            })),
-            Some(
-                "The transcribe.cpp engine is not installed: transcribe.dll was not found."
-                    .to_owned()
-            )
+            engine_note(&unavailable(why.clone())),
+            note(EngineProblem::NotInstalled, Some(why.to_string()))
         );
     }
 
     #[test]
-    fn a_missing_library_names_the_folders_that_were_searched() {
+    fn a_library_that_will_not_open_cannot_be_loaded() {
+        let why = EngineUnavailable::LibraryUnloadable {
+            library: "transcribe.dll".to_owned(),
+            directory: PathBuf::from("runtime"),
+        };
         assert_eq!(
-            engine_note(&unavailable(EngineUnavailable::LibraryMissing {
-                library: "transcribe.dll".to_owned(),
-                searched: vec![PathBuf::from("runtime"), PathBuf::from("bin")],
-            })),
-            Some(
-                "The transcribe.cpp engine is not installed: transcribe.dll was not found in runtime, bin."
-                    .to_owned()
-            )
-        );
-    }
-
-    #[test]
-    fn a_library_that_will_not_open_says_where_it_is() {
-        assert_eq!(
-            engine_note(&unavailable(EngineUnavailable::LibraryUnloadable {
-                library: "transcribe.dll".to_owned(),
-                directory: PathBuf::from("runtime"),
-            })),
-            Some(
-                "The transcribe.cpp engine cannot be loaded: transcribe.dll in runtime cannot be opened, a library it needs may be missing."
-                    .to_owned()
-            )
+            engine_note(&unavailable(why.clone())),
+            note(EngineProblem::CannotLoad, Some(why.to_string()))
         );
     }
 
@@ -141,21 +153,27 @@ mod tests {
             engine_note(&unavailable(EngineUnavailable::NoBackend {
                 detail: String::new()
             })),
-            Some(
-                "The transcribe.cpp engine cannot be loaded: it found no way to compute."
-                    .to_owned()
+            note(EngineProblem::CannotLoad, None)
+        );
+        assert_eq!(
+            engine_note(&unavailable(EngineUnavailable::NoBackend {
+                detail: "no backend registered".to_owned()
+            })),
+            note(
+                EngineProblem::CannotLoad,
+                Some("no backend registered".to_owned())
             )
         );
     }
 
     #[test]
-    fn an_engine_this_build_lacks_is_said_so() {
+    fn an_engine_this_build_lacks_has_no_detail() {
         assert_eq!(
             engine_note(&EngineSummary {
                 engine: EngineId::TranscribeCpp,
                 availability: EngineAvailability::NotBuilt,
             }),
-            Some("This build of Purr does not include the transcribe.cpp engine.".to_owned())
+            note(EngineProblem::NotBuilt, None)
         );
     }
 
@@ -171,18 +189,18 @@ mod tests {
     }
 
     #[test]
-    fn a_device_says_which_engines_use_it_once_several_run() {
+    fn a_device_names_its_engines_only_when_another_running_engine_skips_it() {
         let engines = [
             loaded_engine(EngineId::WhisperCpp),
             loaded_engine(EngineId::TranscribeCpp),
         ];
         assert_eq!(
-            seen_by_note(&[EngineId::WhisperCpp, EngineId::TranscribeCpp], &engines),
-            Some("Used by the whisper.cpp engine and the transcribe.cpp engine".to_owned())
+            only_used_by(&[EngineId::WhisperCpp, EngineId::TranscribeCpp], &engines),
+            None
         );
         assert_eq!(
-            seen_by_note(&[EngineId::WhisperCpp], &engines),
-            Some("Used by the whisper.cpp engine only".to_owned())
+            only_used_by(&[EngineId::WhisperCpp], &engines),
+            Some(vec![EngineId::WhisperCpp])
         );
     }
 
@@ -194,9 +212,9 @@ mod tests {
                 detail: String::new(),
             }),
         ];
-        assert_eq!(seen_by_note(&[EngineId::WhisperCpp], &engines), None);
+        assert_eq!(only_used_by(&[EngineId::WhisperCpp], &engines), None);
         assert_eq!(
-            seen_by_note(
+            only_used_by(
                 &[EngineId::WhisperCpp],
                 &[loaded_engine(EngineId::WhisperCpp)]
             ),

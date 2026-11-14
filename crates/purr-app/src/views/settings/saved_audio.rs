@@ -37,7 +37,7 @@ pub fn SavedAudioGroup() -> Element {
         Group {
             Item {
                 title: "Saved audio",
-                subtitle: "History keeps the audio of your transcriptions in this browser, so you can play them back.",
+                hint: "Kept in this browser for playback.",
                 value: size,
                 control: rsx! {
                     Button {
@@ -59,7 +59,7 @@ pub fn SavedAudioGroup() -> Element {
                     store.clear_audio();
                 },
                 on_cancel: move |()| confirming.set(false),
-                "Transcriptions stay in History, but their audio can no longer be played back."
+                "Transcripts stay; playback is lost."
             }
         }
     }

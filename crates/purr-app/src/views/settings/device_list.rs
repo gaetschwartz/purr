@@ -1,4 +1,4 @@
-use super::engine_notes::seen_by_note;
+use super::engine_notes::only_used_by;
 use crate::{
     components::{
         chip::{Chip, ChipTone},
@@ -12,36 +12,33 @@ use dioxus::prelude::*;
 use purr_common::{
     accel::{BackendUnavailable, EngineSummary},
     devices::DeviceKey,
+    model::engine::EngineId,
 };
 
-/// Why a device cannot run, as one short sentence.
+/// Why a device cannot run, as a short phrase.
 #[must_use]
 pub fn unavailable_text(why: &BackendUnavailable) -> String {
     match why {
         BackendUnavailable::NotBuilt | BackendUnavailable::NotBuiltOrNoDevice => {
-            "This build of Purr does not include it.".to_owned()
+            "Not in this build".to_owned()
         }
-        BackendUnavailable::NoDevice => "No device or driver responded.".to_owned(),
-        BackendUnavailable::RuntimeLibraryMissing { library, .. } => {
-            format!("The library it needs, {library}, is not installed.")
-        }
+        BackendUnavailable::NoDevice => "No device or driver".to_owned(),
+        BackendUnavailable::RuntimeLibraryMissing { library, .. } => format!("{library} missing"),
     }
 }
 
-/// The sentence under a device's name that explains its state, when it needs one.
+/// The cause the badge of a device does not already say, when there is one.
 #[must_use]
-pub fn state_note(state: &DeviceState) -> Option<String> {
+pub const fn state_cause(state: &DeviceState) -> Option<&BackendUnavailable> {
     match state {
-        DeviceState::Available => None,
-        DeviceState::Unavailable(why) => Some(unavailable_text(why)),
-        DeviceState::NotFound(None) => {
-            Some("Not found on this computer. It is skipped until it is back.".to_owned())
-        }
-        DeviceState::NotFound(Some(why)) => Some(format!(
-            "Not found on this computer. {}",
-            unavailable_text(why)
-        )),
+        DeviceState::Available | DeviceState::NotFound(None) => None,
+        DeviceState::Unavailable(why) | DeviceState::NotFound(Some(why)) => Some(why),
     }
+}
+
+fn engines_text(engines: &[EngineId]) -> String {
+    let names: Vec<&str> = engines.iter().map(|engine| engine.label()).collect();
+    format!("{} only", names.join(", "))
 }
 
 const fn badge(state: &DeviceState) -> (ChipTone, Option<IconName>, &'static str) {
@@ -117,11 +114,11 @@ pub fn DeviceList(
                         if let Some(detail) = &row.detail {
                             small { "{detail}" }
                         }
-                        if let Some(note) = seen_by_note(&row.seen_by, &engines) {
-                            small { "{note}" }
+                        if let Some(only) = only_used_by(&row.seen_by, &engines) {
+                            small { "{engines_text(&only)}" }
                         }
-                        if let Some(note) = state_note(&row.state) {
-                            small { class: "note", "{note}" }
+                        if let Some(why) = state_cause(&row.state) {
+                            small { class: "note", "{unavailable_text(why)}" }
                         }
                         if index >= reachable && row.enabled {
                             small { class: "note", "Not reached: the CPU runs first." }
@@ -195,32 +192,20 @@ mod tests {
     use super::*;
 
     #[test]
-    fn an_available_device_needs_no_note() {
-        assert_eq!(state_note(&DeviceState::Available), None);
-    }
-
-    #[test]
-    fn a_missing_library_is_named_in_the_note() {
+    fn only_a_cause_the_badge_does_not_say_is_noted() {
+        let missing = BackendUnavailable::RuntimeLibraryMissing {
+            library: "vulkan-1.dll".to_owned(),
+            searched: Vec::new(),
+        };
+        assert_eq!(state_cause(&DeviceState::Available), None);
+        assert_eq!(state_cause(&DeviceState::NotFound(None)), None);
         assert_eq!(
-            state_note(&DeviceState::Unavailable(
-                BackendUnavailable::RuntimeLibraryMissing {
-                    library: "vulkan-1.dll".to_owned(),
-                    searched: Vec::new()
-                }
-            )),
-            Some("The library it needs, vulkan-1.dll, is not installed.".to_owned())
-        );
-    }
-
-    #[test]
-    fn a_device_that_is_gone_says_so_and_adds_its_backends_reason() {
-        assert_eq!(
-            state_note(&DeviceState::NotFound(None)),
-            Some("Not found on this computer. It is skipped until it is back.".to_owned())
+            state_cause(&DeviceState::Unavailable(missing.clone())),
+            Some(&missing)
         );
         assert_eq!(
-            state_note(&DeviceState::NotFound(Some(BackendUnavailable::NotBuilt))),
-            Some("Not found on this computer. This build of Purr does not include it.".to_owned())
+            state_cause(&DeviceState::NotFound(Some(BackendUnavailable::NotBuilt))),
+            Some(&BackendUnavailable::NotBuilt)
         );
     }
 

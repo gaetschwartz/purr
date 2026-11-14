@@ -89,7 +89,6 @@ pub fn AdvancedPage() -> Element {
         Group {
             Item {
                 title: "Reset all settings",
-                subtitle: "Models and history are kept.",
                 danger: true,
                 action: ItemAction::Press(EventHandler::new(move |_| reset_open.set(true))),
             }

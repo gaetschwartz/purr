@@ -41,7 +41,7 @@ pub fn BrowserPanel() -> Element {
             Group {
                 Item {
                     title: "Run on",
-                    subtitle: "WebGPU uses this browser's GPU. If it cannot start, Purr uses the slower CPU.",
+                    hint: "Falls back to the CPU if WebGPU fails.",
                     stackable: true,
                     control: rsx! {
                         Segmented {

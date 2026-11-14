@@ -4,6 +4,7 @@ use crate::{
         banner::{Banner, BannerTone},
         button::{Button, ButtonVariant},
         icon::IconName,
+        info_tip::InfoTip,
         toast::use_toasts,
     },
     settings_store::use_settings,
@@ -23,9 +24,12 @@ pub fn SystemPanel(system: Resource<Result<SystemReport, String>>) -> Element {
 
     rsx! {
         section { aria_labelledby: heading.clone(),
-            h2 { class: "group-h", id: heading, "Devices" }
-            p { class: "group-f", style: "margin:0 16px 8px",
-                "Purr tries the devices that are switched on from top to bottom. If one fails, it moves on to the next. The CPU is the last resort and can't be switched off; put it first to use only the CPU."
+            h2 { class: "group-h", id: heading,
+                "Devices"
+                InfoTip {
+                    about: "Devices",
+                    text: "Tried from the top; the CPU is the fallback.",
+                }
             }
             match state {
                 None => rsx! {
@@ -53,13 +57,14 @@ pub fn SystemPanel(system: Resource<Result<SystemReport, String>>) -> Element {
                     let list_for_toggle = list.clone();
                     let notes = engine_notes(&found.engines);
                     rsx! {
-                        for (index , note) in notes.into_iter().enumerate() {
-                            p {
-                                key: "{index}",
-                                class: "group-f",
+                        for note in notes {
+                            Banner {
+                                key: "{note.engine.label()}",
+                                tone: BannerTone::Warn,
+                                title: note.headline(),
                                 role: "status",
-                                style: "margin:0 16px 8px",
-                                "{note}"
+                                style: "margin-bottom:12px",
+                                details: note.detail.map(|detail| rsx! { "{detail}" }),
                             }
                         }
                         DeviceList {

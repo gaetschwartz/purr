@@ -24,7 +24,6 @@ pub fn HuggingFaceTokenItem() -> Element {
     rsx! {
         Item {
             title: "Hugging Face token",
-            subtitle: "Authenticates Hugging Face downloads.",
             stackable: true,
             control: rsx! {
                 label { class: "field", r#for: id.clone(),

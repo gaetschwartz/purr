@@ -30,15 +30,19 @@ pub fn SavedTick() -> Element {
     });
 
     let problem = match settings.status() {
-        SaveStatus::Failed { .. } => Some("Not saved"),
-        SaveStatus::Paused => Some("Not saved until the settings are reset"),
+        SaveStatus::Failed { .. } => Some(None),
+        SaveStatus::Paused => Some(Some("Reset the settings to save changes")),
         SaveStatus::Idle | SaveStatus::Saving | SaveStatus::Saved { .. } => None,
     };
-    if let Some(problem) = problem {
+    if let Some(why) = problem {
         return rsx! {
-            span { class: "saved on warn", role: "status",
+            span {
+                class: "saved on warn",
+                role: "status",
+                title: why,
+                "aria-description": why,
                 Icon { name: IconName::Warning, size: IconSize::Small }
-                "{problem}"
+                "Not saved"
             }
         };
     }
