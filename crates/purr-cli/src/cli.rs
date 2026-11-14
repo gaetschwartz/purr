@@ -33,7 +33,7 @@ pub struct Cli {
     #[arg(value_name = "AUDIO_FILE_OR_URL")]
     pub audio_input: Option<String>,
 
-    /// Path to the Whisper model file
+    /// Path to a model file, or the id of a model from `models list --available`
     #[arg(short, long)]
     pub model: Option<String>,
 
@@ -192,7 +192,7 @@ pub enum RuntimeCommands {
 
 #[derive(Subcommand, Debug)]
 pub enum ModelCommands {
-    /// Download a Whisper model
+    /// Download a model
     Download {
         /// Model to download (e.g., base, small, large-v3)
         #[arg(value_name = "MODEL")]

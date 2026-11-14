@@ -1,9 +1,9 @@
 # Engines and the pipeline
 
-An engine is speech recognition software that runs a model on a device: today whisper.cpp
-(`purr-engine-whisper`), and, as a stub that cannot decode yet, transcribe.cpp
-(`purr-engine-transcribe`, behind the `transcribe` feature). The browser's engine (`purr-wasm`) stays outside this design. Everything
-else, from cutting audio into windows to deciding what text is final, is one pipeline in
+An engine is speech recognition software that runs a model on a device: whisper.cpp
+(`purr-engine-whisper`) for the Whisper models, and transcribe.cpp (`purr-engine-transcribe`,
+behind the `transcribe` feature) for the Parakeet models. The browser's engine (`purr-wasm`) stays
+outside this design. Everything else, from cutting audio into windows to deciding what text is final, is one pipeline in
 `purr-core` that does not know which engine it drives.
 
 ## Crates
@@ -15,8 +15,8 @@ purr-core            audio, models, hardware (plan, report, runtime libraries, d
 purr-engine-whisper  whisper-rs: model loading, ggml devices and probe, token-to-word grouping,
                      Silero VAD, whisper.cpp logging, abort callback, CoreML encoder path
 purr-engine-transcribe  transcribe.cpp (transcribe-cpp, with its own ggml in shared libraries):
-                     guarded loading of those libraries, backend and device listing, logging; no
-                     decoding yet
+                     guarded loading of those libraries, backend and device listing, logging,
+                     Parakeet decoding, Silero VAD
 purr-cli, purr-app   composition roots: list the engines (`engines.rs`) and forward the cargo
                      features cuda, vulkan, metal, coreml to the whisper engine crate,
                      static-ffmpeg to purr-core, and `transcribe` to add the transcribe.cpp engine
@@ -131,7 +131,34 @@ Input (file, URL, AudioStream)
   request; the log callback is set right after the library is loaded). `devices` loads it and lists the
   devices of transcribe.cpp's own registry, which are not the ones `--device` indexes for a whisper.cpp
   model. `availability()` is the typed outcome that `purr sys` prints under "Engines".
-- `open` and `open_speech_detector` return an `OpenError::Engine` that says the engine cannot decode yet.
+- `open` loads the GGUF with `Backend::Cpu`: the build has no GPU backend module, so a plan candidate
+  of any other backend is `OpenError::NoDevice`. A load that fails in a backend is `OpenError::Device`;
+  any other failure stops the device search with `OpenError::Engine`.
+- `open_speech_detector` loads the same Silero `.bin` the Whisper models use, through transcribe.cpp.
+
+### Parakeet in this design
+
+- `limits()`: input from the model's `max_audio_ms` (0 for Parakeet: `Unbounded`, so `--no-stream`
+  decodes the whole source in one call) and a 30 s streaming window. The library switches the
+  full-attention checkpoint to local attention (256, 256), so time grows linearly with the audio,
+  and so does the compute buffer: about 0.35 MB per second of audio, which is 1.7 GB peak for a
+  three-minute file in one call and an estimated 12 GB for an hour.
+- Segments are `Synthesize`: one segment per call, split by the pipeline from the word times.
+  Words come from the library's words, spelled by their tokens (which carry the space before a
+  word), timed at 80 ms resolution, scored as their least certain token.
+- Language: the model finds it by itself and the library does not report it
+  (`transcribe_detected_language` is empty for Parakeet), so the profile says `language_hint:
+  ignored` and `detection: silent`. A hint is never passed; `supports()` reads the model's own list
+  of 25 languages. The stream stays in language detection and chunks carry no language.
+- Cancel: the library checks its abort callback once at the top of each run, and its token cannot be
+  linked to Purr's, so `decode` returns `Cancelled` before it starts when the token is set and cannot
+  stop a run already going. Four threads decode about 17 seconds of audio per second, so a window of
+  30 s takes under two.
+- Errors: `InputTooLong`, `InputTooShort` and `OutOfMemory` map to their `DecodeError` arms,
+  everything else, including a truncated or repeating output, to `DecodeError::Engine`.
+- Models: three GGUF files of `parakeet-tdt-0.6b-v3` (F16, Q8_0, Q4_K_M) from the `handy-computer`
+  repository pinned in the manifest, CC BY 4.0. `ModelFamily::attribution` carries who made a
+  family and what the downloaded files change; `purr models info` prints it.
 
 ## Adding an engine
 
@@ -143,6 +170,9 @@ Input (file, URL, AudioStream)
 3. Report honest `limits()`, and `Segmentation::Synthesize` when the engine gives long stretches with
    timed words.
 4. Add it to `engines::all()` in `purr-cli` and `purr-app`, and forward the binaries' features to it.
-5. Give its catalog models that `EngineId`, so `ModelManager::reference` and the app pick it.
+5. Give its catalog models that `EngineId`, so the app and `ModelManager::reference` pick it; a file
+   outside the catalog is routed by `EngineId::loading(ModelFormat::of_header(..))`. A model whose
+   engine is not in `engines::all()` is `Unavailable` in the app (`ModelInfo::engine_built`) and
+   skipped by `find_first_available_model`.
 6. Run the Whisper goldens (`cargo nextest run -p purr-engine-whisper --test golden
    --run-ignored only`) to show the shared pipeline did not move.

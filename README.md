@@ -67,6 +67,29 @@ Available models:
 - `medium.en` / `medium` - 1.5 GB / 1.5 GB
 - `large-v1` / `large-v2` / `large-v3` - 2.9 GB
 
+### Parakeet models
+
+Builds with the `transcribe` cargo feature also run NVIDIA Parakeet TDT v3 through
+[transcribe.cpp](https://github.com/handy-computer/transcribe.cpp), on the CPU. It transcribes 25
+European languages (Bulgarian, Croatian, Czech, Danish, Dutch, English, Estonian, Finnish, French,
+German, Greek, Hungarian, Italian, Latvian, Lithuanian, Maltese, Polish, Portuguese, Romanian,
+Russian, Slovak, Slovenian, Spanish, Swedish, Ukrainian), finds the language itself and does not
+report it, so a language you choose is only checked against that list. It times every word and
+scores it, and does not translate. `purr models download <id>` fetches one of:
+
+- `parakeet-tdt-0.6b-v3` - F16, 1.26 GB
+- `parakeet-tdt-0.6b-v3-q8_0` - Q8_0, 740 MB
+- `parakeet-tdt-0.6b-v3-q4_k_m` - Q4_K_M, 485 MB
+
+## Model licenses
+
+| Models | License | Credit |
+| --- | --- | --- |
+| Whisper (`tiny` to `large-v3-turbo`) | MIT | [OpenAI](https://github.com/openai/whisper) |
+| Parakeet TDT v3 | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | [NVIDIA parakeet-tdt-0.6b-v3](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3), converted to GGUF by [handy-computer](https://huggingface.co/handy-computer/parakeet-tdt-0.6b-v3-gguf) for transcribe.cpp; the quantized files store the weights at reduced numeric precision, and nothing was retrained |
+
+`purr models info <id>` prints the same license and credit for a model.
+
 ## Installation
 
 ### Building from Source
@@ -171,7 +194,7 @@ Arguments:
   <AUDIO_FILE>  Path to the audio file to transcribe
 
 Options:
-  -m, --model <MODEL>              Path to the Whisper model file
+  -m, --model <MODEL>              Path to a model file, or the id of a model from `models list --available`
   -l, --language <LANGUAGE>        Language code (e.g., en, es, fr)
       --accel <BACKEND>            auto (default), cuda, hip, coreml, metal, sycl, vulkan or cpu.
                                    A named backend's devices are tried first, the other devices
@@ -282,4 +305,5 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - [OpenAI Whisper](https://github.com/openai/whisper) - The original Whisper model
 - [whisper.cpp](https://github.com/ggerganov/whisper.cpp) - C++ implementation  
 - [whisper-rs](https://github.com/tazz4843/whisper-rs) - Rust bindings
+- [NVIDIA Parakeet](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3) (CC BY 4.0) and [transcribe.cpp](https://github.com/handy-computer/transcribe.cpp) - the Parakeet engine
 - [FFmpeg](https://ffmpeg.org/) - Audio processing
