@@ -2,7 +2,7 @@
 
 An engine is speech recognition software that runs a model on a device: whisper.cpp
 (`purr-engine-whisper`) for the Whisper models, and transcribe.cpp (`purr-engine-transcribe`,
-behind the `transcribe` feature) for the Parakeet models. The browser's engine (`purr-wasm`) stays
+behind the `transcribe` feature) for the Parakeet and Qwen3-ASR models. The browser's engine (`purr-wasm`) stays
 outside this design. Everything else, from cutting audio into windows to deciding what text is final, is one pipeline in
 `purr-core` that does not know which engine it drives.
 
@@ -16,7 +16,7 @@ purr-engine-whisper  whisper-rs: model loading, ggml devices and probe, token-to
                      Silero VAD, whisper.cpp logging, abort callback, CoreML encoder path
 purr-engine-transcribe  transcribe.cpp (transcribe-cpp, with its own ggml in shared libraries):
                      guarded loading of those libraries, backend and device listing, logging,
-                     Parakeet decoding, Silero VAD
+                     decoding of any transcribe.cpp model, Silero VAD
 purr-cli, purr-app   composition roots: list the engines (`engines.rs`) and forward the cargo
                      features cuda, vulkan, metal, coreml to the whisper engine crate,
                      static-ffmpeg to purr-core, and `transcribe` to add the transcribe.cpp engine
@@ -32,7 +32,10 @@ purr-cli, purr-app   composition roots: list the engines (`engines.rs`) and forw
   `LanguageRequest` (`Detect` or `Use(tag)`), the finest `Timing` wanted and a `CancelToken`, and
   returns a `Hypothesis` (segments with optional `Span`s and byte-ranged `Word`s, the detected
   language with its confidence when the engine gives one, and a `Segmentation` marker) with a
-  `Completion` (`Complete`, or `Cancelled` holding what the engine finished). Language detection is
+  `Completion`: `Complete`; `Cancelled`, holding what the engine finished; or `Truncated` /
+  `Repeating`, holding the text of a language model that ran out of room for its output or
+  began to loop. That text does not say how far into the window it reached, so the pipeline never
+  trusts where it ends (see "When the engine stops early" below). Language detection is
   part of the decode. `limits()` gives the longest input one decode takes (`InputLimit`) and the
   longest window worth decoding while streaming. `supports(tag)` is checked before the run starts.
 - `SpeechDetector`: the spans of a window that hold speech.
@@ -103,6 +106,26 @@ Input (file, URL, AudioStream)
   that report words rather than text.
 - Language: a detection with confidence locks the stream at 0.8 or more on a window with speech; an
   engine that gives no confidence locks on its first detection with speech.
+- A model whose text carries no times (`Timing::None`) gives segments without spans, and the
+  segmenter places each over its whole window. With a speech detector the window ends in a pause
+  (`AtPauses`), so a chunk's span is the stretch of audio between two pauses; the CLI loads the
+  Silero model by default, the app after its background download. Without a detector the windows
+  are `Full`: the chunks are as wide as the window (30 s) and say so.
+- `Windowing::Whole` on a decoder with `InputLimit::UpTo` streams, as before, with windows no
+  longer than the streaming window or the limit, whichever is shorter. The limit of a language model
+  is the context it shares between audio and text (87 minutes for Qwen3-ASR): a decode that long
+  would run out of room for its text, so the limit bounds a window and does not enlarge it.
+
+### When the engine stops early
+
+An engine that returns `Truncated` or `Repeating` for a window gave text but no end: for a model
+without times, nothing tells where in the audio the text stops. The session therefore decodes the
+window again at half its length, from the same start, ending in the last pause of that half when
+a detector is loaded (the window is then `Paused`, else `Full`), and drops the first attempt's
+text. It stops halving when half a window would be under 5 s, and then commits the text it has and
+advances over the whole window, with a warning in the log. A `Last` window that is cut stops being
+`Last`, so the rest of the audio is still decoded. Tentative text is decoded once, never again.
+Each failed attempt costs a full encode of its window.
 
 ## Whisper in this design
 
@@ -135,6 +158,16 @@ Input (file, URL, AudioStream)
   of any other backend is `OpenError::NoDevice`. A load that fails in a backend is `OpenError::Device`;
   any other failure stops the device search with `OpenError::Engine`.
 - `open_speech_detector` loads the same Silero `.bin` the Whisper models use, through transcribe.cpp.
+- One decoder (`TranscribeDecoder`) serves every family, driven by what the loaded model says:
+  `capabilities().languages` is the list `supports()` reads and the codes a hint goes out in (the
+  library compares the hint with its list as text, so `fr-CH` is sent as `fr`, whatever the model's
+  spelling); `session.limits().effective_max_audio_ms` is the input limit (0: `Unbounded`);
+  timestamps are asked for as `Auto`, the finest the model gives, and the kind it returns picks the
+  `Segmentation`: words (Parakeet) are `Synthesize`, coarser or none are `Native`. A
+  `LanguageRequest::Use` is passed to the library as the hint and a `Detect` reports the language the
+  library names. Which models a hint steers is the profile's `language_hint`, applied before the run
+  by the app and the CLI (`LanguageChoice::for_profile`, `language_arg::check`), so a hint that
+  reaches the decoder is one the model takes.
 
 ### Parakeet in this design
 
@@ -148,18 +181,33 @@ Input (file, URL, AudioStream)
   word), timed at 80 ms resolution, scored as their least certain token.
 - Language: the model finds it by itself and the library does not report it
   (`transcribe_detected_language` is empty for Parakeet), so the profile says `language_hint:
-  ignored` and `detection: silent`. A hint is never passed; `supports()` reads the model's own list
-  of 25 languages. The stream stays in language detection and chunks carry no language.
+  ignored` and `detection: silent`. The app and the CLI drop a hint for it, so none is passed;
+  `supports()` reads the model's own list of 25 languages. The stream stays in language detection and chunks carry no language.
 - Cancel: the library checks its abort callback once at the top of each run, and its token cannot be
   linked to Purr's, so `decode` returns `Cancelled` before it starts when the token is set and cannot
   stop a run already going. Four threads decode about 17 seconds of audio per second, so a window of
   30 s takes under two.
 - Errors: `InputTooLong`, `InputTooShort` and `OutOfMemory` map to their `DecodeError` arms,
-  everything else, including a truncated or repeating output, to `DecodeError::Engine`.
+  everything else to `DecodeError::Engine`. A truncated or repeating output is a `Completion` with
+  the partial transcript the library keeps, not an error.
 - Models: three GGUF files of `parakeet-tdt-0.6b-v3` (F16, Q8_0, Q4_K_M) from the `handy-computer`
   repository pinned in the manifest, CC BY 4.0. `ModelFamily::attribution` carries who made a
   family and what the downloaded files change; `purr models info` prints it and the app's Licenses
   page lists it (`views::licenses::models`). Nothing else in the app or the CLI listings shows it.
+
+### Qwen3-ASR in this design
+
+- An audio encoder in front of a Qwen3 language model, two sizes (0.6B, 1.7B), 30 languages,
+  Apache-2.0, three GGUF files each (F16, Q8_0, Q4_K_M) from the `handy-computer` repositories
+  pinned in the manifest. The profile: the hint `steers` (a forced language is written into the
+  prompt), the language is `reported` by name and the library maps it to a tag, `timing` is `none`,
+  no word scores, `input` is `up-to` 5218 s, the library's `effective_max_audio_ms`.
+- The library reports no confidence, so a stream locks on the first window with speech. A wrong
+  first window (a few words of noise, a name) forces its language on the rest of the stream; the
+  language setting is the fix.
+- The output is free text from a language model, so it can stop short (the generation budget) or
+  loop. Both come back as `Completion::Truncated` / `Repeating` with the partial text.
+- Cancel is checked once before a run, as for Parakeet.
 
 ## What the app and the CLI take from the model
 
@@ -181,7 +229,7 @@ the catalog or from the file's first bytes.
   (`language_arg::check`): a language the model does not list is `LanguageProblem::Unsupported`, one it
   lists but ignores is a warning and the hint is dropped from the run. A file outside the catalog has
   no profile, so the pipeline's own `supports` check applies.
-- Models (`model_catalog`): sections per size for Whisper and one for Parakeet. The picker heads
+- Models (`model_catalog`): sections per size for Whisper and one each for Parakeet and Qwen3-ASR. The picker heads
   each line of models when it lists several. A model whose engine is not in `engines::all()` shows
   "Not in this build" and cannot be picked. Licences are not shown there: the Licenses page has a
   Models section with the credit of every family whose licence asks for it
