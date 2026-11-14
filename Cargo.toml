@@ -7,7 +7,8 @@ members = [
   "crates/purr-engine-whisper",
   'crates/purr-app',
   "crates/purr-wasm",
-  "crates/purr-test-utils", "crates/purr-engine-transcribe",
+  "crates/purr-test-utils",
+  "crates/purr-engine-transcribe",
 ]
 resolver = "2"
 
