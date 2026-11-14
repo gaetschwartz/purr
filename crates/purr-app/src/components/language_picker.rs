@@ -68,7 +68,8 @@ pub fn LanguagePill(
             (choice.label(), notes, selected, profile)
         }
     };
-    rsx! {
+    let tooltip = notes.hint.clone().filter(|_| ignored);
+    let pill = rsx! {
         Pill {
             id: id.clone(),
             icon: IconName::Globe,
@@ -79,6 +80,17 @@ pub fn LanguagePill(
             expanded: open(),
             disabled: disabled || ignored,
             onclick: move |_| open.toggle(),
+        }
+    };
+    rsx! {
+        if let Some(tooltip) = tooltip {
+            span {
+                title: "{tooltip}",
+                style: "display:grid;min-width:0;max-width:100%",
+                {pill}
+            }
+        } else {
+            {pill}
         }
         Presence { present: open(),
             LanguagePicker {
