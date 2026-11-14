@@ -123,8 +123,9 @@ leave those DLLs out and the pack is the only place they ship.
   `ggml-cpu-<tier>.dll` for each instruction set tier (`x64`, `sse42`, `sandybridge`, `haswell`, `skylakex`,
   `cannonlake`, `cascadelake`, `icelake`, `alderlake`), twelve files and about 12 MB, which is about 4.5 MB in a zip.
   All sit in one folder next to `purr.exe` (or in a `runtime` folder, or the per-user one).
-  `scripts/stage-transcribe-runtime.ps1` is the one place that lists them; it copies by name, fails on a missing file
-  or on another `transcribe*.dll` or `ggml*.dll` in the source, and checks a folder or zip with `-Check`. A target
+  `scripts/stage-transcribe-runtime.ps1` is the one place that lists them; it copies by name from the `out\bin` of the
+  `transcribe-cpp-sys` build (not from the profile folder, where the build script only copies them when it runs),
+  fails on a missing file or on another `transcribe*.dll` or `ggml*.dll` in the source, and checks a folder or zip with `-Check`. A target
   directory that has seen other feature sets may hold stale modules, so nothing globs.
 - Windows CLI zip: the build job stages the libraries into the artifact folder, and the release scripts zip that
   folder whole (the CUDA split only leaves out the cuBLAS and cudart libraries).

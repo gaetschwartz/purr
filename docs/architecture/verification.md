@@ -26,7 +26,7 @@ and by hand), **CI** (a workflow step, only a runner proves it), **manual** (som
 | UI states (greyed-out models of an engine that is not built, device rows, engine notes in Settings, start plan) | unit: `purr-app` `model_catalog`, `transcribe`, `views/settings` tests; manual | Unit tests of `purr-app` NOT run in this session. Rendering in the app: NOT verified (no app, browser or screenshot run) |
 | wasm builds (`purr-wasm`, `purr-app` web) | CI job `web` (`dx bundle --web`); `just test-wasm` | NOT verified here |
 | Linux executable keeps whisper.cpp's ggml apart from transcribe.cpp's | script/CI: step "The two engines keep their own ggml" of `test (linux)` | **Verified in WSL** (debug build, GNU ld 2.46) after the fix in `purr-delayload`: no ggml or gguf symbol in `nm -D`, no binding of a transcribe.cpp library to the executable. Before the fix: 161 exported symbols and 11 bindings of `libtranscribe.so` to `purr`. The workflow step itself: NOT run on a runner |
-| Packaging, Windows CLI zip | script: `stage-transcribe-runtime.ps1`, `check-windows-imports.ps1`, `check-windows-sys.ps1`; CI `cli (windows, *)` | Staging and both checks **verified** on a debug CLI (see below). Release build, CUDA and Vulkan variants and the zip made by CI: NOT verified |
+| Packaging, Windows CLI zip | script: `stage-transcribe-runtime.ps1`, `check-windows-imports.ps1`, `check-windows-sys.ps1`; CI `cli (windows, *)` | Staging (from cargo's JSON messages and from the build directory, also after a no-op rebuild that left the profile folder without the DLLs) and both checks **verified** on a debug CLI (see below). Release build, CUDA and Vulkan variants and the zip made by CI: NOT verified |
 | Packaging, Windows NSIS installer and portable archive | CI `desktop (windows, cuda-vulkan)` with `PURR_DESKTOP_TRANSCRIBE` on | NOT verified. `dx bundle` was not run (the NSIS tools are downloaded by it), so the `dist-runtime` resources are unproven. Off by default |
 | Packaging, Linux and macOS | CI | NOT done for Linux packages; macOS CLI job edits NOT run |
 | `cargo tree -p purr-core` | command | **Verified**: `cargo tree -p purr-core --offline \| rg -i 'whisper\|ggml\|transcribe'` prints nothing, also with `-e features` |
@@ -56,7 +56,7 @@ folders.
 ## Packaging evidence
 
 Debug CLI built with `cargo build -p purr-cli --features transcribe`, staged with
-`scripts/stage-transcribe-runtime.ps1 -Source target\debug -Destination <dir>`:
+`scripts/stage-transcribe-runtime.ps1 -CargoMessages <cargo json> -Destination <dir>`:
 
 | File | Bytes |
 |---|---:|

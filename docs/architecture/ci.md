@@ -238,9 +238,10 @@ Not built with it, and left as they were: the four Linux CLIs, the Linux desktop
 
 `scripts/stage-transcribe-runtime.ps1` holds the list of the twelve libraries by name: `transcribe.dll`, `ggml.dll`, `ggml-base.dll` and `ggml-cpu-<tier>.dll` for `x64`, `sse42`, `sandybridge`, `haswell`, `skylakex`, `cannonlake`, `cascadelake`, `icelake` and `alderlake`. No step globs, because a target folder keeps the modules of older builds.
 
-- `-Source <profile dir> -Destination <dir>` copies exactly those files. It fails when one is missing or when the source holds another `transcribe*.dll` or `ggml*.dll` (a new tier upstream), and it deletes unlisted ones from the destination.
+- `-Destination <dir>` with one of three sources copies exactly those files: `-CargoMessages <file>` (the JSON of `cargo build --message-format=json-render-diagnostics`, from which it takes the `out_dir` of the `transcribe-cpp-sys` build script and reads `out\bin`), `-BuildDirectory <profile dir>` (looks for exactly one `build\transcribe-cpp-sys-*\out\bin` that holds `transcribe.dll`, for the desktop job where `dx` runs cargo) or `-Source <dir>`. It fails when a file is missing or when the source holds another `transcribe*.dll` or `ggml*.dll` (a new tier upstream), and it deletes unlisted ones from the destination.
+- The libraries are not taken from the profile folder (`D:\t\release`). The build script copies them there only when it runs, and on a warm Rust cache it is fresh and does not: cargo replays its output. Its `out\bin` is inside `build`, which the cache keeps. Measured locally: after deleting `target\debug\transcribe.dll` a no-op `cargo build` did not bring it back, while cargo still reported the build script's `out_dir`.
 - `-Check <directory or zip>` fails unless the files are there and no other transcribe.cpp library is.
-- The CLI job stages into `artifacts\cli` and checks it. The release zips are made from that folder by `scripts/package-release-assets.sh`, which fails if a Windows CLI folder that holds `transcribe.dll` yields a zip without it.
+- The CLI job writes cargo's messages to `$RUNNER_TEMP\cargo-messages.jsonl`, stages into `artifacts\cli` and checks it. The release zips are made from that folder by `scripts/package-release-assets.sh`, which fails if a Windows CLI folder that holds `transcribe.dll` yields a zip without it.
 - The NSIS installer has no list of DLLs. `[bundle] resources` of `crates/purr-app/Dioxus.toml` names the twelve files as `dist-runtime/<name>.dll`, relative to the directory `dx` runs in (the workspace root); a missing file is only a warning, and the NSIS template installs every resource next to `purr-app.exe`. The libraries do not exist before the build, so with the switch on the job runs `dx bundle` once, stages `$CARGO_TARGET_DIR\r` into `dist-runtime`, runs `dx bundle` again (cargo has nothing to do) and checks the `_staging` folder that `dx` leaves in its bundle directory. The portable archive is staged and checked the same way.
 
 ### Cache hygiene
@@ -259,7 +260,7 @@ Not built with it, and left as they were: the four Linux CLIs, the Linux desktop
 
 The `test (linux)` step "The two engines keep their own ggml" fails if `nm -D` lists a ggml or gguf symbol in the executable, or if `LD_DEBUG=bindings` shows a transcribe.cpp library bound to the executable. Its two checks were run on that build and on a two-file C reproduction that has the problem.
 
-The library folder to put on `LD_LIBRARY_PATH` is the install tree `out/lib` of `transcribe-cpp-sys`, which also holds the backend modules. The build tree (`out/build/src`) holds only `libtranscribe.so`; the old step found that folder, got no backend module and passed on whatever the executable's ggml registered.
+The library folder to put on `LD_LIBRARY_PATH` is the install tree `lib` under the `out_dir` of the `transcribe-cpp-sys` build script, which also holds the backend modules; the steps read the `out_dir` from cargo's JSON messages. The build tree (`out/build/src`) holds only `libtranscribe.so`; the old step found that folder with `find`, got no backend module and passed on whatever the executable's ggml registered.
 
 ### macOS
 
@@ -268,11 +269,11 @@ Not verified; nothing here has run on a Mac. Two risks from reading the build sc
 - `CFLAGS` and `CXXFLAGS` (`-march=armv8.2-a+crypto+noi8mm` in the jobs) reach every cmake build through the `cmake` crate, transcribe.cpp's too, while `GGML_CPU_ARM_ARCH` does not (`transcribe-cpp-sys` forwards only `TRANSCRIBE_CMAKE_ARGS`). Which flags ggml's CPU module then compiles with was not read out of a build log, so whether it lacks the dot-product kernels that whisper.cpp gets is unknown. If a Mac run shows it matters, pass `TRANSCRIBE_CMAKE_ARGS=-DGGML_CCACHE=OFF -DGGML_CPU_ARM_ARCH=armv8.2-a+dotprod+fp16` in the step (the step's value replaces the one of `.cargo/config.toml`).
 - The symbol clash of the Linux section does not apply to Mach-O two-level namespaces: each image binds to the dylib it was linked against.
 
-The step that copies the libraries now takes them from `out/lib` (the install tree) and copies links and files alike, because the backend modules are not `.dylib` files.
+The step that copies the libraries now takes them from `lib` under the build script's `out_dir` (read from cargo's JSON messages) and copies links and files alike, because the backend modules are not `.dylib` files.
 
 ### What is not validated
 
-Nothing in the workflow edits has run on a runner. Validated on this Windows machine: the staging script (a debug build: a staging run, a check run and four failure cases), `check-windows-imports.ps1` and `check-windows-sys.ps1 -ExpectTranscribe` against the staged CLI folder, the Linux link fix and its checks in WSL. Not validated: every step of `build.yml` and `ci.yml` as a workflow; the release build and the CUDA and Vulkan variants; the NSIS and portable steps of the desktop job (a local `dx bundle` was not run); `scripts/package-release-assets.sh` with a transcribe archive; the macOS steps; the cache key changes and their pruning.
+Nothing in the workflow edits has run on a runner. Validated on this Windows machine: the staging script (a debug build: staging from the cargo messages, from the build directory and from a folder, a check run and the failure cases), `check-windows-imports.ps1` and `check-windows-sys.ps1 -ExpectTranscribe` against the staged CLI folder, the Linux link fix and its checks in WSL. Not validated: every step of `build.yml` and `ci.yml` as a workflow; the release build and the CUDA and Vulkan variants; the NSIS and portable steps of the desktop job (a local `dx bundle` was not run); `scripts/package-release-assets.sh` with a transcribe archive; the macOS steps; the cache key changes and their pruning.
 
 ## Running one variant by hand
 
