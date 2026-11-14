@@ -2,7 +2,7 @@
 //!
 //! Needs `ggml-base.bin` (and the Silero model for the runs that use it) in Purr's model cache.
 //! Run with `cargo nextest run -p purr-engine-whisper --test golden --run-ignored only`; set
-//! `PURR_GOLDEN=update` to record the goldens again. `PURR_TEST_THREADS` sets the thread count (8 by default).
+//! `PURR_GOLDEN=update` to record the goldens again. `PURR_TEST_THREADS` sets the thread count.
 
 use futures::StreamExt;
 use purr_common::{devices::DeviceOrder, language::tag::LanguageTag, model::engine::EngineId};
@@ -95,11 +95,12 @@ const CASES: &[Case] = &[
     },
 ];
 
-fn threads() -> usize {
-    std::env::var("PURR_TEST_THREADS")
-        .ok()
-        .and_then(|value| value.parse().ok())
-        .unwrap_or(DEFAULT_THREADS)
+fn threads() -> TestResult<usize> {
+    match std::env::var("PURR_TEST_THREADS") {
+        Ok(value) => Ok(value.parse()?),
+        Err(std::env::VarError::NotPresent) => Ok(DEFAULT_THREADS),
+        Err(error) => Err(error.into()),
+    }
 }
 
 fn samples_dir() -> PathBuf {
@@ -128,9 +129,10 @@ async fn load(sample: Sample) -> TestResult<Vec<f32>> {
 }
 
 fn config(vad: Option<PathBuf>, language: Option<&str>) -> TestResult<RunConfig> {
+    let threads = threads()?;
     Ok(RunConfig::new()
         .with_devices(DeviceOrder::cpu_only())
-        .with_threads(threads())
+        .with_threads(threads)
         .with_opt_language(language.map(str::parse::<LanguageTag>).transpose()?)
         .with_vad_model(vad)
         .with_tentative(TentativeText::Decoded)
