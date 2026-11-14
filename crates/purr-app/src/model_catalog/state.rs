@@ -13,6 +13,8 @@ pub enum UnavailableReason {
     NeedsWebGpu,
     /// The model needs WebGPU and the settings chose the CPU.
     CpuChosen,
+    /// The engine that runs the model is not part of this build.
+    EngineNotBuilt,
 }
 
 /// Where a model stands, for display and for deciding which actions apply.
@@ -79,14 +81,17 @@ impl ModelState {
     }
 }
 
-/// Why `entry` cannot run here, if it cannot. Models the CPU can run always can; while the GPU is
-/// still being detected nothing is ruled out.
+/// Why `entry` cannot run here, if it cannot. A model whose engine is built in and which the CPU
+/// can run always can; while the GPU is still being detected nothing else is ruled out.
 #[must_use]
 pub fn unavailable_reason(
     entry: &ModelEntry,
     gpu: &GpuSupport,
     cpu_chosen: bool,
 ) -> Option<UnavailableReason> {
+    if !entry.engine_built {
+        return Some(UnavailableReason::EngineNotBuilt);
+    }
     if !entry.webgpu_only() {
         return None;
     }
@@ -268,6 +273,25 @@ mod tests {
             None
         );
     }
+    #[test]
+    fn a_model_whose_engine_is_not_built_cannot_run_whatever_the_device() {
+        let mut parakeet = entry(true, false);
+        parakeet.engine_built = false;
+        for gpu in [GpuSupport::Checking, GpuSupport::Unavailable, NO_F16] {
+            assert_eq!(
+                unavailable_reason(&parakeet, &gpu, false),
+                Some(UnavailableReason::EngineNotBuilt)
+            );
+        }
+        assert_eq!(
+            model_state(&parakeet, None, &GpuSupport::Checking, false),
+            ModelState::Unavailable {
+                reason: UnavailableReason::EngineNotBuilt,
+                installed: true,
+            }
+        );
+    }
+
     #[test]
     fn an_unavailable_model_can_still_be_stored() {
         let state = model_state(&gpu_entry(true, true, true), None, &NO_F16, false);

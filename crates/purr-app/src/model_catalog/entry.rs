@@ -41,6 +41,8 @@ pub struct ModelEntry {
     pub descriptor: ModelDescriptor,
     pub size_bytes: u64,
     pub installed: bool,
+    /// Whether the engine that runs the model is part of this build.
+    pub engine_built: bool,
 }
 
 impl ModelEntry {
@@ -72,6 +74,7 @@ impl ModelEntry {
             descriptor,
             size_bytes: info.size_bytes,
             installed: info.is_installed,
+            engine_built: info.engine_built,
         }
     }
 

@@ -584,6 +584,13 @@ pub struct ModelInfo {
     pub local_path: Option<PathBuf>,
     /// What kind of model it is and what it can do
     pub descriptor: ModelDescriptor,
+    /// Whether the engine that runs the model is part of this build
+    #[serde(default = "engine_built_by_default")]
+    pub engine_built: bool,
+}
+
+const fn engine_built_by_default() -> bool {
+    true
 }
 
 impl ModelInfo {
@@ -606,7 +613,15 @@ impl ModelInfo {
             download_url: None,
             local_path: None,
             descriptor,
+            engine_built: true,
         }
+    }
+
+    /// Marks the model as one whose engine this build lacks
+    #[must_use]
+    pub const fn without_engine(mut self) -> Self {
+        self.engine_built = false;
+        self
     }
 
     /// Builder pattern for setting the download URL

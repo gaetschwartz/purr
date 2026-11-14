@@ -880,7 +880,11 @@ fn model_info(manager: &ModelManager, model: &ModelSpec, is_installed: bool) -> 
     if is_installed {
         info.mark_installed(manager.get_model_path(model));
     }
-    info
+    if engines::built().contains(&model.engine) {
+        info
+    } else {
+        info.without_engine()
+    }
 }
 
 impl DesktopPlatformImpl {

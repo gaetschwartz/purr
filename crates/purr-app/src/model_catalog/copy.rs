@@ -69,6 +69,10 @@ pub const fn unavailable(reason: UnavailableReason) -> (&'static str, &'static s
             "Needs WebGPU",
             "Too large for the CPU, which Settings chose.",
         ),
+        UnavailableReason::EngineNotBuilt => (
+            "Not in this build",
+            "This build of Purr lacks the engine this model runs on.",
+        ),
     }
 }
 
