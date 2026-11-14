@@ -101,7 +101,7 @@ pub fn Home() -> Element {
             &models.gpu.read(),
             selected
                 .as_ref()
-                .is_some_and(|row| row.entry.requires_shader_f16),
+                .is_some_and(|row| row.entry.requires_shader_f16()),
         )
     });
     let mut advanced = use_signal(|| false);

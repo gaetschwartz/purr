@@ -28,7 +28,7 @@ pub fn VersionChip(
     let mark = Mark::of(&row);
     let stored = matches!(mark, Mark::Stored);
     let disabled = matches!(row.state, ModelState::Unavailable { .. });
-    let tag = version_tag(&row.entry.precision);
+    let tag = version_tag(&row.entry.precision());
     let state = mark.text();
     let label = format!("{model} {tag}, {state}");
     let tip = tooltip(format!("{tag} · {state}"), hint.as_ref());

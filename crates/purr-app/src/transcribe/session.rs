@@ -432,7 +432,7 @@ impl TranscribeSession {
         model: ModelEntry,
         language: LanguageChoice,
     ) -> Option<HistoryId> {
-        let language = language.for_support(&model.language.support());
+        let language = language.for_profile(&model.descriptor.profile);
         let settings = self.settings.peek();
         let mut compute = ComputeOptions::from_settings(&settings);
         let picked = self.device_override.peek().clone();
@@ -811,23 +811,16 @@ pub fn use_transcribe_session() -> TranscribeSession {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model_catalog::test_support::{descriptor, info_of, weights};
     use crate::transcribe::run::RunFailure;
     use bytes::Bytes;
-    use purr_common::platform::{ModelInfo, ModelMetadata};
 
     fn model() -> ModelEntry {
-        ModelEntry::from_info(&ModelInfo::new(
-            "tiny".to_owned(),
-            "tiny".to_owned(),
-            String::new(),
+        ModelEntry::from_info(&info_of(
+            "tiny",
             1,
             true,
-            ModelMetadata::new(
-                "onnx".to_owned(),
-                "whisper".to_owned(),
-                "multilingual".to_owned(),
-                "1".to_owned(),
-            ),
+            descriptor("tiny", weights(Some("fp32/q4")), false),
         ))
     }
 

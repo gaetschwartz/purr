@@ -14,7 +14,6 @@ use crate::{
         search_field::SearchField,
         toast::use_toasts,
     },
-    platform::IS_WEB,
     settings_store::use_settings,
     transcribe::{
         live_rows::{Row, rows},
@@ -29,7 +28,8 @@ use crate::{
 };
 use dioxus::prelude::*;
 use purr_common::{
-    export_format::ExportFormat, platform::TranscriptSegment, transcript_view::TranscriptLayout,
+    export_format::ExportFormat, model::descriptor::ModelDescriptor, platform::TranscriptSegment,
+    transcript_view::TranscriptLayout,
 };
 use std::{ops::Range, rc::Rc};
 
@@ -78,6 +78,8 @@ pub fn TranscriptCard(
     #[props(default)]
     live: bool,
     moment: Moment,
+    /// The model that made the transcript, when the catalog still lists it.
+    model: Option<ModelDescriptor>,
     export: ExportSource,
     /// Export waits in its place until the transcript is final.
     #[props(default = true)]
@@ -285,7 +287,7 @@ pub fn TranscriptCard(
                 facts,
                 actions: more,
                 on_action: on_more,
-                details: details(IS_WEB, moment, evidence(&segments, playable)),
+                details: details(model.as_ref(), moment, evidence(&segments, playable)),
                 on_close: move |()| more_open.set(false),
             }
         }

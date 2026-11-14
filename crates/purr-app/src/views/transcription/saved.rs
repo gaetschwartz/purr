@@ -13,6 +13,7 @@ use crate::{
         spinner::Spinner,
     },
     history::{export_source::export_source, store::use_history, wording::language_text},
+    hooks::use_models::use_models,
     main_app::Route,
     platform::{self, IS_WEB, Platform as _, PlatformError, playback_source::AudioSource},
     transcribe::{compute_label::ComputeLabel, session::use_transcribe_session},
@@ -244,6 +245,7 @@ fn Playable(record: HistoryRecord, path: PathBuf) -> Element {
 fn Entry(record: HistoryRecord, audio: ResultAudio) -> Element {
     let navigator = use_navigator();
     let store = use_history();
+    let models = use_models();
     let mut renaming = use_signal(|| false);
     let mut deleting = use_signal(|| false);
 
@@ -270,6 +272,7 @@ fn Entry(record: HistoryRecord, audio: ResultAudio) -> Element {
             wave: WaveMode::Playback,
             status: rsx! {},
             segments: Rc::new(entry.segments.clone()),
+            model: models.find(&entry.model_id).map(|info| info.descriptor),
             export: export_source(entry),
             facts: TranscriptionFacts {
                 model_label: entry.model_label.clone(),

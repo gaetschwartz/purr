@@ -1,4 +1,5 @@
 use super::{known, support::LanguageSupport, tag::LanguageTag};
+use crate::model::profile::{HintEffect, ModelProfile};
 
 /// What the user asked for as the spoken language.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -51,6 +52,16 @@ impl LanguageChoice {
                     [] | [_, _, ..] => self,
                 }
             }
+        }
+    }
+
+    /// What applies with `profile`: a model that finds the language itself is asked to, and one
+    /// that transcribes only some languages is held to them.
+    #[must_use]
+    pub fn for_profile(self, profile: &ModelProfile) -> Self {
+        match profile.language_hint {
+            HintEffect::Ignored => Self::Automatic,
+            HintEffect::Steers | HintEffect::Required => self.for_support(&profile.languages),
         }
     }
 
@@ -138,6 +149,20 @@ mod tests {
                 .request_tag(),
             Some("fr".parse().unwrap())
         );
+    }
+
+    #[test]
+    fn a_model_that_takes_no_hint_is_always_asked_to_detect() {
+        let mut profile = ModelProfile::browser(LanguageSupport::Any);
+        profile.language_hint = HintEffect::Ignored;
+        assert_eq!(
+            spoken("fr").for_profile(&profile),
+            LanguageChoice::Automatic
+        );
+        profile.language_hint = HintEffect::Steers;
+        assert_eq!(spoken("fr").for_profile(&profile), spoken("fr"));
+        profile.languages = LanguageSupport::english_only();
+        assert_eq!(spoken("fr").for_profile(&profile), spoken("en"));
     }
 
     #[test]

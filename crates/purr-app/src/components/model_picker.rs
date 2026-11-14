@@ -15,7 +15,7 @@ use crate::{
     hooks::use_models::{GpuSupport, use_models},
     main_app::Route,
     model_catalog::{
-        entry::{ModelEntry, Precision},
+        entry::ModelEntry,
         format::download_size,
         listing::ModelRow,
         picker::{PickerModel, PickerScope, picker_list, version_tag},
@@ -25,6 +25,7 @@ use crate::{
     settings_store::use_settings,
 };
 use dioxus::prelude::*;
+use purr_common::model::precision::Precision;
 
 /// Every model of `use_models()` in a [`ListPicker`], anchored on the element `anchor`.
 ///
@@ -373,11 +374,9 @@ pub fn ModelPicker(
 /// What the pill says beside the model's name: the version when it is not full precision, and the
 /// download still needed.
 fn pill_detail(row: &ModelRow) -> Option<String> {
-    let version = match &row.entry.precision {
+    let version = match row.entry.precision() {
         Precision::Full | Precision::Mixed => None,
-        precision @ (Precision::Quantized { .. } | Precision::Other(_)) => {
-            Some(version_tag(precision))
-        }
+        precision @ Precision::Quantized { .. } => Some(version_tag(&precision)),
     };
     let size = download_size(row).map(|size| match row.state {
         ModelState::Downloading(_) => format!("downloading, {size}"),
@@ -423,7 +422,7 @@ pub fn ModelPill(
                 .and_then(|selection| selection.row().cloned());
             match (&selection, row) {
                 (_, Some(row)) => (
-                    if row.entry.speaker_turns {
+                    if row.entry.speaker_turns() {
                         format!("{} · Speaker turns", row.entry.name)
                     } else {
                         row.entry.name.clone()

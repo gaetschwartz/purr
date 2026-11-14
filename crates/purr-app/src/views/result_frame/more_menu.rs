@@ -10,7 +10,7 @@ use crate::{
         toast::use_toasts,
     },
     settings_store::use_settings,
-    transcribe::view_options::{BROWSER_REASON, Details, Offer},
+    transcribe::view_options::{Details, Offer, unreported_reason},
     views::settings::changes::report,
 };
 use dioxus::prelude::*;
@@ -72,7 +72,7 @@ impl MoreAction {
 
 /// One line saying why an option is not there.
 #[component]
-fn ReasonRow(title: &'static str, reason: &'static str) -> Element {
+fn ReasonRow(title: &'static str, reason: String) -> Element {
     rsx! {
         div { class: "prow na",
             span { class: "t",
@@ -196,8 +196,11 @@ pub fn MoreMenu(
                 hr {}
                 div { class: "ph", "Details" }
                 match details {
-                    Details::Browser => rsx! {
-                        ReasonRow { title: "Unsure words and word playback", reason: BROWSER_REASON }
+                    Details::Unreported(engine) => rsx! {
+                        ReasonRow {
+                            title: "Unsure words and word playback",
+                            reason: unreported_reason(engine),
+                        }
                     },
                     Details::Desktop { unsure, word_seek } => rsx! {
                         OfferRow {

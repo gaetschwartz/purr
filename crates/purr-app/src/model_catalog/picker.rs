@@ -1,13 +1,13 @@
 use super::{
     clusters::cluster,
     copy,
-    entry::Precision,
     family::{ModelGroup, superseded},
     format::percent,
     listing::ModelRow,
     state::{ModelState, UnavailableReason},
 };
 use crate::utils::byte_size::ByteSize;
+use purr_common::model::precision::Precision;
 
 /// Which models the model picker lists.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -109,7 +109,6 @@ pub fn version_tag(precision: &Precision) -> String {
     match precision {
         Precision::Full | Precision::Mixed => "Full".to_owned(),
         Precision::Quantized { bits } => format!("Q{bits}"),
-        Precision::Other(raw) => raw.clone(),
     }
 }
 
@@ -141,7 +140,7 @@ impl PickerModel {
         let mut versions = versions;
         versions.sort_by_key(|row| std::cmp::Reverse(row.entry.size_bytes));
         let first = versions.first()?;
-        let title = if first.entry.speaker_turns {
+        let title = if first.entry.speaker_turns() {
             format!("{} · Speaker turns", first.entry.name)
         } else {
             first.entry.name.clone()
@@ -181,8 +180,7 @@ impl PickerModel {
     fn superseded(&self) -> bool {
         self.versions
             .first()
-            .and_then(|row| row.entry.family)
-            .is_some_and(superseded)
+            .is_some_and(|row| superseded(row.entry.family()))
     }
 
     fn stored(&self) -> bool {
@@ -256,7 +254,7 @@ impl PickerModel {
             .map(|tag| {
                 let at = left
                     .iter()
-                    .position(|row| version_tag(&row.entry.precision) == *tag)?;
+                    .position(|row| version_tag(&row.entry.precision()) == *tag)?;
                 Some(left.remove(at))
             })
             .collect()
@@ -268,7 +266,6 @@ fn column_rank(precision: &Precision) -> u16 {
     match precision {
         Precision::Full | Precision::Mixed => 0,
         Precision::Quantized { bits } => 256 - u16::from(*bits),
-        Precision::Other(_) => 512,
     }
 }
 
@@ -278,10 +275,10 @@ fn columns<'a>(models: impl Iterator<Item = &'a PickerModel>) -> Vec<String> {
     for model in models {
         let mut own: Vec<(u16, String, usize)> = Vec::new();
         for row in &model.versions {
-            let tag = version_tag(&row.entry.precision);
+            let tag = version_tag(&row.entry.precision());
             match own.iter_mut().find(|column| column.1 == tag) {
                 Some(column) => column.2 += 1,
-                None => own.push((column_rank(&row.entry.precision), tag, 1)),
+                None => own.push((column_rank(&row.entry.precision()), tag, 1)),
             }
         }
         for (rank, tag, count) in own {
@@ -375,34 +372,16 @@ pub fn picker_list(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model_catalog::test_support::info;
     use crate::model_catalog::{
         activity::{DownloadProgress, VerifyProgress},
         entry::ModelEntry,
     };
-    use purr_common::platform::{ModelInfo, ModelMetadata, model_flag};
 
     fn row(id: &str, family: &str, size: u64, quantization: Option<&str>) -> ModelRow {
-        let english = id.contains(".en");
-        let mut metadata = ModelMetadata::new(
-            "ggml".to_owned(),
-            "whisper".to_owned(),
-            "multilingual".to_owned(),
-            "v1".to_owned(),
-        )
-        .with_platform_attribute("family".to_owned(), family.to_owned())
-        .with_platform_attribute(model_flag::ENGLISH_ONLY.to_owned(), english.to_string());
-        if let Some(quantization) = quantization {
-            metadata = metadata.with_quantization(quantization.to_owned());
-        }
+        let english = matches!(id, "tiny.en" | "base.en" | "small.en" | "medium.en");
         ModelRow {
-            entry: ModelEntry::from_info(&ModelInfo::new(
-                id.to_owned(),
-                id.to_owned(),
-                String::new(),
-                size,
-                false,
-                metadata,
-            )),
+            entry: ModelEntry::from_info(&info(id, family, size, quantization, english)),
             state: ModelState::NotDownloaded,
         }
     }

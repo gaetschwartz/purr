@@ -324,6 +324,7 @@ pub fn RunView(record: RunRecord) -> Element {
             status_shown: status.is_some(),
             segments,
             tentative: run.transcript.tentative().cloned(),
+            model: Some(record.model.descriptor.clone()),
             export,
             facts: TranscriptionFacts {
                 model_label: record.model.label.clone(),

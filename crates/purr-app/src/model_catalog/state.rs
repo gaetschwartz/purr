@@ -87,7 +87,7 @@ pub fn unavailable_reason(
     gpu: &GpuSupport,
     cpu_chosen: bool,
 ) -> Option<UnavailableReason> {
-    if !entry.webgpu_only {
+    if !entry.webgpu_only() {
         return None;
     }
     if cpu_chosen {
@@ -96,9 +96,8 @@ pub fn unavailable_reason(
     match gpu {
         GpuSupport::Checking => None,
         GpuSupport::Unavailable => Some(UnavailableReason::NeedsWebGpu),
-        GpuSupport::Available { shader_f16, .. } => {
-            (entry.requires_shader_f16 && !shader_f16).then_some(UnavailableReason::NeedsShaderF16)
-        }
+        GpuSupport::Available { shader_f16, .. } => (entry.requires_shader_f16() && !shader_f16)
+            .then_some(UnavailableReason::NeedsShaderF16),
     }
 }
 /// The state of `entry`: what is happening to it wins over what is stored.
@@ -132,8 +131,11 @@ pub fn model_state(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use purr_common::platform::{
-        IntegrityProblem, ModelFailureKind, ModelInfo, ModelMetadata, model_flag,
+    use crate::model_catalog::test_support::{descriptor, info_of};
+    use purr_common::{
+        model::descriptor::Weights,
+        platform::{IntegrityProblem, ModelFailureKind},
+        web_model::attributes::OnnxDtype,
     };
 
     fn entry(installed: bool, needs_f16: bool) -> ModelEntry {
@@ -141,25 +143,17 @@ mod tests {
     }
 
     fn gpu_entry(installed: bool, needs_f16: bool, webgpu_only: bool) -> ModelEntry {
-        let metadata = ModelMetadata::new(
-            "onnx".to_owned(),
-            "whisper".to_owned(),
-            "multilingual".to_owned(),
-            "1".to_owned(),
-        )
-        .with_platform_attribute("family".to_owned(), "tiny".to_owned())
-        .with_platform_attribute(
-            model_flag::REQUIRES_SHADER_F16.to_owned(),
-            needs_f16.to_string(),
-        )
-        .with_platform_attribute(model_flag::WEBGPU_ONLY.to_owned(), webgpu_only.to_string());
-        ModelEntry::from_info(&ModelInfo::new(
-            "tiny".to_owned(),
-            "tiny".to_owned(),
-            String::new(),
+        let (encoder, decoder) = match (needs_f16, webgpu_only) {
+            (false, false) => (OnnxDtype::Fp32, OnnxDtype::Q4),
+            (true, false) => (OnnxDtype::Q4F16, OnnxDtype::Q4F16),
+            (true, true) => (OnnxDtype::Fp16, OnnxDtype::Q4),
+            (false, true) => (OnnxDtype::Fp32, OnnxDtype::Q4),
+        };
+        ModelEntry::from_info(&info_of(
+            "tiny",
             1,
             installed,
-            metadata,
+            descriptor("tiny", Weights::Onnx { encoder, decoder }, false),
         ))
     }
 

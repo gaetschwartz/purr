@@ -8,11 +8,16 @@ use super::{
 };
 use crate::utils::primary_key::use_primary_key_label;
 use crate::{
-    components::toast::use_toasts, hooks::use_models::use_models, model_catalog::entry::ModelEntry,
-    settings_store::use_settings, transcribe::language_choice::options,
+    components::toast::use_toasts,
+    hooks::use_models::use_models,
+    settings_store::use_settings,
+    transcribe::language_choice::{choices, for_model, is_locked, note},
 };
 use dioxus::prelude::*;
-use purr_common::language::{choice::LanguageChoice, known, support::LanguageSupport};
+use purr_common::{
+    language::{choice::LanguageChoice, known},
+    model::profile::ModelProfile,
+};
 
 const AUTOMATIC_HINT: &str = "Detects the language from the first 30 seconds";
 
@@ -39,32 +44,25 @@ pub fn LanguagePill(
             settings.model.model_name.clone(),
         )
     });
-    let support = match target {
-        PickTarget::Current => models.find(&model).map_or(LanguageSupport::Any, |info| {
-            ModelEntry::from_info(&info).language.support()
-        }),
-        PickTarget::Default => LanguageSupport::Any,
+    let profile = match target {
+        PickTarget::Current => models.find(&model).map(|info| info.descriptor.profile),
+        PickTarget::Default => None,
     };
-    let (value, detail, hint, selected, support) = match saved {
-        None => (
-            "Last used".to_owned(),
-            None,
-            None,
-            String::new(),
-            LanguageSupport::Any,
-        ),
+    let locked = profile.as_ref().is_some_and(is_locked);
+    let (value, detail, hint, selected, profile) = match saved {
+        None => ("Last used".to_owned(), None, None, String::new(), None),
         Some(selected) => {
-            let choice = LanguageChoice::from_setting(&selected).for_support(&support);
-            let (detail, hint) = match (&choice, support.is_any()) {
-                (LanguageChoice::Spoken(_), false) => {
+            let choice = for_model(LanguageChoice::from_setting(&selected), profile.as_ref());
+            let (detail, hint) = match (&choice, locked) {
+                (LanguageChoice::Spoken(_), true) => {
                     (Some(format!("{} only", choice.label())), None)
                 }
                 (LanguageChoice::Automatic, _) => {
                     (None, Some(format!("Automatic · {AUTOMATIC_HINT}")))
                 }
-                (LanguageChoice::Spoken(_), true) => (None, None),
+                (LanguageChoice::Spoken(_), false) => (None, None),
             };
-            (choice.label(), detail, hint, selected, support)
+            (choice.label(), detail, hint, selected, profile)
         }
     };
     rsx! {
@@ -83,7 +81,7 @@ pub fn LanguagePill(
             LanguagePicker {
                 anchor: id,
                 selected,
-                support,
+                profile,
                 target,
                 on_close: move |()| open.set(false),
             }
@@ -91,11 +89,11 @@ pub fn LanguagePill(
     }
 }
 
-/// Whisper's languages in a [`ListPicker`] with a search field, anchored on `anchor`.
+/// The spoken languages in a [`ListPicker`] with a search field, anchored on `anchor`.
 ///
 /// Render it inside a [`Presence`] that follows whether it is open. "Automatic" comes first; arrows move through the list from the
 /// search field and Enter picks. Picking saves the setting with `set_language`. With
-/// `english_only` the list is locked to English, because the model knows no other language.
+/// a `profile` that leaves nothing to choose the list holds what the model takes.
 #[component]
 pub fn LanguagePicker(
     /// The id of the element the popover hangs from.
@@ -104,9 +102,9 @@ pub fn LanguagePicker(
     /// The language setting: a Whisper code or `auto`; empty when none is, as with Last used.
     #[props(into)]
     selected: String,
-    /// The languages the chosen model transcribes.
-    #[props(default = LanguageSupport::Any)]
-    support: LanguageSupport,
+    /// What the chosen model does with a language; absent when no model is known.
+    #[props(default)]
+    profile: Option<ModelProfile>,
     #[props(default)] target: PickTarget,
     on_close: EventHandler<()>,
 ) -> Element {
@@ -115,26 +113,12 @@ pub fn LanguagePicker(
     let nav = use_list_nav();
     let mut query = use_signal(String::new);
 
-    let restricted = !support.is_any();
+    let restricted = profile.as_ref().is_some_and(is_locked);
     let none_selected = selected.is_empty();
-    let current =
-        (!none_selected).then(|| LanguageChoice::from_setting(&selected).for_support(&support));
-    let choices = match &support {
-        LanguageSupport::Any => options(&query()),
-        LanguageSupport::Only(listed) => {
-            listed.iter().cloned().map(LanguageChoice::Spoken).collect()
-        }
-    };
-    let note = match &support {
-        LanguageSupport::Any => None,
-        LanguageSupport::Only(_) => Some(match support.single() {
-            Some(tag) => format!(
-                "This model only transcribes {}.",
-                LanguageChoice::Spoken(tag.clone()).label()
-            ),
-            None => "This model only transcribes the languages listed.".to_owned(),
-        }),
-    };
+    let current = (!none_selected)
+        .then(|| for_model(LanguageChoice::from_setting(&selected), profile.as_ref()));
+    let choices = choices(profile.as_ref(), &query());
+    let note = profile.as_ref().and_then(note);
     let last_used = target == PickTarget::Default;
     let rows: Vec<NavRow> = last_used
         .then(|| NavRow::single(LAST_USED_KEY))

@@ -1,6 +1,7 @@
 //! Serialized form of the web model manifest.
 
-use crate::model::{family::ModelFamily, language::ModelLanguage};
+use crate::language::support::LanguageSupport;
+use crate::model::family::ModelFamily;
 use crate::web_model::attributes::OnnxDtype;
 use crate::web_model::digest::Sha256Digest;
 use crate::web_model::error::WebManifestError;
@@ -26,7 +27,7 @@ pub struct WebManifestModel {
     pub repo: String,
     pub revision: String,
     pub family: ModelFamily,
-    pub language: ModelLanguage,
+    pub languages: LanguageSupport,
     pub encoder_dtype: OnnxDtype,
     pub decoder_dtype: OnnxDtype,
     pub description: String,

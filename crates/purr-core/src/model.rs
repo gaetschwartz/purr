@@ -1,6 +1,5 @@
 //! Model downloading and management functionality
 
-pub mod attributes;
 pub mod digest;
 pub mod download;
 pub mod manifest;

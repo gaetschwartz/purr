@@ -1,97 +1,31 @@
 use super::family::ModelGroup;
 use purr_common::{
-    language::support::LanguageSupport,
+    language::{choice::LanguageChoice, support::LanguageSupport},
     model::{
-        family::ModelFamily, precision::Precision as StoredPrecision, quantization::Quantization,
+        descriptor::ModelDescriptor, family::ModelFamily, precision::Precision, profile::Speakers,
     },
-    platform::{ModelInfo, model_flag},
-    web_model::attributes::{OnnxDtype, pair_precision},
+    platform::ModelInfo,
 };
 
-/// Platform attribute that names the model's size class.
-const FAMILY_ATTRIBUTE: &str = "family";
-
-/// The languages a model transcribes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Language {
-    Multilingual,
-    EnglishOnly,
-}
-
-impl Language {
-    /// The spoken languages the model transcribes.
-    #[must_use]
-    pub fn support(self) -> LanguageSupport {
-        match self {
-            Self::Multilingual => LanguageSupport::Any,
-            Self::EnglishOnly => LanguageSupport::english_only(),
-        }
-    }
-
-    /// The tag text.
-    #[must_use]
-    pub const fn label(self) -> &'static str {
-        match self {
-            Self::Multilingual => "Multilingual",
-            Self::EnglishOnly => "English only",
-        }
+/// The tag text of the languages a model transcribes.
+#[must_use]
+pub fn languages_label(support: &LanguageSupport) -> String {
+    match support {
+        LanguageSupport::Any => "Multilingual".to_owned(),
+        LanguageSupport::Only(_) => match support.single() {
+            Some(tag) => format!("{} only", LanguageChoice::Spoken(tag.clone()).label()),
+            None => "Some languages".to_owned(),
+        },
     }
 }
 
-impl From<StoredPrecision> for Precision {
-    fn from(stored: StoredPrecision) -> Self {
-        match stored {
-            StoredPrecision::Full => Self::Full,
-            StoredPrecision::Quantized { bits } => Self::Quantized { bits },
-            StoredPrecision::Mixed => Self::Mixed,
-        }
-    }
-}
-
-/// How the weights are stored; quantized ones are smaller and slightly less accurate.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Precision {
-    Full,
-    Quantized {
-        bits: u8,
-    },
-    /// Encoder and decoder use different precisions, as the browser models do.
-    Mixed,
-    /// A precision this version of Purr does not know, as the platform spelled it.
-    Other(String),
-}
-
-impl Precision {
-    /// Reads the platform's quantization attribute: a quantization, or an `encoder/decoder` pair
-    /// of ONNX dtypes.
-    #[must_use]
-    pub fn parse(raw: Option<&str>) -> Self {
-        let Some(raw) = raw else {
-            return Self::Full;
-        };
-        let stored = match raw.split_once('/') {
-            Some((encoder, decoder)) => encoder
-                .parse::<OnnxDtype>()
-                .ok()
-                .zip(decoder.parse::<OnnxDtype>().ok())
-                .map(|(encoder, decoder)| pair_precision(encoder, decoder)),
-            None => raw
-                .parse::<Quantization>()
-                .map(Quantization::precision)
-                .ok()
-                .or_else(|| raw.parse::<OnnxDtype>().map(OnnxDtype::precision).ok()),
-        };
-        stored.map_or_else(|| Self::Other(raw.to_owned()), Self::from)
-    }
-
-    /// The tag text, absent for full precision and for the mixed precision every browser model has.
-    #[must_use]
-    pub fn tag(&self) -> Option<String> {
-        match self {
-            Self::Full | Self::Mixed => None,
-            Self::Quantized { bits } => Some(format!("Quantized Q{bits}")),
-            Self::Other(raw) => Some(raw.clone()),
-        }
+/// The tag text of a precision, absent for full precision and for the mixed precision every
+/// browser model has.
+#[must_use]
+pub fn precision_tag(precision: Precision) -> Option<String> {
+    match precision {
+        Precision::Full | Precision::Mixed => None,
+        Precision::Quantized { bits } => Some(format!("Quantized Q{bits}")),
     }
 }
 
@@ -103,14 +37,8 @@ pub struct ModelEntry {
     pub name: String,
     /// The name with the precision, such as `Tiny (English) · Q5`.
     pub label: String,
-    pub family: Option<ModelFamily>,
     pub group: ModelGroup,
-    pub language: Language,
-    pub precision: Precision,
-    pub speaker_turns: bool,
-    pub requires_shader_f16: bool,
-    /// The browser can run the model on WebGPU only, not on the CPU.
-    pub webgpu_only: bool,
+    pub descriptor: ModelDescriptor,
     pub size_bytes: u64,
     pub installed: bool,
 }
@@ -119,25 +47,17 @@ impl ModelEntry {
     /// Reads the platform's description of a model.
     #[must_use]
     pub fn from_info(info: &ModelInfo) -> Self {
-        let metadata = &info.metadata;
-        let family = metadata
-            .platform_specific
-            .get(FAMILY_ATTRIBUTE)
-            .and_then(|raw| raw.parse::<ModelFamily>().ok());
-        let language = if metadata.has_flag(model_flag::ENGLISH_ONLY) {
-            Language::EnglishOnly
-        } else {
-            Language::Multilingual
-        };
-        let precision = Precision::parse(metadata.quantization.as_deref());
-        let speaker_turns = metadata.has_flag(model_flag::SPEAKER_TURNS);
+        let descriptor = info.descriptor.clone();
+        let family = descriptor.family;
+        let english_only = descriptor.profile.languages == LanguageSupport::english_only();
+        let speaker_turns = descriptor.profile.speakers == Speakers::TurnMarkers;
 
-        let mut name = family.map_or_else(|| info.name.clone(), |family| family.label().to_owned());
-        if family.is_some() && language == Language::EnglishOnly {
+        let mut name = family.label().to_owned();
+        if english_only {
             name.push_str(" (English)");
         }
         let mut label = name.clone();
-        if let Precision::Quantized { bits } = precision {
+        if let Precision::Quantized { bits } = descriptor.weights.precision() {
             label = format!("{label} · Q{bits}");
         }
         if speaker_turns {
@@ -148,16 +68,55 @@ impl ModelEntry {
             id: info.id.clone(),
             name,
             label,
-            family,
-            group: family.map_or(ModelGroup::Other, ModelGroup::of),
-            language,
-            precision,
-            speaker_turns,
-            requires_shader_f16: metadata.has_flag(model_flag::REQUIRES_SHADER_F16),
-            webgpu_only: metadata.has_flag(model_flag::WEBGPU_ONLY),
+            group: ModelGroup::of(family),
+            descriptor,
             size_bytes: info.size_bytes,
             installed: info.is_installed,
         }
+    }
+
+    #[must_use]
+    pub const fn family(&self) -> ModelFamily {
+        self.descriptor.family
+    }
+
+    #[must_use]
+    pub const fn languages(&self) -> &LanguageSupport {
+        &self.descriptor.profile.languages
+    }
+
+    #[must_use]
+    pub fn is_multilingual(&self) -> bool {
+        self.languages().is_any()
+    }
+
+    #[must_use]
+    pub fn is_english_only(&self) -> bool {
+        *self.languages() == LanguageSupport::english_only()
+    }
+
+    #[must_use]
+    pub fn precision(&self) -> Precision {
+        self.descriptor.weights.precision()
+    }
+
+    #[must_use]
+    pub const fn speaker_turns(&self) -> bool {
+        match self.descriptor.profile.speakers {
+            Speakers::TurnMarkers => true,
+            Speakers::None | Speakers::Labelled => false,
+        }
+    }
+
+    #[must_use]
+    pub const fn requires_shader_f16(&self) -> bool {
+        self.descriptor.weights.requires_shader_f16()
+    }
+
+    /// The browser can run the model on WebGPU only, not on the CPU.
+    #[must_use]
+    pub const fn webgpu_only(&self) -> bool {
+        !self.descriptor.weights.runs_on_cpu()
     }
 
     /// Whether every word of `query` appears in the name, id or tags, ignoring case.
@@ -167,8 +126,8 @@ impl ModelEntry {
             "{} {} {} {}",
             self.label,
             self.id,
-            self.language.label(),
-            self.precision.tag().unwrap_or_default()
+            languages_label(self.languages()),
+            precision_tag(self.precision()).unwrap_or_default()
         )
         .to_lowercase();
         query
@@ -180,93 +139,60 @@ impl ModelEntry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use purr_common::{model::family::WhisperSize, platform::ModelMetadata};
-
-    fn info(id: &str, family: &str, quantization: &str, english: bool) -> ModelInfo {
-        let metadata = ModelMetadata::new(
-            "ggml".to_owned(),
-            "whisper".to_owned(),
-            "multilingual".to_owned(),
-            "v1".to_owned(),
-        )
-        .with_quantization(quantization.to_owned())
-        .with_platform_attribute(FAMILY_ATTRIBUTE.to_owned(), family.to_owned())
-        .with_platform_attribute(model_flag::ENGLISH_ONLY.to_owned(), english.to_string());
-        ModelInfo::new(
-            id.to_owned(),
-            id.to_owned(),
-            "A model".to_owned(),
-            1024,
-            false,
-            metadata,
-        )
-    }
-
-    #[test]
-    fn precision_reads_desktop_and_browser_spellings() {
-        assert_eq!(Precision::parse(None), Precision::Full);
-        assert_eq!(Precision::parse(Some("f16")), Precision::Full);
-        assert_eq!(Precision::parse(Some("f32")), Precision::Full);
-        assert_eq!(
-            Precision::parse(Some("q5_k_m")),
-            Precision::Quantized { bits: 5 }
-        );
-        assert_eq!(
-            Precision::parse(Some("q6_k")),
-            Precision::Quantized { bits: 6 }
-        );
-        assert_eq!(
-            Precision::parse(Some("q5_1")),
-            Precision::Quantized { bits: 5 }
-        );
-        assert_eq!(
-            Precision::parse(Some("q8_0")),
-            Precision::Quantized { bits: 8 }
-        );
-        assert_eq!(Precision::parse(Some("fp32/q4")), Precision::Mixed);
-        assert_eq!(
-            Precision::parse(Some("q4/q4")),
-            Precision::Quantized { bits: 4 }
-        );
-        assert_eq!(
-            Precision::parse(Some("q4f16/q4f16")),
-            Precision::Quantized { bits: 4 }
-        );
-        assert_eq!(Precision::parse(Some("q4/q8")), Precision::Mixed);
-        assert_eq!(Precision::parse(Some("fp32/fp16")), Precision::Full);
-        assert_eq!(
-            Precision::parse(Some("weird")),
-            Precision::Other("weird".to_owned())
-        );
-    }
+    use crate::model_catalog::test_support::info;
+    use purr_common::model::family::WhisperSize;
 
     #[test]
     fn a_quantized_english_model_gets_a_friendly_label() {
-        let entry = ModelEntry::from_info(&info("tiny.en-q5_1", "tiny", "q5_1", true));
+        let entry = ModelEntry::from_info(&info("tiny.en-q5_1", "tiny", 1024, Some("q5_1"), true));
         assert_eq!(entry.name, "Tiny (English)");
         assert_eq!(entry.label, "Tiny (English) · Q5");
         assert_eq!(entry.group, ModelGroup::Tiny);
-        assert_eq!(entry.language, Language::EnglishOnly);
+        assert!(entry.is_english_only());
+        assert!(!entry.is_multilingual());
+    }
+
+    #[test]
+    fn a_multilingual_model_says_so() {
+        let entry = ModelEntry::from_info(&info("base", "base", 1024, None, false));
+        assert!(entry.is_multilingual());
+        assert_eq!(languages_label(entry.languages()), "Multilingual");
+        assert_eq!(entry.family(), ModelFamily::Whisper(WhisperSize::Base));
+    }
+
+    #[test]
+    fn english_only_models_are_tagged_english_only() {
+        assert_eq!(
+            languages_label(&LanguageSupport::english_only()),
+            "English only"
+        );
+    }
+
+    #[test]
+    fn precision_comes_from_the_weights() {
+        let tag = |weights| {
+            let model = ModelEntry::from_info(&info("m", "tiny", 1, weights, false));
+            precision_tag(model.precision())
+        };
+        assert_eq!(tag(None), None);
+        assert_eq!(tag(Some("q5_k_m")), Some("Quantized Q5".to_owned()));
+        assert_eq!(tag(Some("q6_k")), Some("Quantized Q6".to_owned()));
+        assert_eq!(tag(Some("fp32/q4")), None);
+        assert_eq!(tag(Some("q4/q4")), Some("Quantized Q4".to_owned()));
     }
 
     #[test]
     fn web_models_group_with_their_size_class() {
-        let entry = ModelEntry::from_info(&info("base.en", "base", "fp32/q4", true));
-        assert_eq!(entry.family, Some(ModelFamily::Whisper(WhisperSize::Base)));
+        let entry = ModelEntry::from_info(&info("base.en", "base", 1024, Some("fp32/q4"), true));
+        assert_eq!(entry.family(), ModelFamily::Whisper(WhisperSize::Base));
         assert_eq!(entry.label, "Base (English)");
-        assert_eq!(entry.precision, Precision::Mixed);
-    }
-
-    #[test]
-    fn an_unknown_family_keeps_the_platform_name_and_lands_in_other() {
-        let entry = ModelEntry::from_info(&info("mystery", "mystery", "f16", false));
-        assert_eq!(entry.name, "mystery");
-        assert_eq!(entry.group, ModelGroup::Other);
+        assert_eq!(entry.precision(), Precision::Mixed);
     }
 
     #[test]
     fn search_needs_every_word_and_ignores_case() {
-        let entry = ModelEntry::from_info(&info("small.en-q5_1", "small", "q5_1", true));
+        let entry =
+            ModelEntry::from_info(&info("small.en-q5_1", "small", 1024, Some("q5_1"), true));
         assert!(entry.matches("SMALL english"));
         assert!(entry.matches("q5"));
         assert!(entry.matches(""));

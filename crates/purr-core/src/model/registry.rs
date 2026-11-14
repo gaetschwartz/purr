@@ -2,12 +2,15 @@
 
 use crate::error::{ManifestError, UnknownModelError};
 use crate::math::ByteSpeed;
-use crate::model::attributes::ModelFeature;
 use crate::model::digest::Sha256Digest;
 use crate::model::manifest::{Manifest, ManifestModel, ManifestVad, SUPPORTED_SCHEMA, Source};
 use crate::model::pinned::PinnedFile;
 use purr_common::model::{
-    engine::EngineId, family::ModelFamily, format::ModelFormat, language::ModelLanguage,
+    descriptor::{ModelDescriptor, Weights},
+    engine::EngineId,
+    family::ModelFamily,
+    format::ModelFormat,
+    profile::ModelProfile,
     quantization::Quantization,
 };
 use std::collections::{BTreeMap, HashSet};
@@ -32,9 +35,8 @@ pub struct ModelSpec {
     pub source: Arc<Source>,
     pub filename: String,
     pub family: ModelFamily,
-    pub language: ModelLanguage,
+    pub profile: ModelProfile,
     pub quantization: Quantization,
-    pub features: Vec<ModelFeature>,
     pub file: PinnedFile,
     pub description: String,
 }
@@ -45,9 +47,16 @@ impl ModelSpec {
         &self.file.url
     }
 
+    /// What the platform knows about the model.
     #[must_use]
-    pub fn has_feature(&self, feature: ModelFeature) -> bool {
-        self.features.contains(&feature)
+    pub fn descriptor(&self) -> ModelDescriptor {
+        ModelDescriptor {
+            engine: self.engine,
+            family: self.family,
+            format: self.format,
+            weights: Weights::Quantized(self.quantization),
+            profile: self.profile.clone(),
+        }
     }
 
     #[must_use]
@@ -134,7 +143,7 @@ impl Registry {
                     format: entry.format,
                 });
             }
-            models.push(Arc::new(resolve(entry, &sources)?));
+            models.push(Arc::new(resolve(entry, &sources, &manifest.profiles)?));
         }
 
         let vad = resolve_vad(manifest.vad, &sources)?;
@@ -255,7 +264,19 @@ fn pin(
     Ok((source, file))
 }
 
-fn resolve(entry: ManifestModel, sources: &[Arc<Source>]) -> Result<ModelSpec, ManifestError> {
+fn resolve(
+    entry: ManifestModel,
+    sources: &[Arc<Source>],
+    profiles: &BTreeMap<String, ModelProfile>,
+) -> Result<ModelSpec, ManifestError> {
+    let profile =
+        profiles
+            .get(&entry.profile)
+            .cloned()
+            .ok_or_else(|| ManifestError::UnknownProfile {
+                model_id: entry.id.clone(),
+                profile: entry.profile.clone(),
+            })?;
     let (source, file) = pin(
         &entry.id,
         &entry.source,
@@ -271,9 +292,8 @@ fn resolve(entry: ManifestModel, sources: &[Arc<Source>]) -> Result<ModelSpec, M
         source,
         filename: entry.filename,
         family: entry.family,
-        language: entry.language,
+        profile,
         quantization: entry.quantization,
-        features: entry.features,
         file,
         description: entry.description,
     })

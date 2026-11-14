@@ -1,6 +1,8 @@
 use super::*;
 use crate::model::digest::{Sha256Hasher, Sha256ParseError};
+use purr_common::language::support::LanguageSupport;
 use purr_common::model::family::WhisperSize;
+use purr_common::model::profile::{DetectionReport, HintEffect, InputLimit, Speakers, Timing};
 use std::str::FromStr;
 
 const DIGEST_A: &str = "be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21";
@@ -16,19 +18,30 @@ fn manifest_json(edit: impl FnOnce(&mut serde_json::Value)) -> String {
             {"id": "main", "repo": "owner/repo", "revision": REVISION},
             {"id": "extra", "repo": "other/repo", "revision": REVISION},
         ],
+        "profiles": {
+            "plain": {
+                "languages": "any", "language_hint": "steers", "detection": "reported",
+                "timing": "word", "word_scores": true, "speakers": "none", "input": "unbounded"
+            },
+            "english-turns": {
+                "languages": {"only": ["en"]}, "language_hint": "steers", "detection": "reported",
+                "timing": "word", "word_scores": true, "speakers": "turn-markers",
+                "input": "unbounded"
+            },
+        },
         "models": [
             {
                 "id": "alpha", "engine": "whisper-cpp", "format": "ggml-bin",
                 "source": "main", "filename": "ggml-alpha.bin",
-                "family": "tiny", "language": "multilingual", "quantization": "f16",
-                "features": [], "size_bytes": 10, "sha256": DIGEST_A,
+                "family": "tiny", "profile": "plain", "quantization": "f16",
+                "size_bytes": 10, "sha256": DIGEST_A,
                 "description": "Alpha"
             },
             {
                 "id": "beta.en-tdrz", "engine": "whisper-cpp", "format": "ggml-bin",
                 "source": "extra", "filename": "ggml-beta.en-tdrz.bin",
-                "family": "small", "language": "english-only", "quantization": "q5_1",
-                "features": ["tdrz"], "size_bytes": 20, "sha256": DIGEST_B,
+                "family": "small", "profile": "english-turns", "quantization": "q5_1",
+                "size_bytes": 20, "sha256": DIGEST_B,
                 "description": "Beta"
             },
         ],
@@ -177,7 +190,7 @@ fn embedded_tdrz_model_resolves_to_its_own_repository() -> Result<(), Box<dyn st
     let registry = Registry::embedded()?;
     let tdrz = registry.get("small.en-tdrz")?;
     assert_eq!(tdrz.source.repo, "akashmjn/tinydiarize-whisper.cpp");
-    assert!(tdrz.has_feature(ModelFeature::Tdrz));
+    assert_eq!(tdrz.profile.speakers, Speakers::TurnMarkers);
     Ok(())
 }
 
@@ -196,9 +209,9 @@ fn attributes_are_typed() -> Result<(), Box<dyn std::error::Error>> {
     assert_eq!(beta.engine, EngineId::WhisperCpp);
     assert_eq!(beta.format, ModelFormat::GgmlBin);
     assert_eq!(beta.family, ModelFamily::Whisper(WhisperSize::Small));
-    assert_eq!(beta.language, ModelLanguage::EnglishOnly);
+    assert_eq!(beta.profile.languages, LanguageSupport::english_only());
+    assert_eq!(beta.profile.speakers, Speakers::TurnMarkers);
     assert_eq!(beta.quantization, Quantization::Q5_1);
-    assert_eq!(beta.features, [ModelFeature::Tdrz]);
     Ok(())
 }
 
@@ -257,6 +270,76 @@ fn rejects_an_unknown_engine_and_a_model_without_one() {
         }
     });
     assert!(matches!(missing, Err(ManifestError::Parse { .. })));
+}
+
+#[test]
+fn rejects_a_profile_the_manifest_does_not_define() {
+    let result = registry_with(|v| v["models"][0]["profile"] = "vosk".into());
+    assert_eq!(
+        result.err(),
+        Some(ManifestError::UnknownProfile {
+            model_id: "alpha".to_owned(),
+            profile: "vosk".to_owned(),
+        })
+    );
+}
+
+#[test]
+fn rejects_a_profile_with_a_field_it_does_not_know() {
+    let result = registry_with(|v| v["profiles"]["plain"]["translate"] = true.into());
+    assert!(matches!(result, Err(ManifestError::Parse { .. })));
+}
+
+#[test]
+fn rejects_the_fields_the_profile_replaced() {
+    let language = registry_with(|v| v["models"][0]["language"] = "multilingual".into());
+    assert!(matches!(language, Err(ManifestError::Parse { .. })));
+    let features = registry_with(|v| v["models"][0]["features"] = serde_json::json!([]));
+    assert!(matches!(features, Err(ManifestError::Parse { .. })));
+}
+
+#[test]
+fn every_embedded_model_is_described_as_whisper_cpp_reports_it() -> Result<(), ManifestError> {
+    let registry = Registry::embedded()?;
+    for model in registry.models() {
+        let english = model.id.starts_with("tiny.en")
+            || model.id.starts_with("base.en")
+            || model.id.starts_with("small.en")
+            || model.id.starts_with("medium.en");
+        let turns = model.id == "small.en-tdrz";
+        let descriptor = model.descriptor();
+        assert_eq!(descriptor.engine, EngineId::WhisperCpp, "{}", model.id);
+        assert_eq!(descriptor.format, ModelFormat::GgmlBin, "{}", model.id);
+        assert_eq!(
+            descriptor.weights,
+            Weights::Quantized(model.quantization),
+            "{}",
+            model.id
+        );
+        assert_eq!(
+            descriptor.profile,
+            ModelProfile {
+                languages: if english {
+                    LanguageSupport::english_only()
+                } else {
+                    LanguageSupport::Any
+                },
+                language_hint: HintEffect::Steers,
+                detection: DetectionReport::Reported,
+                timing: Timing::Word,
+                word_scores: true,
+                speakers: if turns {
+                    Speakers::TurnMarkers
+                } else {
+                    Speakers::None
+                },
+                input: InputLimit::Unbounded,
+            },
+            "{}",
+            model.id
+        );
+    }
+    Ok(())
 }
 
 #[test]

@@ -11,3 +11,5 @@ pub mod picker;
 pub mod recommend;
 pub mod selection;
 pub mod state;
+#[cfg(test)]
+pub mod test_support;

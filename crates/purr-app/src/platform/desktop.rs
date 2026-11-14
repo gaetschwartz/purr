@@ -16,18 +16,16 @@ use purr_common::history::{
     listing::HistoryListing,
 };
 use purr_common::hugging_face_token::HuggingFaceToken;
-use purr_common::model::language::ModelLanguage;
 use purr_common::platform::{
     ChunkKind, DeviceInfo, FileId, FileSource, IntegrityProblem, ModelCheckProgress,
-    ModelCheckSender, ModelFailureKind, ModelInfo, ModelIntegrity, ModelMetadata,
-    ModelOperationProgress, ModelProgressStream, TranscriptionStream, model_flag,
+    ModelCheckSender, ModelFailureKind, ModelInfo, ModelIntegrity, ModelOperationProgress,
+    ModelProgressStream, TranscriptionStream,
 };
 use purr_common::settings::Settings;
 use purr_core::Error;
 use purr_core::accel::inventory::Inventory;
 use purr_core::config::TentativeText;
 use purr_core::error::ConfigurationError;
-use purr_core::model::attributes::ModelFeature;
 use purr_core::model::registry::ModelSpec;
 use purr_core::model::status::ModelIntegrity as CoreIntegrity;
 use purr_core::model::{ModelManager, vad_or_none};
@@ -850,42 +848,13 @@ fn model_info(manager: &ModelManager, model: &ModelSpec, is_installed: bool) -> 
         model.description.clone(),
         model.file.size_bytes,
         is_installed,
-        model_metadata(model),
-    );
+        model.descriptor(),
+    )
+    .with_download_url(model.url().to_owned());
     if is_installed {
         info.mark_installed(manager.get_model_path(model));
     }
     info
-}
-
-fn model_metadata(model: &ModelSpec) -> ModelMetadata {
-    let language_support = match model.language {
-        ModelLanguage::Multilingual => "multilingual",
-        ModelLanguage::EnglishOnly => "en-only",
-    };
-    let mut metadata = ModelMetadata::new(
-        "ggml".to_owned(),
-        "whisper".to_owned(),
-        language_support.to_owned(),
-        "v1".to_owned(),
-    )
-    .with_download_url(model.url().to_owned())
-    .with_quantization(model.quantization.to_string());
-    metadata
-        .platform_specific
-        .insert("sha256".to_owned(), model.file.sha256.to_string());
-    metadata
-        .platform_specific
-        .insert("family".to_owned(), model.family.to_string());
-    metadata.platform_specific.insert(
-        model_flag::ENGLISH_ONLY.to_owned(),
-        matches!(model.language, ModelLanguage::EnglishOnly).to_string(),
-    );
-    metadata.platform_specific.insert(
-        model_flag::SPEAKER_TURNS.to_owned(),
-        model.has_feature(ModelFeature::Tdrz).to_string(),
-    );
-    metadata
 }
 
 impl DesktopPlatformImpl {
@@ -965,10 +934,7 @@ impl DesktopPlatformImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model_catalog::{
-        entry::{ModelEntry, Precision},
-        family::ModelGroup,
-    };
+    use crate::model_catalog::{entry::ModelEntry, family::ModelGroup};
     use purr_core::model::registry::Registry;
     use std::collections::HashSet;
 
@@ -1009,16 +975,5 @@ mod tests {
             describe_parse_error(contents, &error),
             "string values must be quoted, expected literal string (line 4)".to_owned()
         );
-    }
-
-    #[test]
-    fn desktop_precisions_are_all_understood() -> Result<(), Box<dyn std::error::Error>> {
-        let unknown: Vec<String> = entries()?
-            .into_iter()
-            .filter(|entry| matches!(entry.precision, Precision::Other(_)))
-            .map(|entry| entry.id)
-            .collect();
-        assert_eq!(unknown, Vec::<String>::new());
-        Ok(())
     }
 }

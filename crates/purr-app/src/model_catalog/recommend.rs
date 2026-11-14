@@ -1,9 +1,5 @@
-use super::{
-    entry::{Language, ModelEntry, Precision},
-    family::ModelGroup,
-    listing::ModelRow,
-    state::ModelState,
-};
+use super::{entry::ModelEntry, family::ModelGroup, listing::ModelRow, state::ModelState};
+use purr_common::model::precision::Precision;
 
 /// What the device running Purr can do, for picking a model when none usable is saved.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -47,11 +43,11 @@ fn pick(rows: &[ModelRow], group: ModelGroup, device: Device) -> Option<&ModelEn
     rows.iter()
         .filter(|row| {
             row.entry.group == group
-                && row.entry.language == Language::Multilingual
-                && !row.entry.speaker_turns
+                && row.entry.is_multilingual()
+                && !row.entry.speaker_turns()
                 && !matches!(row.state, ModelState::Unavailable { .. })
                 && (device.suggests_quantized()
-                    || !matches!(row.entry.precision, Precision::Quantized { .. }))
+                    || !matches!(row.entry.precision(), Precision::Quantized { .. }))
         })
         .map(|row| &row.entry)
         .min_by_key(|entry| entry.size_bytes)
@@ -71,7 +67,7 @@ pub fn recommend(rows: &[ModelRow], device: Device) -> Option<ModelEntry> {
 mod tests {
     use super::*;
     use crate::model_catalog::state::UnavailableReason;
-    use purr_common::platform::{ModelInfo, ModelMetadata, model_flag};
+    use crate::model_catalog::test_support::info;
 
     fn row(id: &str, family: &str, size: u64, english: bool) -> ModelRow {
         row_with_quantization(id, family, size, english, None)
@@ -84,26 +80,8 @@ mod tests {
         english: bool,
         quantization: Option<&str>,
     ) -> ModelRow {
-        let mut metadata = ModelMetadata::new(
-            "ggml".to_owned(),
-            "whisper".to_owned(),
-            "multilingual".to_owned(),
-            "1".to_owned(),
-        )
-        .with_platform_attribute("family".to_owned(), family.to_owned())
-        .with_platform_attribute(model_flag::ENGLISH_ONLY.to_owned(), english.to_string());
-        if let Some(quantization) = quantization {
-            metadata = metadata.with_quantization(quantization.to_owned());
-        }
         ModelRow {
-            entry: ModelEntry::from_info(&ModelInfo::new(
-                id.to_owned(),
-                id.to_owned(),
-                String::new(),
-                size,
-                false,
-                metadata,
-            )),
+            entry: ModelEntry::from_info(&info(id, family, size, quantization, english)),
             state: ModelState::NotDownloaded,
         }
     }

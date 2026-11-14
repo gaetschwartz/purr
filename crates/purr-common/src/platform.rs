@@ -26,6 +26,7 @@ use crate::{
     },
     hugging_face_token::HuggingFaceToken,
     language::tag::LanguageTag,
+    model::descriptor::ModelDescriptor,
     progress::ProgressFrame,
     settings::Settings,
     word::Word,
@@ -577,8 +578,12 @@ pub struct ModelInfo {
     pub size_bytes: u64,
     /// Whether the model is currently installed/available locally
     pub is_installed: bool,
-    /// Additional metadata specific to the model
-    pub metadata: ModelMetadata,
+    /// Download URL for the model (if available)
+    pub download_url: Option<String>,
+    /// Local file path where the model is stored (if installed)
+    pub local_path: Option<PathBuf>,
+    /// What kind of model it is and what it can do
+    pub descriptor: ModelDescriptor,
 }
 
 impl ModelInfo {
@@ -590,7 +595,7 @@ impl ModelInfo {
         description: String,
         size_bytes: u64,
         is_installed: bool,
-        metadata: ModelMetadata,
+        descriptor: ModelDescriptor,
     ) -> Self {
         Self {
             id,
@@ -598,15 +603,24 @@ impl ModelInfo {
             description,
             size_bytes,
             is_installed,
-            metadata,
+            download_url: None,
+            local_path: None,
+            descriptor,
         }
+    }
+
+    /// Builder pattern for setting the download URL
+    #[must_use]
+    pub fn with_download_url(mut self, url: String) -> Self {
+        self.download_url = Some(url);
+        self
     }
 
     /// Get the model file path if installed
     #[must_use]
     pub fn local_path(&self) -> Option<&PathBuf> {
         if self.is_installed {
-            self.metadata.local_path.as_ref()
+            self.local_path.as_ref()
         } else {
             None
         }
@@ -615,91 +629,7 @@ impl ModelInfo {
     /// Mark model as installed with local path
     pub fn mark_installed(&mut self, local_path: PathBuf) {
         self.is_installed = true;
-        self.metadata.local_path = Some(local_path);
-    }
-}
-
-/// Keys of the flags a platform can set in [`ModelMetadata::platform_specific`].
-pub mod model_flag {
-    /// The model needs the WebGPU `shader-f16` feature.
-    pub const REQUIRES_SHADER_F16: &str = "requires_shader_f16";
-    /// The browser can only run the model on WebGPU, not on the CPU.
-    pub const WEBGPU_ONLY: &str = "webgpu_only";
-    /// The model only transcribes English.
-    pub const ENGLISH_ONLY: &str = "english_only";
-    /// The model marks where the speaker changes.
-    pub const SPEAKER_TURNS: &str = "speaker_turns";
-}
-
-/// Platform-specific metadata for models
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct ModelMetadata {
-    /// Download URL for the model (if available)
-    pub download_url: Option<String>,
-    /// Local file path where the model is stored (if installed)
-    pub local_path: Option<PathBuf>,
-    /// Model format (e.g., "ggml", "onnx", "webgpu")
-    pub format: String,
-    /// Model architecture type (e.g., "whisper", "transformer")
-    pub architecture: String,
-    /// Language support (e.g., "multilingual", "en-only")
-    pub language_support: String,
-    /// Quantization level (e.g., "`q5_1`", "`q8_0`", "fp16")
-    pub quantization: Option<String>,
-    /// Model version or revision
-    pub version: String,
-    /// Platform-specific attributes
-    pub platform_specific: HashMap<String, String>,
-}
-
-impl ModelMetadata {
-    /// Create new `ModelMetadata` instance
-    #[must_use]
-    pub fn new(
-        format: String,
-        architecture: String,
-        language_support: String,
-        version: String,
-    ) -> Self {
-        Self {
-            download_url: None,
-            local_path: None,
-            format,
-            architecture,
-            language_support,
-            quantization: None,
-            version,
-            platform_specific: HashMap::new(),
-        }
-    }
-
-    /// Builder pattern for setting download URL
-    #[must_use]
-    pub fn with_download_url(mut self, url: String) -> Self {
-        self.download_url = Some(url);
-        self
-    }
-
-    /// Builder pattern for setting quantization
-    #[must_use]
-    pub fn with_quantization(mut self, quantization: String) -> Self {
-        self.quantization = Some(quantization);
-        self
-    }
-
-    /// Whether the platform marked the model with `flag` (see [`model_flag`]).
-    #[must_use]
-    pub fn has_flag(&self, flag: &str) -> bool {
-        self.platform_specific
-            .get(flag)
-            .is_some_and(|value| value == "true")
-    }
-
-    /// Builder pattern for adding platform-specific attributes
-    #[must_use]
-    pub fn with_platform_attribute(mut self, key: String, value: String) -> Self {
-        self.platform_specific.insert(key, value);
-        self
+        self.local_path = Some(local_path);
     }
 }
 

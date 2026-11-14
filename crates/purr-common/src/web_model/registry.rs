@@ -1,7 +1,12 @@
 //! Validated, queryable view of the web model manifest.
 
+use crate::language::{support::LanguageSupport, tag::LanguageTag};
 use crate::model::{
-    engine::EngineId, family::ModelFamily, format::ModelFormat, language::ModelLanguage,
+    descriptor::{ModelDescriptor, Weights},
+    engine::EngineId,
+    family::ModelFamily,
+    format::ModelFormat,
+    profile::ModelProfile,
 };
 use crate::web_model::attributes::OnnxDtype;
 use crate::web_model::digest::Sha256Digest;
@@ -38,7 +43,7 @@ pub struct WebModelSpec {
     pub repo: String,
     pub revision: String,
     pub family: ModelFamily,
-    pub language: ModelLanguage,
+    pub languages: LanguageSupport,
     pub encoder_dtype: OnnxDtype,
     pub decoder_dtype: OnnxDtype,
     pub description: String,
@@ -52,9 +57,10 @@ impl WebModelSpec {
 
     #[must_use]
     pub fn display_name(&self) -> String {
-        let english = match self.language {
-            ModelLanguage::EnglishOnly => " (English)",
-            ModelLanguage::Multilingual => "",
+        let english = if self.english_only() {
+            " (English)"
+        } else {
+            ""
         };
         format!("Whisper {}{english}", self.family.label())
     }
@@ -78,16 +84,30 @@ impl WebModelSpec {
     }
 
     #[must_use]
-    pub const fn english_only(&self) -> bool {
-        match self.language {
-            ModelLanguage::EnglishOnly => true,
-            ModelLanguage::Multilingual => false,
-        }
+    pub fn english_only(&self) -> bool {
+        self.languages
+            .single()
+            .is_some_and(|tag| *tag == LanguageTag::english())
     }
 
     #[must_use]
     pub const fn requires_shader_f16(&self) -> bool {
         self.encoder_dtype.requires_shader_f16() || self.decoder_dtype.requires_shader_f16()
+    }
+
+    /// What the platform knows about the model.
+    #[must_use]
+    pub fn descriptor(&self) -> ModelDescriptor {
+        ModelDescriptor {
+            engine: Self::ENGINE,
+            family: self.family,
+            format: Self::FORMAT,
+            weights: Weights::Onnx {
+                encoder: self.encoder_dtype,
+                decoder: self.decoder_dtype,
+            },
+            profile: ModelProfile::browser(self.languages.clone()),
+        }
     }
 
     #[must_use]
@@ -280,7 +300,7 @@ fn resolve(entry: WebManifestModel) -> Result<WebModelSpec, WebManifestError> {
         repo: entry.repo,
         revision: entry.revision,
         family: entry.family,
-        language: entry.language,
+        languages: entry.languages,
         encoder_dtype: entry.encoder_dtype,
         decoder_dtype: entry.decoder_dtype,
         description: entry.description,

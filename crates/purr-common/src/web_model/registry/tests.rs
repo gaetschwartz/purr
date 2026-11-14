@@ -27,13 +27,13 @@ fn manifest_json(edit: impl FnOnce(&mut Value)) -> String {
         "models": [
             {
                 "id": "alpha", "repo": "owner/alpha", "revision": REVISION,
-                "family": "base", "language": "multilingual", "encoder_dtype": "fp32", "decoder_dtype": "q4",
+                "family": "base", "languages": "any", "encoder_dtype": "fp32", "decoder_dtype": "q4",
                 "description": "Alpha",
                 "files": files_json(OnnxDtype::Fp32, OnnxDtype::Q4),
             },
             {
                 "id": "beta", "repo": "owner/beta", "revision": REVISION,
-                "family": "large-v3-turbo", "language": "multilingual", "encoder_dtype": "fp16", "decoder_dtype": "q4",
+                "family": "large-v3-turbo", "languages": "any", "encoder_dtype": "fp16", "decoder_dtype": "q4",
                 "description": "Beta",
                 "files": files_json(OnnxDtype::Fp16, OnnxDtype::Q4),
             },
@@ -61,7 +61,7 @@ fn attributes_are_typed() -> Result<(), Box<dyn std::error::Error>> {
     let registry = registry_with(|_| {})?;
     let beta = registry.get("beta")?;
     assert_eq!(beta.family, ModelFamily::Whisper(WhisperSize::LargeV3Turbo));
-    assert_eq!(beta.language, ModelLanguage::Multilingual);
+    assert_eq!(beta.languages, LanguageSupport::Any);
     assert_eq!(beta.encoder_dtype, OnnxDtype::Fp16);
     assert_eq!(beta.decoder_dtype, OnnxDtype::Q4);
     Ok(())
@@ -70,7 +70,7 @@ fn attributes_are_typed() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn english_only_follows_the_language() -> Result<(), Box<dyn std::error::Error>> {
     let registry = registry_with(|v| {
-        v["models"][0]["language"] = json!("english-only");
+        v["models"][0]["languages"] = json!({"only": ["en"]});
     })?;
     assert!(registry.get("alpha")?.english_only());
     assert!(!registry.get("beta")?.english_only());

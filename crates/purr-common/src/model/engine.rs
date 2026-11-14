@@ -37,6 +37,16 @@ impl EngineId {
         }
     }
 
+    /// The engine as a sentence names it.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::WhisperCpp => "whisper.cpp engine",
+            Self::TranscribeCpp => "transcribe.cpp engine",
+            Self::Browser => "browser engine",
+        }
+    }
+
     #[must_use]
     pub fn supports(self, format: ModelFormat) -> bool {
         self.formats().contains(&format)

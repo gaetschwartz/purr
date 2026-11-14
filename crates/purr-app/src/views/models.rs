@@ -29,7 +29,7 @@ fn gpu_notice(
     gpu: &GpuSupport,
     rows: &[ModelRow],
 ) -> Option<(BannerTone, &'static str, &'static str)> {
-    if !rows.iter().any(|row| row.entry.requires_shader_f16) {
+    if !rows.iter().any(|row| row.entry.requires_shader_f16()) {
         return None;
     }
     match gpu {

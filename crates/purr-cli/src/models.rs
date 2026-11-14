@@ -4,6 +4,7 @@ use crate::cli::ModelCommands;
 use crate::color::Stream;
 use crate::global;
 use crate::output;
+use crate::profile_text;
 use crate::theme::{ProgressPart, Themed as _, progress_style};
 use crate::{resultln, statusln};
 use indicatif::{HumanBytes, HumanDuration, ProgressBar, ProgressStyle};
@@ -207,8 +208,8 @@ async fn list_available(manager: &ModelManager) -> miette::Result<()> {
             if spec.id == registry.default_model().id {
                 notes.push("recommended".to_owned());
             }
-            for feature in &spec.features {
-                notes.push(feature.summary().to_owned());
+            for note in profile_text::notes(&spec.profile) {
+                notes.push(note.to_owned());
             }
             match manager.file_status(spec).await? {
                 ModelFileStatus::Present => notes.push("downloaded".positive().to_string()),
@@ -221,7 +222,7 @@ async fn list_available(manager: &ModelManager) -> miette::Result<()> {
             let mut line = format!(
                 "    {}  {:<12}  {:<5}  {:>11}",
                 format!("{:<id_width$}", spec.id).path(),
-                spec.language.to_string(),
+                profile_text::languages(&spec.profile.languages),
                 spec.quantization.to_string(),
                 HumanBytes(spec.file.size_bytes).to_string().quantity(),
             );
@@ -280,12 +281,15 @@ async fn info(manager: &ModelManager, spec: &ModelSpec) -> miette::Result<()> {
     resultln!("Name: {}", spec.id.name())?;
     resultln!("Description: {}", spec.description)?;
     resultln!("Family: {}", spec.family)?;
-    resultln!("Language: {}", spec.language)?;
+    resultln!(
+        "Language: {}",
+        profile_text::languages(&spec.profile.languages)
+    )?;
     resultln!("Quantization: {}", spec.quantization)?;
-    if spec.features.is_empty() {
+    let features = profile_text::features(&spec.profile);
+    if features.is_empty() {
         resultln!("Features: none")?;
     } else {
-        let features: Vec<String> = spec.features.iter().map(ToString::to_string).collect();
         resultln!("Features: {}", features.join(", "))?;
     }
     resultln!("Filename: {}", spec.filename.path())?;

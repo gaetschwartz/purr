@@ -11,6 +11,7 @@ mod language_arg;
 mod logging;
 mod models;
 mod output;
+mod profile_text;
 mod progress;
 mod runtime;
 mod scope;

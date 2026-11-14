@@ -23,7 +23,9 @@ use crate::{
 use dioxus::prelude::*;
 use more_menu::{MoreAction, TranscriptionFacts};
 use playback_shortcut::PlaybackShortcut;
-use purr_common::{export_format::ExportFormat, platform::TranscriptSegment};
+use purr_common::{
+    export_format::ExportFormat, model::descriptor::ModelDescriptor, platform::TranscriptSegment,
+};
 use std::rc::Rc;
 use transcript_card::{SEARCH_ID, TranscriptCard};
 
@@ -112,6 +114,8 @@ pub fn ResultFrame(
     tentative: Option<TranscriptSegment>,
     #[props(default)] origin: ResultOrigin,
     export: ExportSource,
+    /// The model that made the transcript, when the catalog still lists it.
+    model: Option<ModelDescriptor>,
     facts: TranscriptionFacts,
     more: Vec<MoreAction>,
     on_more: EventHandler<MoreAction>,
@@ -173,6 +177,7 @@ pub fn ResultFrame(
                 playable: player.is_some(),
                 live,
                 moment: phase.moment(origin),
+                model,
                 export,
                 export_shown: !live,
                 facts,

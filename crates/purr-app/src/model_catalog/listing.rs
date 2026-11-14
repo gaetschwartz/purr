@@ -1,6 +1,6 @@
 use super::{
     clusters::{ModelCluster, cluster},
-    entry::{Language, ModelEntry},
+    entry::ModelEntry,
     family::ModelGroup,
     state::ModelState,
 };
@@ -16,7 +16,7 @@ impl ModelRow {
     /// Whether the lists offer the model: speaker-turn models are hidden until one is on the device.
     #[must_use]
     pub const fn is_listed(&self) -> bool {
-        !self.entry.speaker_turns || self.state.is_on_device()
+        !self.entry.speaker_turns() || self.state.is_on_device()
     }
 }
 
@@ -54,8 +54,8 @@ impl ModelFilter {
         match self {
             Self::All => true,
             Self::OnDevice => row.state.is_on_device(),
-            Self::Multilingual => row.entry.language == Language::Multilingual,
-            Self::EnglishOnly => row.entry.language == Language::EnglishOnly,
+            Self::Multilingual => row.entry.is_multilingual(),
+            Self::EnglishOnly => row.entry.is_english_only(),
         }
     }
 }
@@ -185,7 +185,8 @@ pub fn summarize(rows: &[ModelRow]) -> Summary {
 mod tests {
     use super::*;
     use crate::model_catalog::activity::{DownloadFailure, DownloadProgress};
-    use purr_common::platform::{ModelFailureKind, ModelInfo, ModelMetadata, model_flag};
+    use crate::model_catalog::test_support::{descriptor, info_of, weights};
+    use purr_common::{model::profile::Speakers, platform::ModelFailureKind};
 
     fn row(
         id: &str,
@@ -194,25 +195,12 @@ mod tests {
         quantization: Option<&str>,
         state: ModelState,
     ) -> ModelRow {
-        let mut metadata = ModelMetadata::new(
-            "ggml".to_owned(),
-            "whisper".to_owned(),
-            "multilingual".to_owned(),
-            "v1".to_owned(),
-        )
-        .with_platform_attribute("family".to_owned(), family.to_owned())
-        .with_platform_attribute(model_flag::ENGLISH_ONLY.to_owned(), english.to_string());
-        if let Some(quantization) = quantization {
-            metadata = metadata.with_quantization(quantization.to_owned());
-        }
         ModelRow {
-            entry: ModelEntry::from_info(&ModelInfo::new(
-                id.to_owned(),
-                id.to_owned(),
-                String::new(),
+            entry: ModelEntry::from_info(&info_of(
+                id,
                 100,
                 state.is_on_device(),
-                metadata,
+                descriptor(family, weights(quantization), english),
             )),
             state,
         }
@@ -220,7 +208,7 @@ mod tests {
 
     fn speaker_turns(state: ModelState) -> ModelRow {
         let mut model = row("small.en-tdrz", "small", true, None, state);
-        model.entry.speaker_turns = true;
+        model.entry.descriptor.profile.speakers = Speakers::TurnMarkers;
         model
     }
 
@@ -262,7 +250,6 @@ mod tests {
             plain("large-v3", "large-v3", ModelState::NotDownloaded),
             plain("large-v2", "large-v2", ModelState::NotDownloaded),
             plain("large-v1", "large-v1", ModelState::Downloaded),
-            plain("mystery", "mystery", ModelState::NotDownloaded),
         ]
     }
 
@@ -306,13 +293,10 @@ mod tests {
     }
 
     #[test]
-    fn sections_follow_the_prototype_order_and_other_comes_last() {
+    fn sections_follow_the_prototype_order() {
         let listing = build_listing(&rows(), &ModelQuery::default());
         let order: Vec<ModelGroup> = listing.groups.iter().map(|section| section.group).collect();
-        assert_eq!(
-            order,
-            [ModelGroup::Large, ModelGroup::Tiny, ModelGroup::Other]
-        );
+        assert_eq!(order, [ModelGroup::Large, ModelGroup::Tiny]);
     }
 
     #[test]
@@ -363,8 +347,7 @@ mod tests {
                 ModelGroup::Large,
                 ModelGroup::Small,
                 ModelGroup::Base,
-                ModelGroup::Tiny,
-                ModelGroup::Other
+                ModelGroup::Tiny
             ]
         );
     }
@@ -452,7 +435,7 @@ mod tests {
     fn summary_counts_stored_models_and_their_space() {
         let summary = summarize(&rows());
         assert_eq!(summary.installed, 2);
-        assert_eq!(summary.total, 9);
+        assert_eq!(summary.total, 8);
         assert_eq!(summary.used_bytes, 200);
     }
 }

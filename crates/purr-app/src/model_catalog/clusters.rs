@@ -1,10 +1,6 @@
-use super::{
-    entry::{Language, Precision},
-    family::superseded,
-    listing::ModelRow,
-    state::ModelState,
-};
+use super::{family::superseded, listing::ModelRow, state::ModelState};
 use crate::utils::counted::counted;
+use purr_common::{language::support::LanguageSupport, model::precision::Precision};
 
 /// A model together with its quantized versions, which share its name and language.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -58,22 +54,22 @@ impl ModelCluster {
     /// Whether the models of the cluster are superseded by a newer family.
     #[must_use]
     pub fn superseded(&self) -> bool {
-        self.primary.entry.family.is_some_and(superseded)
+        superseded(self.primary.entry.family())
     }
 }
 
-type ClusterKey = (String, Language, bool);
+type ClusterKey = (String, LanguageSupport, bool);
 
 fn key(row: &ModelRow) -> ClusterKey {
     (
         row.entry.name.clone(),
-        row.entry.language,
-        row.entry.speaker_turns,
+        row.entry.languages().clone(),
+        row.entry.speaker_turns(),
     )
 }
 
 fn is_quantized(row: &ModelRow) -> bool {
-    matches!(row.entry.precision, Precision::Quantized { .. })
+    matches!(row.entry.precision(), Precision::Quantized { .. })
 }
 
 /// Folds quantized models into the model they were made from, keeping the order of `rows`.
@@ -110,12 +106,13 @@ pub fn cluster(rows: &[ModelRow]) -> Vec<ModelCluster> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model_catalog::test_support::info;
     use crate::model_catalog::{
         activity::{DownloadFailure, DownloadProgress},
         entry::ModelEntry,
         state::ModelState,
     };
-    use purr_common::platform::{ModelFailureKind, ModelInfo, ModelMetadata, model_flag};
+    use purr_common::platform::ModelFailureKind;
 
     fn row(
         id: &str,
@@ -124,26 +121,8 @@ mod tests {
         quantization: Option<&str>,
         english: bool,
     ) -> ModelRow {
-        let mut metadata = ModelMetadata::new(
-            "ggml".to_owned(),
-            "whisper".to_owned(),
-            "multilingual".to_owned(),
-            "v1".to_owned(),
-        )
-        .with_platform_attribute("family".to_owned(), family.to_owned())
-        .with_platform_attribute(model_flag::ENGLISH_ONLY.to_owned(), english.to_string());
-        if let Some(quantization) = quantization {
-            metadata = metadata.with_quantization(quantization.to_owned());
-        }
         ModelRow {
-            entry: ModelEntry::from_info(&ModelInfo::new(
-                id.to_owned(),
-                id.to_owned(),
-                String::new(),
-                size,
-                false,
-                metadata,
-            )),
+            entry: ModelEntry::from_info(&info(id, family, size, quantization, english)),
             state: ModelState::NotDownloaded,
         }
     }

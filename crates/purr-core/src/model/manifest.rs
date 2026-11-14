@@ -1,13 +1,13 @@
 //! Serialized form of the model manifest.
 
 use crate::error::ManifestError;
-use crate::model::attributes::ModelFeature;
 use crate::model::digest::Sha256Digest;
 use purr_common::model::{
-    engine::EngineId, family::ModelFamily, format::ModelFormat, language::ModelLanguage,
+    engine::EngineId, family::ModelFamily, format::ModelFormat, profile::ModelProfile,
     quantization::Quantization,
 };
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 pub const SUPPORTED_SCHEMA: u32 = 3;
 
@@ -18,6 +18,8 @@ pub struct Manifest {
     /// Model ids in order of preference; the first is the recommended default.
     pub preferred: Vec<String>,
     pub sources: Vec<Source>,
+    /// The profiles models refer to by name, so that models alike are described once.
+    pub profiles: BTreeMap<String, ModelProfile>,
     pub models: Vec<ManifestModel>,
     pub vad: ManifestVad,
 }
@@ -40,9 +42,8 @@ pub struct ManifestModel {
     pub source: String,
     pub filename: String,
     pub family: ModelFamily,
-    pub language: ModelLanguage,
+    pub profile: String,
     pub quantization: Quantization,
-    pub features: Vec<ModelFeature>,
     pub size_bytes: u64,
     pub sha256: Sha256Digest,
     pub description: String,

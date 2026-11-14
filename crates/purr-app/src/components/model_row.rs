@@ -12,7 +12,13 @@ use super::{
 use crate::{
     components::toast::use_toasts,
     hooks::use_models::use_models,
-    model_catalog::{copy, format::checking, listing::ModelRow, state::ModelState},
+    model_catalog::{
+        copy,
+        entry::{languages_label, precision_tag},
+        format::checking,
+        listing::ModelRow,
+        state::ModelState,
+    },
     settings_store::use_settings,
     utils::{byte_size::ByteSize, dom_id::use_dom_id},
 };
@@ -261,8 +267,8 @@ pub fn ModelListRow(
                     div { class: "hint", "{hint}" }
                 }
                 div { class: "tags",
-                    Chip { "{entry.language.label()}" }
-                    if let Some(tag) = entry.precision.tag() {
+                    Chip { "{languages_label(entry.languages())}" }
+                    if let Some(tag) = precision_tag(entry.precision()) {
                         Chip { "{tag}" }
                     }
                 }

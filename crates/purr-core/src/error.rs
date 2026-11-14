@@ -61,6 +61,10 @@ pub enum ManifestError {
         format: ModelFormat,
     },
 
+    #[error("Model {model_id} refers to unknown profile {profile}")]
+    #[diagnostic(code(whisper::manifest::unknown_profile))]
+    UnknownProfile { model_id: String, profile: String },
+
     #[error("Source {source_id} has an invalid revision: {revision}")]
     #[diagnostic(code(whisper::manifest::invalid_revision))]
     InvalidRevision { source_id: String, revision: String },

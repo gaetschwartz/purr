@@ -1,8 +1,10 @@
 use super::tag::LanguageTag;
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 /// The spoken languages a model transcribes.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum LanguageSupport {
     Any,
     Only(Arc<[LanguageTag]>),
@@ -90,6 +92,22 @@ mod tests {
     fn legacy_spellings_match_after_parsing() {
         assert!(only(&["he"]).supports(&tag("iw")));
         assert!(only(&["jv"]).supports(&tag("jw")));
+    }
+
+    #[test]
+    fn support_is_stored_as_any_or_a_list() {
+        assert_eq!(
+            serde_json::to_string(&LanguageSupport::Any).unwrap(),
+            "\"any\""
+        );
+        assert_eq!(
+            serde_json::to_string(&LanguageSupport::english_only()).unwrap(),
+            "{\"only\":[\"en\"]}"
+        );
+        assert_eq!(
+            serde_json::from_str::<LanguageSupport>("{\"only\":[\"iw\",\"pt_br\"]}").unwrap(),
+            only(&["he", "pt-BR"])
+        );
     }
 
     #[test]

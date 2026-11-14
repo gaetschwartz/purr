@@ -39,26 +39,12 @@ pub fn resolve(rows: &[ModelRow], saved: &str, device: Device) -> Selection {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model_catalog::test_support::info;
     use crate::model_catalog::{entry::ModelEntry, state::ModelState};
-    use purr_common::platform::{ModelInfo, ModelMetadata};
 
     fn row(id: &str, family: &str, size: u64) -> ModelRow {
-        let metadata = ModelMetadata::new(
-            "ggml".to_owned(),
-            "whisper".to_owned(),
-            "multilingual".to_owned(),
-            "1".to_owned(),
-        )
-        .with_platform_attribute("family".to_owned(), family.to_owned());
         ModelRow {
-            entry: ModelEntry::from_info(&ModelInfo::new(
-                id.to_owned(),
-                id.to_owned(),
-                String::new(),
-                size,
-                false,
-                metadata,
-            )),
+            entry: ModelEntry::from_info(&info(id, family, size, None, false)),
             state: ModelState::NotDownloaded,
         }
     }
