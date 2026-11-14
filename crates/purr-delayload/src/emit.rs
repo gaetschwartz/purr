@@ -39,27 +39,38 @@ fn windows_link_directives(libraries: &RuntimeLibraries) -> Vec<String> {
         .collect()
 }
 
-fn linux_link_directives(libraries: &RuntimeLibraries) -> Vec<String> {
-    if libraries.vulkan.is_empty() {
-        return Vec::new();
-    }
-    LINUX_VULKAN_DIRECT_CALLS
-        .iter()
-        .flat_map(|function| {
+/// Keeps the executable's static ggml out of its dynamic symbol table. With it exported, the
+/// dynamic linker binds the calls of `libtranscribe` and its own ggml to the executable's copy.
+const LINUX_HIDE_ARCHIVE_SYMBOLS: &str = "cargo::rustc-link-arg-bins=-Wl,--exclude-libs,ALL";
+
+fn linux_link_directives(libraries: &RuntimeLibraries, transcribe: bool) -> Vec<String> {
+    let hide_ggml = transcribe.then(|| LINUX_HIDE_ARCHIVE_SYMBOLS.to_owned());
+    let vulkan_calls: &[&str] = if libraries.vulkan.is_empty() {
+        &[]
+    } else {
+        LINUX_VULKAN_DIRECT_CALLS
+    };
+    hide_ggml
+        .into_iter()
+        .chain(vulkan_calls.iter().flat_map(|function| {
             [
                 format!("cargo::rustc-link-arg-bins=-Wl,--wrap={function}"),
                 // pulls the forwarder out of its archive whatever the link order
                 format!("cargo::rustc-link-arg-bins=-Wl,--undefined=__wrap_{function}"),
             ]
-        })
+        }))
         .collect()
 }
 
 #[must_use]
-pub fn link_directives(target: LinkTarget, libraries: &RuntimeLibraries) -> Vec<String> {
+pub fn link_directives(
+    target: LinkTarget,
+    libraries: &RuntimeLibraries,
+    transcribe: bool,
+) -> Vec<String> {
     match target {
         LinkTarget::WindowsMsvc => windows_link_directives(libraries),
-        LinkTarget::LinuxGnu => linux_link_directives(libraries),
+        LinkTarget::LinuxGnu => linux_link_directives(libraries, transcribe),
         LinkTarget::Other => Vec::new(),
     }
 }
@@ -88,7 +99,11 @@ fn print_all(directives: &[String]) {
 pub fn emit_link_args() -> Result<(), DiscoveryError> {
     let request = Request::from_cargo_env();
     let libraries = request.resolve()?;
-    print_all(&link_directives(request.target, &libraries));
+    print_all(&link_directives(
+        request.target,
+        &libraries,
+        request.transcribe,
+    ));
     Ok(())
 }
 
@@ -136,7 +151,7 @@ mod tests {
     #[test]
     fn link_directives_delay_load_each_library_then_link_the_helper() {
         assert_eq!(
-            link_directives(LinkTarget::WindowsMsvc, &libraries()),
+            link_directives(LinkTarget::WindowsMsvc, &libraries(), true),
             [
                 "cargo::rustc-link-arg-bins=/DELAYLOAD:cublasLt64_13.dll",
                 "cargo::rustc-link-arg-bins=/DELAYLOAD:cublas64_13.dll",
@@ -152,7 +167,7 @@ mod tests {
     fn nothing_to_delay_load_emits_no_link_arguments() {
         for target in [LinkTarget::WindowsMsvc, LinkTarget::LinuxGnu] {
             assert_eq!(
-                link_directives(target, &RuntimeLibraries::default()),
+                link_directives(target, &RuntimeLibraries::default(), false),
                 Vec::<String>::new()
             );
         }
@@ -166,7 +181,7 @@ mod tests {
             transcribe: Vec::new(),
         };
         assert_eq!(
-            link_directives(LinkTarget::LinuxGnu, &libraries),
+            link_directives(LinkTarget::LinuxGnu, &libraries, false),
             [
                 "cargo::rustc-link-arg-bins=-Wl,--wrap=vkGetInstanceProcAddr",
                 "cargo::rustc-link-arg-bins=-Wl,--undefined=__wrap_vkGetInstanceProcAddr",
@@ -179,6 +194,29 @@ mod tests {
     }
 
     #[test]
+    fn linux_with_transcribe_hides_the_archive_symbols_before_the_vulkan_wraps() {
+        let libraries = RuntimeLibraries {
+            cuda: Vec::new(),
+            vulkan: vec!["libvulkan.so.1".to_owned()],
+            transcribe: Vec::new(),
+        };
+        let directives = link_directives(LinkTarget::LinuxGnu, &libraries, true);
+        assert_eq!(
+            directives.first().map(String::as_str),
+            Some("cargo::rustc-link-arg-bins=-Wl,--exclude-libs,ALL")
+        );
+        assert_eq!(directives.len(), 1 + 2 * LINUX_VULKAN_DIRECT_CALLS.len());
+    }
+
+    #[test]
+    fn linux_with_transcribe_alone_only_hides_the_archive_symbols() {
+        assert_eq!(
+            link_directives(LinkTarget::LinuxGnu, &RuntimeLibraries::default(), true),
+            ["cargo::rustc-link-arg-bins=-Wl,--exclude-libs,ALL"]
+        );
+    }
+
+    #[test]
     fn linux_cuda_alone_needs_no_link_arguments() {
         let libraries = RuntimeLibraries {
             cuda: vec!["libcuda.so.1".to_owned()],
@@ -186,7 +224,7 @@ mod tests {
             transcribe: Vec::new(),
         };
         assert_eq!(
-            link_directives(LinkTarget::LinuxGnu, &libraries),
+            link_directives(LinkTarget::LinuxGnu, &libraries, false),
             Vec::<String>::new()
         );
     }
@@ -194,7 +232,7 @@ mod tests {
     #[test]
     fn other_targets_get_no_link_arguments() {
         assert_eq!(
-            link_directives(LinkTarget::Other, &libraries()),
+            link_directives(LinkTarget::Other, &libraries(), true),
             Vec::<String>::new()
         );
     }
