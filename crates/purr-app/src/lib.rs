@@ -91,8 +91,12 @@ pub fn App() -> Element {
                 div { class: "scroller",
                     div { class: "content",
                         h1 { class: "lt", "Purr could not start" }
-                        Banner { tone: BannerTone::Bad, title: "{error}", role: "alert",
-                            "Reload the page to try again. If it keeps failing, check that this browser allows site data (IndexedDB and local storage)."
+                        Banner {
+                            tone: BannerTone::Bad,
+                            title: "{error}",
+                            role: "alert",
+                            details: rsx! { "This browser must allow site data (IndexedDB and local storage)." },
+                            "Reload the page to try again."
                         }
                     }
                 }

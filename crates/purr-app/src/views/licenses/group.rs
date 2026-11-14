@@ -54,7 +54,7 @@ pub fn FontGroup() -> Element {
             aria_label: "Inter font",
             h2 { "SIL Open Font License 1.1" }
             div {
-                p { class: "foot", "Inter, the typeface Purr is set in." }
+                p { class: "foot", "Inter" }
                 details { class: "foot",
                     summary { "Licence text" }
                     pre { class: "preview", "{FONT_LICENCE}" }

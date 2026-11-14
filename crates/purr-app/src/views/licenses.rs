@@ -49,7 +49,6 @@ pub fn Licenses() -> Element {
     rsx! {
         Page {
             title: "Licenses",
-            subtitle: "Purr is built on open source software.",
             eyebrow,
             match &licences {
                 Ok(licences) => rsx! {

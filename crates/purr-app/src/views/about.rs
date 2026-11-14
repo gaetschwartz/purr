@@ -26,13 +26,10 @@ pub const PLATFORM: &str = if IS_WEB { "Web" } else { "Desktop" };
 #[component]
 pub fn AboutSheet(on_close: EventHandler<()>) -> Element {
     let navigator = use_navigator();
-    let (place, network) = if IS_WEB {
-        (
-            "in this browser",
-            "Besides loading this page, the only network request",
-        )
+    let place = if IS_WEB {
+        "in this browser"
     } else {
-        ("on this computer", "The only network request")
+        "on this computer"
     };
     let version = version();
     rsx! {
@@ -62,10 +59,8 @@ pub fn AboutSheet(on_close: EventHandler<()>) -> Element {
                     p { class: "foot", "{version} · {PLATFORM}" }
                 }
             }
-            p { "Purr turns speech into text with Whisper, running on your own device." }
-            p {
-                "Audio, transcripts, models, settings and logs stay {place}. {network} is a model download from Hugging Face."
-            }
+            p { "Speech to text that stays {place}." }
+            p { class: "foot", "Network use: model downloads only." }
         }
     }
 }
