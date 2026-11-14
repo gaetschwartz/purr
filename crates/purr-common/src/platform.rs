@@ -15,7 +15,7 @@ use std::{
 };
 
 use crate::{
-    accel::{LastRun, SystemReport},
+    accel::{EngineUnavailable, LastRun, SystemReport},
     audio_overview::AudioOverview,
     browser_compute::BrowserCompute,
     devices::{DeviceKey, DeviceOrder},
@@ -56,6 +56,14 @@ pub enum PlatformError {
     Transcription {
         #[source]
         source: Box<dyn std::error::Error + Send + Sync>,
+    },
+
+    #[error("The {} cannot be used: {reason}", engine.label())]
+    #[diagnostic(code(platform::engine_unavailable))]
+    EngineUnavailable {
+        engine: EngineId,
+        #[source]
+        reason: EngineUnavailable,
     },
 
     #[error("Audio processing error: {source}")]

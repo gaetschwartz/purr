@@ -14,6 +14,15 @@ impl ModelLicense {
         }
     }
 
+    /// Whether the licence makes whoever shows the model credit its author where it is offered.
+    #[must_use]
+    pub const fn requires_attribution(self) -> bool {
+        match self {
+            Self::Mit => false,
+            Self::CcBy4 => true,
+        }
+    }
+
     #[must_use]
     pub const fn url(self) -> &'static str {
         match self {
@@ -32,4 +41,15 @@ pub struct Attribution {
     pub origin_url: &'static str,
     /// What the files Purr downloads change about the original, when they change anything
     pub changes: Option<&'static str>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_creative_commons_attribution_asks_for_credit_where_the_model_is_offered() {
+        assert!(!ModelLicense::Mit.requires_attribution());
+        assert!(ModelLicense::CcBy4.requires_attribution());
+    }
 }

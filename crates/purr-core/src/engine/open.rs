@@ -30,6 +30,12 @@ pub fn open_on_best_device(
     threads: usize,
 ) -> Result<Opened> {
     std::fs::metadata(model)?;
+    engine
+        .availability()
+        .map_err(|reason| TranscriptionError::EngineUnavailable {
+            engine: engine.id(),
+            reason,
+        })?;
     let inventory = Inventory::detect(engine);
     let plan = resolve(order, &inventory);
 
@@ -93,4 +99,37 @@ fn log_selection(report: &AccelReport) {
         .map(|device| format!(" ({device})"))
         .unwrap_or_default();
     info!("Acceleration: {}{device}", report.selected.pretty_name());
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::accel::engine_report::fakes::Scripted;
+    use crate::error::Error;
+    use purr_common::{accel::EngineUnavailable, model::engine::EngineId};
+    use std::path::PathBuf;
+
+    #[test]
+    fn an_engine_that_cannot_be_used_is_reported_with_its_reason_before_any_device_is_tried() {
+        let why = EngineUnavailable::LibraryMissing {
+            library: "transcribe.dll".to_owned(),
+            searched: vec![PathBuf::from("runtime")],
+        };
+        let engine = Scripted {
+            id: EngineId::TranscribeCpp,
+            outcome: Err(why.clone()),
+            devices: Vec::new(),
+            built: Vec::new(),
+        };
+        let model = std::env::current_exe().unwrap();
+        let outcome = open_on_best_device(&engine, &model, &DeviceOrder::default(), 1);
+        let Err(Error::Transcription {
+            source: TranscriptionError::EngineUnavailable { engine, reason },
+        }) = outcome
+        else {
+            panic!("expected the engine to be reported unavailable");
+        };
+        assert_eq!(engine, EngineId::TranscribeCpp);
+        assert_eq!(reason, why);
+    }
 }

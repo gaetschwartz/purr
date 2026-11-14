@@ -117,22 +117,36 @@ pub struct LoadedEngine {
 }
 
 /// Why an engine that is built in cannot be used in this process.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
 #[serde(rename_all = "snake_case")]
 pub enum EngineUnavailable {
+    #[error("{library} was not found{}", searched_in(searched))]
     LibraryMissing {
         library: String,
         /// The directories looked in before the system's own library search.
         searched: Vec<PathBuf>,
     },
-    LibraryUnloadable {
-        library: String,
-        directory: PathBuf,
-    },
+    #[error(
+        "{library} in {} cannot be opened, a library it needs may be missing",
+        directory.display()
+    )]
+    LibraryUnloadable { library: String, directory: PathBuf },
+    #[error("it found no way to compute ({detail})")]
     NoBackend {
         /// What the engine's library said; for people to read, not to match on.
         detail: String,
     },
+}
+
+fn searched_in(directories: &[PathBuf]) -> String {
+    if directories.is_empty() {
+        return String::new();
+    }
+    let folders: Vec<String> = directories
+        .iter()
+        .map(|directory| directory.display().to_string())
+        .collect();
+    format!(" in {}", folders.join(", "))
 }
 
 /// Whether an engine can run in this process.

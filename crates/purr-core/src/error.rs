@@ -1,7 +1,10 @@
 //! Error types for the purr-core library
 
 use crate::model::digest::Sha256Digest;
-use purr_common::model::{engine::EngineId, format::ModelFormat};
+use purr_common::{
+    accel::EngineUnavailable,
+    model::{engine::EngineId, format::ModelFormat},
+};
 use std::path::PathBuf;
 
 use crate::{
@@ -220,6 +223,14 @@ pub enum TranscriptionError {
     #[error("This build has no {engine} engine")]
     #[diagnostic(code(whisper::transcription::engine_missing))]
     EngineMissing { engine: EngineId },
+
+    #[error("The {} cannot be used: {reason}", engine.label())]
+    #[diagnostic(code(whisper::transcription::engine_unavailable))]
+    EngineUnavailable {
+        engine: EngineId,
+        #[source]
+        reason: EngineUnavailable,
+    },
 }
 
 /// Acceleration backend selection errors

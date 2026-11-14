@@ -148,17 +148,22 @@ impl ModelManager {
         Ok(path)
     }
 
+    /// The catalog model whose file name `path` has, if there is one.
+    #[must_use]
+    pub fn listed(&self, path: &Path) -> Option<&ModelSpec> {
+        let name = path.file_name()?;
+        self.registry
+            .models()
+            .iter()
+            .find(|model| std::ffi::OsStr::new(&model.filename) == name)
+            .map(|model| &**model)
+    }
+
     /// The model file at `path` with the engine that runs it: the catalog's engine when the file
     /// is one of its models, otherwise the engine that loads the format the file's first bytes
     /// announce.
     pub async fn reference(&self, path: PathBuf) -> Result<ModelRef> {
-        let listed = path.file_name().and_then(|name| {
-            self.registry
-                .models()
-                .iter()
-                .find(|model| std::ffi::OsStr::new(&model.filename) == name)
-        });
-        if let Some(model) = listed {
+        if let Some(model) = self.listed(&path) {
             return Ok(ModelRef::new(path, model.engine));
         }
         let mut header = [0u8; 4];

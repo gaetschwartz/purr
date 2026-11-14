@@ -8,6 +8,7 @@ use crate::accel::{AccelBackend, AccelSelection};
 use crate::devices::{DeviceDefaults, DeviceOrder, DevicePreference};
 use crate::export_format::ExportFormat;
 use crate::hugging_face_token::HuggingFaceToken;
+use crate::language::choice::LanguageChoice;
 use crate::transcript_view::TranscriptView;
 use serde::{Deserialize, Serialize};
 
@@ -291,6 +292,23 @@ impl Settings {
         errors
     }
 
+    /// Rewrites the stored spoken languages under their current spelling, so `iw` reads as `he`.
+    ///
+    /// An empty value is left for [`Self::validate`] to refuse.
+    pub fn canonicalize_languages(&mut self) {
+        let canonical = |text: &str| {
+            if text.trim().is_empty() {
+                text.to_owned()
+            } else {
+                LanguageChoice::from_setting(text).setting()
+            }
+        };
+        self.ui.language = canonical(&self.ui.language);
+        if let Some(default) = &mut self.ui.default_language {
+            *default = canonical(default);
+        }
+    }
+
     /// Brings settings read from schema version `from_version` up to [`CURRENT_VERSION`].
     ///
     /// Version 1 saved `gpu_acceleration` as off without anything reading it, so it moves to
@@ -385,6 +403,25 @@ default_language = \"auto\"
         );
         assert_eq!(read(&from_file.language), "pt-BR");
         assert_eq!(read(from_file.default_language.as_deref().unwrap()), "auto");
+    }
+
+    #[test]
+    fn stored_languages_are_rewritten_under_their_current_spelling() {
+        let mut settings = Settings::default();
+        "iw".clone_into(&mut settings.ui.language);
+        settings.ui.default_language = Some("Pt_br".to_owned());
+        settings.canonicalize_languages();
+        assert_eq!(settings.ui.language, "he");
+        assert_eq!(settings.ui.default_language.as_deref(), Some("pt-BR"));
+        assert_eq!(settings.validate(), []);
+    }
+
+    #[test]
+    fn an_empty_stored_language_is_still_refused_after_canonicalising() {
+        let mut settings = Settings::default();
+        settings.ui.language.clear();
+        settings.canonicalize_languages();
+        assert_eq!(settings.validate(), [SettingsError::EmptyLanguage]);
     }
 
     #[test]
