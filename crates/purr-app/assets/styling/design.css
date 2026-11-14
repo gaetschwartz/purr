@@ -381,7 +381,7 @@ kbd{font-family:var(--font);font-size:12px;font-weight:600;padding:2px 7px;borde
 .popover.menu{width:220px}
 .popover.wide{width:400px}
 /* list pickers: checks, titles, folds and empty states share one left edge */
-.popover.picker.wide{width:472px}
+.popover.picker.wide{width:520px}
 .psearch{display:flex;align-items:center;gap:6px}
 .psearch .field{flex:1}
 .psearch .seg{flex:none}
@@ -405,7 +405,7 @@ kbd{font-family:var(--font);font-size:12px;font-weight:600;padding:2px 7px;borde
 .mline.off .ml-nm,.mline.off .ml-mk{opacity:.5}
 .mline.off>.ml-hit{cursor:not-allowed}
 .ml-vers{grid-area:vers;display:flex;gap:2px;flex:none}
-.ml-ver{pointer-events:auto;display:inline-flex;align-items:center;gap:3px;min-width:52px;height:26px;padding:0 7px 0 6px;border-radius:8px;font-size:12px;font-weight:600;color:var(--fg-3);font-variant-numeric:tabular-nums}
+.ml-ver{pointer-events:auto;display:inline-flex;align-items:center;gap:3px;min-width:46px;height:26px;padding:0 5px 0 4px;border-radius:8px;font-size:12px;font-weight:600;color:var(--fg-3);font-variant-numeric:tabular-nums}
 .ml-ver.gap{pointer-events:none}
 .ml-ver:not(.on)::before{content:"";width:12px;flex:none}
 .ml-ver svg.i{width:12px;height:12px;color:var(--success)}
@@ -414,7 +414,8 @@ kbd{font-family:var(--font);font-size:12px;font-weight:600;padding:2px 7px;borde
 .ml-ver[aria-selected="true"]{background:var(--accent-soft-2);color:var(--accent-text)}
 .ml-ver[aria-disabled="true"]{opacity:.45;cursor:not-allowed}
 .ml-ver:focus-visible{outline-offset:-2px}
-.ml-mk{grid-area:mk;flex:none;display:inline-flex;align-items:center;justify-content:flex-end;gap:5px;width:84px;font-size:12.5px;color:var(--fg-3);white-space:nowrap;font-variant-numeric:tabular-nums}
+.ml-mk{grid-area:mk;flex:none;display:inline-flex;align-items:center;justify-content:flex-end;gap:5px;min-width:0;font-size:12.5px;color:var(--fg-3);white-space:nowrap;font-variant-numeric:tabular-nums}
+.ml-mk:empty{display:none}
 .ml-mk svg.i{width:14px;height:14px}
 .ml-mk.warn{color:var(--warning)}
 .ml-mk.busy{color:var(--accent-text)}
