@@ -22,6 +22,16 @@ What `dumpbin /dependents` reports for the release `purr.exe` (`cuda,vulkan`), a
 libraries and of the Visual C++ runtime, and `scripts/check-windows-sys.ps1` runs `purr sys`
 without them.
 
+## Where the names come from
+
+The binaries' build scripts (`purr-cli`, `purr-app`) emit the delay-load link arguments through
+`purr-delayload` from their own `cuda` and `vulkan` features. `purr-core`'s build script emits the
+library names as `PURR_CUDA_RUNTIME_LIBS` and `PURR_VULKAN_RUNTIME_LIBS` for its own `cuda` and
+`vulkan` features, which the engine crates turn on with theirs; the delay-load failure hook and the
+Linux Vulkan forwarders live in `purr-core` too. The names belong to the binary, not to an engine:
+every engine whose ggml uses CUDA or Vulkan shares them. `Inventory::detect` opens the libraries
+before an engine lists its devices (see [engines.md](engines.md)).
+
 ## Search order
 
 The command line and the desktop app share one order (`purr_core::accel::runtime_dir`):

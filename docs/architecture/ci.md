@@ -10,7 +10,7 @@ Triggers: pushes to any branch, pull requests, manual runs. A newer run on the s
 |---|---|---|
 | `fmt` | ubuntu-24.04 | `cargo fmt --all --check` |
 | `scripts` | ubuntu-24.04 | `scripts/test-prune-rust-caches.sh` and `scripts/test-drop-ggml-build.sh`, the tests of the cache pruning script and of the ggml build tree removal |
-| `test (linux)` | ubuntu-24.04 | `cargo clippy` (reports warnings without failing on them), then `cargo nextest run --workspace` with static FFmpeg. Tests that need a model skip themselves. `.config/nextest.toml` filters out the `slow_` tests. No Rust cache: about 10 minutes, against 3 to 4 with one. |
+| `test (linux)` | ubuntu-24.04 | `cargo clippy` (reports warnings without failing on them), then `cargo nextest run --workspace` with static FFmpeg. Tests that need a model skip themselves; the Whisper golden and live-stream tests in `purr-engine-whisper` are `#[ignore]`d and run by hand with `--run-ignored only`. `.config/nextest.toml` filters out the `slow_` tests. No Rust cache: about 10 minutes, against 3 to 4 with one. |
 
 ## `build.yml`: artifacts and releases
 
