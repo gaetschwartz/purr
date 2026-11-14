@@ -7,6 +7,7 @@ mod color;
 mod download_prompt;
 mod global;
 mod json;
+mod language_arg;
 mod logging;
 mod models;
 mod output;

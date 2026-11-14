@@ -4,6 +4,7 @@
 //! tests. Audio samples travel beside the JSON as a transferred `Float32Array`.
 
 use purr_common::hugging_face_token::HuggingFaceToken;
+use purr_common::language::tag::LanguageTag;
 use purr_common::platform::TranscriptSegment;
 use purr_common::web_model::attributes::OnnxDtype;
 use purr_common::web_model::registry::WebModelSpec;
@@ -138,7 +139,7 @@ pub enum WorkerEvent {
     /// The language Whisper recognised when none was requested.
     LanguageDetected {
         request_id: RequestId,
-        language: String,
+        language: LanguageTag,
     },
     /// Live text of one segment; `text` is everything decoded for it so far.
     Segment {
@@ -422,7 +423,7 @@ mod tests {
             event,
             WorkerEvent::LanguageDetected {
                 request_id: RequestId::new(4),
-                language: "fr".to_owned(),
+                language: "fr".parse().unwrap(),
             }
         );
         Ok(())

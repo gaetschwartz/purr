@@ -4,7 +4,7 @@
 //! audio-to-transcription pipeline including both sync and streaming modes.
 
 use futures::{Stream, StreamExt};
-use purr_common::progress::ProgressPhase;
+use purr_common::{language::tag::LanguageTag, progress::ProgressPhase};
 use purr_core::{
     ModelManager, StreamEvent, StreamingChunk, StreamingTranscription,
     audio::{AudioData, AudioProcessor},
@@ -167,7 +167,7 @@ async fn test_sync_whisper_transcriber_creation() {
 
     let config = TranscriptionConfig::new()
         .with_gpu(false)
-        .with_language("en");
+        .with_language(LanguageTag::english());
 
     let result = SyncWhisperTranscriber::from_config(config).await;
     assert!(
@@ -185,7 +185,7 @@ async fn test_sync_whisper_transcribe_audio_data() {
 
     let config = TranscriptionConfig::new()
         .with_gpu(false)
-        .with_language("en");
+        .with_language(LanguageTag::english());
 
     let transcriber = SyncWhisperTranscriber::from_config(config).await.unwrap();
 
@@ -216,7 +216,7 @@ async fn test_sync_whisper_with_generated_audio() {
 
     let config = TranscriptionConfig::new()
         .with_gpu(false)
-        .with_language("en")
+        .with_language(LanguageTag::english())
         .with_verbose(false);
 
     let audio_data = AudioProcessor::load_audio(temp_audio.path()).await.unwrap();
@@ -245,7 +245,7 @@ async fn test_sync_transcription_high_level_api() {
 
     let config = TranscriptionConfig::new()
         .with_gpu(false)
-        .with_language("en");
+        .with_language(LanguageTag::english());
 
     let result = transcribe_file_sync(temp_audio.path(), Some(config)).await;
     assert!(result.is_ok(), "High-level sync API should work");
@@ -267,7 +267,7 @@ async fn test_streaming_whisper_transcriber_creation() {
 
     let config = TranscriptionConfig::new()
         .with_gpu(false)
-        .with_language("en");
+        .with_language(LanguageTag::english());
 
     let result = StreamWhisperTranscriber::from_config(config).await;
     assert!(
@@ -289,7 +289,7 @@ async fn test_streaming_whisper_with_audio_stream() {
 
     let config = TranscriptionConfig::new()
         .with_gpu(false)
-        .with_language("en");
+        .with_language(LanguageTag::english());
 
     let transcriber = StreamWhisperTranscriber::from_config(config).await.unwrap();
     let audio_stream = AudioProcessor::stream_file(temp_audio.path())
@@ -347,7 +347,7 @@ async fn test_streaming_transcription_high_level_api() {
 
     let config = TranscriptionConfig::new()
         .with_gpu(false)
-        .with_language("en");
+        .with_language(LanguageTag::english());
 
     let result = transcribe_file_stream(temp_audio.path(), config).await;
     assert!(result.is_ok(), "High-level streaming API should work");
@@ -404,7 +404,7 @@ async fn test_transcription_with_gpu_settings(#[case] use_gpu: bool) {
 
     let config = TranscriptionConfig::new()
         .with_gpu(use_gpu)
-        .with_language("en");
+        .with_language(LanguageTag::english());
 
     let result = transcribe_file_sync(temp_audio.path(), Some(config)).await;
 
@@ -443,7 +443,7 @@ async fn test_transcription_with_language_settings(#[case] language: &'static st
     let mut config = TranscriptionConfig::new().with_gpu(false);
 
     if language != "auto" {
-        config = config.with_language(language);
+        config = config.with_language(language.parse().unwrap());
     }
 
     let result = transcribe_file_sync(temp_audio.path(), Some(config)).await;
@@ -472,7 +472,7 @@ async fn test_transcription_with_thread_settings(#[case] num_threads: usize) {
     let config = TranscriptionConfig::new()
         .with_gpu(false)
         .with_threads(num_threads)
-        .with_language("en");
+        .with_language(LanguageTag::english());
 
     let result = transcribe_file_sync(temp_audio.path(), Some(config)).await;
     assert!(result.is_ok(), "Should work with {num_threads} threads");
@@ -496,7 +496,7 @@ async fn test_transcription_performance_sync() {
 
     let config = TranscriptionConfig::new()
         .with_gpu(false)
-        .with_language("en");
+        .with_language(LanguageTag::english());
 
     let start = std::time::Instant::now();
     let result = transcribe_file_sync(temp_audio.path(), Some(config)).await;
@@ -538,7 +538,7 @@ async fn test_transcription_performance_streaming() {
 
     let config = TranscriptionConfig::new()
         .with_gpu(false)
-        .with_language("en");
+        .with_language(LanguageTag::english());
 
     let start = std::time::Instant::now();
     let result = transcribe_file_stream(temp_audio.path(), config).await;
@@ -595,7 +595,7 @@ async fn test_whisper_error_handling_invalid_config() {
     // Test with invalid model path
     let mut config = TranscriptionConfig::new()
         .with_gpu(false)
-        .with_language("en");
+        .with_language(LanguageTag::english());
 
     config.model_path = Some(PathBuf::from("definitely_does_not_exist.bin"));
 
@@ -612,7 +612,7 @@ async fn test_whisper_error_handling_empty_audio() {
 
     let config = TranscriptionConfig::new()
         .with_gpu(false)
-        .with_language("en");
+        .with_language(LanguageTag::english());
 
     let transcriber = SyncWhisperTranscriber::from_config(config).await.unwrap();
 
@@ -670,7 +670,7 @@ async fn test_streaming_does_not_loop_on_fast_speech() {
 
     let mut config = TranscriptionConfig::new()
         .with_gpu(false)
-        .with_language("en")
+        .with_language(LanguageTag::english())
         .with_beam_size(1);
     config.model_path = Some(model_path);
 
@@ -853,7 +853,7 @@ async fn test_regression_consistent_results() {
 
     let config = TranscriptionConfig::new()
         .with_gpu(false)
-        .with_language("en");
+        .with_language(LanguageTag::english());
 
     // Run the same transcription multiple times
     let mut results = Vec::new();

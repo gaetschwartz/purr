@@ -4,7 +4,6 @@ use super::{
     chosen_file::{ChosenFile, FileProblem, OverviewState, WAVEFORM_BARS},
     compute_label::ComputeLabel,
     device_rows::{device_rows, override_for},
-    language_choice::LanguageChoice,
     run::{Completion, Run, RunOutcome},
     start_plan::{Blocker, Preparation, blocked_text, prepare},
     timing,
@@ -21,10 +20,7 @@ use crate::{
         use_models::{ModelsHandle, use_models},
         use_system_probe::{SystemProbe, use_system_probe},
     },
-    model_catalog::{
-        copy,
-        entry::{Language, ModelEntry},
-    },
+    model_catalog::{copy, entry::ModelEntry},
     platform::{self, IS_WEB},
     settings_store::{SettingsStore, use_settings},
     utils::clock::{now_ms, unix_ms},
@@ -42,6 +38,7 @@ use purr_common::{
         audio::HistoryAudio,
         entry::{HistoryEntry, HistoryId, InvalidHistoryId, LanguageOrigin},
     },
+    language::{choice::LanguageChoice, tag::LanguageTag},
     platform::{
         ComputeOptions, FileId, FileSource, ModelId, Platform as _, PlatformError,
         TranscriptionRequest, TranscriptionStatus,
@@ -97,11 +94,11 @@ impl RunRecord {
 
     /// The spoken language to show: the detected one, else the one asked for.
     #[must_use]
-    pub fn language_code(&self) -> Option<String> {
+    pub fn language_code(&self) -> Option<LanguageTag> {
         self.run
             .detected_language
             .clone()
-            .or_else(|| self.language.request_code())
+            .or_else(|| self.language.request_tag())
     }
 }
 
@@ -435,7 +432,7 @@ impl TranscribeSession {
         model: ModelEntry,
         language: LanguageChoice,
     ) -> Option<HistoryId> {
-        let language = language.for_model(model.language == Language::EnglishOnly);
+        let language = language.for_support(&model.language.support());
         let settings = self.settings.peek();
         let mut compute = ComputeOptions::from_settings(&settings);
         let picked = self.device_override.peek().clone();
@@ -449,7 +446,7 @@ impl TranscribeSession {
         let request = TranscriptionRequest {
             file: FileSource::Uploaded(file.id.clone()),
             model: ModelId::new(model.id.clone()),
-            language: language.request_code(),
+            language: language.request_tag(),
             compute,
             hugging_face_token: settings.model.hugging_face_token.clone(),
         };
@@ -745,7 +742,7 @@ fn finished(
         source_path: record.file.source_path.clone(),
         model_id: record.model.id.clone(),
         model_label: record.model.label.clone(),
-        language: record.language_code(),
+        language: record.language_code().map(|tag| tag.to_string()),
         language_origin,
         processing_seconds: completion.processing_seconds,
         audio_seconds,

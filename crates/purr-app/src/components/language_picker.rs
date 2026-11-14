@@ -8,14 +8,11 @@ use super::{
 };
 use crate::utils::primary_key::use_primary_key_label;
 use crate::{
-    components::toast::use_toasts,
-    hooks::use_models::use_models,
-    model_catalog::entry::{Language as ModelLanguage, ModelEntry},
-    settings_store::use_settings,
-    transcribe::language_choice::{LanguageChoice, options},
+    components::toast::use_toasts, hooks::use_models::use_models, model_catalog::entry::ModelEntry,
+    settings_store::use_settings, transcribe::language_choice::options,
 };
 use dioxus::prelude::*;
-use purr_common::Language;
+use purr_common::language::{choice::LanguageChoice, known, support::LanguageSupport};
 
 const AUTOMATIC_HINT: &str = "Detects the language from the first 30 seconds";
 
@@ -42,22 +39,32 @@ pub fn LanguagePill(
             settings.model.model_name.clone(),
         )
     });
-    let english_only = target == PickTarget::Current
-        && models.find(&model).is_some_and(|info| {
-            ModelEntry::from_info(&info).language == ModelLanguage::EnglishOnly
-        });
-    let (value, detail, hint, selected, english_only) = match saved {
-        None => ("Last used".to_owned(), None, None, String::new(), false),
+    let support = match target {
+        PickTarget::Current => models.find(&model).map_or(LanguageSupport::Any, |info| {
+            ModelEntry::from_info(&info).language.support()
+        }),
+        PickTarget::Default => LanguageSupport::Any,
+    };
+    let (value, detail, hint, selected, support) = match saved {
+        None => (
+            "Last used".to_owned(),
+            None,
+            None,
+            String::new(),
+            LanguageSupport::Any,
+        ),
         Some(selected) => {
-            let choice = LanguageChoice::from_setting(&selected).for_model(english_only);
-            let (detail, hint) = match (&choice, english_only) {
-                (_, true) => (Some("English only".to_owned()), None),
-                (LanguageChoice::Automatic, false) => {
+            let choice = LanguageChoice::from_setting(&selected).for_support(&support);
+            let (detail, hint) = match (&choice, support.is_any()) {
+                (LanguageChoice::Spoken(_), false) => {
+                    (Some(format!("{} only", choice.label())), None)
+                }
+                (LanguageChoice::Automatic, _) => {
                     (None, Some(format!("Automatic · {AUTOMATIC_HINT}")))
                 }
-                (LanguageChoice::Spoken(_), false) => (None, None),
+                (LanguageChoice::Spoken(_), true) => (None, None),
             };
-            (choice.label(), detail, hint, selected, english_only)
+            (choice.label(), detail, hint, selected, support)
         }
     };
     rsx! {
@@ -76,7 +83,7 @@ pub fn LanguagePill(
             LanguagePicker {
                 anchor: id,
                 selected,
-                english_only,
+                support,
                 target,
                 on_close: move |()| open.set(false),
             }
@@ -97,9 +104,9 @@ pub fn LanguagePicker(
     /// The language setting: a Whisper code or `auto`; empty when none is, as with Last used.
     #[props(into)]
     selected: String,
-    /// The chosen model only transcribes English.
-    #[props(default)]
-    english_only: bool,
+    /// The languages the chosen model transcribes.
+    #[props(default = LanguageSupport::Any)]
+    support: LanguageSupport,
     #[props(default)] target: PickTarget,
     on_close: EventHandler<()>,
 ) -> Element {
@@ -108,13 +115,25 @@ pub fn LanguagePicker(
     let nav = use_list_nav();
     let mut query = use_signal(String::new);
 
+    let restricted = !support.is_any();
     let none_selected = selected.is_empty();
     let current =
-        (!none_selected).then(|| LanguageChoice::from_setting(&selected).for_model(english_only));
-    let choices = if english_only {
-        vec![LanguageChoice::Spoken(Language::En)]
-    } else {
-        options(&query())
+        (!none_selected).then(|| LanguageChoice::from_setting(&selected).for_support(&support));
+    let choices = match &support {
+        LanguageSupport::Any => options(&query()),
+        LanguageSupport::Only(listed) => {
+            listed.iter().cloned().map(LanguageChoice::Spoken).collect()
+        }
+    };
+    let note = match &support {
+        LanguageSupport::Any => None,
+        LanguageSupport::Only(_) => Some(match support.single() {
+            Some(tag) => format!(
+                "This model only transcribes {}.",
+                LanguageChoice::Spoken(tag.clone()).label()
+            ),
+            None => "This model only transcribes the languages listed.".to_owned(),
+        }),
     };
     let last_used = target == PickTarget::Default;
     let rows: Vec<NavRow> = last_used
@@ -130,13 +149,13 @@ pub fn LanguagePicker(
     let is_active = |key: &str| active.as_deref() == Some(key);
 
     let choose = move |choice: LanguageChoice| {
-        if english_only {
+        if restricted {
             on_close.call(());
             return;
         }
         let saved = match target {
             PickTarget::Current => settings.set_language(choice.setting()),
-            PickTarget::Default => settings.set_default_language(Some(choice.setting().to_owned())),
+            PickTarget::Default => settings.set_default_language(Some(choice.setting())),
         };
         match saved {
             Ok(()) => on_close.call(()),
@@ -153,10 +172,10 @@ pub fn LanguagePicker(
     };
 
     let primary_key = use_primary_key_label();
-    let alt_enabled = target == PickTarget::Current && !english_only;
+    let alt_enabled = target == PickTarget::Current && !restricted;
     let default_hint = alt_enabled.then(|| format!("{}+Click to set as default", primary_key()));
     let choose_default = move |choice: LanguageChoice| {
-        let code = choice.setting().to_owned();
+        let code = choice.setting();
         let saved = settings.update(|settings| {
             settings.ui.language.clone_from(&code);
             settings.ui.default_language = Some(code);
@@ -200,10 +219,10 @@ pub fn LanguagePicker(
             nav,
             rows,
             on_enter,
-            search: (!english_only).then(|| format!("Search {} languages", Language::VARIANTS.len() - 1)),
+            search: (!restricted).then(|| format!("Search {} languages", known::all().len())),
             query: query(),
             on_query: move |value: String| query.set(value),
-            note: english_only.then(|| rsx! { "This model only transcribes English." }),
+            note: note.map(|text| rsx! { "{text}" }),
             status,
             if last_used {
                 LastUsedOption {
@@ -217,12 +236,12 @@ pub fn LanguagePicker(
             for choice in choices {
                 PopoverOption {
                     key: "{choice.setting()}",
-                    id: nav.row_id(choice.setting()),
+                    id: nav.row_id(&choice.setting()),
                     title: choice.label(),
                     subtitle: (choice == LanguageChoice::Automatic).then(|| AUTOMATIC_HINT.to_owned()),
                     role: OptionRole::Option,
                     selected: current.as_ref() == Some(&choice),
-                    highlighted: is_active(choice.setting()),
+                    highlighted: is_active(&choice.setting()),
                     hint: default_hint.clone(),
                     on_alt: alt_enabled
                         .then(|| {
@@ -231,7 +250,7 @@ pub fn LanguagePicker(
                         }),
                     on_hover: {
                         let key = choice.setting();
-                        move |()| nav.point(key)
+                        move |()| nav.point(&key)
                     },
                     leading: rsx! {
                         if current.as_ref() == Some(&choice) {

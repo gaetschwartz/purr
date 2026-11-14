@@ -1,33 +1,17 @@
-use purr_common::Language;
+use purr_common::language::{known, tag::LanguageTag};
 
-/// Upper-cases the first letter of `word`.
-#[must_use]
-pub fn capitalized(word: &str) -> String {
-    let mut chars = word.chars();
-    chars
-        .next()
-        .map(|first| first.to_uppercase().chain(chars).collect())
-        .unwrap_or_default()
-}
-
-/// A readable name for a Whisper language code, the code itself when it is not known.
+/// A readable name for a stored language code, the code itself when it is not known.
 #[must_use]
 pub fn language_label(code: &str) -> String {
-    code.parse::<Language>().map_or_else(
-        |()| code.to_owned(),
-        |language| capitalized(language.name()),
-    )
+    LanguageTag::parse(code)
+        .ok()
+        .and_then(|tag| known::display_name(&tag))
+        .unwrap_or_else(|| code.to_owned())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn capitalizes_the_first_letter_only() {
-        assert_eq!(capitalized("french"), "French");
-        assert_eq!(capitalized(""), "");
-    }
 
     #[test]
     fn known_codes_become_names() {
@@ -36,7 +20,15 @@ mod tests {
     }
 
     #[test]
+    fn codes_stored_under_an_old_spelling_become_names() {
+        assert_eq!(language_label("iw"), "Hebrew");
+        assert_eq!(language_label("jw"), "Javanese");
+        assert_eq!(language_label("FR"), "French");
+    }
+
+    #[test]
     fn unknown_codes_are_kept() {
         assert_eq!(language_label("zz"), "zz");
+        assert_eq!(language_label("not a code"), "not a code");
     }
 }

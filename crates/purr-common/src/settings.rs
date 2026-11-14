@@ -362,6 +362,32 @@ mod tests {
     }
 
     #[test]
+    fn languages_saved_under_old_spellings_read_as_the_current_ones() {
+        use crate::language::choice::LanguageChoice;
+
+        let from_browser: UiSettings = serde_json::from_str(
+            r#"{"theme":"Dark","compact_mode":false,"language":"iw","default_language":"JW"}"#,
+        )
+        .unwrap();
+        let from_file: UiSettings = toml::from_str(
+            "theme = \"Dark\"
+compact_mode = false
+language = \"Pt_br\"
+default_language = \"auto\"
+",
+        )
+        .unwrap();
+        let read = |text: &str| LanguageChoice::from_setting(text).setting();
+        assert_eq!(read(&from_browser.language), "he");
+        assert_eq!(
+            read(from_browser.default_language.as_deref().unwrap()),
+            "jv"
+        );
+        assert_eq!(read(&from_file.language), "pt-BR");
+        assert_eq!(read(from_file.default_language.as_deref().unwrap()), "auto");
+    }
+
+    #[test]
     fn ui_settings_saved_before_reduce_transparency_still_load() {
         let saved = r#"{"theme":"Dark","compact_mode":false,"language":"fr"}"#;
         let ui: UiSettings = serde_json::from_str(saved).unwrap();

@@ -25,6 +25,7 @@ use crate::{
         listing::HistoryListing,
     },
     hugging_face_token::HuggingFaceToken,
+    language::tag::LanguageTag,
     progress::ProgressFrame,
     settings::Settings,
     word::Word,
@@ -350,7 +351,7 @@ pub struct TranscriptionRequest {
     /// The model to transcribe with, as listed by [`Platform::list_available_models`]
     pub model: ModelId,
     /// Optional language (auto-detect if None)
-    pub language: Option<String>,
+    pub language: Option<LanguageTag>,
     /// Which compute the run uses; platforms that do not choose their own hardware ignore it
     pub compute: ComputeOptions,
     /// Authenticates the downloads of a model that is not stored yet; desktop only fetches its voice activity model with it
@@ -455,8 +456,8 @@ pub enum TranscriptionStatus {
     Compute { run: LastRun },
     /// The execution provider a browser run settled on, reported before the model runs
     BrowserCompute { compute: BrowserCompute },
-    /// The platform recognised the spoken language (a Whisper language code)
-    LanguageDetected { language: String },
+    /// The platform recognised the spoken language
+    LanguageDetected { language: LanguageTag },
     /// Transcription in progress; `text` is the whole current text of segment `chunk_index`, and
     /// `words` its words when the engine reports them. A tentative `kind` is the uncommitted
     /// end of the transcript, see [`ChunkKind`]

@@ -8,6 +8,7 @@ use crate::{
     error::{Error, Result, TranscriptionError},
     whisper::{
         SyncTranscriptionResult, TranscriptionSegment, TranscriptionStats, WhisperTranscriber,
+        language::whisper_code,
         loader::{SpecialTokens, load_model},
         segments,
     },
@@ -73,7 +74,13 @@ impl SyncWhisperTranscriber {
         };
 
         // Configure parameters
-        params.set_language(self.config.language.as_deref());
+        let language = self
+            .config
+            .language
+            .as_ref()
+            .map(whisper_code)
+            .transpose()?;
+        params.set_language(language);
 
         let threads = config
             .num_threads

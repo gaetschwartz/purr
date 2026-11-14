@@ -5589,13 +5589,10 @@ version = "0.1.0"
 dependencies = [
  "ambassador",
  "bytes",
- "clap",
  "const-str 1.1.0",
  "futures",
  "hex",
  "miette",
- "paste",
- "phf",
  "pretty_assertions",
  "rstest",
  "serde",

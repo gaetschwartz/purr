@@ -26,6 +26,7 @@ use purr_common::history::{
     listing::HistoryListing,
 };
 use purr_common::hugging_face_token::HuggingFaceToken;
+use purr_common::language::{tag::LanguageTag, whisper};
 use purr_common::platform::{
     DeviceInfo, DeviceType, FileId, FileSource, ModelCheckSender, ModelFailureKind, ModelInfo,
     ModelIntegrity, ModelOperationProgress, ModelProgressStream, Platform, PlatformError,
@@ -227,7 +228,7 @@ struct Transcription {
     spec: WebModelSpec,
     model_cached: bool,
     bytes: Bytes,
-    language: Option<String>,
+    language: Option<LanguageTag>,
     hugging_face_token: Option<HuggingFaceToken>,
     devices: DeviceOrder,
 }
@@ -297,7 +298,7 @@ async fn run_transcription(
             request_id: worker.next_request_id(),
             model: WorkerModel::from(&spec),
             provider: choice.provider(),
-            language: language.clone(),
+            language: language.as_ref().map(|tag| whisper::code(tag).to_owned()),
             english_only: spec.english_only(),
             hugging_face_token: hugging_face_token.clone(),
         };

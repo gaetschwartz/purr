@@ -2,8 +2,8 @@
 
 use super::transcript::Transcript;
 use purr_common::{
-    accel::LastRun, browser_compute::BrowserCompute, platform::TranscriptionStatus,
-    progress::ProgressFrame,
+    accel::LastRun, browser_compute::BrowserCompute, language::tag::LanguageTag,
+    platform::TranscriptionStatus, progress::ProgressFrame,
 };
 
 /// The step a running transcription is in, in the order they happen.
@@ -65,7 +65,7 @@ pub struct Run {
     pub browser_compute: Option<BrowserCompute>,
     pub transcript: Transcript,
     /// The Whisper code the platform recognised, when it was asked to detect the language.
-    pub detected_language: Option<String>,
+    pub detected_language: Option<LanguageTag>,
     /// The latest progress the platform reported, apart from the transcript.
     pub progress: Option<ProgressFrame>,
     pub outcome: RunOutcome,
@@ -238,12 +238,12 @@ mod tests {
         assert_eq!(detecting.stage, Stage::DetectingLanguage);
         detecting.apply(
             &TranscriptionStatus::LanguageDetected {
-                language: "fr".to_owned(),
+                language: "fr".parse().unwrap(),
             },
             2.0,
         );
         assert_eq!(detecting.stage, Stage::Transcribing);
-        assert_eq!(detecting.detected_language.as_deref(), Some("fr"));
+        assert_eq!(detecting.detected_language, Some("fr".parse().unwrap()));
 
         let mut forced = Run::new(false, 0.0);
         forced.apply(&TranscriptionStatus::Transcribing, 1.0);
@@ -380,7 +380,7 @@ mod tests {
         assert_eq!(run.progress_seconds(40.0), 0.0);
         run.apply(
             &TranscriptionStatus::LanguageDetected {
-                language: "fr".to_owned(),
+                language: "fr".parse().unwrap(),
             },
             2.0,
         );

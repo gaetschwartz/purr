@@ -286,10 +286,10 @@ mod tests {
         assert_eq!(
             mapper.map(WorkerEvent::LanguageDetected {
                 request_id: ID,
-                language: "fr".to_owned(),
+                language: "fr".parse()?,
             }),
             Some(TranscriptionStatus::LanguageDetected {
-                language: "fr".to_owned()
+                language: "fr".parse()?
             })
         );
         Ok(())

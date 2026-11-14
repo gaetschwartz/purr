@@ -14,7 +14,9 @@ pub mod sync;
 mod tentative;
 pub mod words;
 
-use purr_common::{platform::ChunkKind, progress::ProgressFrame, word::Word};
+use purr_common::{
+    language::tag::LanguageTag, platform::ChunkKind, progress::ProgressFrame, word::Word,
+};
 use serde::{Deserialize, Serialize};
 use std::future::Future;
 
@@ -119,8 +121,8 @@ pub struct StreamingChunk {
     /// Final statistics (only present on the very last chunk)
     pub final_stats: Option<TranscriptionStats>,
 
-    /// The language Whisper recognised in this chunk (a Whisper code), when it was asked to detect it
-    pub language: Option<String>,
+    /// The language Whisper recognised in this chunk, when it was asked to detect it
+    pub language: Option<LanguageTag>,
 
     /// Whether the text is final, or only the uncommitted tail shown early
     pub kind: ChunkKind,

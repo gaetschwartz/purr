@@ -1,12 +1,9 @@
 //! Configuration options for transcription
 
 use serde::{Deserialize, Serialize};
-use std::{
-    borrow::Cow,
-    path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 
-use purr_common::devices::DeviceOrder;
+use purr_common::{devices::DeviceOrder, language::tag::LanguageTag};
 
 /// The threads a transcription uses when none is asked for: one per physical core, because
 /// ggml's threads wait on each other and a second hardware thread per core slows them down.
@@ -21,8 +18,8 @@ pub struct TranscriptionConfig {
     /// Path to the Whisper model file
     pub model_path: Option<PathBuf>,
 
-    /// Language code (e.g., "en", "es", "fr")
-    pub language: Option<Cow<'static, str>>,
+    /// The spoken language; detected when `None`
+    pub language: Option<LanguageTag>,
 
     /// The devices to try, first to last; the processor is the last resort
     pub devices: DeviceOrder,
@@ -127,14 +124,14 @@ impl TranscriptionConfig {
     }
 
     /// Set the language
-    pub fn with_language<S: Into<Cow<'static, str>>>(mut self, language: S) -> Self {
-        self.language = Some(language.into());
+    pub fn with_language(mut self, language: LanguageTag) -> Self {
+        self.language = Some(language);
         self
     }
 
     /// Optionally set the language
-    pub fn with_opt_language<S: Into<Cow<'static, str>>>(mut self, language: Option<S>) -> Self {
-        self.language = language.map(Into::into);
+    pub fn with_opt_language(mut self, language: Option<LanguageTag>) -> Self {
+        self.language = language;
         self
     }
 

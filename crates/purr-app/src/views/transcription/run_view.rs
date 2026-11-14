@@ -24,7 +24,6 @@ use crate::{
         chosen_file::OverviewState,
         compute_label::ComputeLabel,
         eta::EtaText,
-        language_choice::LanguageChoice,
         run::{RunOutcome, Stage},
         session::{RunRecord, TranscribeSession, use_transcribe_session},
         timing,
@@ -37,6 +36,7 @@ use crate::{
 };
 use dioxus::{prelude::*, router::Navigator};
 use glide_driver::{GlideDriver, GlideInput, GlidePhase};
+use purr_common::language::choice::LanguageChoice;
 use status::RunStatus;
 use std::rc::Rc;
 
@@ -50,7 +50,7 @@ fn language_text(record: &RunRecord) -> String {
         &record.run.outcome,
     ) {
         (LanguageChoice::Automatic, Some(code), _) => {
-            format!("{} (detected)", language_label(&code))
+            format!("{} (detected)", language_label(code.as_str()))
         }
         (LanguageChoice::Automatic, None, RunOutcome::Running) => {
             "Language not known yet".to_owned()
@@ -162,7 +162,7 @@ pub fn RunView(record: RunRecord) -> Element {
     let export = ExportSource {
         file_name: record.file.name.clone(),
         model: record.model.id.clone(),
-        language: record.language_code(),
+        language: record.language_code().map(|tag| tag.to_string()),
         duration_seconds: total,
         segments: Rc::clone(&segments),
     };

@@ -6,13 +6,10 @@ edition = "2024"
 [dependencies]
 ambassador = "0.5.1"
 bytes = { version = "1.10.1", features = ["serde"] }
-clap = { version = "4.5.48", features = ["derive"], optional = true }
 const-str = { version = "1.1.0", features = ["all"] }
 futures = "0.3.31"
 hex = "0.4.3"
 miette = "7.6.0"
-paste = "1.0.15"
-phf = { version = "0.14.0", features = ["macros"] }
 serde = { version = "1.0.225", features = ["derive"] }
 serde_json = "1.0"
 serde_with = "3.24.0"
@@ -27,7 +24,6 @@ toml = "1.2"
 
 [features]
 default = []
-clap = ["dep:clap"]
 
 [lints]
 workspace = true

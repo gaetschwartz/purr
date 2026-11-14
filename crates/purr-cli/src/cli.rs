@@ -1,4 +1,5 @@
 use crate::color::ColorChoice;
+use crate::language_arg::parse_language;
 use crate::logging::level::LogLevel;
 use crate::theme::CLAP_STYLES;
 use crate::verbosity::Verbosity;
@@ -7,8 +8,8 @@ use clap::{
     builder::{PossibleValue, TypedValueParser},
     error::ErrorKind,
 };
-use purr_common::Language;
 use purr_common::devices::{DeviceDefaults, DeviceOrder};
+use purr_common::language::choice::LanguageChoice;
 use purr_core::accel::{
     backend::AccelBackend,
     devices::DetectedDevice,
@@ -34,9 +35,9 @@ pub struct Cli {
     #[arg(short, long)]
     pub model: Option<String>,
 
-    /// Language code (e.g., en, es, fr). Auto-detect if not specified
-    #[arg(short, long)]
-    pub language: Option<Language>,
+    /// Spoken language: a name (french), a code (fr) or a tag (pt-BR). Auto-detect if not specified
+    #[arg(short, long, value_name = "LANGUAGE", value_parser = parse_language)]
+    pub language: Option<LanguageChoice>,
 
     /// Which backend's devices to try first. `auto` keeps the usual order (CUDA, ROCm, CoreML,
     /// Metal, SYCL, Vulkan, CPU). A named backend goes first and the other devices follow as
@@ -406,7 +407,7 @@ pub trait TranscriptionConfigWithCliExt {
 impl TranscriptionConfigWithCliExt for purr_core::TranscriptionConfig {
     fn with_cli_options(self, cli: &Cli) -> Self {
         self.with_verbose(cli.verbosity.is_verbose())
-            .with_opt_language(cli.language.as_ref().map(Language::code))
+            .with_opt_language(cli.language.as_ref().and_then(LanguageChoice::request_tag))
             .with_threads(cli.threads.unwrap_or_else(purr_core::config::auto_threads))
             .with_sample_rate(cli.sample_rate)
             .with_chunk_size(cli.chunk_size)
@@ -444,50 +445,6 @@ pub const ASCII_ART: &str = r"
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn lang_parsing() {
-        for code in Language::VARIANTS_CODES {
-            let lang: Language = code.parse().unwrap();
-            assert_eq!(lang.code(), *code);
-        }
-        for lang in Language::VARIANTS_LANGUAGES {
-            let lang_enum: Language = lang.parse().unwrap();
-            assert_eq!(lang_enum.name(), *lang);
-        }
-        for (lang, code) in Language::ADDITIONAL_MAPPINGS {
-            let lang_enum: Language = lang.parse().unwrap();
-            assert_eq!(lang_enum.code(), *code);
-        }
-    }
-
-    #[test]
-    fn clap_value_enum() {
-        #[derive(clap::Parser, Debug)]
-        struct Opts {
-            #[clap(value_enum)]
-            lang: Language,
-        }
-
-        for code in Language::VARIANTS_CODES {
-            let opts = Opts::try_parse_from(["test", code]).unwrap_or_else(|e| {
-                panic!("Failed to parse '{code}': {e}");
-            });
-            assert_eq!(opts.lang.code(), *code);
-        }
-        for lang in Language::VARIANTS_LANGUAGES {
-            let opts = Opts::try_parse_from(["test", lang]).unwrap_or_else(|e| {
-                panic!("Failed to parse '{lang}': {e}");
-            });
-            assert_eq!(opts.lang.name(), *lang);
-        }
-        for (lang, code) in Language::ADDITIONAL_MAPPINGS {
-            let opts = Opts::try_parse_from(["test", lang]).unwrap_or_else(|e| {
-                panic!("Failed to parse '{lang}': {e}");
-            });
-            assert_eq!(opts.lang.code(), *code);
-        }
-    }
 
     fn cli_of(args: &[&str]) -> Cli {
         let args = ["purr", "audio.wav"]
@@ -714,17 +671,23 @@ mod tests {
     }
 
     #[test]
-    fn auto_lang() {
-        #[derive(clap::Parser, Debug)]
-        struct Opts {
-            #[clap(value_enum)]
-            lang: Language,
-        }
-
-        let opts = Opts::try_parse_from(["test", "auto"]).unwrap_or_else(|e| {
-            panic!("Failed to parse 'auto': {e}");
-        });
-        assert_eq!(opts.lang.code(), "auto");
-        assert_eq!(opts.lang.name(), "auto");
+    fn the_language_flag_takes_names_and_tags() {
+        assert_eq!(
+            cli_of(&["--language", "hebrew"]).language,
+            Some(LanguageChoice::Spoken("he".parse().unwrap()))
+        );
+        assert_eq!(
+            cli_of(&["-l", "pt-BR"]).language,
+            Some(LanguageChoice::Spoken("pt-BR".parse().unwrap()))
+        );
+        assert_eq!(
+            cli_of(&["-l", "auto"]).language,
+            Some(LanguageChoice::Automatic)
+        );
+        assert_eq!(cli_of(&[]).language, None);
+        assert_eq!(
+            parse_error(&["--language", "klingon"]),
+            ErrorKind::ValueValidation
+        );
     }
 }

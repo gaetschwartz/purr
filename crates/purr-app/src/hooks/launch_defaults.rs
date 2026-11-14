@@ -1,5 +1,6 @@
 use crate::settings_store::{status::LoadState, use_settings};
 use dioxus::prelude::*;
+use purr_common::language::choice::LanguageChoice;
 
 /// Starts the session with the default model and language, once the settings have loaded.
 pub fn use_launch_defaults() {
@@ -23,8 +24,11 @@ pub fn use_launch_defaults() {
         {
             tracing::warn!("Could not start with the default model: {error}");
         }
-        if let Some(default_language) = default_language.filter(|default| *default != language)
-            && let Err(error) = settings.set_language(default_language)
+        let language = LanguageChoice::from_setting(&language);
+        if let Some(default_language) = default_language
+            .map(|default| LanguageChoice::from_setting(&default))
+            .filter(|default| *default != language)
+            && let Err(error) = settings.set_language(default_language.setting())
         {
             tracing::warn!("Could not start with the default language: {error}");
         }

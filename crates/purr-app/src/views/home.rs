@@ -26,7 +26,6 @@ use crate::{
     transcribe::{
         chosen_file::OverviewState,
         expected_browser_compute::expected_browser_compute,
-        language_choice::LanguageChoice,
         session::use_transcribe_session,
         start_plan::{FileReadiness, ModelChoice, StartPlan, plan_start},
         timing,
@@ -37,6 +36,7 @@ use cancelled_notice::CancelledNotice;
 use dioxus::{html::HasFileData, prelude::*};
 use model_notice::ModelNotice;
 use purr_common::browser_compute::BrowserCompute;
+use purr_common::language::choice::LanguageChoice;
 use recent::Recent;
 use run_link::RunLink;
 

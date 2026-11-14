@@ -1,5 +1,6 @@
 //! The JSON the CLI prints: one object per streamed chunk, or one document without streaming.
 
+use purr_common::language::tag::LanguageTag;
 use purr_common::word::Word;
 use purr_core::{
     StreamingChunk, SyncTranscriptionResult, accel::report::AccelReport,
@@ -75,7 +76,7 @@ pub fn chunk(chunk: &StreamingChunk, with_words: bool) -> JsonChunk<'_> {
         is_final: chunk.is_final,
         chunk_index: chunk.chunk_index,
         final_stats: chunk.final_stats.as_ref(),
-        language: chunk.language.as_deref(),
+        language: chunk.language.as_ref().map(LanguageTag::as_str),
         words: with_words.then(|| words(&chunk.text, &chunk.words)),
     }
 }

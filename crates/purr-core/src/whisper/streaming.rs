@@ -7,7 +7,7 @@ use crate::{
         StreamEvent, StreamProgress, StreamingChunk, TranscriptionResult, TranscriptionStats,
         WhisperTranscriber,
         commit::{Span, WindowKind, commit},
-        language::{LanguageCode, StreamLanguage},
+        language::{StreamLanguage, detected_tag, whisper_code},
         loader::{SpecialTokens, load_model},
         segments,
         speech::{SpeechDetector, last_pause},
@@ -16,6 +16,7 @@ use crate::{
 };
 use futures::{FutureExt, Stream, StreamExt};
 use purr_common::{
+    language::tag::LanguageTag,
     platform::ChunkKind,
     progress::{ProgressFrame, ProgressPhase},
     word::Word,
@@ -161,15 +162,12 @@ impl Session {
         let threads = config
             .num_threads
             .unwrap_or_else(crate::config::auto_threads);
-        let language = match config.language.as_deref() {
-            None | Some("auto") => StreamLanguage::Detecting,
-            Some(code) => StreamLanguage::Chosen(
-                whisper_rs::get_lang_id(code)
-                    .and_then(whisper_rs::get_lang_str)
-                    .ok_or_else(|| TranscriptionError::UnknownLanguage {
-                        code: code.to_owned(),
-                    })?,
-            ),
+        let language = match &config.language {
+            None => StreamLanguage::Detecting,
+            Some(tag) => {
+                whisper_code(tag)?;
+                StreamLanguage::Chosen(tag.clone())
+            }
         };
         let speech = config
             .vad_model_path
@@ -257,7 +255,7 @@ impl Session {
         }
     }
 
-    fn detect_language(&mut self, window: &[f32]) -> crate::Result<(LanguageCode, f32)> {
+    fn detect_language(&mut self, window: &[f32]) -> crate::Result<(LanguageTag, f32)> {
         self.state
             .pcm_to_mel(window, self.threads)
             .map_err(|source| TranscriptionError::Failed { source })?;
@@ -265,16 +263,15 @@ impl Session {
             .state
             .lang_detect(0, self.threads)
             .map_err(|source| TranscriptionError::Failed { source })?;
-        let code =
-            whisper_rs::get_lang_str(id).ok_or(TranscriptionError::UnknownLanguageId { id })?;
+        let tag = detected_tag(id)?;
         let probability = usize::try_from(id)
             .ok()
             .and_then(|i| probabilities.get(i).copied())
             .ok_or(TranscriptionError::UnknownLanguageId { id })?;
-        Ok((code, probability))
+        Ok((tag, probability))
     }
 
-    fn decode(&mut self, window: &[f32], language: LanguageCode) -> crate::Result<Vec<Decoded>> {
+    fn decode(&mut self, window: &[f32], language: &LanguageTag) -> crate::Result<Vec<Decoded>> {
         let beam_size = self.config.beam_size.unwrap_or(5) as i32;
         let mut params = if beam_size > 1 {
             FullParams::new(SamplingStrategy::BeamSearch {
@@ -284,7 +281,7 @@ impl Session {
         } else {
             FullParams::new(SamplingStrategy::Greedy { best_of: 5 })
         };
-        params.set_language(Some(language));
+        params.set_language(Some(whisper_code(language)?));
         params.set_n_threads(self.threads as i32);
         params.set_print_timestamps(false);
         params.set_print_progress(false);
@@ -351,7 +348,7 @@ impl Session {
         &self,
         parts: &[&Decoded],
         len: usize,
-        language: Option<LanguageCode>,
+        language: Option<LanguageTag>,
     ) -> StreamingChunk {
         let sr = self.sample_rate();
         let origin_cs = u32::try_from(self.origin / SAMPLES_PER_CENTISECOND).unwrap_or(u32::MAX);
@@ -382,7 +379,7 @@ impl Session {
             is_final: false,
             chunk_index: self.chunk_index,
             final_stats: None,
-            language: language.map(str::to_owned),
+            language,
             kind: ChunkKind::Tentative,
             words,
         }
@@ -392,15 +389,15 @@ impl Session {
     /// language lock stay as they were.
     fn tentative(&mut self) -> crate::Result<StreamEvent> {
         let window = self.pending.clone();
-        let language = match self.language {
-            StreamLanguage::Chosen(code) | StreamLanguage::Locked(code) => code,
+        let language = match &self.language {
+            StreamLanguage::Chosen(tag) | StreamLanguage::Locked(tag) => tag.clone(),
             StreamLanguage::Detecting => self.detect_language(&window)?.0,
         };
-        let decoded = self.decode(&window, language)?;
+        let decoded = self.decode(&window, &language)?;
         self.tentative_mark = window.len();
         let parts: Vec<&Decoded> = decoded.iter().filter(|d| !d.text.is_empty()).collect();
-        let reported = match self.language {
-            StreamLanguage::Locked(code) => Some(code),
+        let reported = match &self.language {
+            StreamLanguage::Locked(tag) => Some(tag.clone()),
             StreamLanguage::Chosen(_) | StreamLanguage::Detecting => None,
         };
         Ok(StreamEvent::Chunk(self.tentative_chunk(
@@ -442,13 +439,13 @@ impl Session {
 
         let (mut decoded, language) = if spoke {
             self.send(self.progress(Some((self.origin, self.origin + len))));
-            let (language, probability) = match self.language {
-                StreamLanguage::Chosen(code) | StreamLanguage::Locked(code) => (code, 1.0),
+            let (language, probability) = match &self.language {
+                StreamLanguage::Chosen(tag) | StreamLanguage::Locked(tag) => (tag.clone(), 1.0),
                 StreamLanguage::Detecting => self.detect_language(&window)?,
             };
-            let decoded = self.decode(&window, language)?;
+            let decoded = self.decode(&window, &language)?;
             let spoken = decoded.iter().any(|d| !d.text.is_empty());
-            if let Some(locked) = self.language.observe(language, probability, spoken) {
+            if let Some(locked) = self.language.observe(&language, probability, spoken) {
                 debug!("Streaming language locked to {locked} (p = {probability:.2})");
             }
             (decoded, Some(language))
@@ -469,8 +466,8 @@ impl Session {
 
         let tail = decoded.split_off(decision.segments);
 
-        let reported = match self.language {
-            StreamLanguage::Locked(code) => Some(code),
+        let reported = match &self.language {
+            StreamLanguage::Locked(tag) => Some(tag.clone()),
             StreamLanguage::Detecting if kind == WindowKind::Last => language,
             StreamLanguage::Chosen(_) | StreamLanguage::Detecting => None,
         };
@@ -486,7 +483,7 @@ impl Session {
                 is_final: false,
                 chunk_index: self.chunk_index,
                 final_stats: None,
-                language: reported.map(str::to_owned),
+                language: reported.clone(),
                 kind: ChunkKind::Committed,
                 words: d
                     .words
@@ -502,7 +499,7 @@ impl Session {
 
         if kind == WindowKind::Full && self.config.tentative != TentativeText::Off {
             let parts: Vec<&Decoded> = tail.iter().filter(|d| !d.text.is_empty()).collect();
-            chunks.push(self.tentative_chunk(&parts, len, reported));
+            chunks.push(self.tentative_chunk(&parts, len, reported.clone()));
         }
 
         self.consume(decision.advance);
@@ -518,7 +515,7 @@ impl Session {
                     is_final: false,
                     chunk_index: self.chunk_index,
                     final_stats: None,
-                    language: reported.map(str::to_owned),
+                    language: reported.clone(),
                     kind: ChunkKind::Committed,
                     words: Vec::new(),
                 });
@@ -700,7 +697,7 @@ mod tests {
             let config = TranscriptionConfig::new()
                 .with_gpu(false)
                 .with_threads(4)
-                .with_language("en")
+                .with_language(LanguageTag::english())
                 .with_model_path(&model)
                 .with_tentative(tentative);
             let transcriber = StreamWhisperTranscriber::from_config(config).await?;

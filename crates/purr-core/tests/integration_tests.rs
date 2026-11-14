@@ -1,5 +1,6 @@
 //! Integration tests for purr-core
 
+use purr_common::language::tag::LanguageTag;
 use purr_core::*;
 use rstest::rstest;
 use std::path::Path;
@@ -8,12 +9,12 @@ use std::path::Path;
 #[tokio::test]
 async fn test_transcription_config() {
     let config = TranscriptionConfig::new()
-        .with_language("en")
+        .with_language(LanguageTag::english())
         .with_gpu(false)
         .with_threads(2)
         .with_sample_rate(16000);
 
-    assert_eq!(config.language, Some("en".into()));
+    assert_eq!(config.language, Some(LanguageTag::english()));
     assert_eq!(
         config.devices,
         purr_common::devices::DeviceOrder::cpu_only()
@@ -44,7 +45,7 @@ async fn test_transcription_configurations() {
     let configs = vec![
         TranscriptionConfig::new()
             .with_gpu(false)
-            .with_language("en"),
+            .with_language(LanguageTag::english()),
         TranscriptionConfig::new().with_gpu(false).with_threads(1),
         TranscriptionConfig::new()
             .with_gpu(false)
@@ -90,7 +91,7 @@ async fn test_transcription_output_formats() {
 
     let mut config = TranscriptionConfig::new()
         .with_gpu(false)
-        .with_language("en");
+        .with_language(LanguageTag::english());
 
     // Test with word timestamps enabled
     config.output_format.word_timestamps = true;

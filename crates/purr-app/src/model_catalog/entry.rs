@@ -1,5 +1,8 @@
 use super::family::{ModelFamily, ModelGroup};
-use purr_common::platform::{ModelInfo, model_flag};
+use purr_common::{
+    language::support::LanguageSupport,
+    platform::{ModelInfo, model_flag},
+};
 
 /// Platform attribute that names the model's size class.
 const FAMILY_ATTRIBUTE: &str = "family";
@@ -12,6 +15,15 @@ pub enum Language {
 }
 
 impl Language {
+    /// The spoken languages the model transcribes.
+    #[must_use]
+    pub fn support(self) -> LanguageSupport {
+        match self {
+            Self::Multilingual => LanguageSupport::Any,
+            Self::EnglishOnly => LanguageSupport::english_only(),
+        }
+    }
+
     /// The tag text.
     #[must_use]
     pub const fn label(self) -> &'static str {
