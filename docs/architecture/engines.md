@@ -158,7 +158,8 @@ Input (file, URL, AudioStream)
   everything else, including a truncated or repeating output, to `DecodeError::Engine`.
 - Models: three GGUF files of `parakeet-tdt-0.6b-v3` (F16, Q8_0, Q4_K_M) from the `handy-computer`
   repository pinned in the manifest, CC BY 4.0. `ModelFamily::attribution` carries who made a
-  family and what the downloaded files change; `purr models info` prints it.
+  family and what the downloaded files change; `purr models info` prints it and the app's Licenses
+  page lists it (`views::licenses::models`). Nothing else in the app or the CLI listings shows it.
 
 ## What the app and the CLI take from the model
 
@@ -169,20 +170,22 @@ a format has one engine (`EngineId::loading`), and `ModelManager::reference` rea
 the catalog or from the file's first bytes.
 
 - Language control (`transcribe::language_choice`): `Only(list)` offers exactly that list; a model
-  with `language_hint: ignored` offers "Automatic" and the list read-only, with a note that choosing
-  one does not steer it; one with `detection: silent` never makes a run wait for a detected language
-  and every place that shows a language (More menu, History rows, JSON export) says "not reported"
-  or shows nothing. Stored languages are rewritten under their current spelling when settings load
+  with `language_hint: ignored` disables the Spoken language pill, which shows "Automatic" with the
+  tooltip "<model> detects the language itself". The run uses Automatic for such a model
+  (`LanguageChoice::for_profile`) and the saved language stays in settings for other models. One with
+  `detection: silent` never makes a run wait for a detected language and every place that shows a
+  language (More menu, History rows, JSON export) says "not reported" or shows nothing. Stored
+  languages are rewritten under their current spelling when settings load
   (`Settings::canonicalize_languages`).
 - CLI `--language` is checked against the catalog model's profile before the model loads
   (`language_arg::check`): a language the model does not list is `LanguageProblem::Unsupported`, one it
   lists but ignores is a warning and the hint is dropped from the run. A file outside the catalog has
   no profile, so the pipeline's own `supports` check applies.
-- Models (`model_catalog`): sections per size for Whisper and one for Parakeet; a section whose
-  licence asks for credit (`ModelLicense::requires_attribution`) shows `ModelFamily::attribution`
-  under it, including what the files change. The picker heads each line of models when it lists
-  several, with the licence beside the line. A model whose engine is not in `engines::all()` shows
-  "Not in this build" and cannot be picked.
+- Models (`model_catalog`): sections per size for Whisper and one for Parakeet. The picker heads
+  each line of models when it lists several. A model whose engine is not in `engines::all()` shows
+  "Not in this build" and cannot be picked. Licences are not shown there: the Licenses page has a
+  Models section with the credit of every family whose licence asks for it
+  (`ModelLicense::requires_attribution`), read from `ModelFamily::attribution`.
 - Devices: the Transcribe screen's device override offers the devices the selected model's engine can
   use (`DeviceRow::usable_by`, from `seen_by`); a pick that the new model's engine cannot use is dropped.
 - An engine that is built in but cannot be used when a run starts (`Engine::availability`) fails the

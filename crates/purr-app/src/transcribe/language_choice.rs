@@ -29,19 +29,25 @@ pub fn options(query: &str) -> Vec<LanguageChoice> {
         .collect()
 }
 
-/// Whether the model leaves nothing to choose: it knows one language, or finds it itself.
+/// Whether the model finds the language itself, whatever it is told.
+#[must_use]
+pub fn ignores_hint(profile: &ModelProfile) -> bool {
+    match profile.language_hint {
+        HintEffect::Ignored => true,
+        HintEffect::Steers | HintEffect::Required => false,
+    }
+}
+
+/// Whether the model knows one language, so there is nothing to choose.
 #[must_use]
 pub fn is_locked(profile: &ModelProfile) -> bool {
     match profile.language_hint {
-        HintEffect::Ignored => true,
+        HintEffect::Ignored => false,
         HintEffect::Steers | HintEffect::Required => profile.languages.single().is_some(),
     }
 }
 
 /// The picker's list for `query` with the model of `profile`; any language when no model is known.
-///
-/// A model that finds the language itself lists "Automatic", which is what applies, and the
-/// languages it knows to read; choosing one of them changes nothing.
 #[must_use]
 pub fn choices(profile: Option<&ModelProfile>, query: &str) -> Vec<LanguageChoice> {
     let Some(profile) = profile else {
@@ -58,10 +64,7 @@ pub fn choices(profile: Option<&ModelProfile>, query: &str) -> Vec<LanguageChoic
     let automatic =
         (query.is_empty() || matches_automatic(&query)).then_some(LanguageChoice::Automatic);
     match (&profile.language_hint, &profile.languages) {
-        (HintEffect::Ignored, LanguageSupport::Any) => vec![LanguageChoice::Automatic],
-        (HintEffect::Ignored, LanguageSupport::Only(tags)) => {
-            automatic.into_iter().chain(listed(tags)).collect()
-        }
+        (HintEffect::Ignored, _) => vec![LanguageChoice::Automatic],
         (HintEffect::Steers | HintEffect::Required, LanguageSupport::Any) => {
             let mut list = options(&query);
             if !profile.can_detect() {
@@ -91,37 +94,60 @@ pub fn spoken_count(profile: Option<&ModelProfile>) -> usize {
         .count()
 }
 
-/// What the picker says about a model that restricts the choice; `name` is how the model is called.
+/// What the picker says about a model that knows one language.
 #[must_use]
-pub fn note(profile: &ModelProfile, name: &str) -> Option<String> {
-    match profile.language_hint {
-        HintEffect::Ignored => Some(match &profile.languages {
-            LanguageSupport::Any => format!("{name} finds the language itself."),
-            LanguageSupport::Only(tags) => format!(
-                "{name} finds the language itself, so choosing one does not steer it.                  It transcribes the {} languages below.",
-                tags.len()
-            ),
-        }),
-        HintEffect::Steers | HintEffect::Required => profile.languages.single().map(|tag| {
-            format!(
-                "This model only transcribes {}.",
-                LanguageChoice::Spoken(tag.clone()).label()
-            )
-        }),
+pub fn note(profile: &ModelProfile) -> Option<String> {
+    if !is_locked(profile) {
+        return None;
+    }
+    profile.languages.single().map(|tag| {
+        format!(
+            "This model only transcribes {}.",
+            LanguageChoice::Spoken(tag.clone()).label()
+        )
+    })
+}
+
+/// What "Automatic" does with `profile`: it detects the language, and says which when the model
+/// reports it.
+#[must_use]
+pub fn automatic_hint(profile: Option<&ModelProfile>) -> &'static str {
+    match profile.map(|profile| profile.detection) {
+        Some(DetectionReport::Silent) => "Detects the language without reporting it",
+        Some(DetectionReport::Reported) | None => "Detects the language from the first 30 seconds",
     }
 }
 
-/// What "Automatic" does with `profile`: it detects the language and says which, or the model
-/// finds the language itself and does not say.
+/// What the language pill adds to its value: a detail beside its caption, and a tooltip.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct PillNotes {
+    pub detail: Option<String>,
+    pub hint: Option<String>,
+}
+
+/// The notes of the pill showing `choice` for the model of `profile`, called `name`.
 #[must_use]
-pub fn automatic_hint(profile: Option<&ModelProfile>, name: &str) -> String {
-    match profile.map(|profile| profile.detection) {
-        Some(DetectionReport::Silent) => {
-            format!("{name} finds the language itself and doesn't report it")
-        }
-        Some(DetectionReport::Reported) | None => {
-            "Detects the language from the first 30 seconds".to_owned()
-        }
+pub fn pill_notes(
+    choice: &LanguageChoice,
+    profile: Option<&ModelProfile>,
+    name: &str,
+) -> PillNotes {
+    if profile.is_some_and(ignores_hint) {
+        return PillNotes {
+            detail: None,
+            hint: Some(format!("{name} detects the language itself")),
+        };
+    }
+    match choice {
+        LanguageChoice::Spoken(_) if profile.is_some_and(is_locked) => PillNotes {
+            detail: Some(format!("{} only", choice.label())),
+            hint: None,
+        },
+        LanguageChoice::Spoken(_) => PillNotes::default(),
+        LanguageChoice::Automatic => PillNotes {
+            detail: None,
+            hint: Some(format!("Automatic · {}", automatic_hint(profile))),
+        },
     }
 }
 
@@ -229,21 +255,11 @@ mod tests {
     fn a_model_that_knows_one_language_offers_only_it() {
         let english = profile(HintEffect::Steers, LanguageSupport::english_only());
         assert!(is_locked(&english));
+        assert!(!ignores_hint(&english));
         assert_eq!(choices(Some(&english), "fr"), vec![spoken("en")]);
         assert_eq!(
-            note(&english, "Tiny"),
+            note(&english),
             Some("This model only transcribes English.".to_owned())
-        );
-    }
-
-    #[test]
-    fn a_model_without_a_hint_offers_only_detection() {
-        let ignored = profile(HintEffect::Ignored, LanguageSupport::Any);
-        assert!(is_locked(&ignored));
-        assert_eq!(choices(Some(&ignored), ""), vec![LanguageChoice::Automatic]);
-        assert_eq!(
-            note(&ignored, "Moonshine"),
-            Some("Moonshine finds the language itself.".to_owned())
         );
     }
 
@@ -252,26 +268,18 @@ mod tests {
     }
 
     #[test]
-    fn a_model_that_finds_the_language_itself_lists_automatic_then_the_languages_it_knows() {
-        let profile = parakeet();
-        assert!(is_locked(&profile));
-        let offered = choices(Some(&profile), "");
-        assert_eq!(offered.first(), Some(&LanguageChoice::Automatic));
-        assert_eq!(offered.len(), 26);
-        assert_eq!(spoken_count(Some(&profile)), 25);
-        assert_eq!(offered.get(1), Some(&spoken("bg")));
-        assert!(!offered.contains(&spoken("ja")));
+    fn a_model_that_finds_the_language_itself_ignores_the_hint() {
+        assert!(ignores_hint(&parakeet()));
+        assert!(!is_locked(&parakeet()));
+        let ignored = profile(HintEffect::Ignored, LanguageSupport::Any);
+        assert!(ignores_hint(&ignored));
+        assert_eq!(note(&ignored), None);
     }
 
     #[test]
-    fn searching_the_languages_of_such_a_model_filters_that_list_only() {
-        let profile = parakeet();
-        assert_eq!(choices(Some(&profile), "fre"), vec![spoken("fr")]);
-        assert_eq!(choices(Some(&profile), "jap"), Vec::<LanguageChoice>::new());
-        assert_eq!(
-            choices(Some(&profile), "de"),
-            vec![LanguageChoice::Automatic, spoken("de")]
-        );
+    fn a_model_the_hint_steers_does_not_ignore_it() {
+        let whisper = crate::model_catalog::test_support::whisper_profile(false, false);
+        assert!(!ignores_hint(&whisper));
     }
 
     #[test]
@@ -331,30 +339,66 @@ mod tests {
     }
 
     #[test]
-    fn the_note_of_such_a_model_says_the_choice_does_not_steer_it() {
+    fn automatic_says_it_detects_and_whether_the_language_is_reported() {
+        let whisper = crate::model_catalog::test_support::whisper_profile(false, false);
         assert_eq!(
-            note(&parakeet(), "Parakeet TDT v3"),
-            Some(
-                "Parakeet TDT v3 finds the language itself, so choosing one does not steer it.                  It transcribes the 25 languages below."
-                    .to_owned()
-            )
+            automatic_hint(Some(&whisper)),
+            "Detects the language from the first 30 seconds"
+        );
+        assert_eq!(
+            automatic_hint(None),
+            "Detects the language from the first 30 seconds"
+        );
+        assert_eq!(
+            automatic_hint(Some(&parakeet())),
+            "Detects the language without reporting it"
         );
     }
 
     #[test]
-    fn automatic_says_nothing_about_detecting_when_the_model_never_reports_a_language() {
-        assert_eq!(
-            automatic_hint(Some(&parakeet()), "Parakeet TDT v3"),
-            "Parakeet TDT v3 finds the language itself and doesn't report it"
+    fn the_pill_of_a_model_that_ignores_the_hint_says_it_detects_the_language_itself() {
+        let notes = pill_notes(
+            &LanguageChoice::Automatic,
+            Some(&parakeet()),
+            "Parakeet TDT v3",
         );
+        assert_eq!(
+            notes,
+            PillNotes {
+                detail: None,
+                hint: Some("Parakeet TDT v3 detects the language itself".to_owned())
+            }
+        );
+        let saved = pill_notes(&spoken("fr"), Some(&parakeet()), "Parakeet TDT v3");
+        assert_eq!(saved, notes);
+    }
+
+    #[test]
+    fn the_pill_of_a_model_that_knows_one_language_names_it() {
+        let english = profile(HintEffect::Steers, LanguageSupport::english_only());
+        assert_eq!(
+            pill_notes(&spoken("en"), Some(&english), "Tiny"),
+            PillNotes {
+                detail: Some("English only".to_owned()),
+                hint: None
+            }
+        );
+    }
+
+    #[test]
+    fn the_pill_of_a_model_the_hint_steers_explains_automatic_only() {
         let whisper = crate::model_catalog::test_support::whisper_profile(false, false);
         assert_eq!(
-            automatic_hint(Some(&whisper), "Base"),
-            "Detects the language from the first 30 seconds"
+            pill_notes(&LanguageChoice::Automatic, Some(&whisper), "Base").hint,
+            Some("Automatic · Detects the language from the first 30 seconds".to_owned())
         );
         assert_eq!(
-            automatic_hint(None, "Base"),
-            "Detects the language from the first 30 seconds"
+            pill_notes(&spoken("fr"), Some(&whisper), "Base"),
+            PillNotes::default()
+        );
+        assert_eq!(
+            pill_notes(&spoken("fr"), None, "This model"),
+            PillNotes::default()
         );
     }
 
@@ -383,7 +427,7 @@ mod tests {
             choices(Some(&few), ""),
             vec![LanguageChoice::Automatic, spoken("en"), spoken("fr")]
         );
-        assert_eq!(note(&few, "Few"), None);
+        assert_eq!(note(&few), None);
     }
 
     #[test]

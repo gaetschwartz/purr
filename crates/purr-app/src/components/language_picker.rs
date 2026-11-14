@@ -6,13 +6,14 @@ use super::{
     popover::{OptionRole, PopoverOption},
     presence::Presence,
 };
+use crate::transcribe::language_choice::PillNotes;
 use crate::utils::primary_key::use_primary_key_label;
 use crate::{
     components::toast::use_toasts,
     hooks::use_models::use_models,
     settings_store::use_settings,
     transcribe::language_choice::{
-        automatic_hint, choices, for_model, is_locked, note, spoken_count,
+        automatic_hint, choices, for_model, ignores_hint, is_locked, note, pill_notes, spoken_count,
     },
 };
 use dioxus::prelude::*;
@@ -22,7 +23,8 @@ const UNKNOWN_MODEL: &str = "This model";
 
 /// The run-bar pill showing the spoken language; it opens a [`LanguagePicker`].
 ///
-/// With an English-only model selected it shows English, whatever the setting says.
+/// With an English-only model selected it shows English, whatever the setting says. With a model
+/// that finds the language itself it is disabled and shows Automatic; the setting is left as it is.
 #[component]
 pub fn LanguagePill(
     /// The pill's DOM id, which the popover hangs from.
@@ -52,25 +54,18 @@ pub fn LanguagePill(
         .map_or(UNKNOWN_MODEL, |info| info.descriptor.family.label())
         .to_owned();
     let profile = info.map(|info| info.descriptor.profile);
-    let locked = profile.as_ref().is_some_and(is_locked);
-    let (value, detail, hint, selected, profile) = match saved {
-        None => ("Last used".to_owned(), None, None, String::new(), None),
+    let ignored = profile.as_ref().is_some_and(ignores_hint);
+    let (value, notes, selected, profile) = match saved {
+        None => (
+            "Last used".to_owned(),
+            PillNotes::default(),
+            String::new(),
+            None,
+        ),
         Some(selected) => {
             let choice = for_model(LanguageChoice::from_setting(&selected), profile.as_ref());
-            let (detail, hint) = match (&choice, locked) {
-                (LanguageChoice::Spoken(_), true) => {
-                    (Some(format!("{} only", choice.label())), None)
-                }
-                (LanguageChoice::Automatic, _) => (
-                    None,
-                    Some(format!(
-                        "Automatic · {}",
-                        automatic_hint(profile.as_ref(), &name)
-                    )),
-                ),
-                (LanguageChoice::Spoken(_), false) => (None, None),
-            };
-            (choice.label(), detail, hint, selected, profile)
+            let notes = pill_notes(&choice, profile.as_ref(), &name);
+            (choice.label(), notes, selected, profile)
         }
     };
     rsx! {
@@ -79,10 +74,10 @@ pub fn LanguagePill(
             icon: IconName::Globe,
             label: "Spoken language",
             value,
-            detail,
-            hint,
+            detail: notes.detail,
+            hint: notes.hint,
             expanded: open(),
-            disabled,
+            disabled: disabled || ignored,
             onclick: move |_| open.toggle(),
         }
         Presence { present: open(),
@@ -90,7 +85,6 @@ pub fn LanguagePill(
                 anchor: id,
                 selected,
                 profile,
-                model: name,
                 target,
                 on_close: move |()| open.set(false),
             }
@@ -114,9 +108,6 @@ pub fn LanguagePicker(
     /// What the chosen model does with a language; absent when no model is known.
     #[props(default)]
     profile: Option<ModelProfile>,
-    /// How the model is called in the notes about it.
-    #[props(into, default = UNKNOWN_MODEL.to_owned())]
-    model: String,
     #[props(default)] target: PickTarget,
     on_close: EventHandler<()>,
 ) -> Element {
@@ -130,8 +121,8 @@ pub fn LanguagePicker(
     let current = (!none_selected)
         .then(|| for_model(LanguageChoice::from_setting(&selected), profile.as_ref()));
     let choices = choices(profile.as_ref(), &query());
-    let note = profile.as_ref().and_then(|profile| note(profile, &model));
-    let automatic_subtitle = automatic_hint(profile.as_ref(), &model);
+    let note = profile.as_ref().and_then(note);
+    let automatic_subtitle = automatic_hint(profile.as_ref());
     let language_count = spoken_count(profile.as_ref());
     let last_used = target == PickTarget::Default;
     let rows: Vec<NavRow> = last_used
@@ -236,7 +227,7 @@ pub fn LanguagePicker(
                     key: "{choice.setting()}",
                     id: nav.row_id(&choice.setting()),
                     title: choice.label(),
-                    subtitle: (choice == LanguageChoice::Automatic).then(|| automatic_subtitle.clone()),
+                    subtitle: (choice == LanguageChoice::Automatic).then(|| automatic_subtitle.to_owned()),
                     role: OptionRole::Option,
                     selected: current.as_ref() == Some(&choice),
                     highlighted: is_active(&choice.setting()),
