@@ -14,6 +14,7 @@ use crate::{
         report::UnavailableReason, vulkan_probe,
     },
     cpu,
+    engine::Engine,
 };
 
 /// GPU device information
@@ -58,10 +59,10 @@ pub struct SystemInfo {
 }
 
 impl SystemInfo {
-    /// Check system capabilities and available GPU devices
+    /// Check system capabilities and the GPU devices `engine` can use
     #[must_use]
-    pub fn get() -> Self {
-        let mut inventory = Inventory::detect();
+    pub fn get(engine: &dyn Engine) -> Self {
+        let mut inventory = Inventory::detect(engine);
         vulkan_probe::attach_drivers(&mut inventory.devices);
 
         let detected = detect(&inventory);

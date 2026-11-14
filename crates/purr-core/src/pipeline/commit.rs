@@ -1,11 +1,6 @@
 //! Which decoded segments of a streaming window are final, and where the next window starts.
 
-/// A decoded segment's span, in samples from the start of its window.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Span {
-    pub start: usize,
-    pub end: usize,
-}
+use crate::engine::hypothesis::Span;
 
 /// How much audio may still follow a window.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -29,11 +24,12 @@ pub struct Commit {
     pub advance: usize,
 }
 
-/// Commits every segment that Whisper closed before `margin` samples from the window's end, and
+/// Commits every segment the engine closed before `margin` samples from the window's end, and
 /// starts the next window at the end of the last committed segment.
 ///
-/// A segment Whisper did not close ends 30 s after it starts, past the window, so it is
-/// committed only when the window cannot grow and no closed segment lets it advance.
+/// A segment the engine did not close ends past the window (Whisper ends it 30 s after it
+/// starts), so it is committed only when the window cannot grow and no closed segment lets it
+/// advance.
 pub fn commit(spans: &[Span], len: usize, margin: usize, kind: WindowKind) -> Commit {
     let horizon = len.saturating_sub(margin);
     let through = |limit: usize| {

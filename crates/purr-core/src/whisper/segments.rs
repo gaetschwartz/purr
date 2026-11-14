@@ -1,30 +1,21 @@
 //! The segments of the last `full()` call, with their words.
 
-use crate::{
-    error::{Result, TranscriptionError},
-    whisper::words::{Token, group},
-};
-use purr_common::word::Word;
+use crate::engine::hypothesis::{Segment, Span};
 use tracing::debug;
 use whisper_rs::WhisperState;
 
-/// A segment of the last decoded window, timed in centiseconds from the window start.
-pub struct DecodedSegment {
-    pub start_cs: i64,
-    pub end_cs: i64,
-    /// The trimmed text
-    pub text: String,
-    /// The words of `text`, timed from the window start
-    pub words: Vec<Word>,
-}
+use super::{
+    error::WhisperEngineError,
+    words::{Token, group},
+};
+
+const SAMPLES_PER_CENTISECOND: usize = 160;
 
 /// Reads every segment `state` holds; `eot` is the model's end-of-text token id.
-pub fn read(state: &WhisperState, eot: i32) -> Result<Vec<DecodedSegment>> {
+pub fn read(state: &WhisperState, eot: i32) -> Result<Vec<Segment>, WhisperEngineError> {
     let mut decoded = Vec::new();
     for segment in state.as_iter() {
-        let raw = segment
-            .to_str_lossy()
-            .map_err(|source| TranscriptionError::Failed { source })?;
+        let raw = segment.to_str_lossy()?;
         let (start_cs, end_cs) = (segment.start_timestamp(), segment.end_timestamp());
         let mut tokens = Vec::new();
         for index in 0..segment.n_tokens() {
@@ -34,9 +25,7 @@ pub fn read(state: &WhisperState, eot: i32) -> Result<Vec<DecodedSegment>> {
             let data = token.token_data();
             tokens.push(Token {
                 id: data.id,
-                bytes: token
-                    .to_bytes()
-                    .map_err(|source| TranscriptionError::Failed { source })?,
+                bytes: token.to_bytes()?,
                 p: data.p,
                 t0: data.t0,
                 t1: data.t1,
@@ -51,10 +40,12 @@ pub fn read(state: &WhisperState, eot: i32) -> Result<Vec<DecodedSegment>> {
             );
             (raw.trim().to_owned(), Vec::new())
         };
-        decoded.push(DecodedSegment {
-            start_cs,
-            end_cs,
+        decoded.push(Segment {
             text,
+            span: Some(Span {
+                start: start_cs.max(0) as usize * SAMPLES_PER_CENTISECOND,
+                end: end_cs.max(0) as usize * SAMPLES_PER_CENTISECOND,
+            }),
             words,
         });
     }

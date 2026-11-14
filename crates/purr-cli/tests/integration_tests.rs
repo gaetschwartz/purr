@@ -22,7 +22,7 @@ fn test_missing_audio_file() {
 #[timeout(Duration::from_secs(600))]
 #[tokio::test]
 async fn slow_test_cli_transcribe_sample_files(#[files("../../samples/*")] sample_path: PathBuf) {
-    use purr_core::SyncTranscriptionResult;
+    use purr_core::pipeline::result::SyncTranscriptionResult;
     assert!(
         Path::new(&TINY_MODEL).exists(),
         "Tiny model not found at {TINY_MODEL}. Please download it to run tests."

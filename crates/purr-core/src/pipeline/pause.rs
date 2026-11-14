@@ -1,44 +1,6 @@
-//! Where speech is in a streaming window, from whisper.cpp's Silero voice activity detector.
+//! Where a window can end without cutting a word.
 
-use crate::{error::TranscriptionError, whisper::commit::Span};
-use std::path::Path;
-use whisper_rs::{WhisperVadContext, WhisperVadContextParams, WhisperVadParams};
-
-const SAMPLES_PER_CENTISECOND: f32 = 160.0;
-
-/// whisper.cpp's Silero voice activity detector.
-pub struct SpeechDetector {
-    context: WhisperVadContext,
-}
-
-impl SpeechDetector {
-    pub fn load(path: &Path) -> Result<Self, TranscriptionError> {
-        let mut params = WhisperVadContextParams::new();
-        params.set_n_threads(1);
-        let context =
-            WhisperVadContext::new(&path.to_string_lossy(), params).map_err(|source| {
-                TranscriptionError::VadModel {
-                    path: path.to_owned(),
-                    source,
-                }
-            })?;
-        Ok(Self { context })
-    }
-
-    /// The spans of `samples` that hold speech, in order.
-    pub fn speech(&mut self, samples: &[f32]) -> Result<Vec<Span>, TranscriptionError> {
-        let segments = self
-            .context
-            .segments_from_samples(WhisperVadParams::new(), samples)
-            .map_err(|source| TranscriptionError::Failed { source })?;
-        Ok(segments
-            .map(|segment| Span {
-                start: (segment.start.max(0.0) * SAMPLES_PER_CENTISECOND) as usize,
-                end: ((segment.end.max(0.0) * SAMPLES_PER_CENTISECOND) as usize).min(samples.len()),
-            })
-            .collect())
-    }
-}
+use crate::engine::hypothesis::Span;
 
 /// The latest point of a window that falls in a pause between words, where the window can end
 /// without cutting one, at least `min_window` samples in.

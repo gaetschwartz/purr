@@ -4,7 +4,10 @@ use crate::model::digest::Sha256Digest;
 use purr_common::model::{engine::EngineId, format::ModelFormat};
 use std::path::PathBuf;
 
-use crate::accel::report::{AccelAttempt, AttemptOutcome};
+use crate::{
+    accel::report::{AccelAttempt, AttemptOutcome},
+    engine::error::{DecodeError, DetectError, OpenError},
+};
 
 // ========================================
 // Dedicated Error Types for Transparent Wrapper Pattern
@@ -177,35 +180,42 @@ impl ConfigurationError {
 /// Transcription-related errors
 #[derive(Debug, thiserror::Error, miette::Diagnostic)]
 pub enum TranscriptionError {
-    #[error("Failed to create Whisper state: {source}")]
-    #[diagnostic(code(whisper::transcription::state_creation))]
-    StateCreation {
-        #[source]
-        source: whisper_rs::WhisperError,
-    },
-
     #[error("Transcription failed: {source}")]
     #[diagnostic(code(whisper::transcription::failed))]
-    Failed {
+    Decode {
         #[source]
-        source: whisper_rs::WhisperError,
+        source: DecodeError,
     },
 
-    #[error("Whisper does not know the language `{code}`")]
+    #[error("Voice activity detection failed: {source}")]
+    #[diagnostic(code(whisper::transcription::speech_detection))]
+    Detect {
+        #[source]
+        source: DetectError,
+    },
+
+    #[error("Failed to load the model: {source}")]
+    #[diagnostic(code(whisper::transcription::open))]
+    Open {
+        #[source]
+        source: OpenError,
+    },
+
+    #[error("The model does not know the language `{code}`")]
     #[diagnostic(code(whisper::transcription::unknown_language))]
     UnknownLanguage { code: String },
-
-    #[error("Whisper detected a language id it has no code for: {id}")]
-    #[diagnostic(code(whisper::transcription::unknown_language_id))]
-    UnknownLanguageId { id: i32 },
 
     #[error("Failed to load the voice activity model {}: {source}", path.display())]
     #[diagnostic(code(whisper::transcription::vad_model))]
     VadModel {
         path: std::path::PathBuf,
         #[source]
-        source: whisper_rs::WhisperError,
+        source: OpenError,
     },
+
+    #[error("This build has no {engine} engine")]
+    #[diagnostic(code(whisper::transcription::engine_missing))]
+    EngineMissing { engine: EngineId },
 }
 
 /// Acceleration backend selection errors
@@ -292,13 +302,6 @@ pub enum Error {
     AudioProcessing {
         #[from]
         source: AudioProcessingError,
-    },
-
-    #[error("Whisper model error: {source}")]
-    #[diagnostic(code(whisper::model::error))]
-    Whisper {
-        #[from]
-        source: whisper_rs::WhisperError,
     },
 
     #[error("IO operation failed: {source}")]

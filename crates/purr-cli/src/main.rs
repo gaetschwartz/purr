@@ -5,6 +5,7 @@ mod build_info;
 mod cli;
 mod color;
 mod download_prompt;
+mod engines;
 mod global;
 mod json;
 mod language_arg;
@@ -24,19 +25,25 @@ mod vt;
 
 use crate::download_prompt::prompt_for_model_download;
 use crate::theme::Themed as _;
-use cli::{ASCII_ART, Cli, Commands, OutputFormat, TranscriptionConfigWithCliExt};
+use cli::{ASCII_ART, Cli, Commands, OutputFormat};
 use futures::StreamExt as _;
 use indicatif::{ProgressBar, ProgressFinish, ProgressStyle};
 use miette::IntoDiagnostic as _;
 use purr_common::platform::ChunkKind;
 use purr_core::accel::inventory::Inventory;
 use purr_core::{
-    ModelManager, StreamEvent, StreamingTranscription, TranscriptionConfig, install_logging_hooks,
-    is_file_path, is_valid_url, model::vad_or_none, transcribe_file_stream, transcribe_file_sync,
-    transcribe_url_stream, transcribe_url_sync,
+    ModelManager,
+    config::{ModelRef, RunConfig, Windowing},
+    is_file_path, is_valid_url,
+    model::vad_or_none,
+    pipeline::{
+        events::{StreamEvent, Transcription},
+        result::{SyncTranscriptionResult, collect},
+        run::{Input, transcribe},
+    },
 };
 use std::borrow::Cow;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use tracing::{debug, info};
 
@@ -59,7 +66,10 @@ async fn main_impl() -> miette::Result<()> {
 
     logging::init(cli)?;
     debug!("Command line arguments: {:?}", cli);
-    install_logging_hooks();
+    let engines = engines::all();
+    for engine in &engines {
+        engine.install_logging();
+    }
 
     if let Some(command) = &cli.command {
         return handle_command(command).await;
@@ -92,40 +102,35 @@ async fn main_impl() -> miette::Result<()> {
     info!("Input: {audio_input} ({kind})");
     statusln!("{} {} ({kind})", "Transcribing:".info(), audio_input.path());
 
-    let config = setup_config(cli).await?;
+    let (config, model) = setup_config(cli).await?;
 
     if let Some(lang) = &config.language {
         info!("Language: {lang}");
         statusln!("{} {lang}", "Language:".info());
     }
 
+    let input = if is_url {
+        Input::url(&audio_input, cli.input_config()).into_diagnostic()?
+    } else {
+        Input::File(PathBuf::from(&audio_input))
+    };
+
     if cli.no_stream {
         debug!("Transcribing without streaming");
-
-        let result = if is_url {
-            transcribe_url_sync(&audio_input, Some(config))
-                .await
-                .into_diagnostic()?
-        } else {
-            transcribe_file_sync(&audio_input, Some(config))
-                .await
-                .into_diagnostic()?
-        };
-
-        handle_output(result, cli)?;
+        let transcription = transcribe(
+            input,
+            config.with_windowing(Windowing::Whole),
+            &model,
+            &engines,
+        )
+        .await
+        .into_diagnostic()?;
+        handle_output(collect(transcription).await.into_diagnostic()?, cli)?;
     } else {
         debug!("Streaming transcription");
-
-        let stream = if is_url {
-            transcribe_url_stream(&audio_input, config)
-                .await
-                .into_diagnostic()?
-        } else {
-            transcribe_file_stream(&audio_input, config)
-                .await
-                .into_diagnostic()?
-        };
-
+        let stream = transcribe(input, config, &model, &engines)
+            .await
+            .into_diagnostic()?;
         handle_streaming_output(stream, cli).await?;
     }
 
@@ -142,10 +147,7 @@ fn progress_line_bar() -> miette::Result<ProgressBar> {
 }
 
 /// Handle streaming transcription output
-async fn handle_streaming_output(
-    mut stream: StreamingTranscription,
-    cli: &Cli,
-) -> miette::Result<()> {
+async fn handle_streaming_output(mut stream: Transcription, cli: &Cli) -> miette::Result<()> {
     use std::fs;
 
     let mut all_chunks = Vec::new();
@@ -274,30 +276,26 @@ fn format_srt_time(seconds: f64) -> String {
     format!("{hours:02}:{minutes:02}:{secs:02},{millis:03}")
 }
 
-async fn setup_config(cli: &Cli) -> miette::Result<TranscriptionConfig> {
-    let mut config = TranscriptionConfig::new();
+async fn setup_config(cli: &Cli) -> miette::Result<(RunConfig, ModelRef)> {
+    let model = setup_model(cli).await?;
 
-    config = setup_model_config(cli, config).await?;
-
-    config = config.with_cli_options(cli);
+    let mut config = cli.run_config();
     if cli.device.is_some() {
-        let detected = purr_core::accel::devices::detect(&Inventory::detect());
+        let detected = purr_core::accel::devices::detect(&Inventory::detect(&engines::hardware()));
         config = config.with_devices(cli.device_order_among(&detected).into_diagnostic()?);
     }
 
-    if config.vad_model_path.is_none() {
+    if config.vad_model.is_none() {
         let installed = ModelManager::new()?.vad_model_path().await;
         config = config.with_vad_model(vad_or_none(installed));
     }
 
-    Ok(config)
+    Ok((config, model))
 }
 
-async fn setup_model_config(
-    cli: &Cli,
-    mut config: TranscriptionConfig,
-) -> Result<TranscriptionConfig, miette::Error> {
+async fn setup_model(cli: &Cli) -> Result<ModelRef, miette::Error> {
     let model_manager = ModelManager::new()?;
+    let path: PathBuf;
     if let Some(ref model_string) = cli.model {
         let model_path = Path::new(model_string);
         if model_path.is_absolute() {
@@ -307,19 +305,19 @@ async fn setup_model_config(
                     model_path.display()
                 ));
             }
-            config = config.with_model_path(model_path);
+            path = model_path.to_path_buf();
         } else {
             let model_path = std::env::current_dir().into_diagnostic()?.join(model_path);
             if model_path.exists() {
-                config = config.with_model_path(model_path);
+                path = model_path;
             } else {
                 let model = model_manager.model(model_string)?;
                 if model_manager.is_model_downloaded(model).await? {
-                    config = config.with_model_path(model_manager.get_model_path(model));
+                    path = model_manager.get_model_path(model);
                 } else if let Some(model_path) =
                     prompt_for_model_download(&model_manager, Some(model)).await?
                 {
-                    config = config.with_model_path(model_path);
+                    path = model_path;
                 } else {
                     return Err(miette::miette!(
                         "No model specified and no downloaded models found."
@@ -328,18 +326,18 @@ async fn setup_model_config(
             }
         }
     } else if let Some(model) = model_manager.find_first_available_model().await? {
-        config = config.with_model_path(model);
+        path = model;
     } else if let Some(model_path) = prompt_for_model_download(&model_manager, None).await? {
-        config = config.with_model_path(model_path);
+        path = model_path;
     } else {
         return Err(miette::miette!(
             "No model specified and no downloaded models found."
         ));
     }
-    Ok(config)
+    Ok(model_manager.reference(path))
 }
 
-fn handle_output(result: purr_core::SyncTranscriptionResult, cli: &Cli) -> miette::Result<()> {
+fn handle_output(result: SyncTranscriptionResult, cli: &Cli) -> miette::Result<()> {
     let output_content = match cli.output {
         OutputFormat::Text => {
             if cli.timestamps {

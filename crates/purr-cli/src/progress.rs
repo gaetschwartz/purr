@@ -1,6 +1,6 @@
 //! The `--progress` line.
 
-use purr_core::whisper::StreamProgress;
+use purr_core::pipeline::events::StreamProgress;
 
 /// `seconds` as `m:ss`, or `h:mm:ss` from an hour on.
 #[must_use]

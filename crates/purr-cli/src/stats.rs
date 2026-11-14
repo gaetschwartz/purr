@@ -2,7 +2,7 @@
 
 use crate::statusln;
 use crate::theme::Themed as _;
-use purr_core::whisper::TranscriptionStats;
+use purr_core::pipeline::events::TranscriptionStats;
 
 /// The block's lines; `acceleration` is only known for a transcription that was not streamed.
 pub fn lines(stats: &TranscriptionStats, acceleration: Option<&str>) -> Vec<String> {

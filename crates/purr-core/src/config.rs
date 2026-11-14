@@ -1,9 +1,9 @@
-//! Configuration options for transcription
+//! What a transcription is asked to do: the model, how to run it, and how to read its input.
 
+use std::path::PathBuf;
+
+use purr_common::{devices::DeviceOrder, language::tag::LanguageTag, model::engine::EngineId};
 use serde::{Deserialize, Serialize};
-use std::path::{Path, PathBuf};
-
-use purr_common::{devices::DeviceOrder, language::tag::LanguageTag};
 
 /// The threads a transcription uses when none is asked for: one per physical core, because
 /// ggml's threads wait on each other and a second hardware thread per core slows them down.
@@ -12,12 +12,36 @@ pub fn auto_threads() -> usize {
     num_cpus::get_physical().max(1)
 }
 
-/// Configuration for transcription operations
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TranscriptionConfig {
-    /// Path to the Whisper model file
-    pub model_path: Option<PathBuf>,
+/// A model file and the engine that runs it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModelRef {
+    pub path: PathBuf,
+    pub engine: EngineId,
+}
 
+impl ModelRef {
+    pub fn new(path: impl Into<PathBuf>, engine: EngineId) -> Self {
+        Self {
+            path: path.into(),
+            engine,
+        }
+    }
+}
+
+/// Whether the transcript arrives while the audio is decoded, or once all of it is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Windowing {
+    /// Window after window, each committed as soon as nothing after it can change it
+    #[default]
+    Stream,
+    /// The whole source in one decode once it has all arrived, when the model takes audio of any
+    /// length; otherwise as `Stream`
+    Whole,
+}
+
+/// How a transcription runs.
+#[derive(Debug, Clone)]
+pub struct RunConfig {
     /// The spoken language; detected when `None`
     pub language: Option<LanguageTag>,
 
@@ -25,19 +49,7 @@ pub struct TranscriptionConfig {
     pub devices: DeviceOrder,
 
     /// Number of threads to use
-    pub num_threads: Option<usize>,
-
-    /// Sample rate to use in Hz. 16'000 is the recommended and default value.
-    pub sample_rate: u32,
-
-    /// Beam size for beam search
-    pub beam_size: Option<usize>,
-
-    /// Output format options
-    pub output_format: OutputFormat,
-
-    /// Enable verbose debug output
-    pub verbose: bool,
+    pub threads: Option<usize>,
 
     /// Seconds of new audio a stream with a voice activity model gathers before it looks for a
     /// pause to decode up to
@@ -45,16 +57,15 @@ pub struct TranscriptionConfig {
 
     /// Silero voice activity model (ggml): streaming windows end at pauses in speech, and windows
     /// without speech are not decoded
-    pub vad_model_path: Option<PathBuf>,
+    pub vad_model: Option<PathBuf>,
 
     /// Whether and when the stream shows text it has not committed yet
     pub tentative: TentativeText,
 
-    /// HTTP timeout for URL requests (in seconds)
-    pub http_timeout: u64,
+    /// Whether the words carry their times
+    pub word_timestamps: bool,
 
-    /// HTTP connection timeout for URL requests (in seconds)
-    pub http_connect_timeout: u64,
+    pub windowing: Windowing,
 }
 
 /// When a stream shows text it has not committed yet, as tentative chunks.
@@ -75,67 +86,39 @@ pub enum TentativeText {
     WhileWaiting { every_seconds: f32 },
 }
 
-/// Output format options
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OutputFormat {
-    /// Include word-level timestamps
-    pub word_timestamps: bool,
-}
-
-impl Default for TranscriptionConfig {
+impl Default for RunConfig {
     fn default() -> Self {
         Self {
-            model_path: None, // Will use default model
-            language: None,   // Auto-detect
+            language: None,
             devices: DeviceOrder::automatic(),
-            num_threads: None,  // Use system default
-            sample_rate: 16000, // Whisper's preferred sample rate
-            beam_size: Some(5), // Default to beam search with 5 beams for better quality
-            output_format: OutputFormat::default(),
-            verbose: false,
-            chunk_size: 4.0, // 4 seconds
-            vad_model_path: None,
+            threads: None,
+            chunk_size: 4.0,
+            vad_model: None,
             tentative: TentativeText::Off,
-            http_timeout: 30,         // 30 seconds
-            http_connect_timeout: 10, // 10 seconds
-        }
-    }
-}
-
-impl Default for OutputFormat {
-    fn default() -> Self {
-        Self {
             word_timestamps: false,
+            windowing: Windowing::Stream,
         }
     }
 }
 
-impl TranscriptionConfig {
-    /// Create a new configuration with default values
+impl RunConfig {
     #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Set the model path
-    pub fn with_model_path<P: AsRef<Path>>(mut self, path: P) -> Self {
-        self.model_path = Some(path.as_ref().into());
-        self
-    }
-
-    /// Set the language
+    #[must_use]
     pub fn with_language(mut self, language: LanguageTag) -> Self {
         self.language = Some(language);
         self
     }
 
-    /// Optionally set the language
+    #[must_use]
     pub fn with_opt_language(mut self, language: Option<LanguageTag>) -> Self {
         self.language = language;
         self
     }
 
-    /// Set the devices to try
     #[must_use]
     pub fn with_devices(mut self, devices: DeviceOrder) -> Self {
         self.devices = devices;
@@ -153,91 +136,77 @@ impl TranscriptionConfig {
         self
     }
 
-    /// Set the number of threads
     #[must_use]
     pub fn with_threads(mut self, threads: usize) -> Self {
-        self.num_threads = Some(threads);
+        self.threads = Some(threads);
         self
     }
 
-    /// Set the sample rate
+    /// The threads to run on: the ones asked for, or [`auto_threads`]
     #[must_use]
-    pub fn with_sample_rate(mut self, rate: u32) -> Self {
-        self.sample_rate = rate;
-        self
+    pub fn thread_count(&self) -> usize {
+        self.threads.unwrap_or_else(auto_threads)
     }
 
-    /// Enable or disable verbose output
-    #[must_use]
-    pub fn with_verbose(mut self, verbose: bool) -> Self {
-        self.verbose = verbose;
-        self
-    }
-
-    /// Set the beam size for beam search
-    #[must_use]
-    pub fn with_beam_size(mut self, beam_size: usize) -> Self {
-        self.beam_size = Some(beam_size);
-        self
-    }
-
-    /// Set the seconds of new audio a stream gathers before it looks for a pause
     #[must_use]
     pub fn with_chunk_size(mut self, chunk_size: f32) -> Self {
         self.chunk_size = chunk_size;
         self
     }
 
-    /// Optionally set the voice activity model used while streaming
     #[must_use]
     pub fn with_vad_model(mut self, path: Option<PathBuf>) -> Self {
-        self.vad_model_path = path;
+        self.vad_model = path;
         self
     }
 
-    /// Set when the stream shows text it has not committed yet
     #[must_use]
     pub fn with_tentative(mut self, tentative: TentativeText) -> Self {
         self.tentative = tentative;
         self
     }
 
-    /// Set the HTTP timeout for URL requests (in seconds)
+    #[must_use]
+    pub fn with_word_timestamps(mut self, word_timestamps: bool) -> Self {
+        self.word_timestamps = word_timestamps;
+        self
+    }
+
+    #[must_use]
+    pub fn with_windowing(mut self, windowing: Windowing) -> Self {
+        self.windowing = windowing;
+        self
+    }
+}
+
+/// How audio is fetched from a URL.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct InputConfig {
+    /// HTTP timeout for URL requests, in seconds
+    pub http_timeout: u64,
+    /// HTTP connection timeout for URL requests, in seconds
+    pub http_connect_timeout: u64,
+}
+
+impl Default for InputConfig {
+    fn default() -> Self {
+        Self {
+            http_timeout: 30,
+            http_connect_timeout: 10,
+        }
+    }
+}
+
+impl InputConfig {
     #[must_use]
     pub fn with_http_timeout(mut self, timeout: u64) -> Self {
         self.http_timeout = timeout;
         self
     }
 
-    /// Set the HTTP connection timeout for URL requests (in seconds)
     #[must_use]
     pub fn with_http_connect_timeout(mut self, timeout: u64) -> Self {
         self.http_connect_timeout = timeout;
-        self
-    }
-
-    /// Edit output format options
-    #[must_use]
-    pub fn apply_output_format<F>(mut self, f: F) -> Self
-    where
-        F: FnOnce(OutputFormat) -> OutputFormat,
-    {
-        self.output_format = f(self.output_format);
-        self
-    }
-}
-
-impl OutputFormat {
-    /// Create a new output format configuration with default values
-    #[must_use]
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Enable or disable word-level timestamps
-    #[must_use]
-    pub fn with_word_timestamps(mut self, include: bool) -> Self {
-        self.word_timestamps = include;
         self
     }
 }
@@ -254,20 +223,20 @@ mod tests {
 
     #[test]
     fn every_device_is_tried_by_default() {
-        assert_eq!(TranscriptionConfig::new().devices, DeviceOrder::automatic());
+        assert_eq!(RunConfig::new().devices, DeviceOrder::automatic());
     }
 
     #[test]
     fn disabling_gpu_leaves_the_processor_alone() {
         assert_eq!(
-            TranscriptionConfig::new().with_gpu(false).devices,
+            RunConfig::new().with_gpu(false).devices,
             DeviceOrder::cpu_only()
         );
     }
 
     #[test]
     fn enabling_gpu_restores_the_usual_order() {
-        let config = TranscriptionConfig::new()
+        let config = RunConfig::new()
             .with_devices(DeviceOrder::cpu_only())
             .with_gpu(true);
         assert_eq!(config.devices, DeviceOrder::automatic());

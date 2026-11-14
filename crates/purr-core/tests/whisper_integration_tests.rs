@@ -4,25 +4,82 @@
 //! audio-to-transcription pipeline including both sync and streaming modes.
 
 use futures::{Stream, StreamExt};
+use purr_common::model::engine::EngineId;
 use purr_common::{language::tag::LanguageTag, progress::ProgressPhase};
 use purr_core::{
-    ModelManager, StreamEvent, StreamingChunk, StreamingTranscription,
+    AudioStream, ModelManager,
     audio::{AudioData, AudioProcessor},
-    config::TranscriptionConfig,
-    transcribe_file_stream, transcribe_file_sync,
-    whisper::{
-        SyncTranscriptionResult, WhisperTranscriber, streaming::StreamWhisperTranscriber,
-        sync::SyncWhisperTranscriber,
+    config::{ModelRef, RunConfig, Windowing},
+    engine::{Engine, open::open_on_best_device},
+    pipeline::{
+        events::{StreamEvent, StreamingChunk, Transcription},
+        result::{SyncTranscriptionResult, collect},
+        run::{Input, transcribe},
     },
+    whisper::engine::WhisperEngine,
 };
 use rstest::rstest;
-use std::path::PathBuf;
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 use tempfile::NamedTempFile;
 use tokio::fs;
 
+fn engines() -> Vec<Arc<dyn Engine>> {
+    vec![Arc::new(WhisperEngine)]
+}
+
+/// The model the tests run when they do not pick one.
+async fn default_model() -> PathBuf {
+    ModelManager::new()
+        .unwrap()
+        .find_default_model()
+        .await
+        .unwrap()
+}
+
+async fn stream_input(
+    input: Input,
+    config: RunConfig,
+    model: &Path,
+) -> purr_core::Result<Transcription> {
+    transcribe(
+        input,
+        config,
+        &ModelRef::new(model, EngineId::WhisperCpp),
+        &engines(),
+    )
+    .await
+}
+
+async fn transcribe_file_stream(
+    path: &Path,
+    config: RunConfig,
+    model: &Path,
+) -> purr_core::Result<Transcription> {
+    stream_input(Input::File(path.to_owned()), config, model).await
+}
+
+async fn whole_input(
+    input: Input,
+    config: RunConfig,
+    model: &Path,
+) -> purr_core::Result<SyncTranscriptionResult> {
+    collect(stream_input(input, config.with_windowing(Windowing::Whole), model).await?).await
+}
+
+async fn transcribe_file_sync(
+    path: &Path,
+    config: RunConfig,
+    model: &Path,
+) -> purr_core::Result<SyncTranscriptionResult> {
+    whole_input(Input::File(path.to_owned()), config, model).await
+}
+
 /// The chunks of a stream, without its progress events.
 fn chunks_of(
-    stream: StreamingTranscription,
+    stream: Transcription,
 ) -> impl Stream<Item = purr_core::Result<StreamingChunk>> + Unpin {
     stream
         .filter_map(|event| std::future::ready(event.map(StreamEvent::into_chunk).transpose()))
@@ -134,7 +191,7 @@ mod validation {
     }
 
     /// Validate that streaming chunks are properly ordered and structured
-    pub fn validate_streaming_chunks(chunks: &[purr_core::whisper::StreamingChunk]) -> bool {
+    pub fn validate_streaming_chunks(chunks: &[StreamingChunk]) -> bool {
         if chunks.is_empty() {
             return false;
         }
@@ -165,15 +222,17 @@ async fn test_sync_whisper_transcriber_creation() {
         return;
     }
 
-    let config = TranscriptionConfig::new()
+    let config = RunConfig::new()
         .with_gpu(false)
         .with_language(LanguageTag::english());
 
-    let result = SyncWhisperTranscriber::from_config(config).await;
-    assert!(
-        result.is_ok(),
-        "Should be able to create SyncWhisperTranscriber"
+    let result = open_on_best_device(
+        &WhisperEngine,
+        &default_model().await,
+        &config.devices,
+        config.thread_count(),
     );
+    assert!(result.is_ok(), "Should be able to load the model");
 }
 
 #[tokio::test]
@@ -183,11 +242,9 @@ async fn test_sync_whisper_transcribe_audio_data() {
         return;
     }
 
-    let config = TranscriptionConfig::new()
+    let config = RunConfig::new()
         .with_gpu(false)
         .with_language(LanguageTag::english());
-
-    let transcriber = SyncWhisperTranscriber::from_config(config).await.unwrap();
 
     // Create test audio data (3 seconds of silence)
     let audio_data = AudioData {
@@ -196,7 +253,12 @@ async fn test_sync_whisper_transcribe_audio_data() {
         duration: 3.0,
     };
 
-    let result = transcriber.transcribe(audio_data).await;
+    let result = whole_input(
+        Input::Audio(AudioStream::from_samples(&audio_data.samples)),
+        config,
+        &default_model().await,
+    )
+    .await;
     assert!(result.is_ok(), "Transcription should succeed");
 
     let transcription = result.unwrap();
@@ -214,15 +276,18 @@ async fn test_sync_whisper_with_generated_audio() {
 
     let temp_audio = whisper_fixtures::create_short_test_audio().await.unwrap();
 
-    let config = TranscriptionConfig::new()
+    let config = RunConfig::new()
         .with_gpu(false)
-        .with_language(LanguageTag::english())
-        .with_verbose(false);
+        .with_language(LanguageTag::english());
 
     let audio_data = AudioProcessor::load_audio(temp_audio.path()).await.unwrap();
 
-    let transcriber = SyncWhisperTranscriber::from_config(config).await.unwrap();
-    let result = transcriber.transcribe(audio_data).await;
+    let result = whole_input(
+        Input::Audio(AudioStream::from_samples(&audio_data.samples)),
+        config,
+        &default_model().await,
+    )
+    .await;
 
     assert!(
         result.is_ok(),
@@ -243,11 +308,11 @@ async fn test_sync_transcription_high_level_api() {
 
     let temp_audio = whisper_fixtures::create_short_test_audio().await.unwrap();
 
-    let config = TranscriptionConfig::new()
+    let config = RunConfig::new()
         .with_gpu(false)
         .with_language(LanguageTag::english());
 
-    let result = transcribe_file_sync(temp_audio.path(), Some(config)).await;
+    let result = transcribe_file_sync(temp_audio.path(), config, &default_model().await).await;
     assert!(result.is_ok(), "High-level sync API should work");
 
     let transcription = result.unwrap();
@@ -265,15 +330,17 @@ async fn test_streaming_whisper_transcriber_creation() {
         return;
     }
 
-    let config = TranscriptionConfig::new()
+    let config = RunConfig::new()
         .with_gpu(false)
         .with_language(LanguageTag::english());
 
-    let result = StreamWhisperTranscriber::from_config(config).await;
-    assert!(
-        result.is_ok(),
-        "Should be able to create StreamWhisperTranscriber"
+    let result = open_on_best_device(
+        &WhisperEngine,
+        &default_model().await,
+        &config.devices,
+        config.thread_count(),
     );
+    assert!(result.is_ok(), "Should be able to load the model");
 }
 
 #[tokio::test]
@@ -287,16 +354,11 @@ async fn test_streaming_whisper_with_audio_stream() {
         .await
         .unwrap();
 
-    let config = TranscriptionConfig::new()
+    let config = RunConfig::new()
         .with_gpu(false)
         .with_language(LanguageTag::english());
 
-    let transcriber = StreamWhisperTranscriber::from_config(config).await.unwrap();
-    let audio_stream = AudioProcessor::stream_file(temp_audio.path())
-        .await
-        .unwrap();
-
-    let result = transcriber.transcribe(audio_stream).await;
+    let result = transcribe_file_stream(temp_audio.path(), config, &default_model().await).await;
     assert!(result.is_ok(), "Streaming transcription should succeed");
 
     let mut streaming_result = chunks_of(result.unwrap());
@@ -345,11 +407,11 @@ async fn test_streaming_transcription_high_level_api() {
         .await
         .unwrap();
 
-    let config = TranscriptionConfig::new()
+    let config = RunConfig::new()
         .with_gpu(false)
         .with_language(LanguageTag::english());
 
-    let result = transcribe_file_stream(temp_audio.path(), config).await;
+    let result = transcribe_file_stream(temp_audio.path(), config, &default_model().await).await;
     assert!(result.is_ok(), "High-level streaming API should work");
 
     let mut streaming_result = chunks_of(result.unwrap());
@@ -402,11 +464,11 @@ async fn test_transcription_with_gpu_settings(#[case] use_gpu: bool) {
 
     let temp_audio = whisper_fixtures::create_short_test_audio().await.unwrap();
 
-    let config = TranscriptionConfig::new()
+    let config = RunConfig::new()
         .with_gpu(use_gpu)
         .with_language(LanguageTag::english());
 
-    let result = transcribe_file_sync(temp_audio.path(), Some(config)).await;
+    let result = transcribe_file_sync(temp_audio.path(), config, &default_model().await).await;
 
     // Test should succeed regardless of GPU availability
     match result {
@@ -440,13 +502,13 @@ async fn test_transcription_with_language_settings(#[case] language: &'static st
 
     let temp_audio = whisper_fixtures::create_short_test_audio().await.unwrap();
 
-    let mut config = TranscriptionConfig::new().with_gpu(false);
+    let mut config = RunConfig::new().with_gpu(false);
 
     if language != "auto" {
         config = config.with_language(language.parse().unwrap());
     }
 
-    let result = transcribe_file_sync(temp_audio.path(), Some(config)).await;
+    let result = transcribe_file_sync(temp_audio.path(), config, &default_model().await).await;
     assert!(
         result.is_ok(),
         "Should work with language setting: {language}"
@@ -469,12 +531,12 @@ async fn test_transcription_with_thread_settings(#[case] num_threads: usize) {
 
     let temp_audio = whisper_fixtures::create_short_test_audio().await.unwrap();
 
-    let config = TranscriptionConfig::new()
+    let config = RunConfig::new()
         .with_gpu(false)
         .with_threads(num_threads)
         .with_language(LanguageTag::english());
 
-    let result = transcribe_file_sync(temp_audio.path(), Some(config)).await;
+    let result = transcribe_file_sync(temp_audio.path(), config, &default_model().await).await;
     assert!(result.is_ok(), "Should work with {num_threads} threads");
 
     let transcription = result.unwrap();
@@ -494,12 +556,12 @@ async fn test_transcription_performance_sync() {
 
     let temp_audio = whisper_fixtures::create_short_test_audio().await.unwrap();
 
-    let config = TranscriptionConfig::new()
+    let config = RunConfig::new()
         .with_gpu(false)
         .with_language(LanguageTag::english());
 
     let start = std::time::Instant::now();
-    let result = transcribe_file_sync(temp_audio.path(), Some(config)).await;
+    let result = transcribe_file_sync(temp_audio.path(), config, &default_model().await).await;
     let elapsed = start.elapsed();
 
     assert!(result.is_ok(), "Performance test should succeed");
@@ -536,12 +598,12 @@ async fn test_transcription_performance_streaming() {
         .await
         .unwrap();
 
-    let config = TranscriptionConfig::new()
+    let config = RunConfig::new()
         .with_gpu(false)
         .with_language(LanguageTag::english());
 
     let start = std::time::Instant::now();
-    let result = transcribe_file_stream(temp_audio.path(), config).await;
+    let result = transcribe_file_stream(temp_audio.path(), config, &default_model().await).await;
     assert!(result.is_ok(), "Streaming performance test should succeed");
 
     let mut streaming_result = chunks_of(result.unwrap());
@@ -593,13 +655,16 @@ async fn test_whisper_error_handling_invalid_config() {
     }
 
     // Test with invalid model path
-    let mut config = TranscriptionConfig::new()
+    let config = RunConfig::new()
         .with_gpu(false)
         .with_language(LanguageTag::english());
 
-    config.model_path = Some(PathBuf::from("definitely_does_not_exist.bin"));
-
-    let result = SyncWhisperTranscriber::from_config(config).await;
+    let result = open_on_best_device(
+        &WhisperEngine,
+        Path::new("definitely_does_not_exist.bin"),
+        &config.devices,
+        config.thread_count(),
+    );
     assert!(result.is_err(), "Should fail with invalid model path");
 }
 
@@ -610,20 +675,16 @@ async fn test_whisper_error_handling_empty_audio() {
         return;
     }
 
-    let config = TranscriptionConfig::new()
+    let config = RunConfig::new()
         .with_gpu(false)
         .with_language(LanguageTag::english());
 
-    let transcriber = SyncWhisperTranscriber::from_config(config).await.unwrap();
-
-    // Empty audio data
-    let audio_data = AudioData {
-        samples: vec![],
-        sample_rate: 16000,
-        duration: 0.0,
-    };
-
-    let result = transcriber.transcribe(audio_data).await;
+    let result = whole_input(
+        Input::Audio(AudioStream::from_samples(&[])),
+        config,
+        &default_model().await,
+    )
+    .await;
     // This might succeed with empty transcription or fail - both are acceptable
     if let Ok(transcription) = result {
         assert_eq!(transcription.audio_duration, 0.0);
@@ -668,14 +729,16 @@ async fn test_streaming_does_not_loop_on_fast_speech() {
         return;
     }
 
-    let mut config = TranscriptionConfig::new()
+    let config = RunConfig::new()
         .with_gpu(false)
-        .with_language(LanguageTag::english())
-        .with_beam_size(1);
-    config.model_path = Some(model_path);
+        .with_language(LanguageTag::english());
 
     let sample = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../samples/mm1.wav");
-    let mut stream = chunks_of(transcribe_file_stream(&sample, config).await.unwrap());
+    let mut stream = chunks_of(
+        transcribe_file_stream(&sample, config, &model_path)
+            .await
+            .unwrap(),
+    );
     let mut text = String::new();
     while let Some(chunk) = stream.next().await {
         let chunk = chunk.unwrap();
@@ -734,9 +797,10 @@ async fn spoken_twice(sample: &str) -> TestResult<NamedTempFile> {
 
 async fn stream_chunks(
     audio: &std::path::Path,
-    config: TranscriptionConfig,
-) -> TestResult<Vec<purr_core::StreamingChunk>> {
-    let mut stream = chunks_of(transcribe_file_stream(audio, config).await?);
+    config: RunConfig,
+    model: &Path,
+) -> TestResult<Vec<StreamingChunk>> {
+    let mut stream = chunks_of(transcribe_file_stream(audio, config, model).await?);
     let mut chunks = Vec::new();
     while let Some(chunk) = stream.next().await {
         chunks.push(chunk?);
@@ -766,8 +830,7 @@ async fn test_streaming_keeps_a_sentence_spoken_twice() {
     }
     let audio = spoken_twice("jfk.wav").await.unwrap();
 
-    let mut config = TranscriptionConfig::new().with_gpu(false).with_beam_size(1);
-    config.model_path = Some(model_path);
+    let config = RunConfig::new().with_gpu(false);
     let mut configs = vec![config.clone()];
     match vad_model(&model_manager) {
         Some(vad) => configs.push(config.with_vad_model(Some(vad))),
@@ -775,7 +838,9 @@ async fn test_streaming_keeps_a_sentence_spoken_twice() {
     }
 
     for config in configs {
-        let chunks = stream_chunks(audio.path(), config).await.unwrap();
+        let chunks = stream_chunks(audio.path(), config, &model_path)
+            .await
+            .unwrap();
         assert!(validation::validate_streaming_chunks(&chunks));
         assert!(
             chunks
@@ -812,10 +877,11 @@ async fn test_streaming_progress_follows_the_audio_consumed() {
         return;
     }
     let audio = spoken_twice("jfk.wav").await.unwrap();
-    let mut config = TranscriptionConfig::new().with_gpu(false).with_beam_size(1);
-    config.model_path = Some(model_path);
+    let config = RunConfig::new().with_gpu(false);
 
-    let mut stream = transcribe_file_stream(audio.path(), config).await.unwrap();
+    let mut stream = transcribe_file_stream(audio.path(), config, &model_path)
+        .await
+        .unwrap();
     let mut frames = Vec::new();
     while let Some(event) = stream.next().await {
         if let StreamEvent::Progress(progress) = event.unwrap() {
@@ -851,14 +917,15 @@ async fn test_regression_consistent_results() {
 
     let temp_audio = whisper_fixtures::create_short_test_audio().await.unwrap();
 
-    let config = TranscriptionConfig::new()
+    let config = RunConfig::new()
         .with_gpu(false)
         .with_language(LanguageTag::english());
 
     // Run the same transcription multiple times
     let mut results = Vec::new();
     for _ in 0..3 {
-        let result = transcribe_file_sync(temp_audio.path(), Some(config.clone())).await;
+        let result =
+            transcribe_file_sync(temp_audio.path(), config.clone(), &default_model().await).await;
         assert!(result.is_ok(), "Regression test run should succeed");
         results.push(result.unwrap());
     }

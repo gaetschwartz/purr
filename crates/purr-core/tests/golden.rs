@@ -5,17 +5,24 @@
 //! `PURR_GOLDEN=update` to record the goldens again.
 
 use futures::StreamExt;
-use purr_common::{devices::DeviceOrder, language::tag::LanguageTag};
+use purr_common::{devices::DeviceOrder, language::tag::LanguageTag, model::engine::EngineId};
 use purr_core::{
-    AudioStream, ModelManager, StreamEvent, TranscriptionConfig,
-    audio::{AudioData, AudioProcessor},
-    config::TentativeText,
-    whisper::{
-        WhisperTranscriber, streaming::StreamWhisperTranscriber, sync::SyncWhisperTranscriber,
+    AudioStream, ModelManager,
+    audio::AudioProcessor,
+    config::{ModelRef, RunConfig, TentativeText, Windowing},
+    engine::Engine,
+    pipeline::{
+        events::StreamEvent,
+        result::collect,
+        run::{Input, transcribe},
     },
+    whisper::engine::WhisperEngine,
 };
 use serde_json::{Value, json};
-use std::path::{Path, PathBuf};
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
 
@@ -113,19 +120,18 @@ async fn load(sample: Sample) -> TestResult<Vec<f32>> {
     })
 }
 
-fn config(
-    model: &Path,
-    vad: Option<PathBuf>,
-    language: Option<&str>,
-) -> TestResult<TranscriptionConfig> {
-    Ok(TranscriptionConfig::new()
-        .with_model_path(model)
+fn config(vad: Option<PathBuf>, language: Option<&str>) -> TestResult<RunConfig> {
+    Ok(RunConfig::new()
         .with_devices(DeviceOrder::cpu_only())
         .with_threads(THREADS)
         .with_opt_language(language.map(str::parse::<LanguageTag>).transpose()?)
         .with_vad_model(vad)
         .with_tentative(TentativeText::Decoded)
-        .apply_output_format(|format| format.with_word_timestamps(true)))
+        .with_word_timestamps(true))
+}
+
+fn engines() -> Vec<Arc<dyn Engine>> {
+    vec![Arc::new(WhisperEngine)]
 }
 
 fn event_json(event: &StreamEvent) -> TestResult<Value> {
@@ -157,11 +163,14 @@ fn event_json(event: &StreamEvent) -> TestResult<Value> {
     })
 }
 
-async fn stream_run(config: TranscriptionConfig, samples: &[f32]) -> TestResult<Value> {
-    let transcriber = StreamWhisperTranscriber::from_config(config).await?;
-    let mut stream = transcriber
-        .transcribe(AudioStream::from_samples(samples))
-        .await?;
+async fn stream_run(model: &Path, config: RunConfig, samples: &[f32]) -> TestResult<Value> {
+    let mut stream = transcribe(
+        Input::Audio(AudioStream::from_samples(samples)),
+        config,
+        &ModelRef::new(model, EngineId::WhisperCpp),
+        &engines(),
+    )
+    .await?;
     let mut events = Vec::new();
     while let Some(event) = stream.next().await {
         events.push(event_json(&event?)?);
@@ -169,14 +178,17 @@ async fn stream_run(config: TranscriptionConfig, samples: &[f32]) -> TestResult<
     Ok(Value::Array(events))
 }
 
-async fn whole_run(config: TranscriptionConfig, samples: &[f32]) -> TestResult<Value> {
-    let transcriber = SyncWhisperTranscriber::from_config(config).await?;
-    let audio = AudioData {
-        samples: samples.to_vec(),
-        sample_rate: SAMPLE_RATE as u32,
-        duration: samples.len() as f32 / SAMPLE_RATE as f32,
-    };
-    let result = transcriber.transcribe(audio).await?;
+async fn whole_run(model: &Path, config: RunConfig, samples: &[f32]) -> TestResult<Value> {
+    let result = collect(
+        transcribe(
+            Input::Audio(AudioStream::from_samples(samples)),
+            config.with_windowing(Windowing::Whole),
+            &ModelRef::new(model, EngineId::WhisperCpp),
+            &engines(),
+        )
+        .await?,
+    )
+    .await?;
     Ok(json!({
         "text": result.text,
         "segments": result.segments.iter().map(|segment| Ok(json!({
@@ -217,9 +229,9 @@ async fn whisper_output_matches_the_goldens() -> TestResult {
         let recorded = match case.mode {
             Mode::Stream { vad: with_vad } => {
                 let vad = with_vad.then(|| vad.clone());
-                stream_run(config(&model, vad, case.language)?, &samples).await?
+                stream_run(&model, config(vad, case.language)?, &samples).await?
             }
-            Mode::Whole => whole_run(config(&model, None, case.language)?, &samples).await?,
+            Mode::Whole => whole_run(&model, config(None, case.language)?, &samples).await?,
         };
         let path = golden_dir().join(format!("{}.json", case.name));
         if update {

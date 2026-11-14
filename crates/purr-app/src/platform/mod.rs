@@ -35,6 +35,10 @@ pub mod log_export;
 #[cfg(feature = "desktop")]
 mod compute_options;
 
+/// The speech recognition engines the desktop build carries
+#[cfg(feature = "desktop")]
+mod engines;
+
 /// Re-export the appropriate platform implementation
 #[cfg(feature = "desktop")]
 #[path = "desktop.rs"]

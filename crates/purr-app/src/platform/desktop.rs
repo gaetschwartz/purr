@@ -3,6 +3,7 @@
 use super::{
     Platform, PlatformError, TranscriptionRequest, TranscriptionStatus,
     compute_options::{apply_compute, backend_reports, last_run, probe},
+    engines,
     history_store::HistoryDir,
 };
 use bytes::Bytes;
@@ -24,11 +25,16 @@ use purr_common::platform::{
 use purr_common::settings::Settings;
 use purr_core::Error;
 use purr_core::accel::inventory::Inventory;
-use purr_core::config::TentativeText;
+use purr_core::config::{ModelRef, RunConfig, TentativeText};
+use purr_core::engine::Engine;
 use purr_core::error::ConfigurationError;
 use purr_core::model::registry::ModelSpec;
 use purr_core::model::status::ModelIntegrity as CoreIntegrity;
 use purr_core::model::{ModelManager, vad_or_none};
+use purr_core::pipeline::{
+    events::{StreamEvent, Transcription},
+    run::{Input, transcribe},
+};
 use std::{
     collections::VecDeque,
     future::Future,
@@ -51,6 +57,7 @@ pub(super) struct DesktopPlatformImpl {
     vad_gate: Arc<tokio::sync::Mutex<()>>,
     history_lock: tokio::sync::Mutex<()>,
     last_run: Arc<Mutex<Option<LastRun>>>,
+    engines: Arc<[Arc<dyn Engine>]>,
 }
 
 fn upload_dir() -> PathBuf {
@@ -96,13 +103,16 @@ impl DesktopPlatformImpl {
             vad_gate: Arc::new(tokio::sync::Mutex::new(())),
             history_lock: tokio::sync::Mutex::new(()),
             last_run: Arc::new(Mutex::new(None)),
+            engines: engines::all().into(),
         })
     }
 }
 
 impl Platform for DesktopPlatformImpl {
     fn install_logging_hooks(&self) {
-        purr_core::whisper::logging::install_logging_hooks();
+        for engine in self.engines.iter() {
+            engine.install_logging();
+        }
     }
 
     async fn process_file(
@@ -152,14 +162,14 @@ impl Platform for DesktopPlatformImpl {
             self.fetch_vad_in_background(request.hugging_face_token.clone());
         }
         let config = apply_compute(
-            purr_core::TranscriptionConfig::new()
-                .with_model_path(manager.get_model_path(model))
+            RunConfig::new()
                 .with_vad_model(vad)
                 .with_opt_language(request.language)
-                .apply_output_format(|format| format.with_word_timestamps(true))
+                .with_word_timestamps(true)
                 .with_tentative(TentativeText::Decoded),
             &request.compute,
         );
+        let model_ref = ModelRef::new(manager.get_model_path(model), model.engine);
         info!(
             "Transcribing {} with {}",
             audio_path.display(),
@@ -167,8 +177,12 @@ impl Platform for DesktopPlatformImpl {
         );
 
         Ok(transcription_stream(
-            audio_path,
-            config,
+            Load {
+                audio_path,
+                config,
+                model: model_ref,
+                engines: Arc::clone(&self.engines),
+            },
             model.file.size_bytes,
             Arc::clone(&self.last_run),
         ))
@@ -384,7 +398,7 @@ impl Platform for DesktopPlatformImpl {
     }
 
     async fn list_available_devices(&self) -> Result<Vec<DeviceInfo>, PlatformError> {
-        Ok(backend_reports(&Inventory::detect())
+        Ok(backend_reports(&Inventory::detect(&engines::hardware()))
             .into_iter()
             .flat_map(|report| report.devices)
             .collect())
@@ -560,13 +574,18 @@ type ProgressSender = mpsc::Sender<Result<ModelOperationProgress, PlatformError>
 
 type Status = Result<TranscriptionStatus, PlatformError>;
 
+/// What a desktop transcription loads before it decodes.
+struct Load {
+    audio_path: PathBuf,
+    config: RunConfig,
+    model: ModelRef,
+    engines: Arc<[Arc<dyn Engine>]>,
+}
+
 /// Where a desktop transcription stream is.
 enum Phase {
-    Load {
-        audio_path: PathBuf,
-        config: purr_core::TranscriptionConfig,
-    },
-    Decode(purr_core::StreamingTranscription),
+    Load(Load),
+    Decode(Transcription),
     Finished,
 }
 
@@ -585,8 +604,15 @@ struct DesktopRun {
 impl DesktopRun {
     async fn advance(&mut self) {
         match std::mem::replace(&mut self.phase, Phase::Finished) {
-            Phase::Load { audio_path, config } => {
-                match purr_core::transcribe_file_stream(&audio_path, config).await {
+            Phase::Load(load) => {
+                match transcribe(
+                    Input::File(load.audio_path),
+                    load.config,
+                    &load.model,
+                    &load.engines,
+                )
+                .await
+                {
                     Ok(stream) => {
                         let ran = last_run(stream.accel());
                         *self.last_run.lock() = Some(ran.clone());
@@ -604,12 +630,12 @@ impl DesktopRun {
                 }
             }
             Phase::Decode(mut stream) => match stream.next().await {
-                Some(Ok(purr_core::StreamEvent::Progress(progress))) => {
+                Some(Ok(StreamEvent::Progress(progress))) => {
                     self.pending
                         .push_back(Ok(TranscriptionStatus::Progress(progress.frame)));
                     self.phase = Phase::Decode(stream);
                 }
-                Some(Ok(purr_core::StreamEvent::Chunk(chunk))) => {
+                Some(Ok(StreamEvent::Chunk(chunk))) => {
                     if !self.language_reported
                         && let Some(language) = chunk.language.clone()
                     {
@@ -663,18 +689,17 @@ impl DesktopRun {
 
 /// The statuses of one transcription, produced as the caller polls them.
 ///
-/// Whisper runs blocking inside a runtime worker, so the core stream is polled by the caller
+/// The engine runs blocking inside a runtime worker, so the core stream is polled by the caller
 /// rather than by a forwarding task that could starve on that worker. Dropping the stream drops
-/// the core stream, which stops Whisper after the chunk it is working on; a model load that
-/// already started finishes first.
+/// the core stream, which cancels the engine inside the window it is decoding; a model load
+/// that already started finishes first.
 fn transcription_stream(
-    audio_path: PathBuf,
-    config: purr_core::TranscriptionConfig,
+    load: Load,
     model_bytes: u64,
     last_run: Arc<Mutex<Option<LastRun>>>,
 ) -> TranscriptionStream {
     let run = DesktopRun {
-        phase: Phase::Load { audio_path, config },
+        phase: Phase::Load(load),
         pending: VecDeque::from([
             Ok(TranscriptionStatus::Starting),
             Ok(TranscriptionStatus::LoadingModel {

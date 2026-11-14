@@ -3,8 +3,11 @@
 use purr_common::language::tag::LanguageTag;
 use purr_common::word::Word;
 use purr_core::{
-    StreamingChunk, SyncTranscriptionResult, accel::report::AccelReport,
-    whisper::TranscriptionStats,
+    accel::report::AccelReport,
+    pipeline::{
+        events::{StreamingChunk, TranscriptionStats},
+        result::SyncTranscriptionResult,
+    },
 };
 use serde::Serialize;
 

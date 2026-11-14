@@ -8,7 +8,6 @@ use purr_common::{
     platform::{ComputeOptions, DeviceInfo, DeviceType},
 };
 use purr_core::{
-    TranscriptionConfig,
     accel::{
         backend::AccelBackend as CoreBackend,
         devices::{DetectedDevice, detect},
@@ -16,13 +15,14 @@ use purr_core::{
         plan::backend_status,
         report::{AccelReport, AttemptOutcome, UnavailableReason},
     },
+    config::RunConfig,
     cpu,
     dev::Device,
 };
 use std::collections::HashMap;
 
 /// `config` run the way `compute` asks.
-pub fn apply_compute(config: TranscriptionConfig, compute: &ComputeOptions) -> TranscriptionConfig {
+pub fn apply_compute(config: RunConfig, compute: &ComputeOptions) -> RunConfig {
     let config = config.with_devices(compute.devices.clone());
     match compute.threads {
         Some(threads) => config.with_threads(threads as usize),
@@ -135,7 +135,7 @@ pub fn backend_reports(inventory: &Inventory) -> Vec<BackendReport> {
 
 /// Probes this machine; this calls into the native backends and can take a moment.
 pub fn probe(last_run: Option<LastRun>) -> SystemReport {
-    let inventory = Inventory::detect();
+    let inventory = Inventory::detect(&super::engines::hardware());
     SystemReport {
         backends: backend_reports(&inventory),
         cpu: cpu::report(&inventory),
@@ -158,20 +158,20 @@ mod tests {
     #[test]
     fn the_compute_options_reach_the_core_configuration() {
         let config = apply_compute(
-            TranscriptionConfig::new(),
+            RunConfig::new(),
             &ComputeOptions {
                 devices: DeviceOrder::cpu_only(),
                 threads: Some(5),
             },
         );
         assert_eq!(config.devices, DeviceOrder::cpu_only());
-        assert_eq!(config.num_threads, Some(5));
+        assert_eq!(config.threads, Some(5));
     }
 
     #[test]
     fn without_threads_the_core_chooses() {
-        let config = apply_compute(TranscriptionConfig::new(), &ComputeOptions::default());
-        assert_eq!(config.num_threads, None);
+        let config = apply_compute(RunConfig::new(), &ComputeOptions::default());
+        assert_eq!(config.threads, None);
         assert_eq!(config.devices, DeviceOrder::automatic());
     }
 

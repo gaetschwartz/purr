@@ -7,6 +7,7 @@ pub mod pinned;
 pub mod registry;
 pub mod status;
 
+use crate::config::ModelRef;
 use crate::error::{ConfigurationError, Error, Result};
 use crate::model::digest::Sha256Hasher;
 use crate::model::pinned::PinnedFile;
@@ -14,6 +15,7 @@ use crate::model::registry::{ModelSpec, Registry};
 use crate::model::status::{ModelFileStatus, ModelIntegrity};
 use directories::ProjectDirs;
 use purr_common::hugging_face_token::HuggingFaceToken;
+use purr_common::model::engine::EngineId;
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -144,6 +146,22 @@ impl ModelManager {
         debug!("Downloading voice activity model {} to {:?}", vad.id, path);
         download::download_verified(&vad.file, token, &path, |_, _| {}).await?;
         Ok(path)
+    }
+
+    /// The model file at `path` with the engine that runs it: the catalog's engine when the file
+    /// is one of its models, otherwise whisper.cpp, which reads every other model file Purr takes.
+    #[must_use]
+    pub fn reference(&self, path: PathBuf) -> ModelRef {
+        let engine = path
+            .file_name()
+            .and_then(|name| {
+                self.registry
+                    .models()
+                    .iter()
+                    .find(|model| std::ffi::OsStr::new(&model.filename) == name)
+            })
+            .map_or(EngineId::WhisperCpp, |model| model.engine);
+        ModelRef::new(path, engine)
     }
 
     /// Find the first available model (for auto-selection)

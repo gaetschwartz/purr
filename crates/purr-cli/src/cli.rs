@@ -10,10 +10,13 @@ use clap::{
 };
 use purr_common::devices::{DeviceDefaults, DeviceOrder};
 use purr_common::language::choice::LanguageChoice;
-use purr_core::accel::{
-    backend::AccelBackend,
-    devices::DetectedDevice,
-    selector::{DeviceSelector, SelectorError},
+use purr_core::{
+    accel::{
+        backend::AccelBackend,
+        devices::DetectedDevice,
+        selector::{DeviceSelector, SelectorError},
+    },
+    config::{InputConfig, RunConfig},
 };
 use std::{ffi::OsStr, path::PathBuf, str::FromStr as _};
 
@@ -137,10 +140,6 @@ pub struct Cli {
         requires = "log_file"
     )]
     pub log_level: Option<LogLevel>,
-
-    /// Sample rate to use in Hz. 16'000 is the recommended and default value.
-    #[arg(long, default_value = "16000")]
-    pub sample_rate: u32,
 
     /// Seconds of new audio to gather before looking for a pause to decode up to while streaming
     /// (only with a voice activity model)
@@ -400,22 +399,23 @@ impl Cli {
     }
 }
 
-pub trait TranscriptionConfigWithCliExt {
-    fn with_cli_options(self, cli: &Cli) -> Self;
-}
+impl Cli {
+    /// How the command line asks the transcription to run.
+    pub fn run_config(&self) -> RunConfig {
+        RunConfig::new()
+            .with_opt_language(self.language.as_ref().and_then(LanguageChoice::request_tag))
+            .with_threads(self.threads.unwrap_or_else(purr_core::config::auto_threads))
+            .with_chunk_size(self.chunk_size)
+            .with_vad_model(self.vad_model.clone())
+            .with_devices(self.device_order())
+            .with_word_timestamps(self.word_timestamps)
+    }
 
-impl TranscriptionConfigWithCliExt for purr_core::TranscriptionConfig {
-    fn with_cli_options(self, cli: &Cli) -> Self {
-        self.with_verbose(cli.verbosity.is_verbose())
-            .with_opt_language(cli.language.as_ref().and_then(LanguageChoice::request_tag))
-            .with_threads(cli.threads.unwrap_or_else(purr_core::config::auto_threads))
-            .with_sample_rate(cli.sample_rate)
-            .with_chunk_size(cli.chunk_size)
-            .with_vad_model(cli.vad_model.clone())
-            .with_devices(cli.device_order())
-            .with_http_timeout(cli.http_timeout)
-            .with_http_connect_timeout(cli.http_connect_timeout)
-            .apply_output_format(|f| f.with_word_timestamps(cli.word_timestamps))
+    /// How the command line asks a URL to be fetched.
+    pub fn input_config(&self) -> InputConfig {
+        InputConfig::default()
+            .with_http_timeout(self.http_timeout)
+            .with_http_connect_timeout(self.http_connect_timeout)
     }
 }
 

@@ -1,9 +1,6 @@
 use std::{collections::HashMap, path::PathBuf};
 
-use crate::{
-    dev::Device,
-    whisper::{build_info::build_info, inventory::list_devices},
-};
+use crate::{dev::Device, engine::Engine};
 
 use super::{
     backend::{AccelBackend, BuildStatus},
@@ -24,14 +21,17 @@ pub struct Inventory {
 }
 
 impl Inventory {
-    /// What the engine enumerates and was built with, with the runtime libraries it is missing.
+    /// What `engine` enumerates and was built with, with the runtime libraries it is missing.
+    ///
+    /// The runtime libraries are opened before the engine enumerates its devices, so the
+    /// delay-loaded imports its backends make while registering bind to them.
     #[must_use]
-    pub fn detect() -> Self {
+    pub fn detect(engine: &dyn Engine) -> Self {
         let dirs = search_dirs(&Environment::current());
         let missing_runtime = detect_missing(&dirs);
         Self {
-            devices: list_devices(),
-            build: build_info(),
+            devices: engine.devices(),
+            build: engine.build_info(),
             missing_runtime,
             runtime_dirs: dirs.into_iter().map(|dir| dir.path).collect(),
         }

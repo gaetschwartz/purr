@@ -9,7 +9,7 @@ use axum_test::TestServer;
 use futures::StreamExt;
 use purr_core::audio::{AudioChunk, AudioProcessor};
 use purr_core::input::{AsyncCustomInput, AsyncStreamBuffer};
-use purr_core::{Error, TranscriptionConfig};
+use purr_core::{Error, config::InputConfig};
 use std::path::PathBuf;
 use tokio_util::io::ReaderStream;
 
@@ -127,7 +127,7 @@ async fn test_url_vs_file_streaming_comparison() {
     let audio_url = format!("{base_url}/audio/jfk.wav");
 
     // Configuration for both tests
-    let config = TranscriptionConfig::default();
+    let config = InputConfig::default();
 
     println!("Testing URL: {audio_url}");
     println!("Testing file: {test_file:?}");
@@ -274,7 +274,7 @@ async fn test_url_vs_file_sync_load_comparison() {
     let audio_url = format!("{base_url}/audio/jfk.wav");
 
     // Configuration for both tests
-    let config = TranscriptionConfig::default();
+    let config = InputConfig::default();
 
     println!("Testing URL: {audio_url}");
     println!("Testing file: {test_file:?}");
@@ -383,7 +383,7 @@ async fn test_http_server_error_handling() {
 
     // Test 404 error
     let nonexistent_url = format!("{base_url}/audio/nonexistent.wav");
-    let config = TranscriptionConfig::default();
+    let config = InputConfig::default();
 
     let result =
         AudioProcessor::load_audio_from_url_with_config(nonexistent_url.parse().unwrap(), &config)
@@ -405,7 +405,7 @@ async fn test_http_server_error_handling() {
 #[tokio::test]
 async fn test_http_timeout_handling() {
     // Test with very short timeout
-    let mut config = TranscriptionConfig::default();
+    let mut config = InputConfig::default();
     config.http_timeout = 1; // 1 second
     config.http_connect_timeout = 1; // 1 second
 

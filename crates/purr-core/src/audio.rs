@@ -70,7 +70,7 @@ pub struct AudioStream {
 }
 
 impl AudioStream {
-    pub(crate) fn new(receiver: mpsc::UnboundedReceiver<Result<AudioChunk>>) -> Self {
+    pub fn new(receiver: mpsc::UnboundedReceiver<Result<AudioChunk>>) -> Self {
         Self { receiver }
     }
 
@@ -212,7 +212,7 @@ impl AudioProcessor {
     pub async fn load_audio_from_url(url: impl IntoUrl) -> Result<AudioData> {
         Self::load_audio_from_url_with_config(
             url.into_url()?,
-            &crate::TranscriptionConfig::default(),
+            &crate::config::InputConfig::default(),
         )
         .await
     }
@@ -220,13 +220,13 @@ impl AudioProcessor {
     /// Load audio from URL with custom configuration
     pub async fn load_audio_from_url_with_config(
         url: Url,
-        config: &crate::TranscriptionConfig,
+        config: &crate::config::InputConfig,
     ) -> Result<AudioData> {
         use crate::input::AsyncCustomInput;
         use crate::url::{HttpStreamer, UrlStreamConfig};
         use std::time::Duration;
 
-        // Create URL streamer with timeout configuration from TranscriptionConfig
+        // Create URL streamer with timeout configuration from InputConfig
         let url_config = UrlStreamConfig {
             timeout: Duration::from_secs(config.http_timeout),
             connect_timeout: Duration::from_secs(config.http_connect_timeout),
@@ -259,19 +259,19 @@ impl AudioProcessor {
 
     /// Stream audio from URL as chunks for real-time processing
     pub async fn stream_url(url: Url) -> Result<AudioStream> {
-        Self::stream_url_with_config(url, &crate::TranscriptionConfig::default()).await
+        Self::stream_url_with_config(url, &crate::config::InputConfig::default()).await
     }
 
     /// Stream audio from URL with custom configuration
     pub async fn stream_url_with_config(
         url: Url,
-        config: &crate::TranscriptionConfig,
+        config: &crate::config::InputConfig,
     ) -> Result<AudioStream> {
         use crate::input::AsyncCustomInput;
         use crate::url::{HttpStreamer, UrlStreamConfig};
         use std::time::Duration;
 
-        // Create URL streamer with timeout configuration from TranscriptionConfig
+        // Create URL streamer with timeout configuration from InputConfig
         let url_config = UrlStreamConfig {
             timeout: Duration::from_secs(config.http_timeout),
             connect_timeout: Duration::from_secs(config.http_connect_timeout),

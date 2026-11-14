@@ -1,150 +1,96 @@
-//! Integration tests for purr-core
+//! Whole-file transcription of known samples and broken inputs.
 
-use purr_common::language::tag::LanguageTag;
-use purr_core::*;
+use purr_common::{language::tag::LanguageTag, model::engine::EngineId};
+use purr_core::{
+    Error, ModelManager,
+    config::{ModelRef, RunConfig, Windowing},
+    engine::Engine,
+    pipeline::{
+        result::{SyncTranscriptionResult, collect},
+        run::{Input, transcribe},
+    },
+    whisper::engine::WhisperEngine,
+};
 use rstest::rstest;
-use std::path::Path;
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
-/// Test transcription configuration
-#[tokio::test]
-async fn test_transcription_config() {
-    let config = TranscriptionConfig::new()
+async fn default_model() -> Option<PathBuf> {
+    ModelManager::new().ok()?.find_default_model().await.ok()
+}
+
+async fn transcribe_file_sync(
+    path: &str,
+    config: RunConfig,
+    model: &Path,
+) -> purr_core::Result<SyncTranscriptionResult> {
+    let engines: Vec<Arc<dyn Engine>> = vec![Arc::new(WhisperEngine)];
+    collect(
+        transcribe(
+            Input::File(PathBuf::from(path)),
+            config.with_windowing(Windowing::Whole),
+            &ModelRef::new(model, EngineId::WhisperCpp),
+            &engines,
+        )
+        .await?,
+    )
+    .await
+}
+
+#[test]
+fn test_transcription_config() {
+    let config = RunConfig::new()
         .with_language(LanguageTag::english())
         .with_gpu(false)
-        .with_threads(2)
-        .with_sample_rate(16000);
+        .with_threads(2);
 
     assert_eq!(config.language, Some(LanguageTag::english()));
     assert_eq!(
         config.devices,
         purr_common::devices::DeviceOrder::cpu_only()
     );
-    assert_eq!(config.num_threads, Some(2));
-    assert_eq!(config.sample_rate, 16000);
+    assert_eq!(config.threads, Some(2));
 }
 
-/// Test error handling for missing files
+#[rstest]
+#[case(RunConfig::new().with_gpu(false).with_language(LanguageTag::english()))]
+#[case(RunConfig::new().with_gpu(false).with_threads(1))]
+#[case(RunConfig::new().with_gpu(false).with_word_timestamps(true))]
 #[tokio::test]
-async fn test_missing_audio_file() {
-    let config = TranscriptionConfig::new().with_gpu(false);
-    let result = transcribe_file_sync("nonexistent_file.wav", Some(config)).await;
-
-    assert!(result.is_err());
-    match result.unwrap_err() {
-        Error::AudioProcessing { .. } | Error::Configuration { .. } => {}
-        e => panic!("Expected AudioProcessing or Configuration error, got: {e}"),
-    }
-}
-
-/// Test transcription with different configurations on a known sample
-#[tokio::test]
-async fn test_transcription_configurations() {
-    let sample_path = "../../samples/jfk.wav";
-
-    // Test with different configurations
-    let configs = vec![
-        TranscriptionConfig::new()
-            .with_gpu(false)
-            .with_language(LanguageTag::english()),
-        TranscriptionConfig::new().with_gpu(false).with_threads(1),
-        TranscriptionConfig::new()
-            .with_gpu(false)
-            .with_sample_rate(16000),
-    ];
-
-    for (i, config) in configs.into_iter().enumerate() {
-        println!("Testing configuration {}", i + 1);
-
-        let result = transcribe_file_sync(sample_path, Some(config)).await;
-
-        match result {
-            Ok(transcription) => {
-                assert_ne!(transcription.text, "");
-                assert!(transcription.audio_duration > 0.0);
-                println!(
-                    "✓ Configuration {} successful: \"{}...\"",
-                    i + 1,
-                    transcription.text.chars().take(30).collect::<String>()
-                );
-            }
-            Err(e) => {
-                if e.to_string().contains("No Whisper model found") {
-                    println!("⚠ Skipping configuration {} - no model available", i + 1);
-                    continue;
-                }
-                panic!("Configuration {} failed: {}", i + 1, e);
-            }
-        }
-    }
-}
-
-/// Test transcription output formats
-#[tokio::test]
-async fn test_transcription_output_formats() {
-    let sample_path = "../../samples/jfk.wav";
-
-    // Skip if sample doesn't exist
-    if !Path::new(sample_path).exists() {
-        println!("⏭ Skipping output format test - sample file not found");
+async fn test_transcription_configurations(#[case] config: RunConfig) {
+    let Some(model) = default_model().await else {
+        println!("⏭ Skipping - no model available");
         return;
-    }
-
-    let mut config = TranscriptionConfig::new()
-        .with_gpu(false)
-        .with_language(LanguageTag::english());
-
-    // Test with word timestamps enabled
-    config.output_format.word_timestamps = true;
-
-    let result = transcribe_file_sync(sample_path, Some(config)).await;
-
-    match result {
-        Ok(transcription) => {
-            assert_ne!(transcription.text, "");
-            assert!(!transcription.segments.is_empty());
-
-            // Validate timestamp format
-            for segment in &transcription.segments {
-                assert!(segment.start >= 0.0);
-                assert!(segment.end >= segment.start);
-            }
-
-            println!(
-                "✓ Timestamps test successful with {} segments",
-                transcription.segments.len()
-            );
-        }
-        Err(e) => {
-            if e.to_string().contains("No Whisper model found") {
-                println!("⚠ Skipping timestamps test - no model available");
-                return;
-            }
-            panic!("Timestamps test failed: {e}");
-        }
+    };
+    let transcription = transcribe_file_sync("../../samples/jfk.wav", config, &model)
+        .await
+        .unwrap();
+    assert_ne!(transcription.text, "");
+    assert!(transcription.audio_duration > 0.0);
+    assert!(!transcription.segments.is_empty());
+    for segment in &transcription.segments {
+        assert!(segment.start >= 0.0);
+        assert!(segment.end >= segment.start);
     }
 }
 
-/// Test error handling with invalid files
 #[rstest]
 #[case("nonexistent.wav")]
-#[case("../../Cargo.toml")] // Valid file but not audio
+#[case("../../Cargo.toml")]
 #[tokio::test]
 async fn test_transcription_error_handling(#[case] invalid_path: &str) {
-    let config = TranscriptionConfig::new().with_gpu(false);
-    let result = transcribe_file_sync(invalid_path, Some(config)).await;
-
+    let Some(model) = default_model().await else {
+        println!("⏭ Skipping - no model available");
+        return;
+    };
+    let result = transcribe_file_sync(invalid_path, RunConfig::new().with_gpu(false), &model).await;
     assert!(
-        result.is_err(),
-        "Should fail for invalid file: {invalid_path}"
+        matches!(
+            result,
+            Err(Error::AudioProcessing { .. } | Error::Io { .. } | Error::FFmpeg { .. })
+        ),
+        "{result:?}"
     );
-
-    let error = result.unwrap_err();
-    match error {
-        Error::AudioProcessing { .. } | Error::Io { .. } => {
-            println!("✓ Correctly handled invalid file: {invalid_path} -> {error}");
-        }
-        _ => {
-            println!("⚠ Unexpected error type for {invalid_path}: {error}");
-        }
-    }
 }

@@ -33,7 +33,7 @@ fn feature_status(
 }
 
 pub fn handle(json: bool) -> miette::Result<()> {
-    let sys = SystemInfo::get();
+    let sys = SystemInfo::get(&crate::engines::hardware());
 
     if json {
         resultln!("{}", sys_report::json(&sys).into_diagnostic()?)?;
