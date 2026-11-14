@@ -140,6 +140,7 @@ pub(crate) mod fixtures {
     use std::{collections::HashMap, path::PathBuf};
 
     use super::*;
+    use crate::accel::build_info::BuildInfo;
 
     pub fn device(id: i32, name: &str, backend: AccelBackend, tpe: DeviceType) -> Device {
         Device {
@@ -169,17 +170,20 @@ pub(crate) mod fixtures {
     pub fn inventory(devices: Vec<Device>, built: &[AccelBackend]) -> Inventory {
         Inventory {
             devices,
-            build: AccelBackend::ALL
-                .iter()
-                .map(|b| {
-                    let status = if built.contains(b) {
-                        BuildStatus::Built
-                    } else {
-                        BuildStatus::NotBuilt
-                    };
-                    (*b, status)
-                })
-                .collect::<HashMap<_, _>>(),
+            build: BuildInfo {
+                backends: AccelBackend::ALL
+                    .iter()
+                    .map(|b| {
+                        let status = if built.contains(b) {
+                            BuildStatus::Built
+                        } else {
+                            BuildStatus::NotBuilt
+                        };
+                        (*b, status)
+                    })
+                    .collect::<HashMap<_, _>>(),
+                cpu: Vec::new(),
+            },
             missing_runtime: HashMap::new(),
             runtime_dirs: vec![PathBuf::from("/runtime")],
         }

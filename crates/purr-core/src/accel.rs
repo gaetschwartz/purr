@@ -1,4 +1,5 @@
 pub mod backend;
+pub mod build_info;
 #[cfg(all(
     windows,
     target_env = "msvc",

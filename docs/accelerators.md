@@ -6,6 +6,8 @@ An engine is the speech-recognition software (whisper.cpp, or the browser's tran
 
 Purr runs Whisper through whisper.cpp and ggml. A backend is in a build only if it was compiled in; `purr sys` lists every backend with its state.
 
+The device list, the plan and the settings speak only of neutral devices: a backend, a name and, when it has one, a PCI id. The engine (today only whisper.cpp) enumerates the devices it can run on, reports what it was built with (backends compiled in, CPU instruction sets) and, when a run starts, finds its own handle for each device it is asked to try: by backend and PCI id, else by name and position among devices of that name. The index `purr sys` prints and `--device` takes is the device's position in the engine's list, so it names a device only for the engine that listed it.
+
 | Backend | Hardware | Notes |
 |---|---|---|
 | CUDA | NVIDIA GPUs | needs the CUDA runtime libraries at run time |

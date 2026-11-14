@@ -513,7 +513,10 @@ mod tests {
 
     fn detected_workstation() -> Vec<DetectedDevice> {
         use purr_common::platform::DeviceType;
-        use purr_core::{accel::backend::BuildStatus, dev::Device};
+        use purr_core::{
+            accel::{backend::BuildStatus, build_info::BuildInfo},
+            dev::Device,
+        };
         let device = |id, name: &str, backend, tpe| Device {
             id,
             name: format!("dev{id}"),
@@ -533,10 +536,13 @@ mod tests {
                 device(2, "Radeon", AccelBackend::Vulkan, DeviceType::Igpu),
                 device(3, "Ryzen", AccelBackend::Cpu, DeviceType::Cpu),
             ],
-            build: AccelBackend::ALL
-                .iter()
-                .map(|backend| (*backend, BuildStatus::Built))
-                .collect(),
+            build: BuildInfo {
+                backends: AccelBackend::ALL
+                    .iter()
+                    .map(|backend| (*backend, BuildStatus::Built))
+                    .collect(),
+                cpu: Vec::new(),
+            },
             ..Default::default()
         };
         purr_core::accel::devices::detect(&inventory)

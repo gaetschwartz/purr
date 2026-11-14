@@ -1,3 +1,4 @@
+pub(crate) mod build_info;
 mod commit;
 mod coreml;
 mod devices;

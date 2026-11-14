@@ -1,9 +1,13 @@
 use std::{collections::HashMap, path::PathBuf};
 
-use crate::{dev::Device, whisper::inventory::list_devices};
+use crate::{
+    dev::Device,
+    whisper::{build_info::build_info, inventory::list_devices},
+};
 
 use super::{
     backend::{AccelBackend, BuildStatus},
+    build_info::BuildInfo,
     runtime_dir::{Environment, search_dirs},
     runtime_library::detect_missing,
 };
@@ -12,7 +16,7 @@ use super::{
 #[derive(Debug, Clone, Default)]
 pub struct Inventory {
     pub devices: Vec<Device>,
-    pub build: HashMap<AccelBackend, BuildStatus>,
+    pub build: BuildInfo,
     /// Backends that were built in but whose on-demand runtime library cannot be loaded.
     pub missing_runtime: HashMap<AccelBackend, String>,
     /// The directories searched for runtime libraries before the system's own search.
@@ -20,17 +24,14 @@ pub struct Inventory {
 }
 
 impl Inventory {
-    /// Enumerate the ggml devices registered in this process.
+    /// What the engine enumerates and was built with, with the runtime libraries it is missing.
     #[must_use]
     pub fn detect() -> Self {
         let dirs = search_dirs(&Environment::current());
         let missing_runtime = detect_missing(&dirs);
         Self {
             devices: list_devices(),
-            build: AccelBackend::ALL
-                .iter()
-                .map(|backend| (*backend, backend.build_status()))
-                .collect(),
+            build: build_info(),
             missing_runtime,
             runtime_dirs: dirs.into_iter().map(|dir| dir.path).collect(),
         }
@@ -38,9 +39,6 @@ impl Inventory {
 
     #[must_use]
     pub fn build_status(&self, backend: AccelBackend) -> BuildStatus {
-        self.build
-            .get(&backend)
-            .copied()
-            .unwrap_or(BuildStatus::Unknown)
+        self.build.status(backend)
     }
 }

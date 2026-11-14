@@ -35,7 +35,7 @@ pub enum AccelBackend {
 pub enum BuildStatus {
     Built,
     NotBuilt,
-    /// The build features of this crate cannot tell; only the runtime registry can.
+    /// The engine's build cannot tell; only the runtime registry can.
     Unknown,
 }
 
@@ -72,18 +72,6 @@ impl AccelBackend {
         match self {
             Self::Cuda | Self::Hip | Self::Metal | Self::Sycl | Self::Vulkan => true,
             Self::CoreMl | Self::Cpu => false,
-        }
-    }
-
-    #[must_use]
-    pub const fn build_status(self) -> BuildStatus {
-        match self {
-            Self::Cuda => feature_status(cfg!(feature = "cuda")),
-            Self::CoreMl => feature_status(cfg!(feature = "coreml")),
-            Self::Metal => feature_status(cfg!(feature = "metal")),
-            Self::Vulkan => feature_status(cfg!(feature = "vulkan")),
-            Self::Cpu => BuildStatus::Built,
-            Self::Hip | Self::Sycl => BuildStatus::Unknown,
         }
     }
 
@@ -125,14 +113,6 @@ impl From<AccelBackend> for purr_common::accel::AccelBackend {
             AccelBackend::Vulkan => Self::Vulkan,
             AccelBackend::Cpu => Self::Cpu,
         }
-    }
-}
-
-const fn feature_status(enabled: bool) -> BuildStatus {
-    if enabled {
-        BuildStatus::Built
-    } else {
-        BuildStatus::NotBuilt
     }
 }
 

@@ -1,8 +1,8 @@
-//! The instruction sets this binary was compiled with and the ones the running processor has.
+//! The instruction sets the running processor has, next to the ones the engine was compiled with.
 
 use purr_common::accel::{CpuFeature, CpuReport};
-use whisper_rs::whisper_rs_sys as ggml;
 
+use crate::accel::inventory::Inventory;
 use crate::dev::Device;
 use purr_common::platform::DeviceType;
 
@@ -11,31 +11,6 @@ fn present(has: impl Fn(CpuFeature) -> bool) -> Vec<CpuFeature> {
         .into_iter()
         .filter(|feature| has(*feature))
         .collect()
-}
-
-/// ggml answers these at compile time: it says what the CPU backend was built for.
-fn built_with_ggml(feature: CpuFeature) -> bool {
-    let flag = match feature {
-        CpuFeature::Avx => unsafe { ggml::ggml_cpu_has_avx() },
-        CpuFeature::AvxVnni => unsafe { ggml::ggml_cpu_has_avx_vnni() },
-        CpuFeature::Avx2 => unsafe { ggml::ggml_cpu_has_avx2() },
-        CpuFeature::Bmi2 => unsafe { ggml::ggml_cpu_has_bmi2() },
-        CpuFeature::Fma => unsafe { ggml::ggml_cpu_has_fma() },
-        CpuFeature::F16c => unsafe { ggml::ggml_cpu_has_f16c() },
-        CpuFeature::Avx512F => unsafe { ggml::ggml_cpu_has_avx512() },
-        CpuFeature::Avx512Vbmi => unsafe { ggml::ggml_cpu_has_avx512_vbmi() },
-        CpuFeature::Avx512Vnni => unsafe { ggml::ggml_cpu_has_avx512_vnni() },
-        CpuFeature::Avx512Bf16 => unsafe { ggml::ggml_cpu_has_avx512_bf16() },
-        CpuFeature::AmxInt8 => unsafe { ggml::ggml_cpu_has_amx_int8() },
-        CpuFeature::Avx512Bw | CpuFeature::Avx512Vl => 0,
-    };
-    flag != 0
-}
-
-/// Instruction sets the binary was compiled with, according to ggml's CPU backend.
-#[must_use]
-pub fn built_with() -> Vec<CpuFeature> {
-    present(|feature| feature.reported_by_build() && built_with_ggml(feature))
 }
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -85,13 +60,13 @@ fn cpu_name(devices: &[Device]) -> Option<String> {
 
 /// The processor's name, thread count and instruction sets, compiled in and available.
 #[must_use]
-pub fn report(devices: &[Device]) -> CpuReport {
+pub fn report(inventory: &Inventory) -> CpuReport {
     CpuReport {
-        name: cpu_name(devices),
+        name: cpu_name(&inventory.devices),
         logical_threads: std::thread::available_parallelism()
             .ok()
             .and_then(|threads| u32::try_from(threads.get()).ok()),
-        built_with: built_with(),
+        built_with: inventory.build.cpu.clone(),
         detected: detected(),
     }
 }
@@ -99,7 +74,7 @@ pub fn report(devices: &[Device]) -> CpuReport {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::accel::backend::AccelBackend;
+    use crate::accel::{backend::AccelBackend, build_info::BuildInfo};
 
     fn cpu_device(description: &str) -> Device {
         Device {
@@ -136,14 +111,18 @@ mod tests {
     }
 
     #[test]
-    fn features_ggml_cannot_report_are_never_built_in() {
-        assert_eq!(
-            built_with()
-                .into_iter()
-                .filter(|feature| !feature.reported_by_build())
-                .collect::<Vec<_>>(),
-            []
-        );
+    fn the_report_takes_the_compiled_in_sets_from_the_engine_build() {
+        let inventory = Inventory {
+            devices: vec![cpu_device("A processor")],
+            build: BuildInfo {
+                cpu: vec![CpuFeature::Avx, CpuFeature::Fma],
+                ..BuildInfo::default()
+            },
+            ..Inventory::default()
+        };
+        let report = report(&inventory);
+        assert_eq!(report.name, Some("A processor".to_owned()));
+        assert_eq!(report.built_with, [CpuFeature::Avx, CpuFeature::Fma]);
     }
 
     #[test]

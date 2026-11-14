@@ -94,7 +94,7 @@ impl SystemInfo {
                     (*backend, status)
                 })
                 .collect(),
-            cpu: cpu::report(&inventory.devices),
+            cpu: cpu::report(&inventory),
             devices: inventory.devices,
         }
     }

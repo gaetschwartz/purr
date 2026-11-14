@@ -138,7 +138,7 @@ pub fn probe(last_run: Option<LastRun>) -> SystemReport {
     let inventory = Inventory::detect();
     SystemReport {
         backends: backend_reports(&inventory),
-        cpu: cpu::report(&inventory.devices),
+        cpu: cpu::report(&inventory),
         last_run,
     }
 }
@@ -151,6 +151,7 @@ mod tests {
     use purr_common::devices::{DeviceKey, DeviceOrder};
     use purr_core::accel::{
         backend::BuildStatus,
+        build_info::BuildInfo,
         report::{AccelAttempt, AttemptFailure},
     };
 
@@ -177,24 +178,27 @@ mod tests {
     fn inventory(devices: Vec<Device>, built: &[CoreBackend]) -> Inventory {
         Inventory {
             devices,
-            build: CoreBackend::ALL
-                .iter()
-                .map(|backend| {
-                    let status = match (built.contains(backend), backend) {
-                        (true, _) => BuildStatus::Built,
-                        (false, CoreBackend::Hip | CoreBackend::Sycl) => BuildStatus::Unknown,
-                        (
-                            false,
-                            CoreBackend::Cuda
-                            | CoreBackend::CoreMl
-                            | CoreBackend::Metal
-                            | CoreBackend::Vulkan
-                            | CoreBackend::Cpu,
-                        ) => BuildStatus::NotBuilt,
-                    };
-                    (*backend, status)
-                })
-                .collect(),
+            build: BuildInfo {
+                backends: CoreBackend::ALL
+                    .iter()
+                    .map(|backend| {
+                        let status = match (built.contains(backend), backend) {
+                            (true, _) => BuildStatus::Built,
+                            (false, CoreBackend::Hip | CoreBackend::Sycl) => BuildStatus::Unknown,
+                            (
+                                false,
+                                CoreBackend::Cuda
+                                | CoreBackend::CoreMl
+                                | CoreBackend::Metal
+                                | CoreBackend::Vulkan
+                                | CoreBackend::Cpu,
+                            ) => BuildStatus::NotBuilt,
+                        };
+                        (*backend, status)
+                    })
+                    .collect(),
+                cpu: Vec::new(),
+            },
             missing_runtime: HashMap::from([(CoreBackend::Cuda, "cudart64_13.dll".to_owned())]),
             runtime_dirs: vec![PathBuf::from("runtime")],
         }
