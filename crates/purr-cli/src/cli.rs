@@ -105,10 +105,6 @@ pub struct Cli {
     #[arg(short = 'S', long)]
     pub no_stream: bool,
 
-    /// Temperature for sampling (0.0 = deterministic)
-    #[arg(long, default_value = "0.0")]
-    pub temperature: f32,
-
     #[clap(flatten)]
     pub verbosity: Verbosity,
 
@@ -412,7 +408,6 @@ impl TranscriptionConfigWithCliExt for purr_core::TranscriptionConfig {
         self.with_verbose(cli.verbosity.is_verbose())
             .with_opt_language(cli.language.as_ref().map(Language::code))
             .with_threads(cli.threads.unwrap_or_else(purr_core::config::auto_threads))
-            .with_temperature(cli.temperature)
             .with_sample_rate(cli.sample_rate)
             .with_chunk_size(cli.chunk_size)
             .with_vad_model(cli.vad_model.clone())

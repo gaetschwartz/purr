@@ -80,8 +80,6 @@ impl SyncWhisperTranscriber {
             .unwrap_or_else(crate::config::auto_threads);
         params.set_n_threads(threads as i32);
 
-        params.set_temperature(config.temperature);
-
         params.set_print_timestamps(false); // Disable whisper.cpp's internal timestamp printing
         params.set_print_progress(false); // Disable progress output
         params.set_print_special(false); // Disable special token printing

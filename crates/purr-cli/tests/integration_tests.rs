@@ -36,8 +36,6 @@ async fn slow_test_cli_transcribe_sample_files(#[files("../../samples/*")] sampl
         .arg("--no-stream") // Disable streaming for faster tests
         .arg("--output")
         .arg("json") // Use JSON for easier validation
-        .arg("--temperature")
-        .arg("0.0") // Deterministic results
         .arg("--model")
         .arg(TINY_MODEL);
 
@@ -90,8 +88,6 @@ async fn slow_test_cli_output_formats(#[case] format: OutputFormat) {
         .arg("--output")
         .arg(<&str>::from(&format))
         .arg("--no-stream") // Disable streaming for faster tests
-        .arg("--temperature")
-        .arg("0.0") // Deterministic results
         .arg("--model")
         .arg(TINY_MODEL);
 

@@ -46,13 +46,9 @@ async fn test_transcription_configurations() {
             .with_gpu(false)
             .with_language("en"),
         TranscriptionConfig::new().with_gpu(false).with_threads(1),
-        {
-            let mut config = TranscriptionConfig::new()
-                .with_gpu(false)
-                .with_sample_rate(16000);
-            config.temperature = 0.1;
-            config
-        },
+        TranscriptionConfig::new()
+            .with_gpu(false)
+            .with_sample_rate(16000),
     ];
 
     for (i, config) in configs.into_iter().enumerate() {

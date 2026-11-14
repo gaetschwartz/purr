@@ -1,28 +1,18 @@
-use super::{
-    browser_panel::BrowserPanel, changes::report, hugging_face_token::HuggingFaceTokenItem,
-};
+use super::{browser_panel::BrowserPanel, hugging_face_token::HuggingFaceTokenItem};
 use crate::{
     components::{
         group::{Group, Item},
         language_picker::LanguagePill,
         model_picker::ModelPill,
         pick_target::PickTarget,
-        slider::Slider,
-        toast::use_toasts,
     },
     platform::IS_WEB,
-    settings_store::use_settings,
 };
 use dioxus::prelude::*;
 
-/// Spoken language, model and decoding options.
+/// Spoken language, model and download options.
 #[component]
 pub fn TranscriptionPage() -> Element {
-    let settings = use_settings();
-    let toasts = use_toasts();
-    let temperature = settings.with(|settings| settings.model.temperature);
-    let temperature_text = format!("{temperature:.1}");
-
     rsx! {
         Group {
             Item {
@@ -40,22 +30,6 @@ pub fn TranscriptionPage() -> Element {
                 },
             }
             HuggingFaceTokenItem {}
-            if !IS_WEB {
-                Item {
-                    title: "Temperature",
-                    value: temperature_text.clone(),
-                    Slider {
-                        label: "Temperature",
-                        value: temperature,
-                        min: 0.0,
-                        max: 1.0,
-                        step: 0.1,
-                        value_text: temperature_text,
-                        ends: ("0".to_owned(), "1".to_owned()),
-                        onchange: move |value| report(toasts, settings.update(|s| s.model.temperature = value)),
-                    }
-                }
-            }
         }
         if IS_WEB {
             BrowserPanel {}

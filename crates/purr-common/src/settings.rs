@@ -51,8 +51,6 @@ pub struct ModelSettings {
     /// The model every launch starts with; `None` keeps the last one used
     #[serde(default)]
     pub default_model: Option<String>,
-    /// Temperature for model randomness (0.0 = deterministic, 1.0 = creative)
-    pub temperature: f64,
     /// Token that authenticates Hugging Face downloads
     #[serde(default, deserialize_with = "HuggingFaceToken::deserialize_optional")]
     pub hugging_face_token: Option<HuggingFaceToken>,
@@ -151,7 +149,6 @@ impl Default for ModelSettings {
         Self {
             model_name: "base".to_owned(),
             default_model: None,
-            temperature: 0.0,
             hugging_face_token: None,
         }
     }
@@ -253,12 +250,6 @@ impl Settings {
     pub fn validate(&self) -> Vec<SettingsError> {
         let mut errors = Vec::new();
 
-        if self.model.temperature < 0.0 || self.model.temperature > 1.0 {
-            errors.push(SettingsError::InvalidTemperature {
-                value: self.model.temperature,
-            });
-        }
-
         if self.model.model_name.trim().is_empty() {
             errors.push(SettingsError::EmptyModelName);
         }
@@ -340,9 +331,6 @@ impl Settings {
 /// Settings validation errors
 #[derive(Debug, Clone, PartialEq, thiserror::Error)]
 pub enum SettingsError {
-    #[error("Invalid temperature value: {value} (must be between 0.0 and 1.0)")]
-    InvalidTemperature { value: f64 },
-
     #[error("Model name cannot be empty")]
     EmptyModelName,
 
@@ -371,16 +359,6 @@ mod tests {
     #[test]
     fn default_settings_are_valid() {
         assert_eq!(Settings::default().validate(), []);
-    }
-
-    #[test]
-    fn a_temperature_outside_the_range_is_invalid() {
-        let mut settings = Settings::default();
-        settings.model.temperature = 2.0;
-        assert_eq!(
-            settings.validate(),
-            [SettingsError::InvalidTemperature { value: 2.0 }]
-        );
     }
 
     #[test]
@@ -661,7 +639,7 @@ log_file_path = "C:/logs/purr.log"
         keys
     }
 
-    const WRITTEN_MODEL_KEYS: [&str; 2] = ["model_name", "temperature"];
+    const WRITTEN_MODEL_KEYS: [&str; 1] = ["model_name"];
     const WRITTEN_TRANSCRIPT_KEYS: [&str; 5] = [
         "layout",
         "mark_unsure",
@@ -720,7 +698,6 @@ level = "Info"
             serde_json::json!({
                 "model_name": "small",
                 "default_model": null,
-                "temperature": 0.0,
                 "hugging_face_token": null,
             })
         );
@@ -845,7 +822,7 @@ level = "Info"
         };
         assert_eq!(
             format!("{model:?}"),
-            "ModelSettings { model_name: \"base\", default_model: None, temperature: 0.0, \
+            "ModelSettings { model_name: \"base\", default_model: None, \
              hugging_face_token: Some(HuggingFaceToken(<redacted>)) }"
         );
     }

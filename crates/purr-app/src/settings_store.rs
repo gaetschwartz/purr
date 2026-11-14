@@ -8,7 +8,7 @@
 //! let settings = use_settings();
 //! let model = settings.with(|s| s.model.model_name.clone());
 //! settings.set_model("small")?;
-//! settings.update(|s| s.model.temperature = 0.2)?;
+//! settings.update(|s| s.ui.compact_mode = true)?;
 //! ```
 
 mod clock;
@@ -365,14 +365,11 @@ mod tests {
     #[test]
     fn an_invalid_change_is_refused_and_nothing_is_queued() {
         let notes = run_with_store(LoadState::Loaded, |store| {
-            let refused = store.update(|settings| settings.model.temperature = 3.0);
+            let refused = store.update(|settings| settings.model.model_name = String::new());
             vec![
                 format!(
                     "{:?}",
-                    refused
-                        == Err(UpdateError::Invalid(vec![
-                            SettingsError::InvalidTemperature { value: 3.0 }
-                        ]))
+                    refused == Err(UpdateError::Invalid(vec![SettingsError::EmptyModelName]))
                 ),
                 describe(store),
             ]

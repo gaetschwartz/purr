@@ -364,8 +364,6 @@ pub struct EngineOptions {
     pub devices: DeviceOrder,
     /// CPU threads, `None` to let the engine choose
     pub threads: Option<u32>,
-    /// Sampling temperature, 0.0 being deterministic
-    pub temperature: f64,
 }
 
 impl EngineOptions {
@@ -375,7 +373,6 @@ impl EngineOptions {
         Self {
             devices: settings.performance.device_order(),
             threads: settings.performance.threads,
-            temperature: settings.model.temperature,
         }
     }
 }
@@ -1243,13 +1240,11 @@ mod engine_options_tests {
         let mut settings = Settings::default();
         settings.performance.devices = list.clone();
         settings.performance.threads = Some(3);
-        settings.model.temperature = 0.4;
         assert_eq!(
             EngineOptions::from_settings(&settings),
             EngineOptions {
                 devices: DeviceOrder::saved(list),
                 threads: Some(3),
-                temperature: 0.4,
             }
         );
     }

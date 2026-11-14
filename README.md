@@ -156,7 +156,6 @@ cargo test -p purr-cli
   --output json \\
   --timestamps \\
   --threads 8 \\
-  --temperature 0.2 \\
   --verbose
 ```
 
@@ -188,7 +187,6 @@ Options:
       --word-timestamps            Time every word, and add each segment's words
                                    (text, start, end, score) to --output json
       --progress                   Show position / duration on stderr while streaming
-      --temperature <TEMPERATURE>  Temperature for sampling [default: 0.0]
   -v, --verbose                    Verbose output
   -h, --help                       Print help
   -V, --version                    Print version

@@ -23,9 +23,7 @@ use std::collections::HashMap;
 
 /// `config` run the way `engine` asks.
 pub fn apply_engine(config: TranscriptionConfig, engine: &EngineOptions) -> TranscriptionConfig {
-    let config = config
-        .with_devices(engine.devices.clone())
-        .with_temperature(engine.temperature as f32);
+    let config = config.with_devices(engine.devices.clone());
     match engine.threads {
         Some(threads) => config.with_threads(threads as usize),
         None => config,
@@ -171,12 +169,10 @@ mod tests {
             &EngineOptions {
                 devices: DeviceOrder::cpu_only(),
                 threads: Some(5),
-                temperature: 0.5,
             },
         );
         assert_eq!(config.devices, DeviceOrder::cpu_only());
         assert_eq!(config.num_threads, Some(5));
-        assert!((config.temperature - 0.5).abs() < f32::EPSILON);
     }
 
     #[test]

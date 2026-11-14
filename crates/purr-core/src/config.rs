@@ -36,9 +36,6 @@ pub struct TranscriptionConfig {
     /// Maximum audio duration in seconds
     pub max_duration: Option<f32>,
 
-    /// Temperature for sampling (0.0 = deterministic)
-    pub temperature: f32,
-
     /// Beam size for beam search
     pub beam_size: Option<usize>,
 
@@ -106,7 +103,6 @@ impl Default for TranscriptionConfig {
             num_threads: None,  // Use system default
             sample_rate: 16000, // Whisper's preferred sample rate
             max_duration: None,
-            temperature: 0.0,
             beam_size: Some(5), // Default to beam search with 5 beams for better quality
             output_format: OutputFormat::default(),
             verbose: false,
@@ -190,13 +186,6 @@ impl TranscriptionConfig {
     #[must_use]
     pub fn with_verbose(mut self, verbose: bool) -> Self {
         self.verbose = verbose;
-        self
-    }
-
-    /// Set the temperature for sampling
-    #[must_use]
-    pub fn with_temperature(mut self, temperature: f32) -> Self {
-        self.temperature = temperature;
         self
     }
 
