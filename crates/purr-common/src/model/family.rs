@@ -43,11 +43,11 @@ impl WhisperSize {
     pub const fn summary(self) -> &'static str {
         match self {
             Self::Tiny => "fastest, lowest accuracy",
-            Self::Base => "good balance of speed and accuracy",
+            Self::Base => "balanced speed and accuracy",
             Self::Small => "good accuracy",
             Self::Medium => "high accuracy",
-            Self::LargeV1 => "highest accuracy, original large model",
-            Self::LargeV2 => "highest accuracy, improved large model",
+            Self::LargeV1 => "high accuracy, original large model",
+            Self::LargeV2 => "high accuracy, improved large model",
             Self::LargeV3 => "most accurate",
             Self::LargeV3Turbo => "faster large model",
         }
@@ -94,7 +94,7 @@ impl ParakeetVariant {
     #[must_use]
     pub const fn summary(self) -> &'static str {
         match self {
-            Self::TdtV3 => "fast and accurate, 25 European languages",
+            Self::TdtV3 => "fast and accurate",
         }
     }
 

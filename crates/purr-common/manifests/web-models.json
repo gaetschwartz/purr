@@ -10,7 +10,7 @@
       "languages": "any",
       "encoder_dtype": "fp32",
       "decoder_dtype": "q4",
-      "description": "Tiny multilingual model, fastest, lowest accuracy",
+      "description": "Fastest, lowest accuracy",
       "files": [
         {
           "path": "config.json",
@@ -61,7 +61,7 @@
       },
       "encoder_dtype": "fp32",
       "decoder_dtype": "q4",
-      "description": "Tiny English-only model, fastest, lowest accuracy",
+      "description": "Fastest, lowest accuracy",
       "files": [
         {
           "path": "config.json",
@@ -108,7 +108,7 @@
       "languages": "any",
       "encoder_dtype": "fp32",
       "decoder_dtype": "q4",
-      "description": "Base multilingual model, good balance of speed and accuracy",
+      "description": "Balanced speed and accuracy",
       "files": [
         {
           "path": "config.json",
@@ -155,7 +155,7 @@
       "languages": "any",
       "encoder_dtype": "q4",
       "decoder_dtype": "q4",
-      "description": "Base multilingual model, smaller download, good balance of speed and accuracy",
+      "description": "Balanced speed and accuracy",
       "files": [
         {
           "path": "config.json",
@@ -206,7 +206,7 @@
       },
       "encoder_dtype": "fp32",
       "decoder_dtype": "q4",
-      "description": "Base English-only model, good balance of speed and accuracy",
+      "description": "Balanced speed and accuracy",
       "files": [
         {
           "path": "config.json",
@@ -257,7 +257,7 @@
       },
       "encoder_dtype": "q4",
       "decoder_dtype": "q4",
-      "description": "Base English-only model, smaller download, good balance of speed and accuracy",
+      "description": "Balanced speed and accuracy",
       "files": [
         {
           "path": "config.json",
@@ -304,7 +304,7 @@
       "languages": "any",
       "encoder_dtype": "fp32",
       "decoder_dtype": "q4",
-      "description": "Small multilingual model, good accuracy",
+      "description": "Good accuracy",
       "files": [
         {
           "path": "config.json",
@@ -351,7 +351,7 @@
       "languages": "any",
       "encoder_dtype": "q4",
       "decoder_dtype": "q4",
-      "description": "Small multilingual model, smaller download, good accuracy",
+      "description": "Good accuracy",
       "files": [
         {
           "path": "config.json",
@@ -402,7 +402,7 @@
       },
       "encoder_dtype": "fp32",
       "decoder_dtype": "q4",
-      "description": "Small English-only model, good accuracy",
+      "description": "Good accuracy",
       "files": [
         {
           "path": "config.json",
@@ -453,7 +453,7 @@
       },
       "encoder_dtype": "q4",
       "decoder_dtype": "q4",
-      "description": "Small English-only model, smaller download, good accuracy",
+      "description": "Good accuracy",
       "files": [
         {
           "path": "config.json",
@@ -500,7 +500,7 @@
       "languages": "any",
       "encoder_dtype": "fp16",
       "decoder_dtype": "q4",
-      "description": "Large v3 Turbo multilingual model, highest accuracy, needs a WebGPU adapter with shader-f16",
+      "description": "High accuracy, faster large model",
       "files": [
         {
           "path": "config.json",
@@ -547,7 +547,7 @@
       "languages": "any",
       "encoder_dtype": "q4f16",
       "decoder_dtype": "q4f16",
-      "description": "Large v3 Turbo multilingual model, smaller download, needs a WebGPU adapter with shader-f16",
+      "description": "High accuracy, faster large model",
       "files": [
         {
           "path": "config.json",
