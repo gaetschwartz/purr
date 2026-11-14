@@ -97,9 +97,12 @@ backend, so it is not in `AccelBackend` or `detect_missing`. It has its own ggml
   so it must sit in `lib` next to the binary (the `$ORIGIN/lib` rpath that the Linux jobs already set) or on
   the library path, together with the `libggml*` libraries and backend modules of the same folder. A binary
   built with `transcribe` does not start without them.
-- Not verified on Linux: `libggml.so` exports `ggml_*` symbols and the executable carries whisper.cpp's static
-  ggml, so the dynamic linker may bind the former's callers to the executable's copy if the executable
-  exports its ggml symbols. Check `nm -D` on a build with both engines before shipping one.
+- On Linux the static ggml of whisper.cpp would be exported by the executable, and the dynamic linker would then bind
+  `libtranscribe.so` and `libggml-base.so` to it instead of to their own: measured with `LD_DEBUG=bindings`. The link
+  argument `-Wl,--exclude-libs,ALL`, emitted by `purr-delayload` for a Linux binary built with `transcribe`, keeps archive
+  symbols out of the dynamic table, and `test (linux)` fails if a ggml or gguf symbol shows up in `nm -D` of the
+  executable or a transcribe.cpp library binds to it. See [ci.md](ci.md#linux). The folder of the libraries is the
+  install tree (`lib` under `OUT_DIR` of `transcribe-cpp-sys`), which also holds the backend modules, not the build tree.
 
 ## Runtime pack (Windows)
 
@@ -118,14 +121,17 @@ leave those DLLs out and the pack is the only place they ship.
 - A package built with `transcribe` ships the set the `transcribe-cpp-sys` build script stages next to the
   executable in the target directory: on Windows `transcribe.dll`, `ggml.dll`, `ggml-base.dll` and
   `ggml-cpu-<tier>.dll` for each instruction set tier (`x64`, `sse42`, `sandybridge`, `haswell`, `skylakex`,
-  `cannonlake`, `cascadelake`, `icelake`, `alderlake`), all in one folder next to `purr.exe` (or in a
-  `runtime` folder, or the per-user one). The Windows jobs already copy `release\*.dll` into the archive. The
-  release scripts zip or tar the CLI artifact folder whole and the CUDA split only leaves out the cuBLAS and
-  cudart libraries, so the set travels with the archive; the portable desktop archive copies `r\*.dll` the
-  same way. A target directory that has seen other feature sets may hold stale modules, so a package built outside CI
-  lists these names instead of a glob.
-- NSIS installer with `transcribe`: `dx bundle` does not list DLLs, so the set above has to be added as bundle
-  resources next to `purr-app.exe`, or unpacked into `%LOCALAPPDATA%\purr\runtime` like the CUDA pack. Not done: no
-  desktop job builds the feature. On Debian the `.so` files would go under `/usr/lib/purr-desktop` with the CUDA
-  runtime, which is on the binary's rpath.
+  `cannonlake`, `cascadelake`, `icelake`, `alderlake`), twelve files and about 12 MB, which is about 4.5 MB in a zip.
+  All sit in one folder next to `purr.exe` (or in a `runtime` folder, or the per-user one).
+  `scripts/stage-transcribe-runtime.ps1` is the one place that lists them; it copies by name, fails on a missing file
+  or on another `transcribe*.dll` or `ggml*.dll` in the source, and checks a folder or zip with `-Check`. A target
+  directory that has seen other feature sets may hold stale modules, so nothing globs.
+- Windows CLI zip: the build job stages the libraries into the artifact folder, and the release scripts zip that
+  folder whole (the CUDA split only leaves out the cuBLAS and cudart libraries).
+- NSIS installer with `transcribe`: `dx bundle` does not list DLLs. `[bundle] resources` in `Dioxus.toml` names the
+  twelve files under `dist-runtime/`, which the desktop job fills with the staging script between two `dx bundle`
+  runs; the NSIS template installs each resource next to `purr-app.exe`. Off by default (`PURR_DESKTOP_TRANSCRIBE`)
+  because it has not been run: see [ci.md](ci.md#windows-packaging). The portable archive is staged the same way.
+  On Debian the Linux modules (fourteen on x86-64) would go under `/usr/lib/purr-desktop` with the CUDA runtime,
+  which is on the binary's rpath; not done.
 - Debian package: keeps shipping the CUDA runtime under `/usr/lib/purr-desktop`.

@@ -204,4 +204,5 @@ the catalog or from the file's first bytes.
    engine is not in `engines::all()` is `Unavailable` in the app (`ModelInfo::engine_built`) and
    skipped by `find_first_available_model`.
 6. Run the Whisper goldens (`cargo nextest run -p purr-engine-whisper --test golden
-   --run-ignored only`) to show the shared pipeline did not move.
+   --run-ignored only`) to show the shared pipeline did not move. What else to run, and what holds today, is in
+   [verification.md](verification.md).
