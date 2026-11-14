@@ -164,10 +164,14 @@ async fn list_downloaded(manager: &ModelManager) -> miette::Result<()> {
         let path = manager.get_model_path(spec);
         match status {
             ModelFileStatus::Present => resultln!(
-                "  {} - {} ({})",
+                "  {} - {} ({}, {}, {}, {}, {})",
                 spec.id.name(),
                 spec.description.muted(),
-                HumanBytes(spec.file.size_bytes).quantity()
+                HumanBytes(spec.file.size_bytes).quantity(),
+                spec.engine,
+                profile_text::languages_summary(&spec.profile.languages),
+                spec.quantization,
+                spec.family.attribution().license.label()
             )?,
             ModelFileStatus::SizeMismatch { expected, actual } => resultln!(
                 "  {} - {} (has {}, expected {}; download it again)",
@@ -193,7 +197,8 @@ async fn list_downloaded(manager: &ModelManager) -> miette::Result<()> {
 }
 
 async fn list_available(manager: &ModelManager) -> miette::Result<()> {
-    resultln!("{}", "Available Whisper Models:".heading())?;
+    resultln!("{}", "Available models:".heading())?;
+    let built = engines::built();
     resultln!()?;
 
     let registry = manager.registry();
@@ -205,10 +210,13 @@ async fn list_available(manager: &ModelManager) -> miette::Result<()> {
         .unwrap_or_default();
 
     for group in registry.groups() {
+        let attribution = group.family.attribution();
         resultln!(
-            "  {} - {}",
+            "  {} - {} ({}, {})",
             group.family.to_string().name(),
-            group.family.summary()
+            group.family.summary(),
+            attribution.license.label(),
+            attribution.author
         )?;
 
         for spec in group.models {
@@ -219,6 +227,9 @@ async fn list_available(manager: &ModelManager) -> miette::Result<()> {
             for note in profile_text::notes(&spec.profile) {
                 notes.push(note.to_owned());
             }
+            if !built.contains(&spec.engine) {
+                notes.push("not in this build".warning().to_string());
+            }
             match manager.file_status(spec).await? {
                 ModelFileStatus::Present => notes.push("downloaded".positive().to_string()),
                 ModelFileStatus::SizeMismatch { .. } => {
@@ -228,9 +239,10 @@ async fn list_available(manager: &ModelManager) -> miette::Result<()> {
             }
 
             let mut line = format!(
-                "    {}  {:<12}  {:<5}  {:>11}",
+                "    {}  {:<14}  {:<12}  {:<6}  {:>11}",
                 format!("{:<id_width$}", spec.id).path(),
-                profile_text::languages(&spec.profile.languages),
+                spec.engine.to_string(),
+                profile_text::languages_summary(&spec.profile.languages),
                 spec.quantization.to_string(),
                 HumanBytes(spec.file.size_bytes).to_string().quantity(),
             );
@@ -289,6 +301,7 @@ async fn info(manager: &ModelManager, spec: &ModelSpec) -> miette::Result<()> {
     resultln!("Name: {}", spec.id.name())?;
     resultln!("Description: {}", spec.description)?;
     resultln!("Family: {}", spec.family)?;
+    resultln!("Engine: {}", spec.engine)?;
     resultln!(
         "Language: {}",
         profile_text::languages(&spec.profile.languages)

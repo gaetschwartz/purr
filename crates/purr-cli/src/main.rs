@@ -25,6 +25,7 @@ mod verbosity;
 mod vt;
 
 use crate::download_prompt::prompt_for_model_download;
+use crate::language_arg::LanguageVerdict;
 use crate::theme::Themed as _;
 use cli::{ASCII_ART, Cli, Commands, OutputFormat};
 use futures::StreamExt as _;
@@ -314,6 +315,19 @@ async fn setup_config(
     let model = setup_model(cli).await?;
 
     let mut config = cli.run_config();
+    if let Some(spec) = ModelManager::new()?.listed(&model.path) {
+        match language_arg::check(cli.language.as_ref(), &spec.id.to_string(), &spec.profile)? {
+            LanguageVerdict::Applies => {}
+            LanguageVerdict::HintIgnored => {
+                statusln!(
+                    "{} {} finds the language itself; --language is ignored.",
+                    "Warning:".warning(),
+                    spec.family.label()
+                );
+                config = config.with_opt_language(None);
+            }
+        }
+    }
     if cli.device.is_some() {
         config = config.with_devices(device_order_for(cli, engines, &model)?);
     }

@@ -20,6 +20,18 @@ pub fn languages(support: &LanguageSupport) -> String {
     }
 }
 
+/// The languages of a model in a column of the model lists: every language is only named when
+/// the model has one.
+pub fn languages_summary(support: &LanguageSupport) -> String {
+    match support {
+        LanguageSupport::Any => "multilingual".to_owned(),
+        LanguageSupport::Only(tags) => match support.single() {
+            Some(_) => languages(support),
+            None => format!("{} languages", tags.len()),
+        },
+    }
+}
+
 /// The features of a model as the `models info` listing names them.
 pub fn features(profile: &ModelProfile) -> Vec<&'static str> {
     match profile.speakers {
@@ -70,6 +82,22 @@ mod tests {
                 .collect(),
         );
         assert_eq!(languages(&support), "ja, pt-BR");
+    }
+
+    #[test]
+    fn the_lists_name_one_language_and_count_several() {
+        assert_eq!(languages_summary(&LanguageSupport::Any), "multilingual");
+        assert_eq!(
+            languages_summary(&LanguageSupport::english_only()),
+            "english-only"
+        );
+        let several = LanguageSupport::Only(
+            ["ja", "pt-BR", "fr"]
+                .iter()
+                .map(|text| text.parse().unwrap())
+                .collect(),
+        );
+        assert_eq!(languages_summary(&several), "3 languages");
     }
 
     #[test]
