@@ -392,6 +392,8 @@ jobs:
       matrix:
         backend: ["none", "metal"]
         include:
+          - backend: "none"
+            transcribe: true
           - backend: "metal"
             is_release: true
             compiler_cache_writer: true
@@ -422,12 +424,21 @@ jobs:
         run: |
           export CFLAGS="-march=armv8.2-a+crypto+noi8mm"
           export CXXFLAGS="-march=armv8.2-a+crypto+noi8mm"
-          cargo build -p purr-cli --release --features static-ffmpeg${{ matrix.backend != 'none' && format(',{0}', matrix.backend) || '' }}
+          cargo build -p purr-cli --release --features static-ffmpeg${{ matrix.backend != 'none' && format(',{0}', matrix.backend) || '' }}${{ matrix.transcribe && ',transcribe' || '' }}
       - name: Prepare CLI artifact
         run: |
           mkdir -p artifacts/cli
           cp target/release/purr artifacts/cli/purr
+          if [ "${{ matrix.transcribe }}" = "true" ]; then
+            mkdir -p artifacts/cli/lib
+            cp -R "$(dirname "$(find target/release/build -name 'libtranscribe*.dylib' | head -n 1)")"/*.dylib artifacts/cli/lib/
+            install_name_tool -add_rpath @executable_path/lib artifacts/cli/purr
+          fi
           artifacts/cli/purr --version
+          if [ "${{ matrix.transcribe }}" = "true" ]; then
+            artifacts/cli/purr sys --json | jq -e '.engines[] | select(.engine == "transcribe-cpp") | .status.ready.version' > /dev/null \
+              || { echo "::error::the transcribe.cpp engine is not loaded"; exit 1; }
+          fi
       - name: Archive CLI
         uses: actions/upload-artifact@v7
         with:
@@ -525,6 +536,8 @@ jobs:
       matrix:
         backend: ${{ fromJSON(inputs.windows_single_backends && '["none","cuda","vulkan","cuda,vulkan"]' || '["none","cuda,vulkan"]') }}
         include:
+          - backend: "none"
+            transcribe: true
           - backend: "cuda,vulkan"
             label: cuda-vulkan
             is_release: true
@@ -553,7 +566,7 @@ jobs:
           # rust-cache joins the target onto the workspace path, and CARGO_TARGET_DIR is D:\t
           cache-workspaces: ". -> ../../../t"
           # whisper-rs-sys does not rebuild ggml when GGML_* or the GPU SDKs change, so each configuration needs its own cache
-          cache-key: ${{ matrix.label || matrix.backend }}-ggml-native-${{ env.GGML_NATIVE }}-crt-static-${{ env.CMAKE_GENERATOR_x86_64_pc_windows_msvc || 'msbuild' }}-cuda-${{ env.CUDA_VERSION }}-vulkan-${{ env.VULKAN_SDK_VERSION }}
+          cache-key: ${{ matrix.label || matrix.backend }}${{ matrix.transcribe && '-transcribe' || '' }}-ggml-native-${{ env.GGML_NATIVE }}-crt-static-${{ env.CMAKE_GENERATOR_x86_64_pc_windows_msvc || 'msbuild' }}-cuda-${{ env.CUDA_VERSION }}-vulkan-${{ env.VULKAN_SDK_VERSION }}
           cache-save: ${{ github.ref == 'refs/heads/develop' && matrix.is_release == true }}
       - uses: ./.github/actions/setup-compiler-cache
         with:
@@ -561,7 +574,7 @@ jobs:
           base-dir: ${{ env.CARGO_TARGET_DIR }}
       - name: Build the CLI
         run: |
-          cargo build -p purr-cli --release --features static-ffmpeg${{ matrix.backend != 'none' && format(',{0}', matrix.backend) || '' }}
+          cargo build -p purr-cli --release --features static-ffmpeg${{ matrix.backend != 'none' && format(',{0}', matrix.backend) || '' }}${{ matrix.transcribe && ',transcribe' || '' }}
       - name: Prepare CLI artifact
         run: |
           New-Item -ItemType Directory -Force -Path artifacts\cli
@@ -582,12 +595,15 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Check the CLI does not import the deferred libraries
         run: |
-          ./scripts/check-windows-imports.ps1 -Exe artifacts\cli\purr.exe -Forbidden '^nvcuda\.dll$','^cudart64_','^cublas','^vulkan-1\.dll$'
+          $expect = @{}
+          if ("${{ matrix.transcribe }}" -eq 'true') { $expect.ExpectDelayLoaded = @('transcribe.dll') }
+          ./scripts/check-windows-imports.ps1 -Exe artifacts\cli\purr.exe -Forbidden '^nvcuda\.dll$','^cudart64_','^cublas','^vulkan-1\.dll$' @expect
       - name: Check the CLI starts without GPU runtimes
         run: |
           $expect = @{
             ExpectCuda = "${{ matrix.backend }}" -match 'cuda'
             ExpectVulkan = "${{ matrix.backend }}" -match 'vulkan'
+            ExpectTranscribe = "${{ matrix.transcribe }}" -eq 'true'
           }
           ./scripts/check-windows-sys.ps1 -Exe artifacts\cli\purr.exe @expect
       - name: Archive CLI

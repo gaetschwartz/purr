@@ -1,11 +1,12 @@
 param(
     [Parameter(Mandatory)][string]$Exe,
-    [Parameter(Mandatory)][string[]]$Forbidden
+    [Parameter(Mandatory)][string[]]$Forbidden,
+    [string[]]$ExpectDelayLoaded = @()
 )
 
 $ErrorActionPreference = 'Stop'
 
-$Forbidden += '^vcruntime140', '^msvcp140', '^concrt140\.dll$', '^vcomp140\.dll$'
+$Forbidden += '^vcruntime140', '^msvcp140', '^concrt140\.dll$', '^vcomp140\.dll$', '^transcribe\.dll$', '^ggml'
 
 $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
 $dumpbin = & $vswhere -latest -find 'VC\Tools\MSVC\**\bin\Hostx64\x64\dumpbin.exe' | Select-Object -First 1
@@ -37,6 +38,12 @@ foreach ($dll in $hard) {
             Write-Host "::error::$Exe has a hard dependency on $dll"
             $failed = $true
         }
+    }
+}
+foreach ($dll in $ExpectDelayLoaded) {
+    if ($delayed -notcontains $dll) {
+        Write-Host "::error::$Exe does not delay-load $dll"
+        $failed = $true
     }
 }
 if ($hard.Count -eq 0) {

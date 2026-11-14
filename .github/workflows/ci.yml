@@ -54,3 +54,9 @@ jobs:
         run: cargo clippy --workspace --all-targets --features purr-core/static-ffmpeg
       - name: Tests
         run: cargo nextest run --workspace --features purr-core/static-ffmpeg
+      - name: The transcribe.cpp engine lists its devices in the CLI
+        run: |
+          cargo build -p purr-cli --features static-ffmpeg,transcribe
+          lib_dir="$(dirname "$(find target/debug/build -name 'libtranscribe.so*' -print -quit)")"
+          LD_LIBRARY_PATH="$lib_dir" target/debug/purr sys --json \
+            | jq -e '.engines[] | select(.engine == "transcribe-cpp") | .status.ready.devices | length > 0'

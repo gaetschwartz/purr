@@ -1,7 +1,8 @@
 param(
     [Parameter(Mandatory)][string]$Exe,
     [switch]$ExpectCuda,
-    [switch]$ExpectVulkan
+    [switch]$ExpectVulkan,
+    [switch]$ExpectTranscribe
 )
 
 $ErrorActionPreference = 'Stop'
@@ -9,6 +10,13 @@ $ErrorActionPreference = 'Stop'
 $bare = Join-Path ([IO.Path]::GetTempPath()) ("purr-bare-" + [guid]::NewGuid())
 New-Item -ItemType Directory -Path $bare | Out-Null
 Copy-Item $Exe (Join-Path $bare 'purr.exe')
+$withLibraries = $null
+if ($ExpectTranscribe) {
+    $withLibraries = Join-Path ([IO.Path]::GetTempPath()) ("purr-libs-" + [guid]::NewGuid())
+    New-Item -ItemType Directory -Path $withLibraries | Out-Null
+    Copy-Item $Exe (Join-Path $withLibraries 'purr.exe')
+    Copy-Item (Join-Path (Split-Path -Parent (Resolve-Path $Exe)) '*.dll') $withLibraries
+}
 
 $savedPath = $env:PATH
 $savedVariables = @{}
@@ -27,6 +35,10 @@ try {
     $humanExitCode = $LASTEXITCODE
     $json = & (Join-Path $bare 'purr.exe') sys --json | Out-String
     $exitCode = $LASTEXITCODE
+    if ($ExpectTranscribe) {
+        $loadedJson = & (Join-Path $withLibraries 'purr.exe') sys --json | Out-String
+        $loadedExitCode = $LASTEXITCODE
+    }
 }
 finally {
     $env:PATH = $savedPath
@@ -34,6 +46,7 @@ finally {
         [Environment]::SetEnvironmentVariable($entry.Key, $entry.Value)
     }
     Remove-Item -Recurse -Force $bare
+    if ($withLibraries) { Remove-Item -Recurse -Force $withLibraries }
 }
 
 Write-Host $human
@@ -60,5 +73,15 @@ if ($ExpectCuda) {
 }
 if ($ExpectVulkan) {
     Require ((Status $backends.vulkan) -ne 'Disabled') 'Vulkan is not reported as built'
+}
+if ($ExpectTranscribe) {
+    $engine = @(($json | ConvertFrom-Json).engines) | Where-Object { $_.engine -eq 'transcribe-cpp' }
+    Require ($null -ne $engine) 'purr sys --json does not list the transcribe.cpp engine'
+    Require ($engine.status.library_missing.library -eq 'transcribe.dll') 'the transcribe.cpp engine is not reported as missing transcribe.dll'
+    Require ($human -match 'transcribe\.cpp engine - Not loadable') 'purr sys does not say the transcribe.cpp engine is not loadable'
+    Require ($loadedExitCode -eq 0) "purr sys exited with $loadedExitCode next to the transcribe.cpp libraries"
+    $loaded = @(($loadedJson | ConvertFrom-Json).engines) | Where-Object { $_.engine -eq 'transcribe-cpp' }
+    Require ($loaded.status.ready.version -match '^\d+\.\d+\.\d+') 'the transcribe.cpp engine is not loaded next to its libraries'
+    Require (@($loaded.status.ready.devices).Count -ge 1) 'the transcribe.cpp engine lists no device next to its libraries'
 }
 if ($failed) { exit 1 }
