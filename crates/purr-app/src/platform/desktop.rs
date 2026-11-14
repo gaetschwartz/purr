@@ -22,7 +22,7 @@ use purr_common::platform::{
     ModelOperationProgress, ModelProgressStream, TranscriptionStream, model_flag,
 };
 use purr_common::settings::Settings;
-use purr_core::WhisperError;
+use purr_core::Error;
 use purr_core::accel::inventory::Inventory;
 use purr_core::config::TentativeText;
 use purr_core::error::ConfigurationError;
@@ -703,18 +703,18 @@ fn transcription_stream(
     }))
 }
 
-fn failure_kind(error: &WhisperError) -> ModelFailureKind {
+fn failure_kind(error: &Error) -> ModelFailureKind {
     let network = matches!(
         error,
-        WhisperError::Configuration {
+        Error::Configuration {
             source: ConfigurationError::DownloadFailed { .. }
                 | ConfigurationError::DownloadStreamError { .. },
-        } | WhisperError::Http { .. }
-            | WhisperError::NetworkError { .. }
+        } | Error::Http { .. }
+            | Error::NetworkError { .. }
     );
     let integrity = matches!(
         error,
-        WhisperError::Configuration {
+        Error::Configuration {
             source: ConfigurationError::ModelIntegrity(_),
         }
     );
@@ -777,7 +777,7 @@ async fn download(
     tx: &mut ProgressSender,
 ) -> Result<(), ModelOperationProgress> {
     let model_id = model.id.clone();
-    let failed = |operation: &str, error: &WhisperError| ModelOperationProgress::Failed {
+    let failed = |operation: &str, error: &Error| ModelOperationProgress::Failed {
         model_id: model_id.clone(),
         operation: operation.to_owned(),
         error_message: error.to_string(),

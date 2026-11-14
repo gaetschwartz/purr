@@ -5,7 +5,7 @@ use crate::{
     accel::report::AccelReport,
     audio::AudioData,
     config::TranscriptionConfig,
-    error::{Result, TranscriptionError, WhisperError},
+    error::{Error, Result, TranscriptionError},
     whisper::{
         SyncTranscriptionResult, TranscriptionSegment, TranscriptionStats, WhisperTranscriber,
         loader::{SpecialTokens, load_model},
@@ -91,7 +91,7 @@ impl SyncWhisperTranscriber {
         // Run transcription using state.full()
         state
             .full(params, &audio_data.samples)
-            .map_err(|e| WhisperError::from(TranscriptionError::Failed { source: e }))?;
+            .map_err(|e| Error::from(TranscriptionError::Failed { source: e }))?;
 
         let processing_time = start_time.elapsed().as_secs_f64();
 

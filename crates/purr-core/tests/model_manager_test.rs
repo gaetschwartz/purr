@@ -1,8 +1,8 @@
 use parking_lot::Mutex;
+use purr_core::ModelManager;
 use purr_core::error::ConfigurationError;
 use purr_core::model::status::{ModelFileStatus, ModelIntegrity};
 use purr_core::model::vad_or_none;
-use purr_core::{ModelManager, WhisperError};
 use std::error::Error;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -178,7 +178,7 @@ async fn unknown_model_id_is_a_typed_error() -> Result<(), Box<dyn Error>> {
 
     assert!(matches!(
         result,
-        Err(purr_core::WhisperError::Configuration {
+        Err(purr_core::Error::Configuration {
             source: purr_core::error::ConfigurationError::UnknownModel(ref unknown)
         }) if unknown.model_name == "nonexistent"
     ));
@@ -276,7 +276,7 @@ async fn deleting_a_model_leaves_the_voice_activity_model() -> Result<(), Box<dy
 #[test]
 fn a_voice_activity_failure_is_not_a_transcription_failure() {
     let path = PathBuf::from("ggml-silero.bin");
-    let failure = WhisperError::from(ConfigurationError::NoModelFound);
+    let failure = purr_core::Error::from(ConfigurationError::NoModelFound);
 
     assert_eq!(vad_or_none(Ok(Some(path.clone()))), Some(path));
     assert_eq!(vad_or_none(Ok(None)), None);

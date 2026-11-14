@@ -1,4 +1,4 @@
-use crate::error::{Result, WhisperError};
+use crate::error::{Error, Result};
 use rustls::crypto::{CryptoProvider, ring};
 
 fn ensure_crypto_provider() -> Result<()> {
@@ -8,7 +8,7 @@ fn ensure_crypto_provider() -> Result<()> {
     match ring::default_provider().install_default() {
         Ok(()) => Ok(()),
         Err(_) if CryptoProvider::get_default().is_some() => Ok(()),
-        Err(_) => Err(WhisperError::NetworkError {
+        Err(_) => Err(Error::NetworkError {
             message: "Failed to install a TLS crypto provider".to_owned(),
         }),
     }

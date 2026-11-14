@@ -1,4 +1,4 @@
-use crate::error::{Result, WhisperError};
+use crate::error::{Error, Result};
 use crate::input::AsyncStreamBuffer;
 use futures_util::StreamExt;
 use reqwest::Client;
@@ -79,7 +79,7 @@ impl HttpStreamer {
             .user_agent(&config.user_agent)
             .redirect(reqwest::redirect::Policy::limited(config.max_redirects))
             .build()
-            .map_err(|e| WhisperError::NetworkError {
+            .map_err(|e| Error::NetworkError {
                 message: format!("Failed to create HTTP client: {e}"),
             })?;
 
@@ -93,7 +93,7 @@ impl HttpStreamer {
         buffer: Arc<AsyncStreamBuffer>,
     ) -> Result<JoinHandle<Result<()>>> {
         if !matches!(url.scheme(), "http" | "https") {
-            return Err(WhisperError::InvalidInput {
+            return Err(Error::InvalidInput {
                 message: "Only HTTP and HTTPS URLs are supported".to_owned(),
             });
         }
@@ -106,13 +106,13 @@ impl HttpStreamer {
                 .get(url.clone())
                 .send()
                 .await
-                .map_err(|e| WhisperError::NetworkError {
+                .map_err(|e| Error::NetworkError {
                     message: format!("Failed to connect to URL: {e}"),
                 })?;
 
         // Check response status
         if !response.status().is_success() {
-            return Err(WhisperError::NetworkError {
+            return Err(Error::NetworkError {
                 message: format!(
                     "HTTP request failed with status: {} for URL: {}",
                     response.status(),
@@ -170,7 +170,7 @@ impl HttpStreamer {
                     }
                     Err(e) => {
                         error!("Error receiving chunk: {}", e);
-                        return Err(WhisperError::NetworkError {
+                        return Err(Error::NetworkError {
                             message: format!("Error receiving data chunk: {e}"),
                         });
                     }
@@ -187,7 +187,7 @@ impl HttpStreamer {
 
     /// Get the content length of a URL without downloading it
     pub async fn get_content_info(&self, url: &str) -> Result<UrlContentInfo> {
-        let url = Url::parse(url).map_err(|e| WhisperError::InvalidInput {
+        let url = Url::parse(url).map_err(|e| Error::InvalidInput {
             message: format!("Invalid URL: {e}"),
         })?;
 
@@ -196,12 +196,12 @@ impl HttpStreamer {
                 .head(url.clone())
                 .send()
                 .await
-                .map_err(|e| WhisperError::NetworkError {
+                .map_err(|e| Error::NetworkError {
                     message: format!("Failed to get URL info: {e}"),
                 })?;
 
         if !response.status().is_success() {
-            return Err(WhisperError::NetworkError {
+            return Err(Error::NetworkError {
                 message: format!(
                     "HEAD request failed with status: {} for URL: {}",
                     response.status(),

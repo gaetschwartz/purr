@@ -5,7 +5,6 @@ use axum::{
 };
 use axum_test::TestServer;
 use purr_common::hugging_face_token::HuggingFaceToken;
-use purr_core::WhisperError;
 use purr_core::error::{ConfigurationError, ModelIntegrityError};
 use purr_core::model::download::download_verified;
 use purr_core::model::pinned::PinnedFile;
@@ -119,7 +118,7 @@ async fn checksum_mismatch_is_rejected_and_cleaned_up() -> Result<(), Box<dyn Er
     .await;
 
     match result {
-        Err(WhisperError::Configuration {
+        Err(purr_core::Error::Configuration {
             source:
                 ConfigurationError::ModelIntegrity(ModelIntegrityError::ChecksumMismatch {
                     model_id,
@@ -154,7 +153,7 @@ async fn truncated_body_is_rejected_and_cleaned_up() -> Result<(), Box<dyn Error
     .await;
 
     match result {
-        Err(WhisperError::Configuration {
+        Err(purr_core::Error::Configuration {
             source:
                 ConfigurationError::ModelIntegrity(ModelIntegrityError::SizeMismatch {
                     model_id,
@@ -189,7 +188,7 @@ async fn oversized_body_is_aborted_and_cleaned_up() -> Result<(), Box<dyn Error>
     .await;
 
     match result {
-        Err(WhisperError::Configuration {
+        Err(purr_core::Error::Configuration {
             source:
                 ConfigurationError::ModelIntegrity(ModelIntegrityError::SizeMismatch {
                     expected,
@@ -224,7 +223,7 @@ async fn http_error_status_leaves_no_files() -> Result<(), Box<dyn Error>> {
 
     assert!(matches!(
         result,
-        Err(WhisperError::Configuration {
+        Err(purr_core::Error::Configuration {
             source: ConfigurationError::DownloadHttpError {
                 status_code: 404,
                 ..

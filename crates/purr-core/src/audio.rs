@@ -1,6 +1,6 @@
 //! Audio processing functionality using `FFmpeg`
 
-use crate::error::{AudioProcessingError, Result, WhisperError};
+use crate::error::{AudioProcessingError, Error, Result};
 use crate::input::AsyncStreamBuffer;
 use crate::resample::FrameResampler;
 use ffmpeg_next as ffmpeg;
@@ -95,7 +95,7 @@ pub struct AudioProcessor {}
 impl AudioProcessor {
     /// Create a new audio processor
     pub fn new() -> Result<Self> {
-        ffmpeg::init().map_err(WhisperError::from)?;
+        ffmpeg::init().map_err(Error::from)?;
 
         // Set FFmpeg log level to quiet to suppress output
         unsafe {
@@ -115,7 +115,7 @@ impl AudioProcessor {
             processor.load_audio_sync(&path)
         })
         .await
-        .map_err(|e| WhisperError::from(AudioProcessingError::TaskJoin { source: e }))?
+        .map_err(|e| Error::from(AudioProcessingError::TaskJoin { source: e }))?
     }
 
     /// Stream audio file as chunks for real-time processing
@@ -147,14 +147,14 @@ impl AudioProcessor {
     fn load_audio_sync(&mut self, path: &Path) -> Result<AudioData> {
         // Validate file exists
         if !path.exists() {
-            return Err(WhisperError::from(AudioProcessingError::ReadFailed {
+            return Err(Error::from(AudioProcessingError::ReadFailed {
                 file: path.to_path_buf(),
                 source: std::io::Error::new(std::io::ErrorKind::NotFound, "File not found"),
             }));
         }
 
         // Open input file and convert to AsyncCustomInput
-        let input_ctx = ffmpeg::format::input(&path).map_err(WhisperError::from)?;
+        let input_ctx = ffmpeg::format::input(&path).map_err(Error::from)?;
         let custom_input = crate::input::AsyncCustomInput::from_input_context(input_ctx)?;
 
         // Use the common input processing logic
@@ -170,21 +170,19 @@ impl AudioProcessor {
         // Validate file exists
         if !path.exists() {
             let error_msg = format!("Audio file not found: {}", path.display());
-            let error = WhisperError::from(AudioProcessingError::processing_failed(
+            let error = Error::from(AudioProcessingError::processing_failed(
                 "file validation",
                 std::io::Error::new(std::io::ErrorKind::NotFound, error_msg.clone()),
             ));
-            let _ = tx.send(Err(WhisperError::from(
-                AudioProcessingError::processing_failed(
-                    "file validation",
-                    std::io::Error::new(std::io::ErrorKind::NotFound, error_msg),
-                ),
-            )));
+            let _ = tx.send(Err(Error::from(AudioProcessingError::processing_failed(
+                "file validation",
+                std::io::Error::new(std::io::ErrorKind::NotFound, error_msg),
+            ))));
             return Err(error);
         }
 
         // Open input file and convert to AsyncCustomInput
-        let input_ctx = ffmpeg::format::input(&path).map_err(WhisperError::from)?;
+        let input_ctx = ffmpeg::format::input(&path).map_err(Error::from)?;
         let custom_input = crate::input::AsyncCustomInput::from_input_context(input_ctx)?;
 
         // Use the common input processing logic
@@ -232,7 +230,7 @@ impl AudioProcessor {
             processor.load_audio_from_input(custom_input)
         })
         .await
-        .map_err(|e| WhisperError::from(AudioProcessingError::TaskJoin { source: e }))??;
+        .map_err(|e| Error::from(AudioProcessingError::TaskJoin { source: e }))??;
 
         // Wait for streaming to complete
         let _ = streaming_handle.await;
@@ -283,7 +281,7 @@ impl AudioProcessor {
             // Create custom input from the buffer
             let custom_input = match futures::executor::block_on(AsyncCustomInput::create(buffer)) {
                 Err(e) => {
-                    let _ = tx.send(Err(WhisperError::from(e)));
+                    let _ = tx.send(Err(Error::from(e)));
                     return;
                 }
                 Ok(input) => input,
@@ -309,19 +307,16 @@ impl AudioProcessor {
         let input_stream = ictx
             .streams()
             .best(ffmpeg::media::Type::Audio)
-            .ok_or_else(|| WhisperError::from(AudioProcessingError::NoAudioStream))?;
+            .ok_or_else(|| Error::from(AudioProcessingError::NoAudioStream))?;
 
         let stream_index = input_stream.index();
 
         // Get decoder
         let context_decoder =
             ffmpeg::codec::context::Context::from_parameters(input_stream.parameters())
-                .map_err(WhisperError::from)?;
+                .map_err(Error::from)?;
 
-        let mut decoder = context_decoder
-            .decoder()
-            .audio()
-            .map_err(WhisperError::from)?;
+        let mut decoder = context_decoder.decoder().audio().map_err(Error::from)?;
 
         let mut samples = Vec::new();
         let mut frame = ffmpeg::frame::Audio::empty();
@@ -340,7 +335,7 @@ impl AudioProcessor {
                         warn!("Skipping invalid chunk at stream index {}", stream_index);
                         continue;
                     }
-                    Err(e) => return Err(WhisperError::from(e)),
+                    Err(e) => return Err(Error::from(e)),
                 }
             }
         }
@@ -361,7 +356,7 @@ impl AudioProcessor {
 
         // Check if we got any audio data
         if samples.is_empty() {
-            return Err(WhisperError::from(AudioProcessingError::processing_failed(
+            return Err(Error::from(AudioProcessingError::processing_failed(
                 "audio extraction",
                 std::io::Error::new(
                     std::io::ErrorKind::InvalidData,
@@ -412,19 +407,16 @@ impl AudioProcessor {
         let input_stream = ictx
             .streams()
             .best(ffmpeg::media::Type::Audio)
-            .ok_or_else(|| WhisperError::from(AudioProcessingError::NoAudioStream))?;
+            .ok_or_else(|| Error::from(AudioProcessingError::NoAudioStream))?;
 
         let stream_index = input_stream.index();
 
         // Get decoder
         let context_decoder =
             ffmpeg::codec::context::Context::from_parameters(input_stream.parameters())
-                .map_err(WhisperError::from)?;
+                .map_err(Error::from)?;
 
-        let mut decoder = context_decoder
-            .decoder()
-            .audio()
-            .map_err(WhisperError::from)?;
+        let mut decoder = context_decoder.decoder().audio().map_err(Error::from)?;
 
         let mut output_samples = Vec::new();
         let mut frame = ffmpeg::frame::Audio::empty();
@@ -456,8 +448,8 @@ impl AudioProcessor {
                         continue;
                     }
                     Err(e) => {
-                        let whisper_error = WhisperError::from(e);
-                        let _ = tx.send(Err(WhisperError::NetworkError {
+                        let whisper_error = Error::from(e);
+                        let _ = tx.send(Err(Error::NetworkError {
                             message: format!("Failed to decode audio packet: {e}"),
                         }));
                         return Err(whisper_error);
@@ -504,7 +496,7 @@ impl AudioProcessor {
             let _ = tx.send(Ok(final_chunk));
         } else if chunk_index == 0 {
             // No chunks were sent, send an error
-            let error = WhisperError::from(AudioProcessingError::processing_failed(
+            let error = Error::from(AudioProcessingError::processing_failed(
                 "audio processing",
                 std::io::Error::new(
                     std::io::ErrorKind::InvalidData,
@@ -512,7 +504,7 @@ impl AudioProcessor {
                 ),
             ));
             let _ = tx.send(Err(error));
-            return Err(WhisperError::from(AudioProcessingError::processing_failed(
+            return Err(Error::from(AudioProcessingError::processing_failed(
                 "audio processing",
                 std::io::Error::new(
                     std::io::ErrorKind::InvalidData,
@@ -698,7 +690,7 @@ mod tests {
         let mut stream = AudioStream::new(rx);
 
         // Send an error
-        let test_error = WhisperError::from(AudioProcessingError::processing_failed(
+        let test_error = Error::from(AudioProcessingError::processing_failed(
             "test operation",
             std::io::Error::other("Test error"),
         ));
@@ -720,12 +712,12 @@ mod tests {
         assert!(result.is_err());
         let error = result.unwrap_err();
         match error {
-            WhisperError::AudioProcessing {
+            Error::AudioProcessing {
                 source: AudioProcessingError::ReadFailed { .. },
             } => {
                 // Expected ReadFailed error for nonexistent file
             }
-            WhisperError::AudioProcessing {
+            Error::AudioProcessing {
                 source: AudioProcessingError::ProcessingFailed { operation, .. },
             } => {
                 assert!(operation.contains("not found"));

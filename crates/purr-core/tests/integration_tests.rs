@@ -30,7 +30,7 @@ async fn test_missing_audio_file() {
 
     assert!(result.is_err());
     match result.unwrap_err() {
-        WhisperError::AudioProcessing { .. } | WhisperError::Configuration { .. } => {}
+        Error::AudioProcessing { .. } | Error::Configuration { .. } => {}
         e => panic!("Expected AudioProcessing or Configuration error, got: {e}"),
     }
 }
@@ -139,7 +139,7 @@ async fn test_transcription_error_handling(#[case] invalid_path: &str) {
 
     let error = result.unwrap_err();
     match error {
-        WhisperError::AudioProcessing { .. } | WhisperError::Io { .. } => {
+        Error::AudioProcessing { .. } | Error::Io { .. } => {
             println!("✓ Correctly handled invalid file: {invalid_path} -> {error}");
         }
         _ => {

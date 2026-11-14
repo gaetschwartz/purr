@@ -637,7 +637,7 @@ impl StreamWhisperTranscriber {
 }
 
 pub struct StreamingTranscription {
-    stream: Pin<Box<dyn Stream<Item = Result<StreamEvent, crate::WhisperError>> + Send>>,
+    stream: Pin<Box<dyn Stream<Item = Result<StreamEvent, crate::Error>> + Send>>,
     accel: AccelReport,
 }
 
@@ -650,7 +650,7 @@ impl StreamingTranscription {
 }
 
 impl Stream for StreamingTranscription {
-    type Item = Result<StreamEvent, crate::WhisperError>;
+    type Item = Result<StreamEvent, crate::Error>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         self.stream.as_mut().poll_next(cx)

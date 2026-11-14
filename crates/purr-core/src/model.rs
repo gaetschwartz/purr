@@ -8,7 +8,7 @@ pub mod pinned;
 pub mod registry;
 pub mod status;
 
-use crate::error::{ConfigurationError, Result, WhisperError};
+use crate::error::{ConfigurationError, Error, Result};
 use crate::model::digest::Sha256Hasher;
 use crate::model::pinned::PinnedFile;
 use crate::model::registry::{ModelSpec, Registry};
@@ -35,7 +35,7 @@ impl ModelManager {
     /// Create a new model manager over the embedded manifest
     pub fn new() -> Result<Self> {
         let project_dirs = ProjectDirs::from("dev.gaetans", "", "purr")
-            .ok_or_else(|| WhisperError::from(ConfigurationError::XdgDirectories))?;
+            .ok_or_else(|| Error::from(ConfigurationError::XdgDirectories))?;
 
         Ok(Self::with_registry(
             project_dirs.data_dir().join("models"),
@@ -75,7 +75,7 @@ impl ModelManager {
     pub async fn ensure_models_dir(&self) -> Result<()> {
         fs::create_dir_all(&self.models_dir)
             .await
-            .map_err(WhisperError::from)?;
+            .map_err(Error::from)?;
         Ok(())
     }
 
@@ -260,7 +260,7 @@ impl ModelManager {
             }
         }
 
-        Err(WhisperError::from(ConfigurationError::NoModelFound))
+        Err(Error::from(ConfigurationError::NoModelFound))
     }
 }
 
@@ -322,7 +322,7 @@ where
         hash_reader(file, total, HASH_REPORT_INTERVAL, progress)
     })
     .await?
-    .map_err(WhisperError::from)
+    .map_err(Error::from)
 }
 
 fn hash_reader<R: Read>(

@@ -1,6 +1,6 @@
 //! Conversion of decoded audio frames to the 16 kHz mono f32 samples Whisper expects.
 
-use crate::error::{AudioProcessingError, Result, WhisperError};
+use crate::error::{AudioProcessingError, Error, Result};
 use ffmpeg::channel_layout::ChannelLayout;
 use ffmpeg::format::{Sample, sample::Type};
 use ffmpeg::frame;
@@ -70,7 +70,7 @@ impl FrameResampler {
                 ChannelLayout::MONO,
                 TARGET_RATE,
             )
-            .map_err(WhisperError::from)?;
+            .map_err(Error::from)?;
             self.active = Some((input, context));
         }
 
@@ -97,7 +97,7 @@ impl FrameResampler {
         while let Some(delay) = context.delay() {
             let capacity = usize::try_from(delay.output).unwrap_or(0).saturating_add(1);
             let mut out = frame::Audio::new(TARGET_FORMAT, capacity, ChannelLayout::MONO);
-            context.flush(&mut out).map_err(WhisperError::from)?;
+            context.flush(&mut out).map_err(Error::from)?;
             if out.samples() == 0 {
                 break;
             }
@@ -229,7 +229,7 @@ pub fn fallback_convert(
             }
         }
         _ => {
-            return Err(WhisperError::from(AudioProcessingError::FormatConversion));
+            return Err(Error::from(AudioProcessingError::FormatConversion));
         }
     }
 

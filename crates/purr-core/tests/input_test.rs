@@ -9,7 +9,7 @@ use axum_test::TestServer;
 use futures::StreamExt;
 use purr_core::audio::{AudioChunk, AudioProcessor};
 use purr_core::input::{AsyncCustomInput, AsyncStreamBuffer};
-use purr_core::{TranscriptionConfig, WhisperError};
+use purr_core::{Error, TranscriptionConfig};
 use std::path::PathBuf;
 use tokio_util::io::ReaderStream;
 
@@ -393,7 +393,7 @@ async fn test_http_server_error_handling() {
 
     // Verify error type
     match result.unwrap_err() {
-        WhisperError::NetworkError { .. } => {
+        Error::NetworkError { .. } => {
             // Expected network error
         }
         other => {

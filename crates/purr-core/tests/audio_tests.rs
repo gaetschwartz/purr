@@ -10,7 +10,7 @@
 use futures::StreamExt;
 use purr_core::{
     audio::{AudioChunk, AudioData, AudioProcessor},
-    error::{AudioProcessingError, WhisperError},
+    error::{AudioProcessingError, Error},
 };
 use tempfile::NamedTempFile;
 use tokio::fs;
@@ -198,10 +198,10 @@ async fn test_audio_processor_load_nonexistent_file() {
 
     assert!(result.is_err());
     match result.unwrap_err() {
-        WhisperError::AudioProcessing {
+        Error::AudioProcessing {
             source: AudioProcessingError::ReadFailed { .. },
         } => {}
-        WhisperError::AudioProcessing {
+        Error::AudioProcessing {
             source: AudioProcessingError::ProcessingFailed { .. },
         } => {}
         e => panic!("Expected ReadFailed or ProcessingFailed error, got: {e:?}"),

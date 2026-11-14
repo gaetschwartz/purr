@@ -1,6 +1,6 @@
 //! Checksum-verified model download.
 
-use crate::error::{ConfigurationError, Result, WhisperError};
+use crate::error::{ConfigurationError, Error, Result};
 use crate::model::digest::Sha256Hasher;
 use crate::model::manifest::Source;
 use crate::model::pinned::PinnedFile;
@@ -42,7 +42,7 @@ where
 {
     let mut request = crate::http::client_builder()?
         .build()
-        .map_err(|source| WhisperError::from(ConfigurationError::DownloadFailed { source }))?
+        .map_err(|source| Error::from(ConfigurationError::DownloadFailed { source }))?
         .get(&file.url);
     if let Some(token) = token_for(&file.url, token) {
         request = request.bearer_auth(token.expose());
@@ -50,10 +50,10 @@ where
     let response = request
         .send()
         .await
-        .map_err(|source| WhisperError::from(ConfigurationError::DownloadFailed { source }))?;
+        .map_err(|source| Error::from(ConfigurationError::DownloadFailed { source }))?;
 
     if !response.status().is_success() {
-        return Err(WhisperError::from(ConfigurationError::DownloadHttpError {
+        return Err(Error::from(ConfigurationError::DownloadHttpError {
             model_name: file.name.clone(),
             status_code: response.status().as_u16(),
         }));
@@ -95,7 +95,7 @@ where
     while let Some(chunk) = stream.next().await {
         let chunk = chunk
             .map_err(|source| ConfigurationError::DownloadStreamError { source })
-            .map_err(WhisperError::from)?;
+            .map_err(Error::from)?;
 
         downloaded += chunk.len() as u64;
         if downloaded > pinned.size_bytes {

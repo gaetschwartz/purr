@@ -273,7 +273,7 @@ impl AudioProcessingError {
 
 /// Main error type for purr operations
 #[derive(Debug, thiserror::Error, miette::Diagnostic)]
-pub enum WhisperError {
+pub enum Error {
     #[error("Audio processing error: {source}")]
     #[diagnostic(code(whisper::audio::processing))]
     AudioProcessing {
@@ -376,7 +376,7 @@ pub enum WhisperError {
 
 macro_rules! into_whisper_error_via_configuration {
     ($($error:ty),+ $(,)?) => {$(
-        impl From<$error> for WhisperError {
+        impl From<$error> for Error {
             fn from(source: $error) -> Self {
                 Self::Configuration {
                     source: ConfigurationError::from(source),
@@ -389,4 +389,4 @@ macro_rules! into_whisper_error_via_configuration {
 into_whisper_error_via_configuration!(UnknownModelError, ManifestError, ModelIntegrityError);
 
 /// Result type alias for purr operations
-pub type Result<T> = std::result::Result<T, WhisperError>;
+pub type Result<T> = std::result::Result<T, Error>;

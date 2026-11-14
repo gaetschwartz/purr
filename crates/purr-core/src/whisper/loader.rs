@@ -5,7 +5,7 @@ use tracing::{debug, info, warn};
 use whisper_rs::{WhisperContext, WhisperContextParameters, WhisperState};
 
 use crate::{
-    ModelManager, TranscriptionConfig, WhisperError,
+    Error, ModelManager, TranscriptionConfig,
     accel::{
         coreml,
         inventory::Inventory,
@@ -50,7 +50,7 @@ pub(crate) async fn load_model(
     let devices = config.devices.clone();
     task::spawn_blocking(move || load_with_acceleration(&model_path, &devices))
         .await
-        .map_err(WhisperError::from)?
+        .map_err(Error::from)?
 }
 
 fn load_with_acceleration(model_path: &Path, order: &DeviceOrder) -> Result<LoadedModel> {
