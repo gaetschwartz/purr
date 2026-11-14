@@ -26,10 +26,10 @@ pub const PLATFORM: &str = if IS_WEB { "Web" } else { "Desktop" };
 #[component]
 pub fn AboutSheet(on_close: EventHandler<()>) -> Element {
     let navigator = use_navigator();
-    let place = if IS_WEB {
-        "in this browser"
+    let (place, network) = if IS_WEB {
+        ("in this browser", "this page and model downloads")
     } else {
-        "on this computer"
+        ("on this computer", "model downloads only")
     };
     let version = version();
     rsx! {
@@ -60,7 +60,7 @@ pub fn AboutSheet(on_close: EventHandler<()>) -> Element {
                 }
             }
             p { "Speech to text that stays {place}." }
-            p { class: "foot", "Network use: model downloads only." }
+            p { class: "foot", "Network use: {network}." }
         }
     }
 }

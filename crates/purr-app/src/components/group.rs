@@ -71,7 +71,7 @@ pub fn Item(
         span { class: "txt",
             b { "{title}" }
             if let Some(hint) = hint.filter(|_| action.is_none()) {
-                InfoTip { about: title.clone(), text: hint }
+                InfoTip { about: title, text: hint }
             }
             if let Some(subtitle) = &subtitle {
                 span { "{subtitle}" }

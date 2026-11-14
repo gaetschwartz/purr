@@ -110,12 +110,12 @@ mod tests {
         }
     }
 
-    fn note(problem: EngineProblem, detail: Option<String>) -> Option<EngineNote> {
-        Some(EngineNote {
+    fn note(problem: EngineProblem, detail: Option<String>) -> EngineNote {
+        EngineNote {
             engine: EngineId::TranscribeCpp,
             problem,
             detail,
-        })
+        }
     }
 
     #[test]
@@ -131,7 +131,7 @@ mod tests {
         };
         assert_eq!(
             engine_note(&unavailable(why.clone())),
-            note(EngineProblem::NotInstalled, Some(why.to_string()))
+            Some(note(EngineProblem::NotInstalled, Some(why.to_string())))
         );
     }
 
@@ -143,7 +143,7 @@ mod tests {
         };
         assert_eq!(
             engine_note(&unavailable(why.clone())),
-            note(EngineProblem::CannotLoad, Some(why.to_string()))
+            Some(note(EngineProblem::CannotLoad, Some(why.to_string())))
         );
     }
 
@@ -153,16 +153,16 @@ mod tests {
             engine_note(&unavailable(EngineUnavailable::NoBackend {
                 detail: String::new()
             })),
-            note(EngineProblem::CannotLoad, None)
+            Some(note(EngineProblem::CannotLoad, None))
         );
         assert_eq!(
             engine_note(&unavailable(EngineUnavailable::NoBackend {
                 detail: "no backend registered".to_owned()
             })),
-            note(
+            Some(note(
                 EngineProblem::CannotLoad,
                 Some("no backend registered".to_owned())
-            )
+            ))
         );
     }
 
@@ -173,7 +173,7 @@ mod tests {
                 engine: EngineId::TranscribeCpp,
                 availability: EngineAvailability::NotBuilt,
             }),
-            note(EngineProblem::NotBuilt, None)
+            Some(note(EngineProblem::NotBuilt, None))
         );
     }
 

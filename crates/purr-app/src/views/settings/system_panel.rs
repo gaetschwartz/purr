@@ -24,8 +24,8 @@ pub fn SystemPanel(system: Resource<Result<SystemReport, String>>) -> Element {
 
     rsx! {
         section { aria_labelledby: heading.clone(),
-            h2 { class: "group-h", id: heading,
-                "Devices"
+            div { class: "hrow",
+                h2 { class: "group-h", id: heading, "Devices" }
                 InfoTip {
                     about: "Devices",
                     text: "Tried from the top; the CPU is the fallback.",

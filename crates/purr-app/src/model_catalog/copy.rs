@@ -62,7 +62,7 @@ pub const fn unavailable(reason: UnavailableReason) -> (&'static str, &'static s
     match reason {
         UnavailableReason::NeedsShaderF16 => ("Needs shader-f16", "This GPU lacks shader-f16"),
         UnavailableReason::NeedsWebGpu => ("Needs WebGPU", "This browser has no WebGPU"),
-        UnavailableReason::CpuChosen => ("Needs WebGPU", "Settings chose the CPU"),
+        UnavailableReason::CpuChosen => ("CPU chosen", "Needs WebGPU; Settings chose the CPU"),
         UnavailableReason::EngineNotBuilt => {
             ("Not in this build", "Its engine isn't in this build")
         }
@@ -109,8 +109,8 @@ mod tests {
             unavailable(UnavailableReason::NeedsWebGpu).0
         );
         assert_ne!(
-            unavailable(UnavailableReason::NeedsWebGpu).1,
-            unavailable(UnavailableReason::CpuChosen).1
+            unavailable(UnavailableReason::NeedsWebGpu).0,
+            unavailable(UnavailableReason::CpuChosen).0
         );
     }
 }

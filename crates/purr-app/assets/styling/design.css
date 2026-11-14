@@ -316,6 +316,9 @@ button.item:focus-visible,a.item:focus-visible{outline-offset:-2.5px;border-radi
 .ctl{display:flex;align-items:center;gap:10px;flex:none;max-width:60%}
 .ctl .field{width:260px;max-width:100%}
 .group-f{font-size:12.5px;color:var(--fg-2);margin:8px 16px 0;line-height:1.45}
+.hrow{display:flex;flex-wrap:wrap;align-items:center;margin-bottom:8px}
+.hrow .group-h{margin-bottom:0}
+.hrow .tip{flex-basis:100%;margin:4px 16px 0}
 
 /* ---------- Progress and spinner ---------- */
 .bar{height:6px;border-radius:9px;background:var(--fill-2);overflow:hidden}

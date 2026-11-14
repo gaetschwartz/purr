@@ -96,8 +96,9 @@ impl FileProblem {
                 ByteSize(*size),
                 ByteSize(*limit)
             ),
-            Self::Unreadable { name, detail } => format!("{name}: {detail}"),
-            Self::Rejected { name, detail } => format!("{name}: {detail}"),
+            Self::Unreadable { name, detail } | Self::Rejected { name, detail } => {
+                format!("{name}: {detail}")
+            }
         }
     }
 }
