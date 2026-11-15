@@ -36,8 +36,9 @@ impl fmt::Display for LanguageList {
 #[derive(Clone, PartialEq, Eq)]
 pub enum LanguageProblem {
     #[oopsie(
-        "{model} does not transcribe {language}; it transcribes: {supported}",
-        code = "purr::language::unsupported"
+        "{model} does not transcribe {language}",
+        code = "purr::language::unsupported",
+        help = "It transcribes: {supported}"
     )]
     Unsupported {
         model: String,

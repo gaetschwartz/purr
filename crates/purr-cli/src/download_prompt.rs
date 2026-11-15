@@ -7,7 +7,6 @@ use crate::output::sink::stdin_is_terminal;
 use crate::theme::Themed as _;
 use crate::{status, statusln};
 use indicatif::{HumanBytes, HumanDuration};
-use oopsie::WelpResultExt as _;
 use purr_core::ModelManager;
 use purr_core::math::ByteSpeed;
 use purr_core::model::registry::ModelSpec;
@@ -28,16 +27,16 @@ pub async fn prompt_for_model_download(
     if !can_ask() {
         let wanted = model.unwrap_or_else(|| model_manager.registry().default_model());
         return Err(if model.is_some() {
-            CliError::message(format!(
-                "Model {} is not downloaded. Download it with: {program} models download {}",
-                wanted.id.name(),
-                wanted.id
-            ))
+            CliError::ModelNotDownloaded {
+                name: wanted.id.name().to_string(),
+                id: wanted.id.to_string(),
+                program,
+            }
         } else {
-            CliError::message(format!(
-                "No model downloaded. Download one with: {program} models download {}",
-                wanted.id
-            ))
+            CliError::NoModelDownloaded {
+                id: wanted.id.to_string(),
+                program,
+            }
         });
     }
 
@@ -71,7 +70,9 @@ pub async fn prompt_for_model_download(
     );
 
     let mut input = String::new();
-    io::stdin().read_line(&mut input).welp()?;
+    io::stdin()
+        .read_line(&mut input)
+        .map_err(|source| CliError::ReadAnswer { source })?;
     let input = input.trim().to_lowercase();
 
     let should_download = input.is_empty() || input == "y" || input == "yes";

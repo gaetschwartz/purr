@@ -14,9 +14,7 @@ pub fn handle_runtime_command(command: &RuntimeCommands) -> CliResult<()> {
     let env = Environment::current();
     match command {
         RuntimeCommands::Path => {
-            let dir = install_dir(&env).ok_or_else(|| {
-                CliError::message("no per-user data directory is known; set PURR_RUNTIME_DIR")
-            })?;
+            let dir = install_dir(&env).ok_or(CliError::NoDataDir)?;
             resultln!("{}", dir.display())?;
         }
         RuntimeCommands::Status => {

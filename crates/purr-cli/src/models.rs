@@ -10,12 +10,10 @@ use crate::profile_text;
 use crate::theme::{ProgressPart, Themed as _, progress_style};
 use crate::{resultln, statusln};
 use indicatif::{HumanBytes, HumanDuration, ProgressBar, ProgressStyle};
-use oopsie::WelpResultExt as _;
 use purr_core::ModelManager;
 use purr_core::model::registry::ModelSpec;
 use purr_core::model::status::{ModelFileStatus, ModelIntegrity};
 use purr_core::model::vad_or_none;
-use std::fmt::Write as _;
 use tracing::debug;
 
 fn download_bar_template(colors: bool) -> String {
@@ -52,11 +50,10 @@ pub async fn handle_model_command(command: &ModelCommands) -> CliResult<()> {
         ModelCommands::Download { model, force } => {
             let spec = model_manager.model(model)?;
             if !engines::built().contains(&spec.engine) {
-                return Err(CliError::message(format!(
-                    "Model {} needs the {}, which this build does not include.",
-                    spec.id,
-                    spec.engine.label()
-                )));
+                return Err(CliError::EngineNotBuilt {
+                    model: spec.id.to_string(),
+                    engine: spec.engine.label().to_string(),
+                });
             }
             download(&model_manager, spec, *force).await?;
             ensure_vad(&model_manager).await;
@@ -109,9 +106,10 @@ async fn download(manager: &ModelManager, spec: &ModelSpec, force: bool) -> CliR
 
     let colors = bar_colors();
     let bar_style = ProgressStyle::with_template(&download_bar_template(colors))
-        .welp()?
+        .map_err(|source| CliError::ProgressTemplate { source })?
         .progress_chars("#>-");
-    let spinner_style = ProgressStyle::with_template(&download_spinner_template(colors)).welp()?;
+    let spinner_style = ProgressStyle::with_template(&download_spinner_template(colors))
+        .map_err(|source| CliError::ProgressTemplate { source })?;
     let progress_bar = output::add_bar(ProgressBar::new(0));
     progress_bar.set_style(bar_style);
 
@@ -243,7 +241,7 @@ async fn list_available(manager: &ModelManager) -> CliResult<()> {
                 HumanBytes(spec.file.size_bytes).to_string().quantity(),
             );
             if !notes.is_empty() {
-                write!(line, "  {}", notes.join(", ").muted()).welp()?;
+                line.push_str(&format!("  {}", notes.join(", ").muted()));
             }
             resultln!("{line}")?;
         }
@@ -371,8 +369,8 @@ async fn verify(manager: &ModelManager, model: Option<&str>) -> CliResult<()> {
         return Ok(());
     }
 
-    let spinner_style =
-        ProgressStyle::with_template(&verify_spinner_template(bar_colors())).welp()?;
+    let spinner_style = ProgressStyle::with_template(&verify_spinner_template(bar_colors()))
+        .map_err(|source| CliError::ProgressTemplate { source })?;
     let mut failed = 0usize;
 
     for spec in specs {

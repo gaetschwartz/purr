@@ -34,7 +34,6 @@ use crate::theme::Themed as _;
 use cli::{ASCII_ART, Cli, Commands, OutputFormat};
 use futures::StreamExt as _;
 use indicatif::{ProgressBar, ProgressFinish, ProgressStyle};
-use oopsie::WelpResultExt as _;
 use purr_common::devices::DeviceOrder;
 use purr_common::platform::ChunkKind;
 use purr_core::accel::engine_report::{EngineReport, reports};
@@ -91,25 +90,22 @@ async fn main_impl() -> CliResult<()> {
 
     let Some(audio_input) = cli.audio_input.clone() else {
         statusln!("{ASCII_ART}\n");
-        return Err(CliError::message("No audio file or URL given"));
+        return Err(CliError::NoAudioInput);
     };
 
     let is_url = is_valid_url(&audio_input);
     let is_path = is_file_path(&audio_input);
 
     if !is_url && !is_path {
-        return Err(CliError::message(format!(
-            "Not a file path or URL: '{audio_input}'"
-        )));
+        return Err(CliError::InvalidAudioInput { input: audio_input });
     }
 
     if is_path {
         let path = Path::new(&audio_input);
         if !path.exists() {
-            return Err(CliError::message(format!(
-                "Audio file not found: {}",
-                path.display()
-            )));
+            return Err(CliError::AudioFileNotFound {
+                path: path.to_path_buf(),
+            });
         }
     }
 
@@ -150,7 +146,8 @@ async fn main_impl() -> CliResult<()> {
 }
 
 fn progress_line_bar() -> CliResult<ProgressBar> {
-    let style = ProgressStyle::with_template("{msg}").welp()?;
+    let style = ProgressStyle::with_template("{msg}")
+        .map_err(|source| CliError::ProgressTemplate { source })?;
     Ok(output::add_bar(
         ProgressBar::new_spinner()
             .with_style(style)
@@ -200,7 +197,7 @@ async fn handle_streaming_output(mut stream: Transcription, cli: &Cli) -> CliRes
                 }
                 OutputFormat::Json => {
                     serde_json::to_string(&json::chunk(&chunk, cli.word_timestamps))
-                        .welp()?
+                        .map_err(|source| CliError::SerializeJson { source })?
                         .into()
                 }
                 OutputFormat::Srt => format!(
@@ -244,7 +241,10 @@ async fn handle_streaming_output(mut stream: Transcription, cli: &Cli) -> CliRes
     }
 
     if let Some(output_file) = &cli.output_file {
-        fs::write(output_file, &output_buffer).welp()?;
+        fs::write(output_file, &output_buffer).map_err(|source| CliError::WriteOutput {
+            path: output_file.clone(),
+            source,
+        })?;
         if cli.verbosity.is_verbose() {
             statusln!(
                 "{} Streaming output written to: {}",
@@ -349,24 +349,24 @@ async fn setup_model(cli: &Cli) -> CliResult<ModelRef> {
         let model_path = Path::new(model_string);
         if model_path.is_absolute() {
             if !model_path.exists() {
-                return Err(CliError::message(format!(
-                    "Model file not found at: {}",
-                    model_path.display()
-                )));
+                return Err(CliError::ModelFileNotFound {
+                    path: model_path.to_path_buf(),
+                });
             }
             path = model_path.to_path_buf();
         } else {
-            let model_path = std::env::current_dir().welp()?.join(model_path);
+            let model_path = std::env::current_dir()
+                .map_err(|source| CliError::CurrentDir { source })?
+                .join(model_path);
             if model_path.exists() {
                 path = model_path;
             } else {
                 let model = model_manager.model(model_string)?;
                 if !engines::built().contains(&model.engine) {
-                    return Err(CliError::message(format!(
-                        "Model {} needs the {}, which this build does not include.",
-                        model.id,
-                        model.engine.label()
-                    )));
+                    return Err(CliError::EngineNotBuilt {
+                        model: model.id.to_string(),
+                        engine: model.engine.label().to_string(),
+                    });
                 }
                 if model_manager.is_model_downloaded(model).await? {
                     path = model_manager.get_model_path(model);
@@ -375,9 +375,7 @@ async fn setup_model(cli: &Cli) -> CliResult<ModelRef> {
                 {
                     path = model_path;
                 } else {
-                    return Err(CliError::message(
-                        "No model specified and no downloaded models found.",
-                    ));
+                    return Err(CliError::NoModelAvailable);
                 }
             }
         }
@@ -389,9 +387,7 @@ async fn setup_model(cli: &Cli) -> CliResult<ModelRef> {
     } else if let Some(model_path) = prompt_for_model_download(&model_manager, None).await? {
         path = model_path;
     } else {
-        return Err(CliError::message(
-            "No model specified and no downloaded models found.",
-        ));
+        return Err(CliError::NoModelAvailable);
     }
     Ok(model_manager.reference(path).await?)
 }
@@ -416,7 +412,8 @@ fn handle_output(result: SyncTranscriptionResult, cli: &Cli) -> CliResult<()> {
             }
         }
         OutputFormat::Json => {
-            serde_json::to_string_pretty(&json::document(&result, cli.word_timestamps)).welp()?
+            serde_json::to_string_pretty(&json::document(&result, cli.word_timestamps))
+                .map_err(|source| CliError::SerializeJson { source })?
         }
         OutputFormat::Srt => result
             .segments
@@ -437,7 +434,10 @@ fn handle_output(result: SyncTranscriptionResult, cli: &Cli) -> CliResult<()> {
     };
 
     if let Some(output_file) = &cli.output_file {
-        std::fs::write(output_file, &output_content).welp()?;
+        std::fs::write(output_file, &output_content).map_err(|source| CliError::WriteOutput {
+            path: output_file.clone(),
+            source,
+        })?;
         if cli.verbosity.is_verbose() {
             statusln!(
                 "{} Output written to: {}",

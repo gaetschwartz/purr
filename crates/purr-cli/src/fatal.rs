@@ -1,8 +1,9 @@
 use crate::color::Stream;
 use crate::error::CliError;
 use crate::global;
-use oopsie::{Report, Welp, WelpResultExt as _};
+use oopsie::Report;
 use purr_core::error::{Error as CoreError, ManifestError};
+use std::path::PathBuf;
 
 pub fn render(error: CliError) -> String {
     let report = Report::new(error);
@@ -18,7 +19,6 @@ pub fn render(error: CliError) -> String {
 pub enum ThrowKind {
     Message,
     Io,
-    Chain,
     Coded,
     Help,
 }
@@ -26,19 +26,11 @@ pub enum ThrowKind {
 impl ThrowKind {
     pub fn raise(self) -> CliError {
         match self {
-            Self::Message => CliError::message("a plain message error"),
-            Self::Io => std::fs::read("/definitely/not/here")
-                .welp_context("could not read the sample file")
-                .unwrap_err()
-                .into(),
-            Self::Chain => Welp::wrap(
-                Welp::wrap(
-                    std::io::Error::other("the disk went away"),
-                    "could not save the transcript",
-                ),
-                "the run failed",
-            )
-            .into(),
+            Self::Message => CliError::NoAudioInput,
+            Self::Io => CliError::WriteOutput {
+                path: PathBuf::from("transcript.txt"),
+                source: std::io::Error::other("the disk went away"),
+            },
             Self::Coded => CoreError::from(ManifestError::NoPreferredModel).into(),
             Self::Help => CliError::VerificationFailed { failed: 3 },
         }

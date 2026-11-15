@@ -1,7 +1,6 @@
 //! `purr engines`: the report is the command's result, on stdout in every mode.
 
-use crate::error::CliResult;
-use oopsie::WelpResultExt as _;
+use crate::error::{CliError, CliResult};
 use purr_common::accel::{CpuFeature, EngineAvailability};
 use purr_core::accel::{
     backend::{AccelBackend, BuildStatus},
@@ -126,7 +125,10 @@ fn lines(reports: &[EngineReport]) -> Vec<String> {
 pub fn handle(json_output: bool) -> CliResult<()> {
     let reports = engine_report::reports(&engines::all(), &engines::KNOWN);
     if json_output {
-        resultln!("{}", json(&reports).welp()?)?;
+        resultln!(
+            "{}",
+            json(&reports).map_err(|source| CliError::SerializeJson { source })?
+        )?;
         return Ok(());
     }
     for line in lines(&reports) {

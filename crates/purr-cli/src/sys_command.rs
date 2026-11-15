@@ -1,12 +1,11 @@
 //! `purr sys`: the report is the command's result, on stdout in every mode.
 
 use crate::engine_status;
-use crate::error::CliResult;
+use crate::error::{CliError, CliResult};
 use crate::resultln;
 use crate::runtime;
 use crate::sys_report;
 use crate::theme::{self, Role, Themed as _};
-use oopsie::WelpResultExt as _;
 use purr_core::SystemInfo;
 use purr_core::accel::backend::AccelBackend;
 use purr_core::accel::engine_report;
@@ -40,7 +39,11 @@ pub fn handle(json: bool) -> CliResult<()> {
     let sys = SystemInfo::of(&reports);
 
     if json {
-        resultln!("{}", sys_report::json(&sys, &reports).welp()?)?;
+        resultln!(
+            "{}",
+            sys_report::json(&sys, &reports)
+                .map_err(|source| CliError::SerializeJson { source })?
+        )?;
         return Ok(());
     }
 
