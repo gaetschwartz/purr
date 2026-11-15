@@ -7,6 +7,7 @@ mod color;
 mod download_prompt;
 mod engine_status;
 mod engines;
+mod engines_command;
 mod global;
 mod json;
 mod language_arg;
@@ -265,6 +266,7 @@ async fn handle_command(command: &Commands) -> miette::Result<()> {
     match command {
         Commands::Models { command } => models::handle_model_command(command).await,
         Commands::Sys { json } => sys_command::handle(*json),
+        Commands::Engines { json } => engines_command::handle(*json),
         Commands::Runtime { command } => runtime::handle_runtime_command(command),
     }
 }

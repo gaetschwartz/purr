@@ -155,6 +155,12 @@ pub enum Commands {
         #[arg(long)]
         json: bool,
     },
+    /// Engines: availability, build and devices
+    Engines {
+        /// Print one JSON document instead of text
+        #[arg(long)]
+        json: bool,
+    },
     /// GPU runtime libraries: where they are looked for and where to put them
     Runtime {
         #[command(subcommand)]

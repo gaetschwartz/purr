@@ -31,7 +31,8 @@ pub enum AccelBackend {
 }
 
 /// Whether support for a backend was compiled into this binary.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum BuildStatus {
     Built,
     NotBuilt,
