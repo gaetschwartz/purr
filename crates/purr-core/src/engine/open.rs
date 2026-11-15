@@ -29,7 +29,10 @@ pub fn open_on_best_device(
     order: &DeviceOrder,
     threads: usize,
 ) -> Result<Opened> {
-    std::fs::metadata(model)?;
+    std::fs::metadata(model).map_err(|source| crate::error::Error::InspectModelFile {
+        path: model.to_path_buf(),
+        source,
+    })?;
     engine
         .availability()
         .map_err(|reason| TranscriptionError::EngineUnavailable {

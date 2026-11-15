@@ -38,7 +38,9 @@ impl Input {
     /// Audio fetched from `url`.
     pub fn url(url: impl reqwest::IntoUrl, config: InputConfig) -> Result<Self> {
         Ok(Self::Url {
-            url: url.into_url()?,
+            url: url
+                .into_url()
+                .map_err(|source| crate::error::Error::InvalidUrl { source })?,
             config,
         })
     }

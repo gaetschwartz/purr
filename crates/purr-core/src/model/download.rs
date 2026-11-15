@@ -67,7 +67,12 @@ where
             progress(downloaded, Some(total));
         })
         .await?;
-        fs::rename(&temp_path, destination).await?;
+        fs::rename(&temp_path, destination)
+            .await
+            .map_err(|source| Error::MoveDownload {
+                path: destination.to_path_buf(),
+                source,
+            })?;
         Ok(())
     }
     .await;
@@ -87,7 +92,12 @@ async fn stream_verified<F>(
 where
     F: FnMut(u64),
 {
-    let mut file = fs::File::create(temp_path).await?;
+    let mut file = fs::File::create(temp_path)
+        .await
+        .map_err(|source| Error::WriteDownload {
+            path: temp_path.to_path_buf(),
+            source,
+        })?;
     let mut hasher = Sha256Hasher::new();
     let mut downloaded = 0u64;
     let mut stream = response.bytes_stream();
@@ -103,11 +113,19 @@ where
         }
 
         hasher.update(&chunk);
-        file.write_all(&chunk).await?;
+        file.write_all(&chunk)
+            .await
+            .map_err(|source| Error::WriteDownload {
+                path: temp_path.to_path_buf(),
+                source,
+            })?;
         on_progress(downloaded);
     }
 
-    file.flush().await?;
+    file.flush().await.map_err(|source| Error::WriteDownload {
+        path: temp_path.to_path_buf(),
+        source,
+    })?;
     drop(file);
 
     pinned.check_size(downloaded)?;

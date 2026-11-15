@@ -338,8 +338,75 @@ pub enum Error {
     )]
     AudioProcessing { source: AudioProcessingError },
 
-    #[oopsie("IO operation failed", code = "whisper::io::error", transparent)]
-    Io { source: std::io::Error },
+    #[oopsie(
+        "Failed to create the models directory {}",
+        path.display(),
+        code = "whisper::model::create_dir_failed"
+    )]
+    CreateModelsDir {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+
+    #[oopsie(
+        "Failed to open the model file {}",
+        path.display(),
+        code = "whisper::model::open_failed"
+    )]
+    OpenModelFile {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+
+    #[oopsie(
+        "Failed to read the model file {}",
+        path.display(),
+        code = "whisper::model::read_failed"
+    )]
+    ReadModelFile {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+
+    #[oopsie(
+        "Failed to inspect the model file {}",
+        path.display(),
+        code = "whisper::model::inspect_failed"
+    )]
+    InspectModelFile {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+
+    #[oopsie(
+        "Failed to delete the model file {}",
+        path.display(),
+        code = "whisper::model::delete_failed"
+    )]
+    DeleteModelFile {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+
+    #[oopsie(
+        "Failed to write the download to {}",
+        path.display(),
+        code = "whisper::download::write_failed"
+    )]
+    WriteDownload {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+
+    #[oopsie(
+        "Failed to move the download into place at {}",
+        path.display(),
+        code = "whisper::download::move_failed"
+    )]
+    MoveDownload {
+        path: PathBuf,
+        source: std::io::Error,
+    },
 
     #[oopsie(
         "FFmpeg processing error",
@@ -354,8 +421,8 @@ pub enum Error {
     )]
     Json { source: serde_json::Error },
 
-    #[oopsie("HTTP request error", code = "whisper::http::error", transparent)]
-    Http { source: reqwest::Error },
+    #[oopsie("Invalid audio URL", code = "whisper::input::invalid_url")]
+    InvalidUrl { source: reqwest::Error },
 
     #[oopsie("Configuration error", code = "whisper::config::error", transparent)]
     Configuration { source: ConfigurationError },

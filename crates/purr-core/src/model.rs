@@ -76,7 +76,10 @@ impl ModelManager {
     pub async fn ensure_models_dir(&self) -> Result<()> {
         fs::create_dir_all(&self.models_dir)
             .await
-            .map_err(Error::from)?;
+            .map_err(|source| Error::CreateModelsDir {
+                path: self.models_dir.clone(),
+                source,
+            })?;
         Ok(())
     }
 
@@ -167,8 +170,19 @@ impl ModelManager {
             return Ok(ModelRef::new(path, model.engine));
         }
         let mut header = [0u8; 4];
-        let mut file = fs::File::open(&path).await?;
-        let read = file.read(&mut header).await?;
+        let mut file = fs::File::open(&path)
+            .await
+            .map_err(|source| Error::OpenModelFile {
+                path: path.clone(),
+                source,
+            })?;
+        let read = file
+            .read(&mut header)
+            .await
+            .map_err(|source| Error::ReadModelFile {
+                path: path.clone(),
+                source,
+            })?;
         match ModelFormat::of_header(&header[..read]) {
             Some(format) => Ok(ModelRef::new(path, EngineId::loading(format))),
             None => Err(ConfigurationError::UnknownModelFile { path }.into()),
@@ -262,7 +276,12 @@ impl ModelManager {
         match fs::remove_file(&model_path).await {
             Ok(()) => info!("Deleted model {} from {:?}", model.id, model_path),
             Err(err) if err.kind() == io::ErrorKind::NotFound => {}
-            Err(err) => return Err(err.into()),
+            Err(source) => {
+                return Err(Error::DeleteModelFile {
+                    path: model_path,
+                    source,
+                });
+            }
         }
 
         Ok(())
@@ -298,7 +317,10 @@ async fn status_of(path: &Path, file: &PinnedFile) -> Result<ModelFileStatus> {
             actual: metadata.len(),
         }),
         Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(ModelFileStatus::Missing),
-        Err(err) => Err(err.into()),
+        Err(source) => Err(Error::InspectModelFile {
+            path: path.to_path_buf(),
+            source,
+        }),
     }
 }
 
@@ -330,11 +352,14 @@ where
     F: FnMut(u64, u64) + Send + 'static,
 {
     tokio::task::spawn_blocking(move || {
-        let file = std::fs::File::open(path)?;
+        let file = std::fs::File::open(&path).map_err(|source| Error::OpenModelFile {
+            path: path.clone(),
+            source,
+        })?;
         hash_reader(file, total, HASH_REPORT_INTERVAL, progress)
+            .map_err(|source| Error::ReadModelFile { path, source })
     })
     .await?
-    .map_err(Error::from)
 }
 
 fn hash_reader<R: Read>(

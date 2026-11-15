@@ -746,8 +746,7 @@ fn failure_kind(error: &Error) -> ModelFailureKind {
         Error::Configuration {
             source: ConfigurationError::DownloadFailed { .. }
                 | ConfigurationError::DownloadStreamError { .. },
-        } | Error::Http { .. }
-            | Error::NetworkError { .. }
+        } | Error::NetworkError { .. }
     );
     let integrity = matches!(
         error,

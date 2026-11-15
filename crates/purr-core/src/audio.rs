@@ -211,7 +211,8 @@ impl AudioProcessor {
     /// Load audio from URL and convert to the format expected by Whisper
     pub async fn load_audio_from_url(url: impl IntoUrl) -> Result<AudioData> {
         Self::load_audio_from_url_with_config(
-            url.into_url()?,
+            url.into_url()
+                .map_err(|source| crate::error::Error::InvalidUrl { source })?,
             &crate::config::InputConfig::default(),
         )
         .await
