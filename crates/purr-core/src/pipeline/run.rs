@@ -102,7 +102,10 @@ async fn prepare(
         open_on_best_device(loader.as_ref(), &path, &devices, threads)
     })
     .await
-    .map_err(Error::from)??;
+    .map_err(|source| Error::TaskJoin {
+        task: "model loading",
+        source,
+    })??;
 
     if let Some(tag) = &run.language
         && !decoder.supports(tag)

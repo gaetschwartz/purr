@@ -408,12 +408,51 @@ pub enum Error {
         source: std::io::Error,
     },
 
+    #[oopsie("Failed to initialise FFmpeg", code = "whisper::ffmpeg::init")]
+    InitFfmpeg { source: ffmpeg_next::Error },
+
     #[oopsie(
-        "FFmpeg processing error",
-        code = "whisper::ffmpeg::error",
-        transparent
+        "Failed to open the audio input {}",
+        path.display(),
+        code = "whisper::ffmpeg::open_input"
     )]
-    FFmpeg { source: ffmpeg_next::Error },
+    OpenAudioInput {
+        path: PathBuf,
+        source: ffmpeg_next::Error,
+    },
+
+    #[oopsie(
+        "Failed to open the streamed audio input",
+        code = "whisper::ffmpeg::open_stream_input"
+    )]
+    OpenStreamInput { source: ffmpeg_next::Error },
+
+    #[oopsie(
+        "Failed to create the audio decoder",
+        code = "whisper::ffmpeg::create_decoder"
+    )]
+    CreateAudioDecoder { source: ffmpeg_next::Error },
+
+    #[oopsie(
+        "Failed to decode audio stream {stream_index}",
+        code = "whisper::ffmpeg::decode"
+    )]
+    DecodeAudioPacket {
+        stream_index: usize,
+        source: ffmpeg_next::Error,
+    },
+
+    #[oopsie(
+        "Failed to create the audio resampler",
+        code = "whisper::ffmpeg::create_resampler"
+    )]
+    CreateResampler { source: ffmpeg_next::Error },
+
+    #[oopsie(
+        "Failed to flush the audio resampler",
+        code = "whisper::ffmpeg::flush_resampler"
+    )]
+    FlushResampler { source: ffmpeg_next::Error },
 
     #[oopsie(
         "JSON serialization/deserialization error",
@@ -452,8 +491,11 @@ pub enum Error {
         source: tracing_subscriber::filter::ParseError,
     },
 
-    #[oopsie("Task join error", code = "whisper::task_join::error", transparent)]
-    TaskJoin { source: tokio::task::JoinError },
+    #[oopsie("The {task} task did not finish", code = "whisper::task_join::error")]
+    TaskJoin {
+        task: &'static str,
+        source: tokio::task::JoinError,
+    },
 
     #[oopsie("Network error: {message}", code = "whisper::network::error")]
     NetworkError { message: String },

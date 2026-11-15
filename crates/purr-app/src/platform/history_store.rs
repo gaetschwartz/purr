@@ -34,7 +34,7 @@ pub enum HistoryDirError {
         id: HistoryId,
         reason: UnreadableReason,
     },
-    #[oopsie("The transcription could not be written: {source}", transparent)]
+    #[oopsie("The transcription could not be encoded")]
     Encode { source: serde_json::Error },
     #[oopsie("{source}", transparent)]
     Title { source: TitleProblem },
@@ -164,7 +164,7 @@ impl HistoryDir {
 
     fn write(&self, entry: &HistoryEntry) -> Result<(), HistoryDirError> {
         fs::create_dir_all(&self.dir).map_err(io_error("Could not create", &self.dir))?;
-        let text = envelope::encode(entry)?;
+        let text = envelope::encode(entry).map_err(|source| HistoryDirError::Encode { source })?;
         let target = self.entry_path(&entry.id);
         let partial = target.with_extension(format!("{ENTRY_EXTENSION}.{PARTIAL_EXTENSION}"));
         if let Err(error) = replace_file(&partial, &target, text.as_bytes()) {

@@ -33,7 +33,7 @@ pub enum HistoryStoreError {
         id: HistoryId,
         reason: UnreadableReason,
     },
-    #[oopsie("The transcription could not be written: {source}", transparent)]
+    #[oopsie("The transcription could not be encoded")]
     Encode { source: serde_json::Error },
     #[oopsie(transparent)]
     Title { source: TitleProblem },
@@ -161,7 +161,7 @@ async fn fetch(store: &IdbObjectStore, id: &HistoryId) -> Outcome<HistoryEntry> 
 }
 
 pub async fn put(store: &IdbObjectStore, entry: &HistoryEntry) -> Outcome<()> {
-    let text = envelope::encode(entry)?;
+    let text = envelope::encode(entry).map_err(|source| HistoryStoreError::Encode { source })?;
     let request = store
         .put_with_key(&JsValue::from_str(&text), &key_of(&entry.id))
         .map_err(web("history put"))?;

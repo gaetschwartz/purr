@@ -93,7 +93,9 @@ async fn test_transcription_error_handling(#[case] invalid_path: &str) {
     assert!(
         matches!(
             result,
-            Err(Error::AudioProcessing { .. } | Error::FFmpeg { .. })
+            Err(Error::AudioProcessing { .. }
+                | Error::DecodeAudioPacket { .. }
+                | Error::CreateAudioDecoder { .. })
         ),
         "{result:?}"
     );

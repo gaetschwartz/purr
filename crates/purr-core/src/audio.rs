@@ -114,7 +114,7 @@ pub struct AudioProcessor {}
 impl AudioProcessor {
     /// Create a new audio processor
     pub fn new() -> Result<Self> {
-        ffmpeg::init().map_err(Error::from)?;
+        ffmpeg::init().map_err(|source| Error::InitFfmpeg { source })?;
 
         // Set FFmpeg log level to quiet to suppress output
         unsafe {
@@ -173,8 +173,17 @@ impl AudioProcessor {
         }
 
         // Open input file and convert to AsyncCustomInput
-        let input_ctx = ffmpeg::format::input(&path).map_err(Error::from)?;
-        let custom_input = crate::input::AsyncCustomInput::from_input_context(input_ctx)?;
+        let input_ctx = ffmpeg::format::input(&path).map_err(|source| Error::OpenAudioInput {
+            path: path.to_path_buf(),
+            source,
+        })?;
+        let custom_input =
+            crate::input::AsyncCustomInput::from_input_context(input_ctx).map_err(|source| {
+                Error::OpenAudioInput {
+                    path: path.to_path_buf(),
+                    source,
+                }
+            })?;
 
         // Use the common input processing logic
         self.load_audio_from_input(custom_input)
@@ -201,8 +210,17 @@ impl AudioProcessor {
         }
 
         // Open input file and convert to AsyncCustomInput
-        let input_ctx = ffmpeg::format::input(&path).map_err(Error::from)?;
-        let custom_input = crate::input::AsyncCustomInput::from_input_context(input_ctx)?;
+        let input_ctx = ffmpeg::format::input(&path).map_err(|source| Error::OpenAudioInput {
+            path: path.to_path_buf(),
+            source,
+        })?;
+        let custom_input =
+            crate::input::AsyncCustomInput::from_input_context(input_ctx).map_err(|source| {
+                Error::OpenAudioInput {
+                    path: path.to_path_buf(),
+                    source,
+                }
+            })?;
 
         // Use the common input processing logic
         self.stream_audio_from_input(custom_input, tx)
@@ -242,7 +260,9 @@ impl AudioProcessor {
         let streaming_handle = streamer.stream_url(url, buffer.clone()).await?;
 
         // Create custom input from the buffer
-        let custom_input = AsyncCustomInput::create(buffer).await?;
+        let custom_input = AsyncCustomInput::create(buffer)
+            .await
+            .map_err(|source| Error::OpenStreamInput { source })?;
 
         // Process the streaming input
         let audio_data = task::spawn_blocking(move || {
@@ -300,8 +320,8 @@ impl AudioProcessor {
 
             // Create custom input from the buffer
             let custom_input = match futures::executor::block_on(AsyncCustomInput::create(buffer)) {
-                Err(e) => {
-                    let _ = tx.send(Err(Error::from(e)));
+                Err(source) => {
+                    let _ = tx.send(Err(Error::OpenStreamInput { source }));
                     return;
                 }
                 Ok(input) => input,
@@ -334,9 +354,12 @@ impl AudioProcessor {
         // Get decoder
         let context_decoder =
             ffmpeg::codec::context::Context::from_parameters(input_stream.parameters())
-                .map_err(Error::from)?;
+                .map_err(|source| Error::CreateAudioDecoder { source })?;
 
-        let mut decoder = context_decoder.decoder().audio().map_err(Error::from)?;
+        let mut decoder = context_decoder
+            .decoder()
+            .audio()
+            .map_err(|source| Error::CreateAudioDecoder { source })?;
 
         let mut samples = Vec::new();
         let mut frame = ffmpeg::frame::Audio::empty();
@@ -355,7 +378,12 @@ impl AudioProcessor {
                         warn!("Skipping invalid chunk at stream index {}", stream_index);
                         continue;
                     }
-                    Err(e) => return Err(Error::from(e)),
+                    Err(source) => {
+                        return Err(Error::DecodeAudioPacket {
+                            stream_index,
+                            source,
+                        });
+                    }
                 }
             }
         }
@@ -434,9 +462,12 @@ impl AudioProcessor {
         // Get decoder
         let context_decoder =
             ffmpeg::codec::context::Context::from_parameters(input_stream.parameters())
-                .map_err(Error::from)?;
+                .map_err(|source| Error::CreateAudioDecoder { source })?;
 
-        let mut decoder = context_decoder.decoder().audio().map_err(Error::from)?;
+        let mut decoder = context_decoder
+            .decoder()
+            .audio()
+            .map_err(|source| Error::CreateAudioDecoder { source })?;
 
         let mut output_samples = Vec::new();
         let mut frame = ffmpeg::frame::Audio::empty();
@@ -468,7 +499,10 @@ impl AudioProcessor {
                         continue;
                     }
                     Err(e) => {
-                        let whisper_error = Error::from(e);
+                        let whisper_error = Error::DecodeAudioPacket {
+                            stream_index,
+                            source: e,
+                        };
                         let _ = tx.send(Err(Error::NetworkError {
                             message: format!("Failed to decode audio packet: {e}"),
                         }));

@@ -359,7 +359,11 @@ where
         hash_reader(file, total, HASH_REPORT_INTERVAL, progress)
             .map_err(|source| Error::ReadModelFile { path, source })
     })
-    .await?
+    .await
+    .map_err(|source| Error::TaskJoin {
+        task: "model hashing",
+        source,
+    })?
 }
 
 fn hash_reader<R: Read>(

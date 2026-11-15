@@ -70,7 +70,7 @@ impl FrameResampler {
                 ChannelLayout::MONO,
                 TARGET_RATE,
             )
-            .map_err(Error::from)?;
+            .map_err(|source| Error::CreateResampler { source })?;
             self.active = Some((input, context));
         }
 
@@ -97,7 +97,9 @@ impl FrameResampler {
         while let Some(delay) = context.delay() {
             let capacity = usize::try_from(delay.output).unwrap_or(0).saturating_add(1);
             let mut out = frame::Audio::new(TARGET_FORMAT, capacity, ChannelLayout::MONO);
-            context.flush(&mut out).map_err(Error::from)?;
+            context
+                .flush(&mut out)
+                .map_err(|source| Error::FlushResampler { source })?;
             if out.samples() == 0 {
                 break;
             }
