@@ -10,7 +10,6 @@ ffmpeg-next = { version = "9.0", features = ["codec", "format", "software-resamp
 # Async runtime
 tokio = { version = "1.47", features = ["full"] }
 futures = "0.3"
-thiserror = "2.0"
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
@@ -28,7 +27,7 @@ reqwest = { version = "0.13", features = ["charset", "http2", "rustls-no-provide
 futures-util = "0.3"
 strum = { version = "0.28.0", features = ["derive"] }
 tokio-stream = "0.1.17"
-miette = { version = "7.6.0", features = ["fancy"] }
+oopsie = { workspace = true }
 serde_with = "3.14.1"
 bytes = "1.10.1"
 url = "2.5"

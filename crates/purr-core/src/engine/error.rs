@@ -6,33 +6,35 @@ use crate::accel::report::AttemptFailure;
 pub type EngineError = Box<dyn std::error::Error + Send + Sync>;
 
 /// Why an engine could not load a model on a device.
-#[derive(Debug, thiserror::Error)]
+#[oopsie::oopsie]
 pub enum OpenError {
     /// The engine does not list the device it was asked to use
-    #[error("the engine lists no such device")]
+    #[oopsie("the engine lists no such device")]
     NoDevice,
-    #[error(transparent)]
-    Device(#[from] AttemptFailure),
-    #[error(transparent)]
-    Engine(EngineError),
+    #[oopsie(transparent)]
+    Device { source: AttemptFailure },
+    #[oopsie(transparent)]
+    Engine { source: EngineError },
 }
 
 /// Why an engine could not decode a window.
-#[derive(Debug, thiserror::Error)]
+#[oopsie::oopsie]
 pub enum DecodeError {
-    #[error("the audio is longer than the model takes at once")]
+    #[oopsie("the audio is longer than the model takes at once")]
     InputTooLong,
-    #[error("the audio is too short to decode")]
+    #[oopsie("the audio is too short to decode")]
     InputTooShort,
-    #[error("the model does not know the language `{0}`")]
-    UnsupportedLanguage(LanguageTag),
-    #[error("the device ran out of memory")]
+    #[oopsie("the model does not know the language `{language}`")]
+    UnsupportedLanguage { language: LanguageTag },
+    #[oopsie("the device ran out of memory")]
     OutOfMemory,
-    #[error(transparent)]
-    Engine(EngineError),
+    #[oopsie(transparent)]
+    Engine { source: EngineError },
 }
 
 /// Why a speech detector could not look at a window.
-#[derive(Debug, thiserror::Error)]
-#[error(transparent)]
-pub struct DetectError(pub EngineError);
+#[oopsie::oopsie]
+#[oopsie(transparent)]
+pub struct DetectError {
+    pub source: EngineError,
+}

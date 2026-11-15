@@ -90,7 +90,9 @@ impl WorkerClient {
                 audio,
                 events,
             }))
-            .map_err(|_closed| WebError::Worker(WorkerError::Closed))?;
+            .map_err(|_closed| WebError::Worker {
+                source: WorkerError::Closed,
+            })?;
         Ok(RequestEvents {
             id,
             kind,

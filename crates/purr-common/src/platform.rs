@@ -3,7 +3,6 @@ use ambassador::delegatable_trait;
 /// This module provides a unified interface for platform-specific functionality
 use bytes::Bytes;
 use futures::{Stream, channel::mpsc::UnboundedSender};
-use miette::Diagnostic;
 use serde::{Deserialize, Serialize};
 use std::{
     borrow::Cow,
@@ -15,7 +14,7 @@ use std::{
 };
 
 use crate::{
-    accel::{EngineUnavailable, LastRun, SystemReport},
+    accel::{LastRun, SystemReport},
     audio_overview::AudioOverview,
     browser_compute::BrowserCompute,
     devices::{DeviceKey, DeviceOrder},
@@ -42,132 +41,132 @@ pub type ModelProgressStream =
 pub type ModelCheckSender = UnboundedSender<ModelCheckProgress>;
 
 /// Platform-specific error types
-#[derive(Debug, thiserror::Error, Diagnostic)]
+#[oopsie::oopsie]
 pub enum PlatformError {
-    #[error("File processing error: {source}")]
-    #[diagnostic(code(platform::file_processing))]
+    #[oopsie("File processing error: {source}", code = "platform::file_processing")]
     FileProcessing {
-        #[source]
         source: Box<dyn std::error::Error + Send + Sync>,
     },
 
-    #[error("Transcription error: {source}")]
-    #[diagnostic(code(platform::transcription))]
+    #[oopsie("Transcription error: {source}", code = "platform::transcription")]
     Transcription {
-        #[source]
         source: Box<dyn std::error::Error + Send + Sync>,
     },
 
-    #[error("The {} cannot be used: {reason}", engine.label())]
-    #[diagnostic(code(platform::engine_unavailable))]
+    #[oopsie("The {} cannot be used: {source}", engine.label(), code = "platform::engine_unavailable")]
     EngineUnavailable {
         engine: EngineId,
-        #[source]
-        reason: EngineUnavailable,
+        source: crate::accel::EngineUnavailable,
     },
 
-    #[error("Audio processing error: {source}")]
-    #[diagnostic(code(platform::audio_processing))]
+    #[oopsie(
+        "Audio processing error: {source}",
+        code = "platform::audio_processing"
+    )]
     AudioProcessing {
-        #[source]
         source: Box<dyn std::error::Error + Send + Sync>,
     },
 
-    #[error("Platform initialization error: {source}")]
-    #[diagnostic(code(platform::initialization))]
+    #[oopsie(
+        "Platform initialization error: {source}",
+        code = "platform::initialization"
+    )]
     Initialization {
-        #[source]
         source: Box<dyn std::error::Error + Send + Sync>,
     },
 
-    #[error("IO error: {source}")]
-    #[diagnostic(code(platform::io))]
+    #[oopsie("IO error: {source}", code = "platform::io")]
     Io {
-        #[source]
         source: Box<dyn std::error::Error + Send + Sync>,
     },
 
-    #[error("Unsupported operation: {operation}")]
-    #[diagnostic(code(platform::unsupported))]
+    #[oopsie("Unsupported operation: {operation}", code = "platform::unsupported")]
     Unsupported { operation: Cow<'static, str> },
 
-    #[error("Model management error: {source}")]
-    #[diagnostic(code(platform::model_management))]
+    #[oopsie(
+        "Model management error: {source}",
+        code = "platform::model_management"
+    )]
     ModelManagement {
-        #[source]
         source: Box<dyn std::error::Error + Send + Sync>,
     },
 
-    #[error("Model not found: {model_id}")]
-    #[diagnostic(code(platform::model_not_found))]
+    #[oopsie("Model not found: {model_id}", code = "platform::model_not_found")]
     ModelNotFound { model_id: String },
 
-    #[error("Model download failed: {model_id} from {url}")]
-    #[diagnostic(code(platform::model_download_failed))]
+    #[oopsie(
+        "Model download failed: {model_id} from {url}",
+        code = "platform::model_download_failed"
+    )]
     ModelDownloadFailed {
         model_id: String,
         url: String,
-        #[source]
         source: Box<dyn std::error::Error + Send + Sync>,
     },
 
-    #[error("Model installation failed: {model_id} at {path}")]
-    #[diagnostic(code(platform::model_installation_failed))]
+    #[oopsie(
+        "Model installation failed: {model_id} at {}",
+        path.display(),
+        code = "platform::model_installation_failed"
+    )]
     ModelInstallationFailed {
         model_id: String,
         path: PathBuf,
-        #[source]
         source: Box<dyn std::error::Error + Send + Sync>,
     },
 
-    #[error("Invalid model metadata for {model_id}: {field} is {issue}")]
-    #[diagnostic(code(platform::invalid_model_metadata))]
+    #[oopsie(
+        "Invalid model metadata for {model_id}: {field} is {issue}",
+        code = "platform::invalid_model_metadata"
+    )]
     InvalidModelMetadata {
         model_id: String,
         field: String,
         issue: String,
     },
 
-    #[error("Model verification failed: {model_id} checksum mismatch")]
-    #[diagnostic(code(platform::model_verification_failed))]
+    #[oopsie(
+        "Model verification failed: {model_id} checksum mismatch",
+        code = "platform::model_verification_failed"
+    )]
     ModelVerificationFailed {
         model_id: String,
         expected_checksum: String,
         actual_checksum: String,
     },
 
-    #[error("Storage quota exceeded: {requested} bytes requested, {available} available")]
-    #[diagnostic(code(platform::storage_quota_exceeded))]
+    #[oopsie(
+        "Storage quota exceeded: {requested} bytes requested, {available} available",
+        code = "platform::storage_quota_exceeded"
+    )]
     StorageQuotaExceeded { requested: u64, available: u64 },
 
-    #[error("Device detection error: {source}")]
-    #[diagnostic(code(platform::device_detection))]
+    #[oopsie(
+        "Device detection error: {source}",
+        code = "platform::device_detection"
+    )]
     DeviceDetection {
-        #[source]
         source: Box<dyn std::error::Error + Send + Sync>,
     },
 
-    #[error("{source}")]
-    #[diagnostic(code(platform::settings_persistence))]
+    #[oopsie("{source}", code = "platform::settings_persistence")]
     SettingsPersistence {
-        #[source]
         source: Box<dyn std::error::Error + Send + Sync>,
     },
 
-    #[error("{source}")]
-    #[diagnostic(code(platform::history))]
+    #[oopsie("{source}", code = "platform::history")]
     History {
-        #[source]
         source: Box<dyn std::error::Error + Send + Sync>,
     },
 
-    #[error("There is no saved transcription {id}")]
-    #[diagnostic(code(platform::history_entry_not_found))]
+    #[oopsie(
+        "There is no saved transcription {id}",
+        code = "platform::history_entry_not_found"
+    )]
     HistoryEntryNotFound { id: HistoryId },
 
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    UnsupportedPlatform(#[from] UnsupportedPlatformError),
+    #[oopsie(transparent)]
+    UnsupportedPlatform { source: UnsupportedPlatformError },
 }
 
 impl PlatformError {
@@ -224,7 +223,9 @@ impl PlatformError {
     /// Create a new `PlatformError::Unsupported`Platform
     #[must_use]
     pub fn unsupported_platform() -> Self {
-        Self::UnsupportedPlatform(UnsupportedPlatformError)
+        Self::UnsupportedPlatform {
+            source: UnsupportedPlatformError,
+        }
     }
 
     /// Create a new `PlatformError::ModelManagement`
@@ -339,18 +340,14 @@ impl PlatformError {
     }
 }
 
-#[derive(Debug, Clone, Copy, thiserror::Error, Diagnostic, PartialEq, Eq)]
-#[diagnostic(code(platform::unsupported_platform))]
+#[oopsie::oopsie]
+#[oopsie(
+    "This operation is not supported on {}. ",
+    env!("TARGET"),
+    code = "platform::unsupported_platform"
+)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub struct UnsupportedPlatformError;
-
-impl std::fmt::Display for UnsupportedPlatformError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(const_str::format!(
-            "This operation is not supported on {platform}. ",
-            platform = env!("TARGET")
-        ))
-    }
-}
 
 /// Transcription request parameters
 #[derive(Debug, Clone)]

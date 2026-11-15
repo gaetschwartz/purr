@@ -39,7 +39,7 @@ fn unavailable(why: &Unavailable) -> EngineUnavailable {
                 directory: directory.clone(),
             }
         }
-        Unavailable::Backends(_) => EngineUnavailable::NoBackend {
+        Unavailable::Backends { .. } => EngineUnavailable::NoBackend {
             detail: why.to_string(),
         },
     }
@@ -71,7 +71,7 @@ impl Engine for TranscribeEngine {
     }
 
     fn open(&self, spec: &OpenSpec<'_>) -> Result<Box<dyn WindowDecoder>, OpenError> {
-        runtime::get().map_err(TranscribeEngineError::Library)?;
+        runtime::get().map_err(|source| TranscribeEngineError::Library { source })?;
         match spec.candidate.backend {
             AccelBackend::Cpu => {}
             AccelBackend::CoreMl
@@ -91,7 +91,7 @@ impl Engine for TranscribeEngine {
     }
 
     fn open_speech_detector(&self, model: &Path) -> Result<Box<dyn SpeechDetector>, OpenError> {
-        runtime::get().map_err(TranscribeEngineError::Library)?;
+        runtime::get().map_err(|source| TranscribeEngineError::Library { source })?;
         Ok(Box::new(SileroDetector::load(model)?))
     }
 

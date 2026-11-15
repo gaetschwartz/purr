@@ -22,11 +22,10 @@ use std::fmt;
 use std::io;
 use std::sync::OnceLock;
 
-#[derive(Debug, thiserror::Error, miette::Diagnostic)]
-#[error("cannot write to {}: {source}", stream.name())]
+#[oopsie::oopsie]
+#[oopsie("cannot write to {}: {source}", stream.name())]
 pub struct OutputError {
     pub stream: Stream,
-    #[source]
     pub source: io::Error,
 }
 

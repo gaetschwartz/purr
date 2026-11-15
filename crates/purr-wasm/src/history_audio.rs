@@ -201,12 +201,14 @@ pub async fn save(entry: &HistoryEntry, audio: HistoryAudio) -> Outcome<AudioOut
                 }
                 Ok(outcome)
             }
-            Err(HistoryStoreError::Web(WebError::StorageFull { operation })) => {
+            Err(HistoryStoreError::Web {
+                source: WebError::StorageFull { operation },
+            }) => {
                 tracing::warn!("The browser has no room for the audio ({operation})");
                 store_without_audio(&entry).await?;
                 Ok(AudioOutcome::Dropped(AudioDropReason::StorageFull))
             }
-            Err(error @ (HistoryStoreError::Web(_) | HistoryStoreError::Encode(_))) => {
+            Err(error @ (HistoryStoreError::Web { .. } | HistoryStoreError::Encode { .. })) => {
                 tracing::warn!("Could not store the audio, saving the transcript alone: {error}");
                 store_without_audio(&entry).await?;
                 Ok(AudioOutcome::Dropped(AudioDropReason::Failed {
@@ -214,9 +216,9 @@ pub async fn save(entry: &HistoryEntry, audio: HistoryAudio) -> Outcome<AudioOut
                 }))
             }
             Err(
-                error @ (HistoryStoreError::NotFound(_)
+                error @ (HistoryStoreError::NotFound { .. }
                 | HistoryStoreError::Unreadable { .. }
-                | HistoryStoreError::Title(_)),
+                | HistoryStoreError::Title { .. }),
             ) => Err(error),
         }
     })

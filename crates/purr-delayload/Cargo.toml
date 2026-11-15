@@ -7,7 +7,7 @@ edition = "2024"
 workspace = true
 
 [dependencies]
-thiserror = "2.0.21"
+oopsie = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3.27.0"

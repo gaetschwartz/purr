@@ -3,61 +3,89 @@
 use crate::web_model::attributes::OnnxDtype;
 
 /// Error for an invalid or inconsistent web model manifest
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error, miette::Diagnostic)]
+#[oopsie::oopsie]
+#[derive(Clone, PartialEq, Eq)]
 pub enum WebManifestError {
-    #[error("Failed to parse the web model manifest: {message}")]
-    #[diagnostic(code(purr::web_manifest::parse))]
+    #[oopsie(
+        "Failed to parse the web model manifest: {message}",
+        code = "purr::web_manifest::parse"
+    )]
     Parse { message: String },
 
-    #[error("Unsupported web model manifest schema {found} (supported: {supported})")]
-    #[diagnostic(code(purr::web_manifest::unsupported_schema))]
+    #[oopsie(
+        "Unsupported web model manifest schema {found} (supported: {supported})",
+        code = "purr::web_manifest::unsupported_schema"
+    )]
     UnsupportedSchema { found: u32, supported: u32 },
 
-    #[error("Duplicate web model id in manifest: {id}")]
-    #[diagnostic(code(purr::web_manifest::duplicate_model_id))]
+    #[oopsie(
+        "Duplicate web model id in manifest: {id}",
+        code = "purr::web_manifest::duplicate_model_id"
+    )]
     DuplicateModelId { id: String },
 
-    #[error("Web model {model_id} has an invalid repository: {repo}")]
-    #[diagnostic(code(purr::web_manifest::invalid_repo))]
+    #[oopsie(
+        "Web model {model_id} has an invalid repository: {repo}",
+        code = "purr::web_manifest::invalid_repo"
+    )]
     InvalidRepo { model_id: String, repo: String },
 
-    #[error("Web model {model_id} has an invalid revision: {revision}")]
-    #[diagnostic(code(purr::web_manifest::invalid_revision))]
+    #[oopsie(
+        "Web model {model_id} has an invalid revision: {revision}",
+        code = "purr::web_manifest::invalid_revision"
+    )]
     InvalidRevision { model_id: String, revision: String },
 
-    #[error("Web model {model_id} lists {path} twice")]
-    #[diagnostic(code(purr::web_manifest::duplicate_path))]
+    #[oopsie(
+        "Web model {model_id} lists {path} twice",
+        code = "purr::web_manifest::duplicate_path"
+    )]
     DuplicatePath { model_id: String, path: String },
 
-    #[error("Web model {model_id} does not list the required file {path}")]
-    #[diagnostic(code(purr::web_manifest::missing_file))]
+    #[oopsie(
+        "Web model {model_id} does not list the required file {path}",
+        code = "purr::web_manifest::missing_file"
+    )]
     MissingFile { model_id: String, path: String },
 
-    #[error("Web model {model_id} lists {path}, which transformers.js does not load")]
-    #[diagnostic(code(purr::web_manifest::unexpected_file))]
+    #[oopsie(
+        "Web model {model_id} lists {path}, which transformers.js does not load",
+        code = "purr::web_manifest::unexpected_file"
+    )]
     UnexpectedFile { model_id: String, path: String },
 
-    #[error("Web model {model_id} file {path} has a size of zero bytes")]
-    #[diagnostic(code(purr::web_manifest::zero_size))]
+    #[oopsie(
+        "Web model {model_id} file {path} has a size of zero bytes",
+        code = "purr::web_manifest::zero_size"
+    )]
     ZeroSize { model_id: String, path: String },
 
-    #[error("Web model {model_id} file {path} has no SHA-256 digest")]
-    #[diagnostic(code(purr::web_manifest::missing_digest))]
+    #[oopsie(
+        "Web model {model_id} file {path} has no SHA-256 digest",
+        code = "purr::web_manifest::missing_digest"
+    )]
     MissingDigest { model_id: String, path: String },
 
-    #[error("Web model {model_id} uses {dtype}, which the WebGPU execution provider cannot run")]
-    #[diagnostic(code(purr::web_manifest::unsupported_dtype))]
+    #[oopsie(
+        "Web model {model_id} uses {dtype}, which the WebGPU execution provider cannot run",
+        code = "purr::web_manifest::unsupported_dtype"
+    )]
     UnsupportedDtype { model_id: String, dtype: OnnxDtype },
 
-    #[error("Default web model {id} is not in the manifest")]
-    #[diagnostic(code(purr::web_manifest::unknown_default_model))]
+    #[oopsie(
+        "Default web model {id} is not in the manifest",
+        code = "purr::web_manifest::unknown_default_model"
+    )]
     UnknownDefaultModel { id: String },
 }
 
 /// Error for an unknown web model id
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error, miette::Diagnostic)]
-#[error("Unknown web model: {model_id}")]
-#[diagnostic(code(purr::web_manifest::unknown_model))]
+#[oopsie::oopsie]
+#[derive(Clone, PartialEq, Eq)]
+#[oopsie(
+    "Unknown web model: {model_id}",
+    code = "purr::web_manifest::unknown_model"
+)]
 pub struct UnknownWebModelError {
     pub model_id: String,
 }

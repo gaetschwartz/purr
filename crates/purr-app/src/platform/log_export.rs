@@ -1,7 +1,7 @@
 //! Turns captured log entries into the text, JSON and CSV files a user can save.
 
 use super::logging::LogEntry;
-use miette::IntoDiagnostic as _;
+use oopsie::WelpResultExt as _;
 use std::sync::Arc;
 
 /// A file format for exported logs.
@@ -88,7 +88,7 @@ pub fn format_entries(
     format: LogExportFormat,
     entries: &[Arc<LogEntry>],
     time: impl Fn(&LogEntry) -> String,
-) -> miette::Result<String> {
+) -> Result<String, oopsie::Welp> {
     match format {
         LogExportFormat::Text => Ok(entries
             .iter()
@@ -97,7 +97,7 @@ pub fn format_entries(
             .join("\n")),
         LogExportFormat::Json => {
             let plain: Vec<&LogEntry> = entries.iter().map(Arc::as_ref).collect();
-            serde_json::to_string_pretty(&plain).into_diagnostic()
+            serde_json::to_string_pretty(&plain).welp()
         }
         LogExportFormat::Csv => {
             let rows = entries
@@ -162,7 +162,7 @@ mod tests {
     }
 
     #[test]
-    fn text_lists_one_line_per_entry() -> miette::Result<()> {
+    fn text_lists_one_line_per_entry() -> Result<(), oopsie::Welp> {
         let text = format_entries(LogExportFormat::Text, &sample(), clock)?;
         let expected = [
             "t1 [INFO ] logs: plain",
@@ -174,7 +174,7 @@ mod tests {
     }
 
     #[test]
-    fn csv_quotes_every_field_that_needs_it() -> miette::Result<()> {
+    fn csv_quotes_every_field_that_needs_it() -> Result<(), oopsie::Welp> {
         let csv = format_entries(LogExportFormat::Csv, &sample(), clock)?;
         let expected = [
             "Timestamp,Level,Target,Message,File,Line",
@@ -188,17 +188,17 @@ mod tests {
     }
 
     #[test]
-    fn json_round_trips_the_entries() -> miette::Result<()> {
+    fn json_round_trips_the_entries() -> Result<(), oopsie::Welp> {
         let entries = sample();
         let json = format_entries(LogExportFormat::Json, &entries, clock)?;
-        let parsed: Vec<LogEntry> = serde_json::from_str(&json).into_diagnostic()?;
+        let parsed: Vec<LogEntry> = serde_json::from_str(&json).welp()?;
         let original: Vec<LogEntry> = entries.iter().map(|entry| (**entry).clone()).collect();
         assert_eq!(parsed, original);
         Ok(())
     }
 
     #[test]
-    fn an_empty_selection_exports_an_empty_document() -> miette::Result<()> {
+    fn an_empty_selection_exports_an_empty_document() -> Result<(), oopsie::Welp> {
         let none: Vec<Arc<LogEntry>> = Vec::new();
         assert_eq!(format_entries(LogExportFormat::Text, &none, clock)?, "");
         assert_eq!(

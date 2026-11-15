@@ -8,13 +8,14 @@ use std::{fmt, str::FromStr, sync::Arc};
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct LanguageTag(Arc<str>);
 
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[oopsie::oopsie]
+#[derive(Clone, PartialEq, Eq)]
 pub enum LanguageTagError {
-    #[error("A language tag cannot be empty")]
+    #[oopsie("A language tag cannot be empty")]
     Empty,
-    #[error("`{tag}` does not start with a two or three letter language code")]
+    #[oopsie("`{tag}` does not start with a two or three letter language code")]
     InvalidLanguage { tag: String },
-    #[error("`{subtag}` in `{tag}` is not a script or a region")]
+    #[oopsie("`{subtag}` in `{tag}` is not a script or a region")]
     InvalidSubtag { tag: String, subtag: String },
 }
 

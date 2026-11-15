@@ -161,7 +161,7 @@ fn now_ms() -> f64 {
 }
 
 fn verification_failure_kind(error: &WebError) -> ModelFailureKind {
-    if matches!(error, WebError::Integrity(_)) {
+    if matches!(error, WebError::Integrity { .. }) {
         ModelFailureKind::Integrity
     } else {
         ModelFailureKind::Other
@@ -174,7 +174,12 @@ async fn downloaded_check_failure(
     spec: &WebModelSpec,
     error: &WebError,
 ) -> (String, ModelFailureKind) {
-    if matches!(error, WebError::Integrity(IntegrityError::Missing { .. })) {
+    if matches!(
+        error,
+        WebError::Integrity {
+            source: IntegrityError::Missing { .. }
+        }
+    ) {
         match storage_space::estimate().await {
             Ok(space) if space.free() < spec.total_size_bytes() => {
                 return (
@@ -794,7 +799,7 @@ impl Platform for WasmPlatformImpl {
         let spec = self.model_manager.model(model_id)?;
         match model_cache::verify_with_progress(spec, progress).await {
             Ok(()) => Ok(ModelIntegrity::Verified),
-            Err(WebError::Integrity(problem)) => Ok(problem.into()),
+            Err(WebError::Integrity { source: problem }) => Ok(problem.into()),
             Err(error) => Err(error.into()),
         }
     }

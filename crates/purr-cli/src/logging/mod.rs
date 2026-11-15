@@ -31,15 +31,18 @@ pub const FATAL_TARGET: &str = "purr::fatal";
 
 type BoxedLayer = Box<dyn tracing_subscriber::Layer<Registry> + Send + Sync>;
 
-#[derive(Debug, thiserror::Error, miette::Diagnostic)]
+#[oopsie::oopsie]
 pub enum LoggingError {
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    LogFile(#[from] LogFileError),
-    #[error("RUST_LOG is not a valid filter: {0}")]
-    Filter(#[from] tracing_subscriber::filter::FromEnvError),
-    #[error("a logger is already installed: {0}")]
-    Install(#[from] tracing::subscriber::SetGlobalDefaultError),
+    #[oopsie(transparent)]
+    LogFile { source: LogFileError },
+    #[oopsie("RUST_LOG is not a valid filter: {source}", transparent)]
+    Filter {
+        source: tracing_subscriber::filter::FromEnvError,
+    },
+    #[oopsie("a logger is already installed: {source}", transparent)]
+    Install {
+        source: tracing::subscriber::SetGlobalDefaultError,
+    },
 }
 
 /// What the terminal shows of the log.

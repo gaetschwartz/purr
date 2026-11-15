@@ -17,16 +17,15 @@ pub enum AudioSource {
 
 /// A URL the page can `fetch` the audio of `source` from; release it with [`release`].
 #[cfg(purr_web)]
-pub fn url(source: &AudioSource) -> miette::Result<String> {
-    use miette::miette;
+pub fn url(source: &AudioSource) -> Result<String, oopsie::Welp> {
     use web_sys::{Blob, BlobPropertyBag, Url};
 
     let (bytes, content_type) = match source {
         AudioSource::Upload(file) => (file.bytes.as_ref(), file.content_type.as_deref()),
         AudioSource::Kept(audio) => (audio.bytes.as_ref(), audio.content_type.as_deref()),
         AudioSource::Original { .. } => {
-            return Err(miette!(
-                "the browser has no original file to play for a saved transcription"
+            return Err(oopsie::Welp::new(
+                "the browser has no original file to play for a saved transcription",
             ));
         }
     };
@@ -37,9 +36,9 @@ pub fn url(source: &AudioSource) -> miette::Result<String> {
     let parts = js_sys::Array::new();
     parts.push(&js_sys::Uint8Array::from(bytes));
     let blob = Blob::new_with_u8_array_sequence_and_options(&parts, &options)
-        .map_err(|e| miette!("Could not hand the audio to the player: {e:?}"))?;
+        .map_err(|e| oopsie::Welp::new(format!("Could not hand the audio to the player: {e:?}")))?;
     Url::create_object_url_with_blob(&blob)
-        .map_err(|e| miette!("Could not hand the audio to the player: {e:?}"))
+        .map_err(|e| oopsie::Welp::new(format!("Could not hand the audio to the player: {e:?}")))
 }
 
 /// Frees a URL made by [`url`].
@@ -56,12 +55,12 @@ pub const AUDIO_ROUTE: &str = "purr-audio";
 
 /// A URL the page can `fetch` the audio of `source` from, served by [`use_audio_route`].
 #[cfg(all(feature = "desktop", not(purr_web)))]
-pub fn url(source: &AudioSource) -> miette::Result<String> {
+pub fn url(source: &AudioSource) -> Result<String, oopsie::Welp> {
     match source {
         AudioSource::Upload(file) => Ok(format!("/{AUDIO_ROUTE}/{}", file.id)),
         AudioSource::Original { id, .. } => Ok(format!("/{AUDIO_ROUTE}/{id}")),
-        AudioSource::Kept(_) => Err(miette::miette!(
-            "the desktop plays the original file, not a stored copy"
+        AudioSource::Kept(_) => Err(oopsie::Welp::new(
+            "the desktop plays the original file, not a stored copy",
         )),
     }
 }
@@ -133,9 +132,9 @@ pub fn use_audio_route(_session: crate::transcribe::session::TranscribeSession) 
 
 /// Playback needs a desktop or web platform.
 #[cfg(not(any(purr_web, feature = "desktop")))]
-pub fn url(_source: &AudioSource) -> miette::Result<String> {
-    Err(miette::miette!(
-        "Playback is not supported on this platform"
+pub fn url(_source: &AudioSource) -> Result<String, oopsie::Welp> {
+    Err(oopsie::Welp::new(
+        "Playback is not supported on this platform",
     ))
 }
 

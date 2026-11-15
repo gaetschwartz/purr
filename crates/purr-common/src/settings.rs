@@ -347,24 +347,25 @@ impl Settings {
 }
 
 /// Settings validation errors
-#[derive(Debug, Clone, PartialEq, thiserror::Error)]
+#[oopsie::oopsie]
+#[derive(Clone, PartialEq)]
 pub enum SettingsError {
-    #[error("Model name cannot be empty")]
+    #[oopsie("Model name cannot be empty")]
     EmptyModelName,
 
-    #[error("Invalid thread count: {value} (must be between 1 and 256)")]
+    #[oopsie("Invalid thread count: {value} (must be between 1 and 256)")]
     InvalidThreads { value: u32 },
 
-    #[error("Language code cannot be empty")]
+    #[oopsie("Language code cannot be empty")]
     EmptyLanguage,
 
-    #[error("The Hugging Face token can only contain letters, digits and punctuation")]
+    #[oopsie("The Hugging Face token can only contain letters, digits and punctuation")]
     InvalidHuggingFaceToken,
 
-    #[error("Unsupported settings version: current={current}, target={target}")]
+    #[oopsie("Unsupported settings version: current={current}, target={target}")]
     UnsupportedVersion { current: u32, target: u32 },
 
-    #[error("Unsupported migration: from version {from} to {to}")]
+    #[oopsie("Unsupported migration: from version {from} to {to}")]
     UnsupportedMigration { from: u32, to: u32 },
 }
 

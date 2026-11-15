@@ -3,13 +3,14 @@
 use crate::cli::ModelCommands;
 use crate::color::Stream;
 use crate::engines;
+use crate::error::{CliError, CliResult};
 use crate::global;
 use crate::output;
 use crate::profile_text;
 use crate::theme::{ProgressPart, Themed as _, progress_style};
 use crate::{resultln, statusln};
 use indicatif::{HumanBytes, HumanDuration, ProgressBar, ProgressStyle};
-use miette::IntoDiagnostic as _;
+use oopsie::WelpResultExt as _;
 use purr_core::ModelManager;
 use purr_core::model::registry::ModelSpec;
 use purr_core::model::status::{ModelFileStatus, ModelIntegrity};
@@ -44,18 +45,18 @@ fn bar_colors() -> bool {
 }
 
 /// Handle model management subcommands
-pub async fn handle_model_command(command: &ModelCommands) -> miette::Result<()> {
+pub async fn handle_model_command(command: &ModelCommands) -> CliResult<()> {
     let model_manager = ModelManager::new()?;
 
     match command {
         ModelCommands::Download { model, force } => {
             let spec = model_manager.model(model)?;
             if !engines::built().contains(&spec.engine) {
-                return Err(miette::miette!(
+                return Err(CliError::message(format!(
                     "Model {} needs the {}, which this build does not include.",
                     spec.id,
                     spec.engine.label()
-                ));
+                )));
             }
             download(&model_manager, spec, *force).await?;
             ensure_vad(&model_manager).await;
@@ -88,7 +89,7 @@ pub async fn ensure_vad(manager: &ModelManager) {
     }
 }
 
-async fn download(manager: &ModelManager, spec: &ModelSpec, force: bool) -> miette::Result<()> {
+async fn download(manager: &ModelManager, spec: &ModelSpec, force: bool) -> CliResult<()> {
     if !force && manager.is_model_downloaded(spec).await? {
         statusln!(
             "{} Model {} is already downloaded.",
@@ -108,10 +109,9 @@ async fn download(manager: &ModelManager, spec: &ModelSpec, force: bool) -> miet
 
     let colors = bar_colors();
     let bar_style = ProgressStyle::with_template(&download_bar_template(colors))
-        .into_diagnostic()?
+        .welp()?
         .progress_chars("#>-");
-    let spinner_style =
-        ProgressStyle::with_template(&download_spinner_template(colors)).into_diagnostic()?;
+    let spinner_style = ProgressStyle::with_template(&download_spinner_template(colors)).welp()?;
     let progress_bar = output::add_bar(ProgressBar::new(0));
     progress_bar.set_style(bar_style);
 
@@ -145,7 +145,7 @@ async fn download(manager: &ModelManager, spec: &ModelSpec, force: bool) -> miet
     Ok(())
 }
 
-async fn list_downloaded(manager: &ModelManager) -> miette::Result<()> {
+async fn list_downloaded(manager: &ModelManager) -> CliResult<()> {
     let local = manager.local_models().await?;
 
     if local.is_empty() {
@@ -195,7 +195,7 @@ async fn list_downloaded(manager: &ModelManager) -> miette::Result<()> {
     Ok(())
 }
 
-async fn list_available(manager: &ModelManager) -> miette::Result<()> {
+async fn list_available(manager: &ModelManager) -> CliResult<()> {
     resultln!("{}", "Available models:".heading())?;
     let built = engines::built();
     resultln!()?;
@@ -243,7 +243,7 @@ async fn list_available(manager: &ModelManager) -> miette::Result<()> {
                 HumanBytes(spec.file.size_bytes).to_string().quantity(),
             );
             if !notes.is_empty() {
-                write!(line, "  {}", notes.join(", ").muted()).into_diagnostic()?;
+                write!(line, "  {}", notes.join(", ").muted()).welp()?;
             }
             resultln!("{line}")?;
         }
@@ -268,7 +268,7 @@ async fn list_available(manager: &ModelManager) -> miette::Result<()> {
     Ok(())
 }
 
-async fn delete(manager: &ModelManager, spec: &ModelSpec) -> miette::Result<()> {
+async fn delete(manager: &ModelManager, spec: &ModelSpec) -> CliResult<()> {
     match manager.file_status(spec).await? {
         ModelFileStatus::Missing => {
             statusln!(
@@ -291,7 +291,7 @@ async fn delete(manager: &ModelManager, spec: &ModelSpec) -> miette::Result<()> 
     Ok(())
 }
 
-async fn info(manager: &ModelManager, spec: &ModelSpec) -> miette::Result<()> {
+async fn info(manager: &ModelManager, spec: &ModelSpec) -> CliResult<()> {
     resultln!("{} Model Information", "Info:".info())?;
     resultln!()?;
     resultln!("Name: {}", spec.id.name())?;
@@ -354,7 +354,7 @@ async fn info(manager: &ModelManager, spec: &ModelSpec) -> miette::Result<()> {
     Ok(())
 }
 
-async fn verify(manager: &ModelManager, model: Option<&str>) -> miette::Result<()> {
+async fn verify(manager: &ModelManager, model: Option<&str>) -> CliResult<()> {
     let specs: Vec<&ModelSpec> = if let Some(id) = model {
         vec![manager.model(id)?]
     } else {
@@ -372,7 +372,7 @@ async fn verify(manager: &ModelManager, model: Option<&str>) -> miette::Result<(
     }
 
     let spinner_style =
-        ProgressStyle::with_template(&verify_spinner_template(bar_colors())).into_diagnostic()?;
+        ProgressStyle::with_template(&verify_spinner_template(bar_colors())).welp()?;
     let mut failed = 0usize;
 
     for spec in specs {
@@ -416,10 +416,7 @@ async fn verify(manager: &ModelManager, model: Option<&str>) -> miette::Result<(
     }
 
     if failed > 0 {
-        return Err(miette::miette!(
-            help = "Download the affected models again with 'models download <model> --force'",
-            "{failed} model(s) failed verification"
-        ));
+        return Err(CliError::VerificationFailed { failed });
     }
     Ok(())
 }

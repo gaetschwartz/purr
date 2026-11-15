@@ -6,11 +6,12 @@ pub const MAX_TITLE_CHARS: usize = 120;
 const UNTITLED: &str = "Untitled transcript";
 
 /// Why a typed title was refused.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+#[oopsie::oopsie]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum TitleProblem {
-    #[error("Type a name.")]
+    #[oopsie("Type a name.")]
     Empty,
-    #[error("Use at most {MAX_TITLE_CHARS} characters.")]
+    #[oopsie("Use at most {MAX_TITLE_CHARS} characters.")]
     TooLong,
 }
 

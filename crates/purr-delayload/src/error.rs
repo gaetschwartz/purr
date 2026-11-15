@@ -1,10 +1,11 @@
 use std::path::PathBuf;
 
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[oopsie::oopsie]
+#[derive(Clone, PartialEq, Eq)]
 pub enum DiscoveryError {
-    #[error("CUDA_PATH is not set, so the cuBLAS DLL names cannot be determined")]
+    #[oopsie("CUDA_PATH is not set, so the cuBLAS DLL names cannot be determined")]
     CudaPathUnset,
-    #[error(
+    #[oopsie(
         "no `{pattern}` DLL found in {}",
         searched.iter().map(|dir| dir.display().to_string()).collect::<Vec<_>>().join(", ")
     )]
@@ -12,7 +13,7 @@ pub enum DiscoveryError {
         pattern: &'static str,
         searched: Vec<PathBuf>,
     },
-    #[error("several DLLs match `{pattern}` ({}); keep one CUDA toolkit", found.join(", "))]
+    #[oopsie("several DLLs match `{pattern}` ({}); keep one CUDA toolkit", found.join(", "))]
     Ambiguous {
         pattern: &'static str,
         found: Vec<String>,

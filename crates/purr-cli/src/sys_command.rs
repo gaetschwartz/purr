@@ -1,11 +1,12 @@
 //! `purr sys`: the report is the command's result, on stdout in every mode.
 
 use crate::engine_status;
+use crate::error::CliResult;
 use crate::resultln;
 use crate::runtime;
 use crate::sys_report;
 use crate::theme::{self, Role, Themed as _};
-use miette::IntoDiagnostic as _;
+use oopsie::WelpResultExt as _;
 use purr_core::SystemInfo;
 use purr_core::accel::backend::AccelBackend;
 use purr_core::accel::engine_report;
@@ -34,12 +35,12 @@ fn feature_status(
     }
 }
 
-pub fn handle(json: bool) -> miette::Result<()> {
+pub fn handle(json: bool) -> CliResult<()> {
     let reports = engine_report::reports(&crate::engines::all(), &[]);
     let sys = SystemInfo::of(&reports);
 
     if json {
-        resultln!("{}", sys_report::json(&sys, &reports).into_diagnostic()?)?;
+        resultln!("{}", sys_report::json(&sys, &reports).welp()?)?;
         return Ok(());
     }
 

@@ -8,8 +8,9 @@ use std::{fmt, path::PathBuf, str::FromStr};
 const MAX_ID_LEN: usize = 64;
 
 /// A history id was empty, too long, or held a character a file name should not.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
-#[error("a history id is 1 to 64 letters, digits or hyphens")]
+#[oopsie::oopsie]
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[oopsie("a history id is 1 to 64 letters, digits or hyphens")]
 pub struct InvalidHistoryId;
 
 /// Identifies a saved transcription; safe to use as a file name.

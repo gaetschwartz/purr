@@ -11,31 +11,34 @@ use transcribe_cpp::Transcript;
 use crate::runtime::Unavailable;
 
 /// What goes wrong inside the transcribe.cpp engine.
-#[derive(Debug, thiserror::Error)]
+#[oopsie::oopsie]
 pub enum TranscribeEngineError {
-    #[error("transcribe.cpp cannot be used")]
-    Library(#[source] Unavailable),
+    #[oopsie("transcribe.cpp cannot be used")]
+    Library { source: Unavailable },
 
-    #[error(transparent)]
-    Transcribe(#[from] transcribe_cpp::Error),
+    #[oopsie(transparent)]
+    Transcribe { source: transcribe_cpp::Error },
 
-    #[error("transcribe.cpp reports the language `{code}`, which is not a language tag")]
+    #[oopsie("transcribe.cpp reports the language `{code}`, which is not a language tag")]
     LanguageCode {
         code: String,
-        #[source]
         source: LanguageTagError,
     },
 }
 
 impl From<TranscribeEngineError> for OpenError {
     fn from(error: TranscribeEngineError) -> Self {
-        Self::Engine(Box::new(error))
+        Self::Engine {
+            source: Box::new(error),
+        }
     }
 }
 
 impl From<TranscribeEngineError> for DetectError {
     fn from(error: TranscribeEngineError) -> Self {
-        Self(Box::new(error))
+        Self {
+            source: Box::new(error),
+        }
     }
 }
 
@@ -64,7 +67,9 @@ pub fn decode_error(error: transcribe_cpp::Error) -> DecodeError {
         transcribe_cpp::Error::InputTooLong(_) => DecodeError::InputTooLong,
         transcribe_cpp::Error::InputTooShort(_) => DecodeError::InputTooShort,
         transcribe_cpp::Error::OutOfMemory(_) => DecodeError::OutOfMemory,
-        error => DecodeError::Engine(Box::new(TranscribeEngineError::from(error))),
+        error => DecodeError::Engine {
+            source: Box::new(TranscribeEngineError::from(error)),
+        },
     }
 }
 
@@ -166,7 +171,7 @@ mod tests {
     fn any_other_failure_of_a_run_is_an_error() {
         assert!(matches!(
             finished(Err(transcribe_cpp::Error::Busy(message()))),
-            Err(DecodeError::Engine(_))
+            Err(DecodeError::Engine { .. })
         ));
         assert!(matches!(
             finished(Err(transcribe_cpp::Error::InputTooLong(message()))),
@@ -178,7 +183,7 @@ mod tests {
     fn a_backend_that_fails_to_load_the_model_lets_the_search_go_on() {
         assert!(matches!(
             open_error(transcribe_cpp::Error::Backend(message()), "CPU"),
-            OpenError::Device(AttemptFailure::DeviceInit { device }) if device == "CPU"
+            OpenError::Device { source: AttemptFailure::DeviceInit { device } } if device == "CPU"
         ));
     }
 
@@ -189,7 +194,7 @@ mod tests {
             transcribe_cpp::Error::ModelFileNotFound(message()),
             transcribe_cpp::Error::OutOfMemory(message()),
         ] {
-            assert!(matches!(open_error(error, "CPU"), OpenError::Engine(_)));
+            assert!(matches!(open_error(error, "CPU"), OpenError::Engine { .. }));
         }
     }
 }

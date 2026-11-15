@@ -10,10 +10,10 @@ const DIGEST_LEN: usize = 32;
 #[derive(Clone, Copy, PartialEq, Eq, Hash, SerializeDisplay, DeserializeFromStr)]
 pub struct Sha256Digest([u8; DIGEST_LEN]);
 
-#[derive(Debug, Clone, Copy, PartialEq, thiserror::Error)]
-#[error("invalid SHA-256 digest: {source}")]
+#[oopsie::oopsie]
+#[oopsie("invalid SHA-256 digest: {source}")]
+#[derive(Clone, Copy, PartialEq)]
 pub struct Sha256ParseError {
-    #[source]
     source: hex::FromHexError,
 }
 

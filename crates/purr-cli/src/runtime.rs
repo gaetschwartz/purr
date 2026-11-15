@@ -1,6 +1,5 @@
 use std::path::{Path, PathBuf};
 
-use miette::miette;
 use purr_core::accel::{
     backend::AccelBackend,
     runtime_dir::{Environment, install_dir, search_dirs},
@@ -8,14 +7,15 @@ use purr_core::accel::{
 };
 
 use crate::cli::RuntimeCommands;
+use crate::error::{CliError, CliResult};
 use crate::resultln;
 
-pub fn handle_runtime_command(command: &RuntimeCommands) -> miette::Result<()> {
+pub fn handle_runtime_command(command: &RuntimeCommands) -> CliResult<()> {
     let env = Environment::current();
     match command {
         RuntimeCommands::Path => {
             let dir = install_dir(&env).ok_or_else(|| {
-                miette!("no per-user data directory is known; set PURR_RUNTIME_DIR")
+                CliError::message("no per-user data directory is known; set PURR_RUNTIME_DIR")
             })?;
             resultln!("{}", dir.display())?;
         }

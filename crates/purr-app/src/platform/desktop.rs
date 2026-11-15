@@ -732,7 +732,10 @@ fn transcription_error(error: Error) -> PlatformError {
     match error {
         Error::Transcription {
             source: TranscriptionError::EngineUnavailable { engine, reason },
-        } => PlatformError::EngineUnavailable { engine, reason },
+        } => PlatformError::EngineUnavailable {
+            engine,
+            source: reason,
+        },
         other => PlatformError::transcription(other),
     }
 }
@@ -749,7 +752,7 @@ fn failure_kind(error: &Error) -> ModelFailureKind {
     let integrity = matches!(
         error,
         Error::Configuration {
-            source: ConfigurationError::ModelIntegrity(_),
+            source: ConfigurationError::ModelIntegrity { .. },
         }
     );
     if network {

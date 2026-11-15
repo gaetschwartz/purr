@@ -780,9 +780,9 @@ fn describe(error: &PlatformError) -> (String, Option<String>) {
         PlatformError::ModelNotFound { model_id } => {
             (format!("Model {model_id} isn't downloaded"), None)
         }
-        PlatformError::EngineUnavailable { engine, reason } => (
+        PlatformError::EngineUnavailable { engine, source } => (
             format!("The {} can't run on this computer", engine.label()),
-            Some(reason.to_string()),
+            Some(source.to_string()),
         ),
         other => (other.to_string(), None),
     }
@@ -864,7 +864,7 @@ mod tests {
     fn an_engine_that_cannot_run_is_described_with_its_reason_as_the_hint() {
         let error = PlatformError::EngineUnavailable {
             engine: purr_common::model::engine::EngineId::TranscribeCpp,
-            reason: purr_common::accel::EngineUnavailable::LibraryMissing {
+            source: purr_common::accel::EngineUnavailable::LibraryMissing {
                 library: "transcribe.dll".to_owned(),
                 searched: vec![PathBuf::from("runtime")],
             },

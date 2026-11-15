@@ -1,12 +1,13 @@
 //! Offers to download a model when a transcription finds none.
 
+use crate::error::{CliError, CliResult};
 use crate::models;
 use crate::output;
 use crate::output::sink::stdin_is_terminal;
 use crate::theme::Themed as _;
 use crate::{status, statusln};
 use indicatif::{HumanBytes, HumanDuration};
-use miette::IntoDiagnostic as _;
+use oopsie::WelpResultExt as _;
 use purr_core::ModelManager;
 use purr_core::math::ByteSpeed;
 use purr_core::model::registry::ModelSpec;
@@ -22,21 +23,21 @@ pub fn can_ask() -> bool {
 pub async fn prompt_for_model_download(
     model_manager: &ModelManager,
     model: Option<&ModelSpec>,
-) -> miette::Result<Option<PathBuf>> {
+) -> CliResult<Option<PathBuf>> {
     let program = crate::APP_NAME;
     if !can_ask() {
         let wanted = model.unwrap_or_else(|| model_manager.registry().default_model());
         return Err(if model.is_some() {
-            miette::miette!(
+            CliError::message(format!(
                 "Model {} is not downloaded. Download it with: {program} models download {}",
                 wanted.id.name(),
                 wanted.id
-            )
+            ))
         } else {
-            miette::miette!(
+            CliError::message(format!(
                 "No model downloaded. Download one with: {program} models download {}",
                 wanted.id
-            )
+            ))
         });
     }
 
@@ -70,7 +71,7 @@ pub async fn prompt_for_model_download(
     );
 
     let mut input = String::new();
-    io::stdin().read_line(&mut input).into_diagnostic()?;
+    io::stdin().read_line(&mut input).welp()?;
     let input = input.trim().to_lowercase();
 
     let should_download = input.is_empty() || input == "y" || input == "yes";

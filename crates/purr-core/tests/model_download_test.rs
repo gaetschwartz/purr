@@ -120,11 +120,14 @@ async fn checksum_mismatch_is_rejected_and_cleaned_up() -> Result<(), Box<dyn Er
     match result {
         Err(purr_core::Error::Configuration {
             source:
-                ConfigurationError::ModelIntegrity(ModelIntegrityError::ChecksumMismatch {
-                    model_id,
-                    expected,
-                    actual,
-                }),
+                ConfigurationError::ModelIntegrity {
+                    source:
+                        ModelIntegrityError::ChecksumMismatch {
+                            model_id,
+                            expected,
+                            actual,
+                        },
+                },
         }) => {
             assert_eq!(model_id, "fixture");
             assert_eq!(expected, spec.file.sha256);
@@ -155,11 +158,14 @@ async fn truncated_body_is_rejected_and_cleaned_up() -> Result<(), Box<dyn Error
     match result {
         Err(purr_core::Error::Configuration {
             source:
-                ConfigurationError::ModelIntegrity(ModelIntegrityError::SizeMismatch {
-                    model_id,
-                    expected,
-                    actual,
-                }),
+                ConfigurationError::ModelIntegrity {
+                    source:
+                        ModelIntegrityError::SizeMismatch {
+                            model_id,
+                            expected,
+                            actual,
+                        },
+                },
         }) => {
             assert_eq!(model_id, "fixture");
             assert_eq!(expected, content.len() as u64);
@@ -190,11 +196,12 @@ async fn oversized_body_is_aborted_and_cleaned_up() -> Result<(), Box<dyn Error>
     match result {
         Err(purr_core::Error::Configuration {
             source:
-                ConfigurationError::ModelIntegrity(ModelIntegrityError::SizeMismatch {
-                    expected,
-                    actual,
-                    ..
-                }),
+                ConfigurationError::ModelIntegrity {
+                    source:
+                        ModelIntegrityError::SizeMismatch {
+                            expected, actual, ..
+                        },
+                },
         }) => {
             assert_eq!(expected, content.len() as u64);
             assert!(actual > expected);

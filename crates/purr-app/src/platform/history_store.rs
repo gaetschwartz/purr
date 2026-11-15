@@ -19,36 +19,35 @@ const ENTRY_EXTENSION: &str = "json";
 const PARTIAL_EXTENSION: &str = "tmp";
 
 /// Why a history operation on disk failed.
-#[derive(Debug, thiserror::Error)]
+#[oopsie::oopsie]
 pub enum HistoryDirError {
-    #[error("{action} {path}: {source}")]
+    #[oopsie("{action} {}: {source}", path.display())]
     Io {
         action: &'static str,
         path: PathBuf,
-        #[source]
         source: io::Error,
     },
-    #[error("There is no saved transcription {0}")]
-    NotFound(HistoryId),
-    #[error("The saved transcription {id} can't be read: {reason}")]
+    #[oopsie("There is no saved transcription {id}")]
+    NotFound { id: HistoryId },
+    #[oopsie("The saved transcription {id} can't be read: {reason}")]
     Unreadable {
         id: HistoryId,
         reason: UnreadableReason,
     },
-    #[error("The transcription could not be written: {0}")]
-    Encode(#[from] serde_json::Error),
-    #[error("{0}")]
-    Title(#[from] TitleProblem),
+    #[oopsie("The transcription could not be written: {source}", transparent)]
+    Encode { source: serde_json::Error },
+    #[oopsie("{source}", transparent)]
+    Title { source: TitleProblem },
 }
 
 impl From<HistoryDirError> for PlatformError {
     fn from(error: HistoryDirError) -> Self {
         match error {
-            HistoryDirError::NotFound(id) => Self::HistoryEntryNotFound { id },
+            HistoryDirError::NotFound { id } => Self::HistoryEntryNotFound { id },
             HistoryDirError::Io { .. }
             | HistoryDirError::Unreadable { .. }
-            | HistoryDirError::Encode(_)
-            | HistoryDirError::Title(_) => Self::history(error),
+            | HistoryDirError::Encode { .. }
+            | HistoryDirError::Title { .. } => Self::history(error),
         }
     }
 }
@@ -153,7 +152,7 @@ impl HistoryDir {
     pub fn get(&self, id: &HistoryId) -> Result<HistoryRecord, HistoryDirError> {
         let path = self.entry_path(id);
         if !path.is_file() {
-            return Err(HistoryDirError::NotFound(id.clone()));
+            return Err(HistoryDirError::NotFound { id: id.clone() });
         }
         let entry = Self::read(&path).map_err(|reason| HistoryDirError::Unreadable {
             id: id.clone(),
@@ -200,7 +199,7 @@ impl HistoryDir {
         match fs::remove_file(&path) {
             Ok(()) => Ok(()),
             Err(error) if error.kind() == io::ErrorKind::NotFound => {
-                Err(HistoryDirError::NotFound(id.clone()))
+                Err(HistoryDirError::NotFound { id: id.clone() })
             }
             Err(error) => Err(io_error("Could not remove", &path)(error)),
         }
@@ -369,7 +368,9 @@ mod tests {
         assert_eq!(record.entry.segments, entry("a", 1).segments);
         assert!(matches!(
             history.rename(&id, "   "),
-            Err(HistoryDirError::Title(TitleProblem::Empty))
+            Err(HistoryDirError::Title {
+                source: TitleProblem::Empty
+            })
         ));
         assert_eq!(history.get(&id).unwrap().entry.title, "Réunion du lundi");
     }
@@ -383,11 +384,11 @@ mod tests {
         assert_eq!(titles(&history.list().unwrap()), vec!["b.ogg"]);
         assert!(matches!(
             history.delete(&entry("a", 1).id),
-            Err(HistoryDirError::NotFound(_))
+            Err(HistoryDirError::NotFound { .. })
         ));
         assert!(matches!(
             history.get(&entry("a", 1).id),
-            Err(HistoryDirError::NotFound(_))
+            Err(HistoryDirError::NotFound { .. })
         ));
     }
 

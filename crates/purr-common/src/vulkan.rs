@@ -3,7 +3,6 @@
 use std::fmt;
 
 use serde::{Deserialize, Serialize};
-use thiserror::Error;
 
 /// A Vulkan API version, decoded as the specification defines (variant bits dropped).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -129,22 +128,24 @@ pub enum VulkanCall {
 }
 
 /// Why the Vulkan driver could not be asked about its devices.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Error, Serialize, Deserialize)]
+#[oopsie::oopsie]
+#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum VulkanProbeError {
-    #[error("the Vulkan loader could not be opened")]
+    #[oopsie("the Vulkan loader could not be opened")]
     LoaderUnavailable,
-    #[error("the Vulkan loader predates Vulkan 1.1")]
+    #[oopsie("the Vulkan loader predates Vulkan 1.1")]
     LoaderBeforeVulkan11,
-    #[error("{call:?} failed with Vulkan result {vk_result}")]
+    #[oopsie("{call:?} failed with Vulkan result {vk_result}")]
     Call { call: VulkanCall, vk_result: i32 },
 }
 
 /// Why a ggml Vulkan device has no driver information.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Error, Serialize, Deserialize)]
+#[oopsie::oopsie]
+#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum VulkanDriverUnavailable {
-    #[error("{0}")]
-    Probe(#[from] VulkanProbeError),
-    #[error("no single Vulkan device matches this one by PCI bus id or name")]
+    #[oopsie("{source}")]
+    Probe { source: VulkanProbeError },
+    #[oopsie("no single Vulkan device matches this one by PCI bus id or name")]
     NoUnambiguousMatch,
 }
 
@@ -442,9 +443,9 @@ mod tests {
     #[test]
     fn an_unreadable_driver_is_reported_with_the_reason() {
         assert_eq!(
-            VulkanDriverStatus::Unavailable(VulkanDriverUnavailable::Probe(
-                VulkanProbeError::LoaderUnavailable
-            ))
+            VulkanDriverStatus::Unavailable(VulkanDriverUnavailable::Probe {
+                source: VulkanProbeError::LoaderUnavailable
+            })
             .fields(),
             [(
                 "Driver",
@@ -488,15 +489,17 @@ mod tests {
     fn the_json_shape_of_an_unavailable_driver() {
         assert_eq!(
             serde_json::to_value(VulkanDriverStatus::Unavailable(
-                VulkanDriverUnavailable::Probe(VulkanProbeError::Call {
-                    call: VulkanCall::CreateInstance,
-                    vk_result: -9
-                })
+                VulkanDriverUnavailable::Probe {
+                    source: VulkanProbeError::Call {
+                        call: VulkanCall::CreateInstance,
+                        vk_result: -9
+                    }
+                }
             ))
             .expect("serializes"),
             json!({
                 "Unavailable": {
-                    "Probe": { "Call": { "call": "CreateInstance", "vk_result": -9 } }
+                    "Probe": { "source": { "Call": { "call": "CreateInstance", "vk_result": -9 } } }
                 }
             })
         );

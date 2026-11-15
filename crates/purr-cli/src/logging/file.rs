@@ -4,12 +4,14 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tracing_subscriber::fmt::MakeWriter;
 
-#[derive(Debug, thiserror::Error, miette::Diagnostic)]
-#[error("cannot open the log file {}: {source}", path.display())]
-#[diagnostic(help("check that the folder exists and that you may write to the file"))]
+#[oopsie::oopsie]
+#[oopsie(
+    "cannot open the log file {}: {source}",
+    path.display(),
+    help = "check that the folder exists and that you may write to the file"
+)]
 pub struct LogFileError {
     pub path: PathBuf,
-    #[source]
     pub source: io::Error,
 }
 

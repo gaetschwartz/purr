@@ -369,7 +369,10 @@ mod tests {
             vec![
                 format!(
                     "{:?}",
-                    refused == Err(UpdateError::Invalid(vec![SettingsError::EmptyModelName]))
+                    refused
+                        == Err(UpdateError::Invalid {
+                            errors: vec![SettingsError::EmptyModelName]
+                        })
                 ),
                 describe(store),
             ]
@@ -379,7 +382,9 @@ mod tests {
 
     #[test]
     fn after_a_failed_load_changes_stay_in_memory_until_a_reset() {
-        let failed = LoadState::Failed(LoadFailure::Unreadable("bad json".to_owned()));
+        let failed = LoadState::Failed(LoadFailure::Unreadable {
+            reason: "bad json".to_owned(),
+        });
         let notes = run_with_store(failed, |store| {
             let mut notes = vec![format!("{:?}", store.set_model("small"))];
             notes.push(describe(store));

@@ -27,21 +27,23 @@ pub enum LoadState {
 }
 
 /// Why the stored settings were not used.
-#[derive(Debug, Clone, PartialEq, thiserror::Error)]
+#[oopsie::oopsie]
+#[derive(Clone, PartialEq)]
 pub enum LoadFailure {
-    #[error("{0}")]
-    Unreadable(String),
-    #[error("{}", join(.0))]
-    Invalid(Vec<SettingsError>),
-    #[error("{0}")]
-    Unsupported(SettingsError),
+    #[oopsie("{reason}")]
+    Unreadable { reason: String },
+    #[oopsie("{}", join(errors))]
+    Invalid { errors: Vec<SettingsError> },
+    #[oopsie("{error}")]
+    Unsupported { error: SettingsError },
 }
 
 /// A change the store refused; nothing was applied or saved.
-#[derive(Debug, Clone, PartialEq, thiserror::Error)]
+#[oopsie::oopsie]
+#[derive(Clone, PartialEq)]
 pub enum UpdateError {
-    #[error("{}", join(.0))]
-    Invalid(Vec<SettingsError>),
+    #[oopsie("{}", join(errors))]
+    Invalid { errors: Vec<SettingsError> },
 }
 
 fn join(errors: &[SettingsError]) -> String {

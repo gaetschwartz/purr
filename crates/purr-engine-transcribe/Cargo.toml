@@ -8,7 +8,7 @@ description = "transcribe.cpp as a Purr speech recognition engine"
 parking_lot = "0.13.0"
 purr-common = { version = "0.1.0", path = "../purr-common" }
 purr-core = { version = "0.1.0", path = "../purr-core" }
-thiserror = "2.0"
+oopsie = { workspace = true }
 tracing = "0.1.41"
 transcribe-cpp = { version = "0.4.2", default-features = false, features = ["dynamic-backends"] }
 

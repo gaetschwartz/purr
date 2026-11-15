@@ -8,6 +8,8 @@ mod download_prompt;
 mod engine_status;
 mod engines;
 mod engines_command;
+mod error;
+mod fatal;
 mod global;
 mod json;
 mod language_arg;
@@ -26,12 +28,13 @@ mod verbosity;
 mod vt;
 
 use crate::download_prompt::prompt_for_model_download;
+use crate::error::{CliError, CliResult};
 use crate::language_arg::LanguageVerdict;
 use crate::theme::Themed as _;
 use cli::{ASCII_ART, Cli, Commands, OutputFormat};
 use futures::StreamExt as _;
 use indicatif::{ProgressBar, ProgressFinish, ProgressStyle};
-use miette::IntoDiagnostic as _;
+use oopsie::WelpResultExt as _;
 use purr_common::devices::DeviceOrder;
 use purr_common::platform::ChunkKind;
 use purr_core::accel::engine_report::{EngineReport, reports};
@@ -62,13 +65,13 @@ async fn main() -> ExitCode {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             logging::record_fatal(&error);
-            errorln!("{}: {}", "Error".error(), error);
+            errorln!("{}", fatal::render(error));
             ExitCode::FAILURE
         }
     }
 }
 
-async fn main_impl() -> miette::Result<()> {
+async fn main_impl() -> CliResult<()> {
     let cli = global::init(Cli::from_env());
 
     logging::init(cli)?;
@@ -78,26 +81,35 @@ async fn main_impl() -> miette::Result<()> {
         engine.install_logging();
     }
 
+    if let Some(kind) = cli.throw_error {
+        return Err(kind.raise());
+    }
+
     if let Some(command) = &cli.command {
         return handle_command(command).await;
     }
 
     let Some(audio_input) = cli.audio_input.clone() else {
         statusln!("{ASCII_ART}\n");
-        return Err(miette::miette!("No audio file or URL given"));
+        return Err(CliError::message("No audio file or URL given"));
     };
 
     let is_url = is_valid_url(&audio_input);
     let is_path = is_file_path(&audio_input);
 
     if !is_url && !is_path {
-        return Err(miette::miette!("Not a file path or URL: '{audio_input}'"));
+        return Err(CliError::message(format!(
+            "Not a file path or URL: '{audio_input}'"
+        )));
     }
 
     if is_path {
         let path = Path::new(&audio_input);
         if !path.exists() {
-            return Err(miette::miette!("Audio file not found: {}", path.display()));
+            return Err(CliError::message(format!(
+                "Audio file not found: {}",
+                path.display()
+            )));
         }
     }
 
@@ -113,7 +125,7 @@ async fn main_impl() -> miette::Result<()> {
     }
 
     let input = if is_url {
-        Input::url(&audio_input, cli.input_config()).into_diagnostic()?
+        Input::url(&audio_input, cli.input_config())?
     } else {
         Input::File(PathBuf::from(&audio_input))
     };
@@ -126,22 +138,19 @@ async fn main_impl() -> miette::Result<()> {
             &model,
             &engines,
         )
-        .await
-        .into_diagnostic()?;
-        handle_output(collect(transcription).await.into_diagnostic()?, cli)?;
+        .await?;
+        handle_output(collect(transcription).await?, cli)?;
     } else {
         debug!("Streaming transcription");
-        let stream = transcribe(input, config, &model, &engines)
-            .await
-            .into_diagnostic()?;
+        let stream = transcribe(input, config, &model, &engines).await?;
         handle_streaming_output(stream, cli).await?;
     }
 
     Ok(())
 }
 
-fn progress_line_bar() -> miette::Result<ProgressBar> {
-    let style = ProgressStyle::with_template("{msg}").into_diagnostic()?;
+fn progress_line_bar() -> CliResult<ProgressBar> {
+    let style = ProgressStyle::with_template("{msg}").welp()?;
     Ok(output::add_bar(
         ProgressBar::new_spinner()
             .with_style(style)
@@ -150,7 +159,7 @@ fn progress_line_bar() -> miette::Result<ProgressBar> {
 }
 
 /// Handle streaming transcription output
-async fn handle_streaming_output(mut stream: Transcription, cli: &Cli) -> miette::Result<()> {
+async fn handle_streaming_output(mut stream: Transcription, cli: &Cli) -> CliResult<()> {
     use std::fs;
 
     let mut all_chunks = Vec::new();
@@ -191,7 +200,7 @@ async fn handle_streaming_output(mut stream: Transcription, cli: &Cli) -> miette
                 }
                 OutputFormat::Json => {
                     serde_json::to_string(&json::chunk(&chunk, cli.word_timestamps))
-                        .into_diagnostic()?
+                        .welp()?
                         .into()
                 }
                 OutputFormat::Srt => format!(
@@ -235,7 +244,7 @@ async fn handle_streaming_output(mut stream: Transcription, cli: &Cli) -> miette
     }
 
     if let Some(output_file) = &cli.output_file {
-        fs::write(output_file, &output_buffer).into_diagnostic()?;
+        fs::write(output_file, &output_buffer).welp()?;
         if cli.verbosity.is_verbose() {
             statusln!(
                 "{} Streaming output written to: {}",
@@ -252,17 +261,14 @@ async fn handle_streaming_output(mut stream: Transcription, cli: &Cli) -> miette
     }
 
     if all_chunks.is_empty() {
-        return Err(miette::miette!(
-            help = "Check that it is a valid audio file",
-            "Nothing was transcribed"
-        ));
+        return Err(CliError::NothingTranscribed);
     }
 
     Ok(())
 }
 
 /// Handle subcommands
-async fn handle_command(command: &Commands) -> miette::Result<()> {
+async fn handle_command(command: &Commands) -> CliResult<()> {
     match command {
         Commands::Models { command } => models::handle_model_command(command).await,
         Commands::Sys { json } => sys_command::handle(*json),
@@ -286,7 +292,7 @@ fn device_order_for(
     cli: &Cli,
     engines: &[Arc<dyn Engine>],
     model: &ModelRef,
-) -> miette::Result<DeviceOrder> {
+) -> CliResult<DeviceOrder> {
     let found = reports(engines, &[]);
     let nothing = [];
     let own = found
@@ -304,13 +310,10 @@ fn device_order_for(
         .filter(|report| report.engine != model.engine)
         .map(EngineReport::listed)
         .collect();
-    cli.device_order_among(own, &others).into_diagnostic()
+    Ok(cli.device_order_among(own, &others)?)
 }
 
-async fn setup_config(
-    cli: &Cli,
-    engines: &[Arc<dyn Engine>],
-) -> miette::Result<(RunConfig, ModelRef)> {
+async fn setup_config(cli: &Cli, engines: &[Arc<dyn Engine>]) -> CliResult<(RunConfig, ModelRef)> {
     let model = setup_model(cli).await?;
 
     let mut config = cli.run_config();
@@ -339,31 +342,31 @@ async fn setup_config(
     Ok((config, model))
 }
 
-async fn setup_model(cli: &Cli) -> Result<ModelRef, miette::Error> {
+async fn setup_model(cli: &Cli) -> CliResult<ModelRef> {
     let model_manager = ModelManager::new()?;
     let path: PathBuf;
     if let Some(ref model_string) = cli.model {
         let model_path = Path::new(model_string);
         if model_path.is_absolute() {
             if !model_path.exists() {
-                return Err(miette::miette!(
+                return Err(CliError::message(format!(
                     "Model file not found at: {}",
                     model_path.display()
-                ));
+                )));
             }
             path = model_path.to_path_buf();
         } else {
-            let model_path = std::env::current_dir().into_diagnostic()?.join(model_path);
+            let model_path = std::env::current_dir().welp()?.join(model_path);
             if model_path.exists() {
                 path = model_path;
             } else {
                 let model = model_manager.model(model_string)?;
                 if !engines::built().contains(&model.engine) {
-                    return Err(miette::miette!(
+                    return Err(CliError::message(format!(
                         "Model {} needs the {}, which this build does not include.",
                         model.id,
                         model.engine.label()
-                    ));
+                    )));
                 }
                 if model_manager.is_model_downloaded(model).await? {
                     path = model_manager.get_model_path(model);
@@ -372,8 +375,8 @@ async fn setup_model(cli: &Cli) -> Result<ModelRef, miette::Error> {
                 {
                     path = model_path;
                 } else {
-                    return Err(miette::miette!(
-                        "No model specified and no downloaded models found."
+                    return Err(CliError::message(
+                        "No model specified and no downloaded models found.",
                     ));
                 }
             }
@@ -386,14 +389,14 @@ async fn setup_model(cli: &Cli) -> Result<ModelRef, miette::Error> {
     } else if let Some(model_path) = prompt_for_model_download(&model_manager, None).await? {
         path = model_path;
     } else {
-        return Err(miette::miette!(
-            "No model specified and no downloaded models found."
+        return Err(CliError::message(
+            "No model specified and no downloaded models found.",
         ));
     }
     Ok(model_manager.reference(path).await?)
 }
 
-fn handle_output(result: SyncTranscriptionResult, cli: &Cli) -> miette::Result<()> {
+fn handle_output(result: SyncTranscriptionResult, cli: &Cli) -> CliResult<()> {
     let output_content = match cli.output {
         OutputFormat::Text => {
             if cli.timestamps {
@@ -413,8 +416,7 @@ fn handle_output(result: SyncTranscriptionResult, cli: &Cli) -> miette::Result<(
             }
         }
         OutputFormat::Json => {
-            serde_json::to_string_pretty(&json::document(&result, cli.word_timestamps))
-                .into_diagnostic()?
+            serde_json::to_string_pretty(&json::document(&result, cli.word_timestamps)).welp()?
         }
         OutputFormat::Srt => result
             .segments
@@ -435,7 +437,7 @@ fn handle_output(result: SyncTranscriptionResult, cli: &Cli) -> miette::Result<(
     };
 
     if let Some(output_file) = &cli.output_file {
-        std::fs::write(output_file, &output_content).into_diagnostic()?;
+        std::fs::write(output_file, &output_content).welp()?;
         if cli.verbosity.is_verbose() {
             statusln!(
                 "{} Output written to: {}",

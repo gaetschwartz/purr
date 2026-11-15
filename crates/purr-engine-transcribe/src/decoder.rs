@@ -82,7 +82,11 @@ impl WindowDecoder for TranscribeDecoder {
             LanguageRequest::Use(tag) if self.supports(tag) => {
                 self.languages.code(tag).map(str::to_owned)
             }
-            LanguageRequest::Use(tag) => return Err(DecodeError::UnsupportedLanguage(tag.clone())),
+            LanguageRequest::Use(tag) => {
+                return Err(DecodeError::UnsupportedLanguage {
+                    language: tag.clone(),
+                });
+            }
         };
         let options = RunOptions {
             timestamps: TimestampKind::Auto,
@@ -92,8 +96,9 @@ impl WindowDecoder for TranscribeDecoder {
         let (transcript, completion) = finished(self.session.run(request.pcm, &options))?;
         let detect = matches!(request.language, LanguageRequest::Detect);
         Ok(Decoded {
-            hypothesis: hypothesis(&transcript, detect)
-                .map_err(|error| DecodeError::Engine(Box::new(error)))?,
+            hypothesis: hypothesis(&transcript, detect).map_err(|error| DecodeError::Engine {
+                source: Box::new(error),
+            })?,
             completion,
         })
     }

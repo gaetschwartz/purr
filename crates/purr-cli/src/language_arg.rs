@@ -32,19 +32,22 @@ impl fmt::Display for LanguageList {
 }
 
 /// Why `--language` does not fit the model.
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error, miette::Diagnostic)]
+#[oopsie::oopsie]
+#[derive(Clone, PartialEq, Eq)]
 pub enum LanguageProblem {
-    #[error("{model} does not transcribe {language}")]
-    #[diagnostic(code(purr::language::unsupported), help("It transcribes: {supported}"))]
+    #[oopsie(
+        "{model} does not transcribe {language}; it transcribes: {supported}",
+        code = "purr::language::unsupported"
+    )]
     Unsupported {
         model: String,
         language: LanguageTag,
         supported: LanguageList,
     },
-    #[error("{model} cannot find the language itself")]
-    #[diagnostic(
-        code(purr::language::required),
-        help("Name the spoken language with --language")
+    #[oopsie(
+        "{model} cannot find the language itself",
+        code = "purr::language::required",
+        help = "Name the spoken language with --language"
     )]
     Required { model: String },
 }

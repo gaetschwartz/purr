@@ -158,8 +158,9 @@ pub enum ModelFamily {
     Qwen3Asr(Qwen3AsrSize),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-#[error("`{name}` is not a model family")]
+#[oopsie::oopsie]
+#[derive(Clone, PartialEq, Eq)]
+#[oopsie("`{name}` is not a model family")]
 pub struct UnknownFamily {
     pub name: String,
 }

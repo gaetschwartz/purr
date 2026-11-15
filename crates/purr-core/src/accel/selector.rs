@@ -44,27 +44,28 @@ pub struct DeviceSelector {
     pub kind: Option<DeviceType>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[oopsie::oopsie]
+#[derive(Clone, PartialEq, Eq)]
 pub enum SelectorParseError {
-    #[error("the device selector is empty")]
+    #[oopsie("the device selector is empty")]
     Empty,
-    #[error(
+    #[oopsie(
         "`{token}` is not a backend (cuda, vulkan, ...), a device type (gpu, igpu, cpu, accel), a device id (0000:01:00.0) or an index"
     )]
     UnknownToken { token: String },
-    #[error("`{field}` is not a device field; use index, id, backend or type")]
+    #[oopsie("`{field}` is not a device field; use index, id, backend or type")]
     UnknownField { field: String },
-    #[error("the field `{}` is given twice", field.name())]
+    #[oopsie("the field `{}` is given twice", field.name())]
     Duplicate { field: SelectorField },
-    #[error("`{value}` is not a device index")]
+    #[oopsie("`{value}` is not a device index")]
     BadIndex { value: String },
-    #[error("`{value}` is not an acceleration backend")]
+    #[oopsie("`{value}` is not an acceleration backend")]
     BadBackend { value: String },
-    #[error("`{value}` is not a device type; use gpu, igpu, cpu or accel")]
+    #[oopsie("`{value}` is not a device type; use gpu, igpu, cpu or accel")]
     BadType { value: String },
-    #[error("`{value}` is not a device id such as 0000:01:00.0")]
+    #[oopsie("`{value}` is not a device id such as 0000:01:00.0")]
     BadId { value: String },
-    #[error("the field `{}` has no value", field.name())]
+    #[oopsie("the field `{}` has no value", field.name())]
     EmptyValue { field: SelectorField },
 }
 
@@ -395,9 +396,10 @@ fn labels(engines: &[EngineId]) -> String {
         .join(" and the ")
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[oopsie::oopsie]
+#[derive(Clone, PartialEq, Eq)]
 pub enum SelectorError {
-    #[error(
+    #[oopsie(
         "no device matches `{selector}` on the {}; its devices are:{}",
         engine.label(),
         list(devices)
@@ -407,7 +409,7 @@ pub enum SelectorError {
         engine: EngineId,
         devices: Vec<DeviceSummary>,
     },
-    #[error(
+    #[oopsie(
         "`{selector}` describes a device the {} cannot run on; only the {} lists it. The devices of the {} are:{}",
         engine.label(),
         labels(seen_by),
@@ -422,7 +424,7 @@ pub enum SelectorError {
         seen_by: Vec<EngineId>,
         devices: Vec<DeviceSummary>,
     },
-    #[error(
+    #[oopsie(
         "`{selector}` matches {} devices of the {}:{}\nadd one of these fields to pick one: {}",
         matches.len(),
         engine.label(),

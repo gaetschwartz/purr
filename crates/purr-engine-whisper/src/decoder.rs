@@ -86,8 +86,9 @@ impl WindowDecoder for WhisperDecoder {
                 (estimate.tag.clone(), Some(estimate))
             }
         };
-        let code =
-            whisper_code(&language).ok_or(DecodeError::UnsupportedLanguage(language.clone()))?;
+        let code = whisper_code(&language).ok_or(DecodeError::UnsupportedLanguage {
+            language: language.clone(),
+        })?;
 
         let mut params = FullParams::new(SamplingStrategy::BeamSearch {
             beam_size: BEAM_SIZE,

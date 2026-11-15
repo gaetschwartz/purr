@@ -7,7 +7,7 @@
 //! pinned revision; with `--bump` the revision is first advanced to the latest commit. LFS files
 //! take their digest from the tree listing; plain files are downloaded and hashed.
 
-use miette::{IntoDiagnostic as _, WrapErr as _, miette};
+use oopsie::{Welp, WelpResultExt as _};
 use purr_common::web_model::digest::Sha256Digest;
 use purr_common::web_model::file_role::ModelFileRole;
 use purr_common::web_model::manifest::{
@@ -52,7 +52,7 @@ struct Args {
 }
 
 impl Args {
-    fn parse() -> miette::Result<Self> {
+    fn parse() -> Result<Self, Welp> {
         let mut bump = false;
         let mut manifest_path = None;
         for arg in std::env::args().skip(1) {
@@ -61,7 +61,7 @@ impl Args {
             } else if manifest_path.is_none() {
                 manifest_path = Some(PathBuf::from(arg));
             } else {
-                return Err(miette!("unexpected argument: {arg}"));
+                return Err(Welp::new(format!("unexpected argument: {arg}")));
             }
         }
         Ok(Self {
@@ -77,32 +77,31 @@ impl Args {
     }
 }
 
-async fn get_response(client: &reqwest::Client, url: &str) -> miette::Result<reqwest::Response> {
+async fn get_response(client: &reqwest::Client, url: &str) -> Result<reqwest::Response, Welp> {
     client
         .get(url)
         .send()
         .await
-        .into_diagnostic()?
+        .welp()?
         .error_for_status()
-        .into_diagnostic()
-        .wrap_err_with(|| format!("GET {url}"))
+        .with_welp_context(|_| format!("GET {url}"))
 }
 
 async fn get_json<T: for<'de> Deserialize<'de>>(
     client: &reqwest::Client,
     url: &str,
-) -> miette::Result<T> {
+) -> Result<T, Welp> {
     let response = get_response(client, url).await?;
     if response.headers().contains_key(reqwest::header::LINK) {
-        return Err(miette!("paginated response is not supported: {url}"));
+        return Err(Welp::new(format!(
+            "paginated response is not supported: {url}"
+        )));
     }
-    let body = response.bytes().await.into_diagnostic()?;
-    serde_json::from_slice(&body)
-        .into_diagnostic()
-        .wrap_err_with(|| format!("parsing response of {url}"))
+    let body = response.bytes().await.welp()?;
+    serde_json::from_slice(&body).with_welp_context(|_| format!("parsing response of {url}"))
 }
 
-async fn latest_revision(client: &reqwest::Client, repo: &str) -> miette::Result<String> {
+async fn latest_revision(client: &reqwest::Client, repo: &str) -> Result<String, Welp> {
     let url = format!("{HUGGING_FACE_ORIGIN}/api/models/{repo}");
     Ok(get_json::<RepoInfo>(client, &url).await?.sha)
 }
@@ -111,7 +110,7 @@ async fn fetch_tree(
     client: &reqwest::Client,
     repo: &str,
     revision: &str,
-) -> miette::Result<HashMap<String, TreeEntry>> {
+) -> Result<HashMap<String, TreeEntry>, Welp> {
     let url = format!("{HUGGING_FACE_ORIGIN}/api/models/{repo}/tree/{revision}?recursive=true");
     let entries: Vec<TreeEntry> = get_json(client, &url).await?;
     Ok(entries
@@ -129,20 +128,16 @@ async fn hash_plain_file(
     repo: &str,
     revision: &str,
     entry: &TreeEntry,
-) -> miette::Result<Sha256Digest> {
+) -> Result<Sha256Digest, Welp> {
     let url = file_url(repo, revision, &entry.path);
-    let body = get_response(client, &url)
-        .await?
-        .bytes()
-        .await
-        .into_diagnostic()?;
+    let body = get_response(client, &url).await?.bytes().await.welp()?;
     if body.len() as u64 != entry.size {
-        return Err(miette!(
+        return Err(Welp::new(format!(
             "{}: downloaded {} bytes but the tree lists {}",
             entry.path,
             body.len(),
             entry.size
-        ));
+        )));
     }
     let mut hasher = Sha256Hasher::new();
     hasher.update(&body);
@@ -150,8 +145,7 @@ async fn hash_plain_file(
         .finalize()
         .to_string()
         .parse()
-        .into_diagnostic()
-        .wrap_err_with(|| format!("hashing {url}"))
+        .with_welp_context(|_| format!("hashing {url}"))
 }
 
 async fn describe_file(
@@ -159,18 +153,16 @@ async fn describe_file(
     repo: &str,
     revision: &str,
     entry: &TreeEntry,
-) -> miette::Result<WebManifestFile> {
+) -> Result<WebManifestFile, Welp> {
     let (size_bytes, sha256) = match &entry.lfs {
         Some(lfs) => {
             if lfs.size != entry.size {
-                return Err(miette!(
+                return Err(Welp::new(format!(
                     "{}: LFS size {} differs from file size {}",
-                    entry.path,
-                    lfs.size,
-                    entry.size
-                ));
+                    entry.path, lfs.size, entry.size
+                )));
             }
-            let digest: Sha256Digest = lfs.oid.parse().into_diagnostic()?;
+            let digest: Sha256Digest = lfs.oid.parse().welp()?;
             (lfs.size, digest)
         }
         None => (
@@ -186,15 +178,12 @@ async fn describe_file(
 }
 
 #[tokio::main]
-async fn main() -> miette::Result<()> {
+async fn main() -> Result<(), Welp> {
     let args = Args::parse()?;
     let text = std::fs::read_to_string(&args.manifest_path)
-        .into_diagnostic()
-        .wrap_err_with(|| format!("reading {}", args.manifest_path.display()))?;
-    let mut manifest = WebManifest::parse(&text)?;
-    let client = purr_core::http::client_builder()?
-        .build()
-        .into_diagnostic()?;
+        .with_welp_context(|_| format!("reading {}", args.manifest_path.display()))?;
+    let mut manifest = WebManifest::parse(&text).welp()?;
+    let client = purr_core::http::client_builder().welp()?.build().welp()?;
 
     let mut changed = 0usize;
     for model in &mut manifest.models {
@@ -210,9 +199,12 @@ async fn main() -> miette::Result<()> {
         let mut files = Vec::with_capacity(ModelFileRole::ALL.len());
         for role in ModelFileRole::ALL {
             let path = role.path(model.encoder_dtype, model.decoder_dtype);
-            let entry = tree
-                .get(&path)
-                .ok_or_else(|| miette!("{path} is not in {}@{}", model.repo, model.revision))?;
+            let entry = tree.get(&path).ok_or_else(|| {
+                Welp::new(format!(
+                    "{path} is not in {}@{}",
+                    model.repo, model.revision
+                ))
+            })?;
             files.push(describe_file(&client, &model.repo, &model.revision, entry).await?);
         }
 
@@ -224,12 +216,11 @@ async fn main() -> miette::Result<()> {
         }
     }
 
-    let mut json = serde_json::to_string_pretty(&manifest).into_diagnostic()?;
+    let mut json = serde_json::to_string_pretty(&manifest).welp()?;
     json.push('\n');
-    WebModelRegistry::from_json(&json)?;
+    WebModelRegistry::from_json(&json).welp()?;
     std::fs::write(&args.manifest_path, json)
-        .into_diagnostic()
-        .wrap_err_with(|| format!("writing {}", args.manifest_path.display()))?;
+        .with_welp_context(|_| format!("writing {}", args.manifest_path.display()))?;
     println!(
         "{} models changed in {}",
         changed,

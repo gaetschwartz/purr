@@ -18,33 +18,32 @@ pub enum SaveOutcome {
 
 /// Saves the file through the browser's download mechanism.
 #[cfg(purr_web)]
-pub async fn save_text_file(file: TextFile<'_>) -> miette::Result<SaveOutcome> {
-    use miette::miette;
+pub async fn save_text_file(file: TextFile<'_>) -> Result<SaveOutcome, oopsie::Welp> {
     use wasm_bindgen::JsCast as _;
     use web_sys::{Blob, BlobPropertyBag, HtmlElement, Url};
 
     let document = web_sys::window()
         .and_then(|window| window.document())
-        .ok_or_else(|| miette!("The browser window is not available"))?;
+        .ok_or_else(|| oopsie::Welp::new("The browser window is not available"))?;
 
     let options = BlobPropertyBag::new();
     options.set_type(file.content_type);
     let parts = js_sys::Array::new();
     parts.push(&file.content.into());
     let blob = Blob::new_with_str_sequence_and_options(&parts, &options)
-        .map_err(|e| miette!("Could not create the download: {e:?}"))?;
+        .map_err(|e| oopsie::Welp::new(format!("Could not create the download: {e:?}")))?;
     let url = Url::create_object_url_with_blob(&blob)
-        .map_err(|e| miette!("Could not create the download link: {e:?}"))?;
+        .map_err(|e| oopsie::Welp::new(format!("Could not create the download link: {e:?}")))?;
 
     let link = document
         .create_element("a")
-        .map_err(|e| miette!("Could not create the download link: {e:?}"))?
+        .map_err(|e| oopsie::Welp::new(format!("Could not create the download link: {e:?}")))?
         .dyn_into::<HtmlElement>()
-        .map_err(|e| miette!("Could not create the download link: {e:?}"))?;
+        .map_err(|e| oopsie::Welp::new(format!("Could not create the download link: {e:?}")))?;
     link.set_attribute("href", &url)
-        .map_err(|e| miette!("Could not set the download link: {e:?}"))?;
+        .map_err(|e| oopsie::Welp::new(format!("Could not set the download link: {e:?}")))?;
     link.set_attribute("download", file.file_name)
-        .map_err(|e| miette!("Could not name the download: {e:?}"))?;
+        .map_err(|e| oopsie::Welp::new(format!("Could not name the download: {e:?}")))?;
     link.click();
 
     wasm_bindgen_futures::spawn_local(async move {
@@ -58,8 +57,8 @@ pub async fn save_text_file(file: TextFile<'_>) -> miette::Result<SaveOutcome> {
 
 /// Asks where to save the file and writes it there; closing the dialog cancels.
 #[cfg(all(feature = "desktop", not(purr_web)))]
-pub async fn save_text_file(file: TextFile<'_>) -> miette::Result<SaveOutcome> {
-    use miette::IntoDiagnostic as _;
+pub async fn save_text_file(file: TextFile<'_>) -> Result<SaveOutcome, oopsie::Welp> {
+    use oopsie::WelpResultExt as _;
 
     let Some(handle) = rfd::AsyncFileDialog::new()
         .set_file_name(file.file_name)
@@ -68,18 +67,16 @@ pub async fn save_text_file(file: TextFile<'_>) -> miette::Result<SaveOutcome> {
     else {
         return Ok(SaveOutcome::Cancelled);
     };
-    tokio::fs::write(handle.path(), file.content)
-        .await
-        .into_diagnostic()?;
+    tokio::fs::write(handle.path(), file.content).await.welp()?;
     tracing::info!("File saved to: {}", handle.path().display());
     Ok(SaveOutcome::Saved)
 }
 
 /// Saving files is not available without a desktop or web platform.
 #[cfg(not(any(purr_web, feature = "desktop")))]
-pub async fn save_text_file(_file: TextFile<'_>) -> miette::Result<SaveOutcome> {
-    Err(miette::miette!(
-        "Saving files is not supported on this platform"
+pub async fn save_text_file(_file: TextFile<'_>) -> Result<SaveOutcome, oopsie::Welp> {
+    Err(oopsie::Welp::new(
+        "Saving files is not supported on this platform",
     ))
 }
 
@@ -93,14 +90,12 @@ struct ClipboardOutcome {
 ///
 /// The page script starts right away, so call this from an event handler rather than from inside
 /// a spawned task: the desktop webview ends scripts started from a task without a live scope.
-pub fn copy_to_clipboard(text: &str) -> impl Future<Output = miette::Result<()>> + use<> {
-    use miette::{IntoDiagnostic as _, miette};
+pub fn copy_to_clipboard(text: &str) -> impl Future<Output = Result<(), oopsie::Welp>> + use<> {
+    use oopsie::{Welp, WelpResultExt as _};
 
-    let started = serde_json::to_string(text)
-        .into_diagnostic()
-        .map(|literal| {
-            document::eval(&format!(
-                "const text = {literal};
+    let started = serde_json::to_string(text).welp().map(|literal| {
+        document::eval(&format!(
+            "const text = {literal};
              const legacyCopy = () => {{
                  const area = document.createElement('textarea');
                  area.value = text;
@@ -123,16 +118,18 @@ pub fn copy_to_clipboard(text: &str) -> impl Future<Output = miette::Result<()>>
              }} catch (error) {{
                  dioxus.send({{ error: String(error) }});
              }}"
-            ))
-        });
+        ))
+    });
     async move {
         let mut eval = started?;
         let outcome: ClipboardOutcome = eval
             .recv()
             .await
-            .map_err(|e| miette!("The clipboard is not available: {e}"))?;
+            .map_err(|e| Welp::new(format!("The clipboard is not available: {e}")))?;
         outcome.error.map_or(Ok(()), |error| {
-            Err(miette!("The clipboard refused the text: {error}"))
+            Err(Welp::new(format!(
+                "The clipboard refused the text: {error}"
+            )))
         })
     }
 }

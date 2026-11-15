@@ -10,11 +10,12 @@ pub const FORMAT_VERSION: u32 = 2;
 const OLDEST_READABLE: u32 = 1;
 
 /// Why a stored entry could not be read.
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[oopsie::oopsie]
+#[derive(Clone, PartialEq, Eq)]
 pub enum UnreadableReason {
-    #[error("it is damaged ({detail})")]
+    #[oopsie("it is damaged ({detail})")]
     Corrupt { detail: String },
-    #[error("it was saved by a newer version of Purr (format {found})")]
+    #[oopsie("it was saved by a newer version of Purr (format {found})")]
     NewerVersion { found: u32 },
 }
 

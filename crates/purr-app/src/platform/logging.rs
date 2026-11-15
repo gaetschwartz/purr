@@ -3,7 +3,7 @@
 //! This module provides a custom tracing-subscriber layer that captures log records
 //! in memory for real-time display in the logs viewer.
 
-use miette::IntoDiagnostic as _;
+use oopsie::WelpResultExt as _;
 use purr_common::platform::Platform as _;
 use purr_common::settings::LogLevel;
 use serde::{Deserialize, Serialize};
@@ -350,20 +350,20 @@ static FILTER_HANDLE: OnceLock<FilterHandle> = OnceLock::new();
 
 /// Initialize the logging capture layer
 /// This should be called during application startup
-pub fn init_logging_capture() -> miette::Result<()> {
+pub fn init_logging_capture() -> Result<(), oopsie::Welp> {
     let filter = EnvFilter::builder()
         .with_default_directive(tracing::Level::INFO.into())
         .from_env_lossy();
     let (filter_layer, handle) = reload::Layer::new(filter);
     FILTER_HANDLE
         .set(handle)
-        .map_err(|_rejected| miette::miette!("Logging was already initialized"))?;
+        .map_err(|_rejected| oopsie::Welp::new("Logging was already initialized"))?;
 
     let subscriber = Registry::default()
         .with(filter_layer)
         .with(output_layer())
         .with(LogsCaptureLayer::new());
-    tracing::subscriber::set_global_default(subscriber).into_diagnostic()?;
+    tracing::subscriber::set_global_default(subscriber).welp()?;
 
     get_platform().install_logging_hooks();
     tracing::info!("Log capture initialized successfully");
@@ -421,13 +421,13 @@ pub fn filter_directives(level: &LogLevel) -> String {
 }
 
 /// Makes the application log at `level` and above.
-pub fn apply_log_level(level: &LogLevel) -> miette::Result<()> {
+pub fn apply_log_level(level: &LogLevel) -> Result<(), oopsie::Welp> {
     let handle = FILTER_HANDLE
         .get()
-        .ok_or_else(|| miette::miette!("Logging has not been initialized"))?;
+        .ok_or_else(|| oopsie::Welp::new("Logging has not been initialized"))?;
     handle
         .reload(EnvFilter::new(filter_directives(level)))
-        .into_diagnostic()
+        .welp()
 }
 
 /// Whether `RUST_LOG` decides the log level instead of the saved settings.

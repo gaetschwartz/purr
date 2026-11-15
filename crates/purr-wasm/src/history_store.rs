@@ -22,31 +22,31 @@ use wasm_bindgen::JsValue;
 use web_sys::{IdbObjectStore, IdbTransaction, IdbTransactionMode};
 
 /// Why a history operation in the browser failed.
-#[derive(Debug, thiserror::Error)]
+#[oopsie::oopsie]
 pub enum HistoryStoreError {
-    #[error(transparent)]
-    Web(#[from] WebError),
-    #[error("There is no saved transcription {0}")]
-    NotFound(HistoryId),
-    #[error("The saved transcription {id} can't be read: {reason}")]
+    #[oopsie(transparent)]
+    Web { source: WebError },
+    #[oopsie("There is no saved transcription {id}")]
+    NotFound { id: HistoryId },
+    #[oopsie("The saved transcription {id} can't be read: {reason}")]
     Unreadable {
         id: HistoryId,
         reason: UnreadableReason,
     },
-    #[error("The transcription could not be written: {0}")]
-    Encode(#[from] serde_json::Error),
-    #[error("{0}")]
-    Title(#[from] TitleProblem),
+    #[oopsie("The transcription could not be written: {source}", transparent)]
+    Encode { source: serde_json::Error },
+    #[oopsie(transparent)]
+    Title { source: TitleProblem },
 }
 
 impl From<HistoryStoreError> for PlatformError {
     fn from(error: HistoryStoreError) -> Self {
         match error {
-            HistoryStoreError::NotFound(id) => Self::HistoryEntryNotFound { id },
-            HistoryStoreError::Web(_)
+            HistoryStoreError::NotFound { id } => Self::HistoryEntryNotFound { id },
+            HistoryStoreError::Web { .. }
             | HistoryStoreError::Unreadable { .. }
-            | HistoryStoreError::Encode(_)
-            | HistoryStoreError::Title(_) => Self::history(error),
+            | HistoryStoreError::Encode { .. }
+            | HistoryStoreError::Title { .. } => Self::history(error),
         }
     }
 }
@@ -144,7 +144,7 @@ async fn fetch(store: &IdbObjectStore, id: &HistoryId) -> Outcome<HistoryEntry> 
     let value = idb::settle(&request, "history get").await?;
     let Some(text) = value.as_string() else {
         return Err(if value.is_undefined() {
-            HistoryStoreError::NotFound(id.clone())
+            HistoryStoreError::NotFound { id: id.clone() }
         } else {
             HistoryStoreError::Unreadable {
                 id: id.clone(),
@@ -268,7 +268,7 @@ pub async fn delete(id: &HistoryId) -> Outcome<()> {
         )
         .await?;
         if count_of(&found)? < 1 {
-            return Err(HistoryStoreError::NotFound(id));
+            return Err(HistoryStoreError::NotFound { id });
         }
         let request = stores
             .entries

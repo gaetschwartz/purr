@@ -55,7 +55,9 @@ pub fn attach_drivers(devices: &mut [Device]) {
         }
         Err(error) => vulkan
             .iter()
-            .map(|_| VulkanDriverStatus::Unavailable(VulkanDriverUnavailable::Probe(error)))
+            .map(|_| {
+                VulkanDriverStatus::Unavailable(VulkanDriverUnavailable::Probe { source: error })
+            })
             .collect(),
     };
     for (index, status) in vulkan.into_iter().zip(statuses) {

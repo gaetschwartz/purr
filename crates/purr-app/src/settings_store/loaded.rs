@@ -5,17 +5,19 @@ use purr_common::{platform::PlatformError, settings::Settings};
 
 /// The settings to run on, or why the stored ones must be left alone.
 pub fn accept_loaded(loaded: Result<Settings, PlatformError>) -> Result<Settings, LoadFailure> {
-    let mut settings = loaded.map_err(|error| LoadFailure::Unreadable(error.to_string()))?;
+    let mut settings = loaded.map_err(|error| LoadFailure::Unreadable {
+        reason: error.to_string(),
+    })?;
     let stored_version = settings.version;
     settings
         .migrate_from_version(stored_version)
-        .map_err(LoadFailure::Unsupported)?;
+        .map_err(|error| LoadFailure::Unsupported { error })?;
     settings.canonicalize_languages();
     let errors = settings.validate();
     if errors.is_empty() {
         Ok(settings)
     } else {
-        Err(LoadFailure::Invalid(errors))
+        Err(LoadFailure::Invalid { errors })
     }
 }
 
@@ -34,7 +36,7 @@ pub fn validated(settings: Settings) -> Result<Settings, UpdateError> {
     if errors.is_empty() {
         Ok(settings)
     } else {
-        Err(UpdateError::Invalid(errors))
+        Err(UpdateError::Invalid { errors })
     }
 }
 
@@ -53,7 +55,12 @@ mod tests {
     #[test]
     fn unreadable_storage_is_a_failure_not_the_defaults() {
         let failure = accept_loaded(Err(PlatformError::settings_persistence("bad json")));
-        assert_eq!(failure, Err(LoadFailure::Unreadable("bad json".to_owned())));
+        assert_eq!(
+            failure,
+            Err(LoadFailure::Unreadable {
+                reason: "bad json".to_owned()
+            })
+        );
     }
 
     #[test]
@@ -64,12 +71,12 @@ mod tests {
         };
         assert_eq!(
             accept_loaded(Ok(stored)),
-            Err(LoadFailure::Unsupported(
-                SettingsError::UnsupportedVersion {
+            Err(LoadFailure::Unsupported {
+                error: SettingsError::UnsupportedVersion {
                     current: CURRENT_VERSION,
                     target: 7
                 }
-            ))
+            })
         );
     }
 
@@ -110,9 +117,9 @@ mod tests {
         stored.performance.threads = Some(0);
         assert_eq!(
             accept_loaded(Ok(stored)),
-            Err(LoadFailure::Invalid(vec![SettingsError::InvalidThreads {
-                value: 0
-            }]))
+            Err(LoadFailure::Invalid {
+                errors: vec![SettingsError::InvalidThreads { value: 0 }]
+            })
         );
     }
 
@@ -121,7 +128,9 @@ mod tests {
         let current = Settings::default();
         assert_eq!(
             apply_change(&current, |settings| settings.model.model_name.clear()),
-            Err(UpdateError::Invalid(vec![SettingsError::EmptyModelName]))
+            Err(UpdateError::Invalid {
+                errors: vec![SettingsError::EmptyModelName]
+            })
         );
         let changed = apply_change(&current, |settings| settings.performance.threads = Some(4));
         assert_eq!(

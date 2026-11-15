@@ -10,7 +10,7 @@ workspace = true
 [dependencies]
 purr-common = { path = "../purr-common" }
 purr-core = { path = "../purr-core" }
-thiserror = "2.0"
+oopsie = { workspace = true }
 tracing = "0.1.41"
 whisper-rs = { version = "0.16.0", default-features = false, features = ["tracing_backend", "raw-api"] }
 

@@ -1,21 +1,25 @@
 use purr_core::engine::error::{DecodeError, DetectError, OpenError};
 
 /// What goes wrong inside whisper.cpp.
-#[derive(Debug, thiserror::Error)]
+#[oopsie::oopsie]
 pub enum WhisperEngineError {
-    #[error(transparent)]
-    Whisper(#[from] whisper_rs::WhisperError),
+    #[oopsie(transparent)]
+    Whisper { source: whisper_rs::WhisperError },
 
-    #[error("Whisper detected a language id it has no code for: {id}")]
+    #[oopsie("Whisper detected a language id it has no code for: {id}")]
     UnknownLanguageId { id: i32 },
 }
 
 impl From<WhisperEngineError> for DecodeError {
     fn from(error: WhisperEngineError) -> Self {
         match error {
-            WhisperEngineError::Whisper(whisper_rs::WhisperError::NoSamples) => Self::InputTooShort,
-            WhisperEngineError::Whisper(_) | WhisperEngineError::UnknownLanguageId { .. } => {
-                Self::Engine(Box::new(error))
+            WhisperEngineError::Whisper {
+                source: whisper_rs::WhisperError::NoSamples,
+            } => Self::InputTooShort,
+            WhisperEngineError::Whisper { .. } | WhisperEngineError::UnknownLanguageId { .. } => {
+                Self::Engine {
+                    source: Box::new(error),
+                }
             }
         }
     }
@@ -23,12 +27,16 @@ impl From<WhisperEngineError> for DecodeError {
 
 impl From<WhisperEngineError> for OpenError {
     fn from(error: WhisperEngineError) -> Self {
-        Self::Engine(Box::new(error))
+        Self::Engine {
+            source: Box::new(error),
+        }
     }
 }
 
 impl From<WhisperEngineError> for DetectError {
     fn from(error: WhisperEngineError) -> Self {
-        Self(Box::new(error))
+        Self {
+            source: Box::new(error),
+        }
     }
 }

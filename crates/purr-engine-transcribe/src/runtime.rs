@@ -31,17 +31,18 @@ pub struct Runtime {
 }
 
 /// Why transcribe.cpp cannot be used in this process.
-#[derive(Debug, Clone, thiserror::Error)]
+#[oopsie::oopsie]
+#[derive(Clone)]
 pub enum Unavailable {
-    #[error("the library {library} was not found in any runtime folder")]
+    #[oopsie("the library {library} was not found in any runtime folder")]
     LibraryMissing {
         library: String,
         searched: Vec<PathBuf>,
     },
-    #[error("the library {library} in {} cannot be loaded, a library it needs may be missing", directory.display())]
+    #[oopsie("the library {library} in {} cannot be loaded, a library it needs may be missing", directory.display())]
     LibraryUnloadable { library: String, directory: PathBuf },
-    #[error("transcribe.cpp registered no compute backend")]
-    Backends(#[source] Arc<transcribe_cpp::Error>),
+    #[oopsie("transcribe.cpp registered no compute backend")]
+    Backends { source: Arc<transcribe_cpp::Error> },
 }
 
 impl Unavailable {
@@ -51,7 +52,7 @@ impl Unavailable {
     const fn is_final(&self) -> bool {
         match self {
             Self::LibraryMissing { .. } | Self::LibraryUnloadable { .. } => false,
-            Self::Backends(_) => true,
+            Self::Backends { .. } => true,
         }
     }
 }
@@ -141,8 +142,9 @@ fn load() -> Result<Runtime, Unavailable> {
     let libraries: Vec<&str> = libraries().collect();
     open_libraries(&SystemLoader, &libraries, searched, |directory| {
         logging::install_if_requested();
-        transcribe_cpp::init_backends_default()
-            .map_err(|error| Unavailable::Backends(Arc::new(error)))?;
+        transcribe_cpp::init_backends_default().map_err(|error| Unavailable::Backends {
+            source: Arc::new(error),
+        })?;
         Ok(Runtime {
             version: transcribe_cpp::version(),
             directory,
@@ -261,9 +263,9 @@ mod tests {
     }
 
     fn no_backend() -> Unavailable {
-        Unavailable::Backends(Arc::new(transcribe_cpp::Error::Backend(
-            "no device".to_owned(),
-        )))
+        Unavailable::Backends {
+            source: Arc::new(transcribe_cpp::Error::Backend("no device".to_owned())),
+        }
     }
 
     #[test]
@@ -424,7 +426,7 @@ mod tests {
                 calls.set(calls.get() + 1);
                 Err(no_backend())
             });
-            assert!(matches!(outcome, Err(Unavailable::Backends(_))));
+            assert!(matches!(outcome, Err(Unavailable::Backends { .. })));
         }
         assert_eq!(calls.get(), 1);
     }

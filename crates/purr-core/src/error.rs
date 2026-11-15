@@ -1,10 +1,7 @@
 //! Error types for the purr-core library
 
 use crate::model::digest::Sha256Digest;
-use purr_common::{
-    accel::EngineUnavailable,
-    model::{engine::EngineId, format::ModelFormat},
-};
+use purr_common::model::{engine::EngineId, format::ModelFormat};
 use std::path::PathBuf;
 
 use crate::{
@@ -17,9 +14,11 @@ use crate::{
 // ========================================
 
 /// Error for unknown Whisper model names
-#[derive(Debug, thiserror::Error, miette::Diagnostic)]
-#[error("Unknown Whisper model: {model_name} (see 'models list --available')")]
-#[diagnostic(code(whisper::config::unknown_model))]
+#[oopsie::oopsie]
+#[oopsie(
+    "Unknown Whisper model: {model_name} (see 'models list --available')",
+    code = "whisper::config::unknown_model"
+)]
 pub struct UnknownModelError {
     pub model_name: String,
 }
@@ -33,78 +32,110 @@ impl UnknownModelError {
 }
 
 /// Error for an invalid or inconsistent model manifest
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error, miette::Diagnostic)]
+#[oopsie::oopsie]
+#[derive(Clone, PartialEq, Eq)]
 pub enum ManifestError {
-    #[error("Failed to parse the model manifest: {message}")]
-    #[diagnostic(code(whisper::manifest::parse))]
+    #[oopsie(
+        "Failed to parse the model manifest: {message}",
+        code = "whisper::manifest::parse"
+    )]
     Parse { message: String },
 
-    #[error("Unsupported model manifest schema {found} (supported: {supported})")]
-    #[diagnostic(code(whisper::manifest::unsupported_schema))]
+    #[oopsie(
+        "Unsupported model manifest schema {found} (supported: {supported})",
+        code = "whisper::manifest::unsupported_schema"
+    )]
     UnsupportedSchema { found: u32, supported: u32 },
 
-    #[error("Duplicate model id in manifest: {id}")]
-    #[diagnostic(code(whisper::manifest::duplicate_model_id))]
+    #[oopsie(
+        "Duplicate model id in manifest: {id}",
+        code = "whisper::manifest::duplicate_model_id"
+    )]
     DuplicateModelId { id: String },
 
-    #[error("Duplicate source id in manifest: {id}")]
-    #[diagnostic(code(whisper::manifest::duplicate_source_id))]
+    #[oopsie(
+        "Duplicate source id in manifest: {id}",
+        code = "whisper::manifest::duplicate_source_id"
+    )]
     DuplicateSourceId { id: String },
 
-    #[error("Duplicate model filename in manifest: {filename}")]
-    #[diagnostic(code(whisper::manifest::duplicate_filename))]
+    #[oopsie(
+        "Duplicate model filename in manifest: {filename}",
+        code = "whisper::manifest::duplicate_filename"
+    )]
     DuplicateFilename { filename: String },
 
-    #[error("Model {model_id} references unknown source {source_id}")]
-    #[diagnostic(code(whisper::manifest::unknown_source))]
+    #[oopsie(
+        "Model {model_id} references unknown source {source_id}",
+        code = "whisper::manifest::unknown_source"
+    )]
     UnknownSource { model_id: String, source_id: String },
 
-    #[error("Model {model_id} is run by {engine}, which does not load {format} files")]
-    #[diagnostic(code(whisper::manifest::unsupported_format))]
+    #[oopsie(
+        "Model {model_id} is run by {engine}, which does not load {format} files",
+        code = "whisper::manifest::unsupported_format"
+    )]
     UnsupportedFormat {
         model_id: String,
         engine: EngineId,
         format: ModelFormat,
     },
 
-    #[error("Model {model_id} refers to unknown profile {profile}")]
-    #[diagnostic(code(whisper::manifest::unknown_profile))]
+    #[oopsie(
+        "Model {model_id} refers to unknown profile {profile}",
+        code = "whisper::manifest::unknown_profile"
+    )]
     UnknownProfile { model_id: String, profile: String },
 
-    #[error("Source {source_id} has an invalid revision: {revision}")]
-    #[diagnostic(code(whisper::manifest::invalid_revision))]
+    #[oopsie(
+        "Source {source_id} has an invalid revision: {revision}",
+        code = "whisper::manifest::invalid_revision"
+    )]
     InvalidRevision { source_id: String, revision: String },
 
-    #[error("Model {model_id} has a size of zero bytes")]
-    #[diagnostic(code(whisper::manifest::zero_size))]
+    #[oopsie(
+        "Model {model_id} has a size of zero bytes",
+        code = "whisper::manifest::zero_size"
+    )]
     ZeroSize { model_id: String },
 
-    #[error("Model {model_id} has no SHA-256 digest")]
-    #[diagnostic(code(whisper::manifest::missing_digest))]
+    #[oopsie(
+        "Model {model_id} has no SHA-256 digest",
+        code = "whisper::manifest::missing_digest"
+    )]
     MissingDigest { model_id: String },
 
-    #[error("The manifest lists no preferred models")]
-    #[diagnostic(code(whisper::manifest::no_preferred_model))]
+    #[oopsie(
+        "The manifest lists no preferred models",
+        code = "whisper::manifest::no_preferred_model"
+    )]
     NoPreferredModel,
 
-    #[error("Preferred model {id} is not in the manifest")]
-    #[diagnostic(code(whisper::manifest::unknown_preferred_model))]
+    #[oopsie(
+        "Preferred model {id} is not in the manifest",
+        code = "whisper::manifest::unknown_preferred_model"
+    )]
     UnknownPreferredModel { id: String },
 }
 
 /// Error for a model file that does not match the manifest
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error, miette::Diagnostic)]
+#[oopsie::oopsie]
+#[derive(Clone, PartialEq, Eq)]
 pub enum ModelIntegrityError {
-    #[error("Model {model_id} has {actual} bytes, expected {expected}")]
-    #[diagnostic(code(whisper::model::size_mismatch))]
+    #[oopsie(
+        "Model {model_id} has {actual} bytes, expected {expected}",
+        code = "whisper::model::size_mismatch"
+    )]
     SizeMismatch {
         model_id: String,
         expected: u64,
         actual: u64,
     },
 
-    #[error("Model {model_id} has SHA-256 {actual}, expected {expected}")]
-    #[diagnostic(code(whisper::model::checksum_mismatch))]
+    #[oopsie(
+        "Model {model_id} has SHA-256 {actual}, expected {expected}",
+        code = "whisper::model::checksum_mismatch"
+    )]
     ChecksumMismatch {
         model_id: String,
         expected: Sha256Digest,
@@ -113,9 +144,11 @@ pub enum ModelIntegrityError {
 }
 
 /// Error for unsupported audio formats
-#[derive(Debug, thiserror::Error, miette::Diagnostic)]
-#[error("Unsupported audio format: {format}")]
-#[diagnostic(code(whisper::audio::unsupported_format))]
+#[oopsie::oopsie]
+#[oopsie(
+    "Unsupported audio format: {format}",
+    code = "whisper::audio::unsupported_format"
+)]
 pub struct UnsupportedFormatError {
     pub format: String,
 }
@@ -129,115 +162,105 @@ impl UnsupportedFormatError {
 }
 
 /// Configuration-related errors
-#[derive(Debug, thiserror::Error, miette::Diagnostic)]
+#[oopsie::oopsie]
 pub enum ConfigurationError {
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    UnknownModel(#[from] UnknownModelError),
+    #[oopsie(transparent)]
+    UnknownModel { source: UnknownModelError },
 
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    Manifest(#[from] ManifestError),
+    #[oopsie(transparent)]
+    Manifest { source: ManifestError },
 
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    ModelIntegrity(#[from] ModelIntegrityError),
+    #[oopsie(transparent)]
+    ModelIntegrity { source: ModelIntegrityError },
 
-    #[error("Failed to get XDG directories")]
-    #[diagnostic(code(whisper::config::xdg_dirs))]
+    #[oopsie("Failed to get XDG directories", code = "whisper::config::xdg_dirs")]
     XdgDirectories,
 
-    #[error("Model download failed: {source}")]
-    #[diagnostic(code(whisper::config::download_failed))]
-    DownloadFailed {
-        #[source]
-        source: reqwest::Error,
-    },
+    #[oopsie("Model download failed", code = "whisper::config::download_failed")]
+    DownloadFailed { source: reqwest::Error },
 
-    #[error("Failed to download model {model_name}: HTTP {status_code}")]
-    #[diagnostic(code(whisper::config::download_http_error))]
+    #[oopsie(
+        "Failed to download model {model_name}: HTTP {status_code}",
+        code = "whisper::config::download_http_error"
+    )]
     DownloadHttpError {
         model_name: String,
         status_code: u16,
     },
 
-    #[error("Download stream error: {source}")]
-    #[diagnostic(code(whisper::config::download_stream_error))]
-    DownloadStreamError {
-        #[source]
-        source: reqwest::Error,
-    },
+    #[oopsie(
+        "Download stream error",
+        code = "whisper::config::download_stream_error"
+    )]
+    DownloadStreamError { source: reqwest::Error },
 
-    #[error("No model found that this build can run")]
-    #[diagnostic(code(whisper::config::no_model_found))]
+    #[oopsie(
+        "No model found that this build can run",
+        code = "whisper::config::no_model_found"
+    )]
     NoModelFound,
 
-    #[error("{} is not a model file Purr reads (GGUF or ggml)", path.display())]
-    #[diagnostic(code(whisper::config::unknown_model_file))]
+    #[oopsie("{} is not a model file Purr reads (GGUF or ggml)", path.display(), code = "whisper::config::unknown_model_file")]
     UnknownModelFile { path: PathBuf },
 }
 
 impl ConfigurationError {
     /// Create a new unknown model error
     pub fn unknown_model(model_name: impl Into<String>) -> Self {
-        Self::UnknownModel(UnknownModelError::new(model_name))
+        Self::UnknownModel {
+            source: UnknownModelError::new(model_name),
+        }
     }
 }
 
 /// Transcription-related errors
-#[derive(Debug, thiserror::Error, miette::Diagnostic)]
+#[oopsie::oopsie]
 pub enum TranscriptionError {
-    #[error("Transcription failed: {source}")]
-    #[diagnostic(code(whisper::transcription::failed))]
-    Decode {
-        #[source]
-        source: DecodeError,
-    },
+    #[oopsie("Transcription failed", code = "whisper::transcription::failed")]
+    Decode { source: DecodeError },
 
-    #[error("Voice activity detection failed: {source}")]
-    #[diagnostic(code(whisper::transcription::speech_detection))]
-    Detect {
-        #[source]
-        source: DetectError,
-    },
+    #[oopsie(
+        "Voice activity detection failed",
+        code = "whisper::transcription::speech_detection"
+    )]
+    Detect { source: DetectError },
 
-    #[error("Failed to load the model: {source}")]
-    #[diagnostic(code(whisper::transcription::open))]
-    Open {
-        #[source]
-        source: OpenError,
-    },
+    #[oopsie("Failed to load the model", code = "whisper::transcription::open")]
+    Open { source: OpenError },
 
-    #[error("The model does not know the language `{code}`")]
-    #[diagnostic(code(whisper::transcription::unknown_language))]
+    #[oopsie(
+        "The model does not know the language `{code}`",
+        code = "whisper::transcription::unknown_language"
+    )]
     UnknownLanguage { code: String },
 
-    #[error("Failed to load the voice activity model {}: {source}", path.display())]
-    #[diagnostic(code(whisper::transcription::vad_model))]
+    #[oopsie("Failed to load the voice activity model {}", path.display(), code = "whisper::transcription::vad_model")]
     VadModel {
         path: std::path::PathBuf,
-        #[source]
         source: OpenError,
     },
 
-    #[error("This build has no {engine} engine")]
-    #[diagnostic(code(whisper::transcription::engine_missing))]
+    #[oopsie(
+        "This build has no {engine} engine",
+        code = "whisper::transcription::engine_missing"
+    )]
     EngineMissing { engine: EngineId },
 
-    #[error("The {} cannot be used: {reason}", engine.label())]
-    #[diagnostic(code(whisper::transcription::engine_unavailable))]
+    #[oopsie("The {} cannot be used: {reason}", engine.label(), code = "whisper::transcription::engine_unavailable")]
     EngineUnavailable {
         engine: EngineId,
-        #[source]
-        reason: EngineUnavailable,
+        reason: purr_common::accel::EngineUnavailable,
     },
 }
 
 /// Acceleration backend selection errors
-#[derive(Debug, thiserror::Error, miette::Diagnostic)]
+#[oopsie::oopsie]
 pub enum AccelerationError {
-    #[error("No device could load the model: {}", describe_attempts(attempts))]
-    #[diagnostic(code(whisper::accel::exhausted))]
+    #[oopsie(
+        "No device could load the model: {}",
+        describe_attempts(attempts),
+        code = "whisper::accel::exhausted"
+    )]
     Exhausted { attempts: Vec<AccelAttempt> },
 }
 
@@ -262,37 +285,33 @@ fn describe_attempts(attempts: &[AccelAttempt]) -> String {
 }
 
 /// Audio processing related errors
-#[derive(Debug, thiserror::Error, miette::Diagnostic)]
+#[oopsie::oopsie]
 pub enum AudioProcessingError {
-    #[error("Task join error: {source}")]
-    #[diagnostic(code(whisper::audio::task_join))]
-    TaskJoin {
-        #[source]
-        source: tokio::task::JoinError,
-    },
+    #[oopsie("Task join error", code = "whisper::audio::task_join")]
+    TaskJoin { source: tokio::task::JoinError },
 
-    #[error("Audio processing failed: {operation}")]
-    #[diagnostic(code(whisper::audio::processing_failed))]
+    #[oopsie(
+        "Audio processing failed: {operation}",
+        code = "whisper::audio::processing_failed"
+    )]
     ProcessingFailed {
         operation: String,
-        #[source]
         source: Box<dyn std::error::Error + Send + Sync>,
     },
 
-    #[error("Failed to read audio file {file}: {source}")]
-    #[diagnostic(code(whisper::audio::read_failed))]
+    #[oopsie("Failed to read audio file {}", file.display(), code = "whisper::audio::read_failed")]
     ReadFailed {
         file: PathBuf,
-        #[source]
         source: std::io::Error,
     },
 
-    #[error("No audio stream found")]
-    #[diagnostic(code(whisper::audio::no_stream))]
+    #[oopsie("No audio stream found", code = "whisper::audio::no_stream")]
     NoAudioStream,
 
-    #[error("Audio format conversion failed")]
-    #[diagnostic(code(whisper::audio::format_conversion))]
+    #[oopsie(
+        "Audio format conversion failed",
+        code = "whisper::audio::format_conversion"
+    )]
     FormatConversion,
 }
 
@@ -310,98 +329,69 @@ impl AudioProcessingError {
 }
 
 /// Main error type for purr operations
-#[derive(Debug, thiserror::Error, miette::Diagnostic)]
+#[oopsie::oopsie]
 pub enum Error {
-    #[error("Audio processing error: {source}")]
-    #[diagnostic(code(whisper::audio::processing))]
-    AudioProcessing {
-        #[from]
-        source: AudioProcessingError,
-    },
+    #[oopsie(
+        "Audio processing error",
+        code = "whisper::audio::processing",
+        transparent
+    )]
+    AudioProcessing { source: AudioProcessingError },
 
-    #[error("IO operation failed: {source}")]
-    #[diagnostic(code(whisper::io::error))]
-    Io {
-        #[from]
-        source: std::io::Error,
-    },
+    #[oopsie("IO operation failed", code = "whisper::io::error", transparent)]
+    Io { source: std::io::Error },
 
-    #[error("FFmpeg processing error: {source}")]
-    #[diagnostic(code(whisper::ffmpeg::error))]
-    FFmpeg {
-        #[from]
-        source: ffmpeg_next::Error,
-    },
+    #[oopsie(
+        "FFmpeg processing error",
+        code = "whisper::ffmpeg::error",
+        transparent
+    )]
+    FFmpeg { source: ffmpeg_next::Error },
 
-    #[error("JSON serialization/deserialization error: {source}")]
-    #[diagnostic(code(whisper::json::error))]
-    Json {
-        #[from]
-        source: serde_json::Error,
-    },
+    #[oopsie(
+        "JSON serialization/deserialization error",
+        code = "whisper::json::error"
+    )]
+    Json { source: serde_json::Error },
 
-    #[error("HTTP request error: {source}")]
-    #[diagnostic(code(whisper::http::error))]
-    Http {
-        #[from]
-        source: reqwest::Error,
-    },
+    #[oopsie("HTTP request error", code = "whisper::http::error", transparent)]
+    Http { source: reqwest::Error },
 
-    #[error("Configuration error: {source}")]
-    #[diagnostic(code(whisper::config::error))]
-    Configuration {
-        #[from]
-        source: ConfigurationError,
-    },
+    #[oopsie("Configuration error", code = "whisper::config::error", transparent)]
+    Configuration { source: ConfigurationError },
 
-    #[error("Transcription failed: {source}")]
-    #[diagnostic(code(whisper::transcription::error))]
-    Transcription {
-        #[from]
-        source: TranscriptionError,
-    },
+    #[oopsie(
+        "Transcription failed",
+        code = "whisper::transcription::error",
+        transparent
+    )]
+    Transcription { source: TranscriptionError },
 
-    #[error("Acceleration error: {source}")]
-    #[diagnostic(code(whisper::accel::error))]
-    Acceleration {
-        #[from]
-        source: AccelerationError,
-    },
+    #[oopsie("Acceleration error", code = "whisper::accel::error", transparent)]
+    Acceleration { source: AccelerationError },
 
-    #[error("Tracing/logging error: {source}")]
-    #[diagnostic(code(whisper::tracing::error))]
+    #[oopsie("Tracing/logging error", code = "whisper::tracing::error")]
     Tracing {
-        #[from]
         source: tracing_subscriber::util::TryInitError,
     },
 
-    #[error("Environment parsing error: {source}")]
-    #[diagnostic(code(whisper::env::from_error))]
+    #[oopsie("Environment parsing error", code = "whisper::env::from_error")]
     EnvFrom {
-        #[from]
         source: tracing_subscriber::filter::FromEnvError,
     },
 
-    #[error("Directive parsing error: {source}")]
-    #[diagnostic(code(whisper::env::parse_error))]
+    #[oopsie("Directive parsing error", code = "whisper::env::parse_error")]
     EnvParse {
-        #[from]
         source: tracing_subscriber::filter::ParseError,
     },
 
-    #[error("Task join error: {source}")]
-    #[diagnostic(code(whisper::task_join::error))]
-    TaskJoin {
-        #[from]
-        source: tokio::task::JoinError,
-    },
+    #[oopsie("Task join error", code = "whisper::task_join::error", transparent)]
+    TaskJoin { source: tokio::task::JoinError },
 
-    #[error("Network error: {message}")]
-    #[diagnostic(code(whisper::network::error))]
+    #[oopsie("Network error: {message}", code = "whisper::network::error")]
     NetworkError { message: String },
 
-    #[error("Invalid input: {message}")]
-    #[diagnostic(code(whisper::input::error))]
+    #[oopsie("Invalid input: {message}", code = "whisper::input::error")]
     InvalidInput { message: String },
 }
 

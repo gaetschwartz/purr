@@ -66,8 +66,8 @@ pub fn open_on_best_device(
                 return Ok(Opened { decoder, accel });
             }
             Err(OpenError::NoDevice) => AttemptOutcome::Unavailable(UnavailableReason::NoDevice),
-            Err(OpenError::Device(failure)) => AttemptOutcome::Failed(failure),
-            Err(error @ OpenError::Engine(_)) => {
+            Err(OpenError::Device { source: failure }) => AttemptOutcome::Failed(failure),
+            Err(error @ OpenError::Engine { .. }) => {
                 return Err(TranscriptionError::Open { source: error }.into());
             }
         };

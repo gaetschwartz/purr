@@ -222,7 +222,7 @@ async fn verify_reporting(
         .map(|file| (spec.file_url(file), file.clone()))
         .collect();
     let outcome = run_local(move || verify_all(files, progress)).await;
-    if matches!(outcome, Err(WebError::Integrity(_))) {
+    if matches!(outcome, Err(WebError::Integrity { .. })) {
         let everything: Vec<&WebModelFile> = spec.files.iter().collect();
         remove(spec, &everything).await?;
     }

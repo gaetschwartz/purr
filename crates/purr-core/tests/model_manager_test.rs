@@ -195,7 +195,7 @@ async fn unknown_model_id_is_a_typed_error() -> Result<(), Box<dyn Error>> {
     assert!(matches!(
         result,
         Err(purr_core::Error::Configuration {
-            source: purr_core::error::ConfigurationError::UnknownModel(ref unknown)
+            source: purr_core::error::ConfigurationError::UnknownModel { source: ref unknown }
         }) if unknown.model_name == "nonexistent"
     ));
     Ok(())
