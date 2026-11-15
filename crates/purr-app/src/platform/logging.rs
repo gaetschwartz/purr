@@ -3,7 +3,6 @@
 //! This module provides a custom tracing-subscriber layer that captures log records
 //! in memory for real-time display in the logs viewer.
 
-use oopsie::WelpResultExt as _;
 use purr_common::platform::Platform as _;
 use purr_common::settings::LogLevel;
 use serde::{Deserialize, Serialize};
@@ -348,22 +347,47 @@ type FilterHandle = reload::Handle<EnvFilter, Registry>;
 
 static FILTER_HANDLE: OnceLock<FilterHandle> = OnceLock::new();
 
+/// Why the log capture could not be set up or reconfigured.
+#[oopsie::oopsie]
+pub enum LoggingError {
+    #[oopsie(
+        "Logging was already initialized",
+        code = "app::logging::already_initialized"
+    )]
+    AlreadyInitialized,
+    #[oopsie(
+        "Logging has not been initialized",
+        code = "app::logging::not_initialized"
+    )]
+    NotInitialized,
+    #[oopsie(
+        "Could not install the logging subscriber",
+        code = "app::logging::install_subscriber"
+    )]
+    InstallSubscriber {
+        source: tracing::subscriber::SetGlobalDefaultError,
+    },
+    #[oopsie("Could not change the log level", code = "app::logging::reload_level")]
+    ReloadLevel { source: reload::Error },
+}
+
 /// Initialize the logging capture layer
 /// This should be called during application startup
-pub fn init_logging_capture() -> Result<(), oopsie::Welp> {
+pub fn init_logging_capture() -> Result<(), LoggingError> {
     let filter = EnvFilter::builder()
         .with_default_directive(tracing::Level::INFO.into())
         .from_env_lossy();
     let (filter_layer, handle) = reload::Layer::new(filter);
     FILTER_HANDLE
         .set(handle)
-        .map_err(|_rejected| oopsie::Welp::new("Logging was already initialized"))?;
+        .map_err(|_rejected| LoggingError::AlreadyInitialized)?;
 
     let subscriber = Registry::default()
         .with(filter_layer)
         .with(output_layer())
         .with(LogsCaptureLayer::new());
-    tracing::subscriber::set_global_default(subscriber).welp()?;
+    tracing::subscriber::set_global_default(subscriber)
+        .map_err(|source| LoggingError::InstallSubscriber { source })?;
 
     get_platform().install_logging_hooks();
     tracing::info!("Log capture initialized successfully");
@@ -421,13 +445,11 @@ pub fn filter_directives(level: &LogLevel) -> String {
 }
 
 /// Makes the application log at `level` and above.
-pub fn apply_log_level(level: &LogLevel) -> Result<(), oopsie::Welp> {
-    let handle = FILTER_HANDLE
-        .get()
-        .ok_or_else(|| oopsie::Welp::new("Logging has not been initialized"))?;
+pub fn apply_log_level(level: &LogLevel) -> Result<(), LoggingError> {
+    let handle = FILTER_HANDLE.get().ok_or(LoggingError::NotInitialized)?;
     handle
         .reload(EnvFilter::new(filter_directives(level)))
-        .welp()
+        .map_err(|source| LoggingError::ReloadLevel { source })
 }
 
 /// Whether `RUST_LOG` decides the log level instead of the saved settings.

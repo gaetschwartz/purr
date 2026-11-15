@@ -1,8 +1,19 @@
 //! Turns captured log entries into the text, JSON and CSV files a user can save.
 
 use super::logging::LogEntry;
-use oopsie::WelpResultExt as _;
 use std::sync::Arc;
+
+/// Why the logs could not be rendered.
+#[oopsie::oopsie]
+pub enum LogExportError {
+    #[oopsie("The logs could not be encoded", code = "app::log_export::encode")]
+    Encode { source: serde_json::Error },
+    #[oopsie(
+        "The exported logs could not be read back",
+        code = "app::log_export::decode"
+    )]
+    Decode { source: serde_json::Error },
+}
 
 /// A file format for exported logs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -88,7 +99,7 @@ pub fn format_entries(
     format: LogExportFormat,
     entries: &[Arc<LogEntry>],
     time: impl Fn(&LogEntry) -> String,
-) -> Result<String, oopsie::Welp> {
+) -> Result<String, LogExportError> {
     match format {
         LogExportFormat::Text => Ok(entries
             .iter()
@@ -97,7 +108,7 @@ pub fn format_entries(
             .join("\n")),
         LogExportFormat::Json => {
             let plain: Vec<&LogEntry> = entries.iter().map(Arc::as_ref).collect();
-            serde_json::to_string_pretty(&plain).welp()
+            serde_json::to_string_pretty(&plain).map_err(|source| LogExportError::Encode { source })
         }
         LogExportFormat::Csv => {
             let rows = entries
@@ -162,7 +173,7 @@ mod tests {
     }
 
     #[test]
-    fn text_lists_one_line_per_entry() -> Result<(), oopsie::Welp> {
+    fn text_lists_one_line_per_entry() -> Result<(), LogExportError> {
         let text = format_entries(LogExportFormat::Text, &sample(), clock)?;
         let expected = [
             "t1 [INFO ] logs: plain",
@@ -174,7 +185,7 @@ mod tests {
     }
 
     #[test]
-    fn csv_quotes_every_field_that_needs_it() -> Result<(), oopsie::Welp> {
+    fn csv_quotes_every_field_that_needs_it() -> Result<(), LogExportError> {
         let csv = format_entries(LogExportFormat::Csv, &sample(), clock)?;
         let expected = [
             "Timestamp,Level,Target,Message,File,Line",
@@ -188,17 +199,18 @@ mod tests {
     }
 
     #[test]
-    fn json_round_trips_the_entries() -> Result<(), oopsie::Welp> {
+    fn json_round_trips_the_entries() -> Result<(), LogExportError> {
         let entries = sample();
         let json = format_entries(LogExportFormat::Json, &entries, clock)?;
-        let parsed: Vec<LogEntry> = serde_json::from_str(&json).welp()?;
+        let parsed: Vec<LogEntry> =
+            serde_json::from_str(&json).map_err(|source| LogExportError::Decode { source })?;
         let original: Vec<LogEntry> = entries.iter().map(|entry| (**entry).clone()).collect();
         assert_eq!(parsed, original);
         Ok(())
     }
 
     #[test]
-    fn an_empty_selection_exports_an_empty_document() -> Result<(), oopsie::Welp> {
+    fn an_empty_selection_exports_an_empty_document() -> Result<(), LogExportError> {
         let none: Vec<Arc<LogEntry>> = Vec::new();
         assert_eq!(format_entries(LogExportFormat::Text, &none, clock)?, "");
         assert_eq!(

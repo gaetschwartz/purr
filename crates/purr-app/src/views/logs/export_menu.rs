@@ -22,15 +22,14 @@ fn start_export(format: LogExportFormat, entries: Entries, toasts: Toasts) {
     spawn_forever(async move {
         let file_name = format.file_name();
         let saved = match format_entries(format, &entries, LogEntry::formatted_timestamp) {
-            Ok(content) => {
-                save_text_file(TextFile {
-                    file_name: &file_name,
-                    content_type: format.content_type(),
-                    content: &content,
-                })
-                .await
-            }
-            Err(error) => Err(error),
+            Ok(content) => save_text_file(TextFile {
+                file_name: &file_name,
+                content_type: format.content_type(),
+                content: &content,
+            })
+            .await
+            .map_err(|error| error.to_string()),
+            Err(error) => Err(error.to_string()),
         };
         match saved {
             Ok(SaveOutcome::Saved) => {
@@ -39,7 +38,7 @@ fn start_export(format: LogExportFormat, entries: Entries, toasts: Toasts) {
             Ok(SaveOutcome::Cancelled) => {}
             Err(error) => {
                 tracing::error!("Failed to export the logs: {error}");
-                toasts.error("Couldn't export the logs", error.to_string());
+                toasts.error("Couldn't export the logs", error);
             }
         }
     });
