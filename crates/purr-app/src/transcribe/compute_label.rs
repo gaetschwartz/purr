@@ -75,6 +75,7 @@ mod tests {
             backends: vec![],
             cpu: CpuReport {
                 name: Some(CPU_NAME.to_owned()),
+                physical_cores: Some(16),
                 logical_threads: Some(32),
                 built_with: vec![],
                 detected: None,

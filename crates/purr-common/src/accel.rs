@@ -277,6 +277,8 @@ impl CpuFeature {
 pub struct CpuReport {
     /// The processor's marketing name, when the system gives one.
     pub name: Option<String>,
+    /// Physical cores, when the system says.
+    pub physical_cores: Option<u32>,
     /// Threads the processor runs at once, when the system says.
     pub logical_threads: Option<u32>,
     /// Instruction sets the binary was compiled with.
@@ -362,6 +364,7 @@ mod tests {
     fn report(built_with: &[CpuFeature], detected: Option<&[CpuFeature]>) -> CpuReport {
         CpuReport {
             name: None,
+            physical_cores: None,
             logical_threads: None,
             built_with: built_with.to_vec(),
             detected: detected.map(<[CpuFeature]>::to_vec),

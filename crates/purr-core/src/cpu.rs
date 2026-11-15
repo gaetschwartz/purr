@@ -63,6 +63,7 @@ fn cpu_name(devices: &[Device]) -> Option<String> {
 pub fn report(inventory: &Inventory) -> CpuReport {
     CpuReport {
         name: cpu_name(&inventory.devices),
+        physical_cores: u32::try_from(num_cpus::get_physical()).ok(),
         logical_threads: std::thread::available_parallelism()
             .ok()
             .and_then(|threads| u32::try_from(threads.get()).ok()),

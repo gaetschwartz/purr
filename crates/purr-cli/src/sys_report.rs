@@ -87,7 +87,10 @@ pub fn cpu_lines(cpu: &CpuReport) -> Vec<String> {
     let name = cpu.name.as_deref().unwrap_or("name not reported");
     let threads = cpu.logical_threads.map_or_else(
         || "threads not reported".to_owned(),
-        |n| format!("{n} threads"),
+        |n| match cpu.physical_cores {
+            Some(cores) => format!("{cores} cores, {n} threads"),
+            None => format!("{n} threads"),
+        },
     );
     let mut lines = vec![
         format!("{name} ({threads})"),
@@ -307,6 +310,7 @@ mod tests {
     fn cpu(built_with: &[CpuFeature], detected: Option<&[CpuFeature]>) -> CpuReport {
         CpuReport {
             name: Some("Some Processor".to_owned()),
+            physical_cores: Some(8),
             logical_threads: Some(16),
             built_with: built_with.to_vec(),
             detected: detected.map(<[CpuFeature]>::to_vec),
@@ -323,7 +327,7 @@ mod tests {
         assert_eq!(
             lines,
             [
-                "Some Processor (16 threads)",
+                "Some Processor (8 cores, 16 threads)",
                 "  Instruction Compiled  This CPU",
                 "  AVX         yes       yes",
                 "  AVX-VNNI    no        no",
@@ -378,6 +382,7 @@ mod tests {
     fn an_unnamed_processor_is_reported_as_such() {
         let report = CpuReport {
             name: None,
+            physical_cores: None,
             logical_threads: None,
             built_with: vec![],
             detected: None,
@@ -770,6 +775,7 @@ mod tests {
                 },
                 "cpu": {
                     "name": "Some Processor",
+                    "physical_cores": 8,
                     "logical_threads": 16,
                     "built_with": ["Avx2"],
                     "detected": ["Avx2", "Bmi2"]

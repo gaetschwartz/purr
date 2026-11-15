@@ -70,6 +70,9 @@ pub fn device_name(device: &DeviceInfo) -> String {
 
 fn cpu_detail(cpu: &CpuReport) -> Option<String> {
     let mut parts = Vec::new();
+    if let Some(cores) = cpu.physical_cores {
+        parts.push(format!("{cores} cores"));
+    }
     if let Some(threads) = cpu.logical_threads {
         parts.push(format!("{threads} threads"));
     }
@@ -364,6 +367,7 @@ mod tests {
             ],
             cpu: CpuReport {
                 name: Some(RYZEN.to_owned()),
+                physical_cores: Some(16),
                 logical_threads: Some(32),
                 built_with: vec![CpuFeature::Avx2],
                 detected: None,
@@ -402,6 +406,7 @@ mod tests {
     fn cpu(built_with: &[CpuFeature], detected: Option<&[CpuFeature]>) -> CpuReport {
         CpuReport {
             name: None,
+            physical_cores: Some(4),
             logical_threads: Some(8),
             built_with: built_with.to_vec(),
             detected: detected.map(<[CpuFeature]>::to_vec),
@@ -413,7 +418,7 @@ mod tests {
         let both = [CpuFeature::Avx2, CpuFeature::Fma];
         assert_eq!(
             cpu_detail(&cpu(&both, Some(&both))),
-            Some("8 threads · AVX2, FMA".to_owned())
+            Some("4 cores · 8 threads · AVX2, FMA".to_owned())
         );
     }
 
@@ -424,7 +429,7 @@ mod tests {
                 &[CpuFeature::Avx2, CpuFeature::Avx512F],
                 Some(&[CpuFeature::Avx2, CpuFeature::Bmi2])
             )),
-            Some("8 threads · AVX2, AVX512F · not on this CPU: AVX512F".to_owned())
+            Some("4 cores · 8 threads · AVX2, AVX512F · not on this CPU: AVX512F".to_owned())
         );
     }
 
@@ -432,7 +437,7 @@ mod tests {
     fn the_cpu_detail_makes_no_claim_where_the_processor_cannot_be_probed() {
         assert_eq!(
             cpu_detail(&cpu(&[CpuFeature::Avx2], None)),
-            Some("8 threads · AVX2".to_owned())
+            Some("4 cores · 8 threads · AVX2".to_owned())
         );
     }
 
@@ -480,7 +485,7 @@ mod tests {
                 (
                     RYZEN,
                     Some(DeviceType::Cpu),
-                    Some("32 threads · AVX2".to_owned())
+                    Some("16 cores · 32 threads · AVX2".to_owned())
                 ),
             ]
         );
