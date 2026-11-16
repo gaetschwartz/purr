@@ -33,8 +33,7 @@ Write-Host "$Exe delay-loads: $($delayed -join ' ')"
 $failed = $false
 
 if ($Module) {
-    # A backend module of transcribe.cpp is opened by ggml, which skips it when one of its imports cannot be
-    # loaded. Its libraries may be the GPU runtime, ggml's own and the Windows ones, nothing else.
+    # ggml skips a module whose import cannot be loaded, so a module may import the GPU runtime, ggml and Windows only
     $allowed = '^ggml-base\.dll$', '^vulkan-1\.dll$', '^nvcuda\.dll$', '^cudart64_\d+\.dll$', '^cublas64_\d+\.dll$', '^cublasLt64_\d+\.dll$',
         '^vcruntime140', '^msvcp140', '^api-ms-win-'
     foreach ($dll in $hard) {

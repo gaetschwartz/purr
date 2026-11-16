@@ -34,8 +34,7 @@ $BackendModules = @{
     cuda   = @('ggml-cuda.dll')
 }
 
-# A backend whose runtime libraries are large and not on every machine; with -OptionalDestination its
-# modules go there instead of next to the rest, ready to be packed as a runtime pack.
+# with -OptionalDestination these backends' modules go there, ready to be packed as a runtime pack
 $OptionalBackends = @('cuda')
 
 $Libraries = @($Core) + @($Backends | Sort-Object -Unique | ForEach-Object { $BackendModules[$_] })
