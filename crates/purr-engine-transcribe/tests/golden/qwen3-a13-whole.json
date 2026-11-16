@@ -1,0 +1,20 @@
+{
+  "audio_duration": 60.0,
+  "segment_count": 2,
+  "segments": [
+    {
+      "end": 30.0,
+      "start": 0.0,
+      "text": "Okay, Houston. We had a problem here. This is Houston. Say again, please. Oh, Houston. We had a problem. We had a main beam bus under bolt. Right, main beam under bolt. Okay, standby thirteen. We're looking at it. Okay, right now Houston. The voltage is looking good. And we had a pretty large bang.",
+      "words": []
+    },
+    {
+      "end": 60.0,
+      "start": 30.0,
+      "text": "With the caution and warning there, and the very cold BP was the one that had a campsite on it once before. Rogers read. And intermezzo, we're starting to go ahead, but up the tunnel again. Rogers. Yeah, that that jolt messed up the sensor on. I see now an O two quantity two. It's what's on.",
+      "words": []
+    }
+  ],
+  "text": "Okay, Houston. We had a problem here. This is Houston. Say again, please. Oh, Houston. We had a problem. We had a main beam bus under bolt. Right, main beam under bolt. Okay, standby thirteen. We're looking at it. Okay, right now Houston. The voltage is looking good. And we had a pretty large bang. With the caution and warning there, and the very cold BP was the one that had a campsite on it once before. Rogers read. And intermezzo, we're starting to go ahead, but up the tunnel again. Rogers. Yeah, that that jolt messed up the sensor on. I see now an O two quantity two. It's what's on.",
+  "word_count": 112
+}
