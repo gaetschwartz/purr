@@ -254,6 +254,6 @@ the catalog or from the file's first bytes.
    outside the catalog is routed by `EngineId::loading(ModelFormat::of_header(..))`. A model whose
    engine is not in `engines::all()` is `Unavailable` in the app (`ModelInfo::engine_built`) and
    skipped by `find_first_available_model`.
-6. Run the Whisper goldens (`cargo nextest run -p purr-engine-whisper --test golden
-   --run-ignored only`) to show the shared pipeline did not move. What else to run, and what holds today, is in
+6. Run the Whisper goldens (`just test-models -p purr-engine-whisper --test real_model_golden`) to
+   show the shared pipeline did not move. What else to run, and what holds today, is in
    [verification.md](verification.md).

@@ -6,17 +6,17 @@ verified. Dates are 2026-11-14 unless another is given. Machine: Windows 11, Ryz
 debug builds (`cargo`, profile `dev`), FFmpeg shared from scoop, no GPU feature.
 
 Kinds of check: **unit** (`cargo nextest`, no model, runs in CI `test (linux)`), **model-gated**
-(`#[ignore]` tests that need models in the model cache), **script** (`scripts/*`, run by CI jobs
+(`real_model_*` tests that load models from the model cache; the default nextest profile leaves them out), **script** (`scripts/*`, run by CI jobs
 and by hand), **CI** (a workflow step, only a runner proves it), **manual** (someone runs the app).
 
 ## Matrix
 
 | Area | How it is checked | Windows status today |
 |---|---|---|
-| Whisper output, streaming and `--no-stream`, with and without VAD, auto and fixed language | model-gated: `golden.rs`, seven goldens in `crates/purr-engine-whisper/tests/golden/` | **Verified**, 7 of 7 goldens identical: `PURR_TEST_THREADS=4 cargo test -p purr-engine-whisper --test golden -- --ignored`, 1 passed in 55.6 s. First run since the Parakeet work and the shared pipeline were merged |
-| Whisper cancel, live stream with tentative text | model-gated: `cancel.rs`, `live_stream.rs` | **Verified**: `cargo test -p purr-engine-whisper --test cancel --test live_stream -- --ignored`, 2 passed (1.4 s, 25.6 s) |
-| Parakeet end to end through the shared pipeline (stream with and without VAD, whole, tentative text with words and scores) | model-gated: `crates/purr-engine-transcribe/tests/parakeet.rs` | **Verified**: `cargo test -p purr-engine-transcribe --test parakeet -- --ignored`, 2 passed in 12.5 s. The text is checked by assertions, not by goldens: there are no Parakeet goldens |
-| Qwen3-ASR end to end through the shared pipeline (stream with and without VAD, `Whole`, language reported) | model-gated: `crates/purr-engine-transcribe/tests/qwen3.rs` | **Verified**: `cargo nextest run -p purr-engine-transcribe --test qwen3 --run-ignored only`, 1 passed in 25.8 s (0.6B Q8_0, 4 threads). JFK is the exact sentence with language `en`; 60 s of a13 stays in order in all three modes. The decoder's limit is `UpTo(5218.56 s)` |
+| Whisper output on `base` and `small`, streaming and whole, with and without VAD, auto and fixed language, on jfk (11 s), mm1 (30 s), the first minute of a13 and all of a13 (179 s) | model-gated: `real_model_golden.rs`, 20 goldens in `crates/purr-engine-whisper/tests/golden/` named `<model>-<sample>-<mode>-<language>.json` | **Verified**, 20 of 20 goldens identical in two runs, one thread per test: `just test-models -p purr-engine-whisper --test real_model_golden`. The seven `base` goldens recorded before at 8 threads are identical at 1 thread and at 8 threads |
+| Whisper cancel, live stream with tentative text, a sentence spoken twice, progress | model-gated: `real_model_cancel.rs`, `real_model_live_stream.rs`, `real_model_whisper.rs` | **Verified**: 4 passed in the run below. Cancel races a one second timer against the decode of 179 s of audio, and the live stream feeds 11 s of audio at the pace of speech: both depend on time by nature |
+| Parakeet end to end through the shared pipeline (stream with and without VAD, whole, tentative text with words and scores) | model-gated: `crates/purr-engine-transcribe/tests/real_model_parakeet.rs`, 7 goldens in `tests/golden/` | **Verified**, 8 passed in the run below. Goldens on jfk, mm1 and the first minute of a13 |
+| Qwen3-ASR end to end through the shared pipeline (stream with and without VAD, `Whole`, language reported) | model-gated: `crates/purr-engine-transcribe/tests/real_model_qwen3.rs`, 7 goldens in `tests/golden/` | **Verified**, 8 passed in the run below (0.6B Q8_0). Text without times: the goldens carry no words, the language is `en`. The decoder's limit is `UpTo(_)` |
 | A window the engine stopped early on (`Completion::Truncated` / `Repeating`) | unit: scripted decoders in `purr-core/src/pipeline/tests.rs` and `pipeline/retry.rs`; `purr-engine-transcribe/src/error.rs` | **Verified** as unit tests. The path is proven with scripted engines only: no real Qwen3-ASR run on the samples tried so far truncated or looped |
 | Parakeet on Linux | manual | **Verified once**, WSL Ubuntu 26.04, debug build: `purr -m parakeet-tdt-0.6b-v3-Q4_K_M.gguf --accel cpu samples/jfk.wav` prints the JFK sentence, next to a Whisper run in the same binary |
 | Device union (one CPU seen by both engines, `--device` resolved against the engine that runs the model) | unit: `accel/hardware.rs`, `accel/selector.rs`, `accel/plan.rs`; script: `check-windows-sys.ps1 -ExpectTranscribe`; manual: `purr sys --json` | **Verified**: unit tests in the 663 below; `purr sys --json` on the staged folder lists one CPU with `seen_by` whisper-cpp and transcribe-cpp. Windows GPU devices through the second engine: not applicable, the second engine is CPU only |
@@ -39,20 +39,38 @@ and by hand), **CI** (a workflow step, only a runner proves it), **manual** (som
 
 The models are looked up in the model cache, the folder printed as "XDG data directory" by
 `purr models list`: `%APPDATA%\purr\data\models` on Windows, `~/.local/share/purr/models` on
-Linux. A test whose model is missing prints "skipping" and passes, so look for that word.
+Linux. A real-model test whose model is missing fails, with the `purr models download <name>`
+command in its message. The tests are the `real_model_*` binaries and tests, which the default
+nextest profile leaves out; `just test-models` runs them (`cargo nextest run --profile all -E
+'test(/real_model_/) | binary_id(/real_model_/)'`), each on one thread, CPU only. Setup scripts in
+`.config/nextest.toml` build `purr-cli` and run `purr models download` for the models of the tests
+selected, so a run downloads what is missing and verifies the size and sha256 of the files it
+already has; `just download-test-models` does the same by hand.
 
-| Suite | Models | Command | Cost |
-|---|---|---|---|
-| Whisper goldens | `ggml-base.bin`, `ggml-silero-v6.2.0.bin` | `PURR_TEST_THREADS=4 cargo test -p purr-engine-whisper --test golden -- --ignored` | about 1 minute decoding, 8 threads by default |
-| Whisper cancel and live stream | `ggml-base.bin` | `cargo test -p purr-engine-whisper --test cancel --test live_stream -- --ignored` | half a minute |
-| Qwen3-ASR | `Qwen3-ASR-0.6B-Q8_0.gguf`, the Silero model, and the transcribe.cpp libraries next to the test binaries | `cargo test -p purr-engine-transcribe --test qwen3 -- --ignored --nocapture` | 26 seconds, 4 threads |
-| Parakeet | `parakeet-tdt-0.6b-v3-Q4_K_M.gguf`, the Silero model, and the transcribe.cpp libraries next to the test binaries (`transcribe-cpp-sys` stages them on Windows) | `cargo test -p purr-engine-transcribe --test parakeet -- --ignored --nocapture` | 12 seconds, 4 threads |
+| Suite | Models | Cost, one thread per test, all tests at once |
+|---|---|---|
+| Whisper goldens (`real_model_golden`) | `base`, `small`, the Silero model | 20 cases, 10 s (`base`, jfk) to 196 s (`small`, all of a13) each |
+| Whisper cancel, live stream, repeated sentence, progress | `base`, the Silero model | 9 s, 39 s, 33 s, 18 s; the live stream lasts as long as the 11 s sample plays, twice |
+| Parakeet | `parakeet-tdt-0.6b-v3-q4_k_m`, the Silero model, and the transcribe.cpp libraries next to the test binaries (`transcribe-cpp-sys` stages them on Windows) | 3 s to 23 s per case |
+| Qwen3-ASR | `qwen3-asr-0.6b-q8_0`, the Silero model, same libraries | 12 s to 51 s per case |
+| CLI (`purr-cli` `integration_tests`) | `base` | 16 s to 17 s per case |
 
-`cargo nextest run -p <crate> --test <name> --run-ignored only` does the same. After a change to
-the pipeline, the Whisper goldens are the regression gate: a mismatch prints a diff per case, and
-`PURR_GOLDEN=update` records them again once the change is understood. The goldens passed at 4
-threads although the constant is 8; if a mismatch ever shows with another count, re-run it at 8
-before believing it.
+The whole group: 47 passed in 215 s on the 7950X, three runs in a row (`cargo nextest run --profile all -E
+'test(/real_model_/) | binary_id(/real_model_/)'`, 32 tests at a time). After a change to the
+pipeline, the goldens are the regression gate: a mismatch prints a diff, and `PURR_GOLDEN=update`
+records them again once the change is understood. A golden holds exactly what one engine on this
+machine's CPU build produced; the Whisper goldens were identical at 1 and at 8 threads, so the
+thread count is not part of a golden.
+
+The live stream test compares the words of the final text, not its chunks: with tentative text on
+and one thread, the windows end elsewhere than with it off (a comma moves, a chunk splits), because
+where a window ends depends on how much audio had arrived when the decoder came to it.
+
+With cargo 1.100's build layout the test binaries of `purr-engine-transcribe` are written under
+`target/debug/build/purr-engine-transcribe/<hash>/out/`, but `transcribe-cpp-sys` stages the DLLs
+in `target/debug/build/deps/`: the binaries import `transcribe.dll` and the loader does not find it
+(`0xc0000135` when nextest lists them). Putting `target\debug\build\deps` on `PATH` for the run
+works around it; the default run never lists these binaries.
 
 On a Claude desktop session the Windows profile folders are virtualised per package, so a
 model downloaded by the app and one seen by a tool run from the session can be two different
@@ -91,7 +109,6 @@ Each of these needs something this machine cannot give; the exact check is in
 1. Run the workflow: `build.yml` Windows CLI jobs with `transcribe`, `ci.yml` Linux steps.
 2. Turn on `PURR_DESKTOP_TRANSCRIBE` once a run shows the second `dx bundle` and the `_staging` check pass.
 3. Linux and macOS packages of the libraries, and a macOS `purr sys --json` run.
-4. Parakeet goldens, if the output should be pinned the way Whisper's is.
 
 ## Model comparison (2026-11-14)
 
