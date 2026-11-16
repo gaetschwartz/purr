@@ -31,8 +31,8 @@ test-models *ARGS:
 
 # Download the models the real-model tests need (a model already in the cache is kept)
 download-test-models:
-    cargo run --quiet -p purr-cli -- models download base
-    cargo run --quiet -p purr-cli -- models download small
+    cargo run --quiet -p purr-cli --features transcribe -- models download base
+    cargo run --quiet -p purr-cli --features transcribe -- models download small
     cargo run --quiet -p purr-cli --features transcribe -- models download parakeet-tdt-0.6b-v3-q4_k_m
     cargo run --quiet -p purr-cli --features transcribe -- models download qwen3-asr-0.6b-q8_0
 

@@ -44,8 +44,10 @@ command in its message. The tests are the `real_model_*` binaries and tests, whi
 nextest profile leaves out; `just test-models` runs them (`cargo nextest run --profile all -E
 'test(/real_model_/) | binary_id(/real_model_/)'`), each on one thread, CPU only. Setup scripts in
 `.config/nextest.toml` build `purr-cli` and run `purr models download` for the models of the tests
-selected, so a run downloads what is missing and verifies the size and sha256 of the files it
-already has; `just download-test-models` does the same by hand.
+selected, so a run downloads what is missing and keeps a file whose size matches the catalog (the
+checksum is checked on download, and by `purr models verify`); `just download-test-models` does the
+same by hand. A failed download of a model fails the run; a failed download of the Silero model
+does not, the CLI only logs it, and the tests then fail with their missing-model message.
 
 | Suite | Models | Cost, one thread per test, all tests at once |
 |---|---|---|
