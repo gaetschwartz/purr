@@ -42,6 +42,8 @@ impl UnavailableReason {
 pub enum AttemptFailure {
     #[oopsie("device {device} failed to initialise")]
     DeviceInit { device: String },
+    #[oopsie("device {device} has too little memory for the model")]
+    DeviceOutOfMemory { device: String },
     #[oopsie("no CoreML encoder found at {}", path.display())]
     CoreMlModelMissing { path: PathBuf },
     #[oopsie("whisper could not create its context")]

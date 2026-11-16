@@ -15,28 +15,8 @@ pub struct GpuHandle {
 }
 
 /// The GPU of `devices`, ggml's own list, that `candidate` stands for.
-///
-/// Devices with ids are told apart by id; devices without are told apart by name and by their
-/// position among the devices of that name, which is the order the candidate's key counts in.
 pub fn locate(candidate: &Candidate, devices: &[Device]) -> Option<GpuHandle> {
-    let gpus = devices
-        .iter()
-        .filter(|device| device.backend == Some(candidate.backend) && device.tpe.is_gpu());
-    let by_id = candidate.pci_id.as_deref().and_then(|pci| {
-        gpus.clone().find(|device| {
-            device
-                .device_id
-                .as_deref()
-                .is_some_and(|id| id.eq_ignore_ascii_case(pci))
-        })
-    });
-    let device = match (by_id, &candidate.pci_id) {
-        (Some(device), _) => device,
-        (None, Some(_)) if gpus.clone().all(|device| device.device_id.is_some()) => return None,
-        (None, Some(_) | None) => gpus
-            .filter(|device| display_name(device) == candidate.name)
-            .nth(usize::from(candidate.key.occurrence))?,
-    };
+    let device = candidate.find_gpu(devices)?;
     let ordinal = devices
         .iter()
         .filter(|other| other.tpe.is_gpu())

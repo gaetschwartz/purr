@@ -1,8 +1,10 @@
 use purr_common::devices::{DeviceKey, DeviceOrder};
 
+use crate::dev::Device;
+
 use super::{
     backend::{AccelBackend, BuildStatus},
-    devices::{DetectedDevice, detect, keys},
+    devices::{DetectedDevice, detect, display_name, keys},
     inventory::Inventory,
     report::{AccelAttempt, AttemptOutcome, UnavailableReason},
 };
@@ -26,6 +28,32 @@ impl Candidate {
             backend: device.backend,
             name: device.name.clone(),
             pci_id: device.pci_id.clone(),
+        }
+    }
+
+    /// The GPU of `devices`, an engine's own list, that this candidate stands for.
+    ///
+    /// Devices with ids are told apart by id; devices without are told apart by name and by their
+    /// position among the devices of that name, which is the order the candidate's key counts in.
+    #[must_use]
+    pub fn find_gpu<'a>(&self, devices: &'a [Device]) -> Option<&'a Device> {
+        let gpus = devices
+            .iter()
+            .filter(|device| device.backend == Some(self.backend) && device.tpe.is_gpu());
+        let by_id = self.pci_id.as_deref().and_then(|pci| {
+            gpus.clone().find(|device| {
+                device
+                    .device_id
+                    .as_deref()
+                    .is_some_and(|id| id.eq_ignore_ascii_case(pci))
+            })
+        });
+        match (by_id, &self.pci_id) {
+            (Some(device), _) => Some(device),
+            (None, Some(_)) if gpus.clone().all(|device| device.device_id.is_some()) => None,
+            (None, Some(_) | None) => gpus
+                .filter(|device| display_name(device) == self.name)
+                .nth(usize::from(self.key.occurrence)),
         }
     }
 
