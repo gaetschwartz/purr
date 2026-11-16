@@ -97,6 +97,7 @@ jobs:
             portable: true
           - variant: vulkan
             features: static-ffmpeg,vulkan
+            transcribe: true
             portable: true
             save_cache: true
             deferred_libs: libvulkan.so.1
@@ -135,7 +136,7 @@ jobs:
         with:
           cache: true
           # whisper-rs-sys does not rebuild ggml when GGML_* or the GPU SDKs change, so each configuration needs its own cache
-          cache-key: ${{ matrix.variant }}-ggml-native-${{ env.GGML_NATIVE }}-no-vmm-${{ env.GGML_CUDA_NO_VMM }}-cuda-${{ env.CUDA_VERSION }}-vulkan-${{ env.VULKAN_SDK_VERSION }}
+          cache-key: ${{ matrix.variant }}${{ matrix.transcribe && '-transcribe' || '' }}-ggml-native-${{ env.GGML_NATIVE }}-no-vmm-${{ env.GGML_CUDA_NO_VMM }}-cuda-${{ env.CUDA_VERSION }}-vulkan-${{ env.VULKAN_SDK_VERSION }}
           cache-save: ${{ github.ref == 'refs/heads/develop' && matrix.save_cache == true }}
       - uses: ./.github/actions/setup-compiler-cache
         with:
@@ -145,7 +146,7 @@ jobs:
         env:
           RUSTFLAGS: -C link-arg=-Wl,-rpath,$ORIGIN/lib:$ORIGIN/../lib/purr-desktop --cfg=web_sys_unstable_apis
         run: |
-          cargo build -p purr-cli --release --features ${{ matrix.features }}
+          cargo build -p purr-cli --release --features ${{ matrix.features }}${{ matrix.transcribe && ',transcribe' || '' }} --message-format=json-render-diagnostics > "$RUNNER_TEMP/cargo-messages.jsonl"
       - name: Prepare CLI artifact
         run: |
           mkdir -p artifacts/cli
@@ -154,6 +155,11 @@ jobs:
             mkdir -p artifacts/cli/lib
             ldd target/release/purr | awk '/lib(cudart|cublas|cublasLt)\.so/ { print $3 }' | xargs -r -I{} cp -L {} artifacts/cli/lib/
           fi
+          if [ "${{ matrix.transcribe }}" = "true" ]; then
+            mkdir -p artifacts/cli/lib
+            lib_dir="$(jq -rs '[.[] | select(.reason == "build-script-executed" and (.package_id | contains("transcribe-cpp-sys"))) | .out_dir] | unique | if length == 1 then .[0] else error("expected one transcribe-cpp-sys build script output") end' "$RUNNER_TEMP/cargo-messages.jsonl")/lib"
+            find "$lib_dir" -maxdepth 1 \( -type f -o -type l \) -exec cp -P {} artifacts/cli/lib/ \;
+          fi
           ls -lR artifacts/cli
       - name: Check the CLI does not need the deferred libraries
         if: matrix.deferred_libs
@@ -161,6 +167,8 @@ jobs:
           status=0
           for file in artifacts/cli/purr artifacts/cli/lib/*; do
             [ -f "$file" ] || continue
+            # a backend module of transcribe.cpp needs its GPU runtime; ggml leaves the module out when it is missing
+            case "$(basename "$file")" in libggml-vulkan.so* | libggml-cuda.so*) continue ;; esac
             echo "$file needs: $(patchelf --print-needed "$file" | tr '\n' ' ')"
             for library in ${{ matrix.deferred_libs }}; do
               if patchelf --print-needed "$file" | grep -qxF "$library"; then
@@ -195,6 +203,10 @@ jobs:
               '(.backends[$backend] | objects | .RuntimeLibraryMissing.library) == $library' purr-sys.json > /dev/null \
               || { echo "::error::$backend is not reported as missing $library"; exit 1; }
           done
+          if [ "${{ matrix.transcribe }}" = "true" ]; then
+            jq -e '.engines[] | select(.engine == "transcribe-cpp") | .status.ready.devices | map(.backend) | index("cpu") != null and index("vulkan") == null' purr-sys.json > /dev/null \
+              || { echo "::error::the transcribe.cpp engine is not ready on the processor alone without a Vulkan driver"; exit 1; }
+          fi
       - name: Archive CLI
         uses: actions/upload-artifact@v7
         with:
@@ -396,6 +408,7 @@ jobs:
             transcribe: true
           - backend: "metal"
             is_release: true
+            transcribe: true
             compiler_cache_writer: true
             compiler_cache_shrink: true
     steps:
@@ -412,7 +425,7 @@ jobs:
         with:
           cache: true
           # whisper-rs-sys does not rebuild ggml when GGML_* changes, so each ggml configuration needs its own cache
-          cache-key: ${{ matrix.backend }}-ggml-native-${{ env.GGML_NATIVE }}-arm-${{ env.GGML_CPU_ARM_ARCH }}
+          cache-key: ${{ matrix.backend }}${{ matrix.transcribe && '-transcribe' || '' }}-ggml-native-${{ env.GGML_NATIVE }}-arm-${{ env.GGML_CPU_ARM_ARCH }}
           cache-save: ${{ github.ref == 'refs/heads/develop' && matrix.is_release == true }}
       - uses: ./.github/actions/setup-compiler-cache
         with:
@@ -439,6 +452,10 @@ jobs:
           if [ "${{ matrix.transcribe }}" = "true" ]; then
             artifacts/cli/purr sys --json | jq -e '.engines[] | select(.engine == "transcribe-cpp") | .status.ready.devices | length > 0' > /dev/null \
               || { echo "::error::the transcribe.cpp engine is not loaded"; exit 1; }
+          fi
+          if [ "${{ matrix.transcribe }}" = "true" ] && [ "${{ matrix.backend }}" = "metal" ]; then
+            test -n "$(find artifacts/cli/lib -name 'libggml-metal*')" \
+              || { echo "::error::the Metal module of transcribe.cpp is not in artifacts/cli/lib"; exit 1; }
           fi
       - name: Archive CLI
         uses: actions/upload-artifact@v7
@@ -568,7 +585,7 @@ jobs:
           # rust-cache joins the target onto the workspace path, and CARGO_TARGET_DIR is D:\t
           cache-workspaces: ". -> ../../../t"
           # whisper-rs-sys does not rebuild ggml when GGML_* or the GPU SDKs change, so each configuration needs its own cache
-          cache-key: ${{ matrix.label || matrix.backend }}${{ matrix.transcribe && '-transcribe' || '' }}-ggml-native-${{ env.GGML_NATIVE }}-crt-static-${{ env.CMAKE_GENERATOR_x86_64_pc_windows_msvc || 'msbuild' }}-cuda-${{ env.CUDA_VERSION }}-vulkan-${{ env.VULKAN_SDK_VERSION }}
+          cache-key: ${{ matrix.label || matrix.backend }}${{ matrix.transcribe && '-transcribe-backends' || '' }}-ggml-native-${{ env.GGML_NATIVE }}-crt-static-${{ env.CMAKE_GENERATOR_x86_64_pc_windows_msvc || 'msbuild' }}-cuda-${{ env.CUDA_VERSION }}-vulkan-${{ env.VULKAN_SDK_VERSION }}
           cache-save: ${{ github.ref == 'refs/heads/develop' && matrix.is_release == true }}
       - uses: ./.github/actions/setup-compiler-cache
         with:
@@ -582,8 +599,10 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path artifacts\cli
           Copy-Item "$env:CARGO_TARGET_DIR\release\purr.exe" artifacts\cli\purr.exe
+          $transcribeBackends = @(@('cuda', 'vulkan') | Where-Object { "${{ matrix.backend }}" -match $_ })
+          $stage = @{ Backends = $transcribeBackends }
           if ("${{ matrix.transcribe }}" -eq 'true') {
-            ./scripts/stage-transcribe-runtime.ps1 -CargoMessages "$env:RUNNER_TEMP\cargo-messages.jsonl" -Destination artifacts\cli
+            ./scripts/stage-transcribe-runtime.ps1 -CargoMessages "$env:RUNNER_TEMP\cargo-messages.jsonl" -Destination artifacts\cli @stage
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
           if ("${{ matrix.backend }}" -match "cuda") {
@@ -600,7 +619,7 @@ jobs:
           & artifacts\cli\purr.exe --version
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           if ("${{ matrix.transcribe }}" -eq 'true') {
-            ./scripts/stage-transcribe-runtime.ps1 -Check artifacts\cli
+            ./scripts/stage-transcribe-runtime.ps1 -Check artifacts\cli @stage
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
       - name: Check the CLI does not import the deferred libraries
@@ -608,12 +627,22 @@ jobs:
           $expect = @{}
           if ("${{ matrix.transcribe }}" -eq 'true') { $expect.ExpectDelayLoaded = @('transcribe.dll') }
           ./scripts/check-windows-imports.ps1 -Exe artifacts\cli\purr.exe -Forbidden '^nvcuda\.dll$','^cudart64_','^cublas','^vulkan-1\.dll$' @expect
+      - name: Check the transcribe.cpp backend modules import only the GPU runtime
+        if: matrix.transcribe && matrix.backend != 'none'
+        run: |
+          foreach ($module in 'cuda', 'vulkan') {
+            if ("${{ matrix.backend }}" -match $module) {
+              ./scripts/check-windows-imports.ps1 -Module -Exe "artifacts\cli\ggml-$module.dll"
+              if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            }
+          }
       - name: Check the CLI starts without GPU runtimes
         run: |
           $expect = @{
             ExpectCuda = "${{ matrix.backend }}" -match 'cuda'
             ExpectVulkan = "${{ matrix.backend }}" -match 'vulkan'
             ExpectTranscribe = "${{ matrix.transcribe }}" -eq 'true'
+            ExpectTranscribeBackends = @(@('cuda', 'vulkan') | Where-Object { "${{ matrix.backend }}" -match $_ })
           }
           ./scripts/check-windows-sys.ps1 -Exe artifacts\cli\purr.exe @expect
       - name: Archive CLI
@@ -674,7 +703,7 @@ jobs:
           # rust-cache joins the target onto the workspace path, and CARGO_TARGET_DIR is D:\t
           cache-workspaces: ". -> ../../../t"
           # whisper-rs-sys does not rebuild ggml when GGML_* or the GPU SDKs change, so each configuration needs its own cache
-          cache-key: cuda-vulkan${{ env.PURR_DESKTOP_TRANSCRIBE == 'on' && '-transcribe' || '' }}-ggml-native-${{ env.GGML_NATIVE }}-crt-static-${{ env.CMAKE_GENERATOR_x86_64_pc_windows_msvc || 'msbuild' }}-cuda-${{ env.CUDA_VERSION }}-vulkan-${{ env.VULKAN_SDK_VERSION }}
+          cache-key: cuda-vulkan${{ env.PURR_DESKTOP_TRANSCRIBE == 'on' && '-transcribe-backends' || '' }}-ggml-native-${{ env.GGML_NATIVE }}-crt-static-${{ env.CMAKE_GENERATOR_x86_64_pc_windows_msvc || 'msbuild' }}-cuda-${{ env.CUDA_VERSION }}-vulkan-${{ env.VULKAN_SDK_VERSION }}
           cache-save: ${{ github.ref == 'refs/heads/develop' }}
       - uses: ./.github/actions/setup-dioxus
         with:
@@ -691,7 +720,7 @@ jobs:
       - name: Add the transcribe.cpp libraries to the installer
         if: env.PURR_DESKTOP_TRANSCRIBE == 'on'
         run: |
-          ./scripts/stage-transcribe-runtime.ps1 -BuildDirectory "$env:CARGO_TARGET_DIR\r" -Destination dist-runtime
+          ./scripts/stage-transcribe-runtime.ps1 -BuildDirectory "$env:CARGO_TARGET_DIR\r" -Destination dist-runtime -OptionalDestination dist-runtime-cuda -Backends vulkan, cuda
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           dx bundle --verbose --trace -p purr-app --release --profile r --windows --package-types nsis --out-dir dist-windows --features "$env:FEATURES,transcribe"
           $staging = Get-ChildItem "$env:CARGO_TARGET_DIR\dx\purr-app" -Recurse -Directory -Filter _staging | Select-Object -First 1
@@ -699,7 +728,7 @@ jobs:
             Write-Error "the NSIS staging directory was not found under $env:CARGO_TARGET_DIR\dx\purr-app"
             exit 1
           }
-          ./scripts/stage-transcribe-runtime.ps1 -Check $staging.FullName
+          ./scripts/stage-transcribe-runtime.ps1 -Check $staging.FullName -Backends vulkan
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Prepare desktop artifacts
         run: |
@@ -719,7 +748,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path $portable
           Copy-Item "$($appExe.DirectoryName)\*" $portable -Recurse
           if ($env:PURR_DESKTOP_TRANSCRIBE -eq 'on') {
-            ./scripts/stage-transcribe-runtime.ps1 -BuildDirectory "$env:CARGO_TARGET_DIR\r" -Destination $portable
+            ./scripts/stage-transcribe-runtime.ps1 -BuildDirectory "$env:CARGO_TARGET_DIR\r" -Destination $portable -Backends vulkan, cuda
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
           $cudaBinPath = "$env:CUDA_PATH\bin\x64"
@@ -733,7 +762,7 @@ jobs:
           }
           Compress-Archive -Path "$portable\*" -DestinationPath artifacts\desktop\purr-desktop-portable.zip
           if ($env:PURR_DESKTOP_TRANSCRIBE -eq 'on') {
-            ./scripts/stage-transcribe-runtime.ps1 -Check artifacts\desktop\purr-desktop-portable.zip
+            ./scripts/stage-transcribe-runtime.ps1 -Check artifacts\desktop\purr-desktop-portable.zip -Backends vulkan, cuda
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
       - name: Archive desktop app
@@ -947,7 +976,7 @@ jobs:
 
             ### Command-line tool
             - Windows: `purr-cli-windows-x64-cuda-vulkan.zip`. Extract all files to one folder. Uses an NVIDIA GPU (CUDA) when the CUDA runtime is present, otherwise Vulkan, otherwise the CPU. Needs an x86-64 CPU with AVX2.
-              - `purr-runtime-cuda-windows-x64.zip`: the NVIDIA cuBLAS libraries (CUDA runtime) for `purr` and the desktop app. ${{ env.PURR_SPLIT_CUDA_RUNTIME == 'true' && 'Not part of the other Windows downloads: extract it into `%LOCALAPPDATA%\purr\runtime` or next to `purr.exe` to enable CUDA.' || 'Already part of the other Windows downloads; only needed to share one copy: extract it into `%LOCALAPPDATA%\purr\runtime`.' }} `purr runtime status` shows where the libraries are looked for.
+              - `purr-runtime-cuda-windows-x64.zip`: the NVIDIA cuBLAS libraries (CUDA runtime) for `purr` and the desktop app, and the CUDA module of the Parakeet and Qwen3-ASR engine when the build has one. ${{ env.PURR_SPLIT_CUDA_RUNTIME == 'true' && 'Not part of the other Windows downloads: extract it into `%LOCALAPPDATA%\purr\runtime` or next to `purr.exe` to enable CUDA.' || 'Already part of the other Windows downloads; only needed to share one copy: extract it into `%LOCALAPPDATA%\purr\runtime`.' }} `purr runtime status` shows where the libraries are looked for.
             - macOS (Apple Silicon): `purr-cli-macos-arm64-metal.tar.gz`
             - Linux: `purr-cli-linux-x64-all.tar.gz` (recommended). Keep the `lib` folder next to `purr`. Uses an NVIDIA GPU (CUDA) when the NVIDIA driver is installed, otherwise Vulkan, otherwise the CPU.
               - `purr-cli-linux-x64-vulkan.tar.gz`: smaller, for AMD and Intel GPUs. Uses Vulkan when a Vulkan driver is installed, otherwise the CPU.
@@ -1115,7 +1144,7 @@ jobs:
 
             ### Command-line tool
             - Windows: `purr-VERSION-cli-windows-x64-cuda-vulkan.zip`. Extract all files to one folder. Needs an x86-64 CPU with AVX2.
-              - `purr-VERSION-runtime-cuda-windows-x64.zip`: the NVIDIA cuBLAS libraries (CUDA runtime). ${{ env.PURR_SPLIT_CUDA_RUNTIME == 'true' && 'Not part of the other Windows downloads: extract it into `%LOCALAPPDATA%\purr\runtime` or next to `purr.exe` to enable CUDA.' || 'Already part of the other Windows downloads; only needed to share one copy: extract it into `%LOCALAPPDATA%\purr\runtime`.' }}
+              - `purr-VERSION-runtime-cuda-windows-x64.zip`: the NVIDIA cuBLAS libraries (CUDA runtime), and the CUDA module of the Parakeet and Qwen3-ASR engine when the build has one. ${{ env.PURR_SPLIT_CUDA_RUNTIME == 'true' && 'Not part of the other Windows downloads: extract it into `%LOCALAPPDATA%\purr\runtime` or next to `purr.exe` to enable CUDA.' || 'Already part of the other Windows downloads; only needed to share one copy: extract it into `%LOCALAPPDATA%\purr\runtime`.' }}
             - macOS (Apple Silicon): `purr-VERSION-cli-macos-arm64-metal.tar.gz`
             - Linux: `purr-VERSION-cli-linux-x64-all.tar.gz` (recommended). Keep the `lib` folder next to `purr`. Uses CUDA, otherwise Vulkan, otherwise the CPU.
               - `purr-VERSION-cli-linux-x64-vulkan.tar.gz`: smaller, Vulkan otherwise the CPU.
