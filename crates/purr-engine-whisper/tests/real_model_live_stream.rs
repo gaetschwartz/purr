@@ -1,10 +1,16 @@
 //! A stream fed at the pace of speech, as a recording device would feed it.
+//!
+//! Tentative text is produced while the pipeline waits for audio, so the feed has to take real
+//! time: this test lasts as long as the sample it plays.
 
+mod common;
+
+use common::WhisperModel;
 use futures::StreamExt;
 use purr_common::{language::tag::LanguageTag, model::engine::EngineId, platform::ChunkKind};
 use purr_core::{
-    AudioChunk, AudioProcessor, AudioStream, ModelManager,
-    config::{ModelRef, RunConfig, TentativeText},
+    AudioChunk, AudioProcessor, AudioStream,
+    config::{ModelRef, TentativeText},
     engine::Engine,
     pipeline::{
         events::StreamEvent,
@@ -12,10 +18,7 @@ use purr_core::{
     },
 };
 use purr_engine_whisper::engine::WhisperEngine;
-use std::{
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::{sync::Arc, time::Duration};
 use tokio::sync::mpsc;
 
 const HALF_SECOND: usize = 8_000;
@@ -37,10 +40,9 @@ fn paced(samples: Vec<f32>) -> AudioStream {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-#[ignore = "needs ggml-base.bin and feeds 11 s of audio at the pace of speech"]
 async fn tentative_text_shows_early_and_leaves_the_final_text_alone()
 -> Result<(), Box<dyn std::error::Error>> {
-    let model = ModelManager::new()?.models_dir().join("ggml-base.bin");
+    let model = common::model_path(WhisperModel::Base).await?;
     let audio = AudioProcessor::load_audio(
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../samples/jfk.wav"),
     )
@@ -51,12 +53,9 @@ async fn tentative_text_shows_early_and_leaves_the_final_text_alone()
         TentativeText::Off,
         TentativeText::WhileWaiting { every_seconds: 2.0 },
     ] {
-        let config = RunConfig::new()
-            .with_gpu(false)
-            .with_threads(4)
+        let config = common::run_config()
             .with_language(LanguageTag::english())
             .with_tentative(tentative);
-        let started = Instant::now();
         let mut stream = transcribe(
             Input::Audio(paced(audio.samples.clone())),
             config,
@@ -64,43 +63,40 @@ async fn tentative_text_shows_early_and_leaves_the_final_text_alone()
             &engines,
         )
         .await?;
-        let mut first_text = None;
         let mut tentative_chunks = 0;
         let mut finals = Vec::new();
         while let Some(event) = stream.next().await {
             let StreamEvent::Chunk(chunk) = event? else {
                 continue;
             };
-            if !chunk.text.is_empty() {
-                first_text.get_or_insert_with(|| started.elapsed());
-            }
             match chunk.kind {
-                ChunkKind::Tentative => {
-                    tentative_chunks += 1;
-                    println!(
-                        "{:>5.2}s tentative #{} [{:.1}-{:.1}] {}",
-                        started.elapsed().as_secs_f64(),
-                        chunk.chunk_index,
-                        chunk.start,
-                        chunk.end,
-                        chunk.text
-                    );
-                }
+                ChunkKind::Tentative => tentative_chunks += 1,
                 ChunkKind::Committed => finals.push(chunk.text),
             }
         }
-        println!(
-            "{tentative:?}: first text after {first_text:?}, {tentative_chunks} tentative \
-             chunks, last text after {:?}",
-            started.elapsed()
-        );
         assert_eq!(
             tentative_chunks > 0,
             tentative != TentativeText::Off,
             "{tentative:?}"
         );
-        final_texts.push(finals);
+        final_texts.push(words(&finals));
     }
     assert_eq!(final_texts[0], final_texts[1]);
     Ok(())
+}
+
+/// The words of `texts`, ignoring case and punctuation: where a window ends, and so where a
+/// comma falls, depends on how much audio had arrived when the decoder came to it.
+fn words(texts: &[String]) -> Vec<String> {
+    texts
+        .iter()
+        .flat_map(|text| text.split_whitespace())
+        .map(|word| {
+            word.chars()
+                .filter(|c| c.is_alphanumeric())
+                .flat_map(char::to_lowercase)
+                .collect::<String>()
+        })
+        .filter(|word| !word.is_empty())
+        .collect()
 }
