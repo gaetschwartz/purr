@@ -14,7 +14,9 @@ use parking_lot::Mutex;
 use purr_core::accel::{
     library_loader::{Loader, SystemLoader},
     runtime_dir::{Environment, search_dirs},
+    runtime_library::detect_missing,
 };
+use tracing::debug;
 
 use crate::logging;
 
@@ -103,6 +105,9 @@ static RUNTIME: Slot = Slot::new();
 
 /// Loads transcribe.cpp the first time it succeeds, and answers with that ever after. A library
 /// that was not there is looked for again on the next call.
+///
+/// The GPU runtime libraries are opened from the runtime folders first: transcribe.cpp scans its
+/// backend modules once, and a module whose imports cannot be loaded then is left out for good.
 pub fn get() -> Result<&'static Runtime, Unavailable> {
     let runtime = RUNTIME.get_or_load(load)?;
     logging::install_if_requested();
@@ -135,10 +140,10 @@ fn load() -> Result<Runtime, Unavailable> {
         build_output_dirs: build_output_dirs(),
         ..Environment::current()
     };
-    let searched: Vec<PathBuf> = search_dirs(&environment)
-        .into_iter()
-        .map(|dir| dir.path)
-        .collect();
+    let dirs = search_dirs(&environment);
+    let missing = detect_missing(&dirs);
+    debug!("GPU runtime libraries that cannot be opened: {missing:?}");
+    let searched: Vec<PathBuf> = dirs.into_iter().map(|dir| dir.path).collect();
     let libraries: Vec<&str> = libraries().collect();
     open_libraries(&SystemLoader, &libraries, searched, |directory| {
         logging::install_if_requested();

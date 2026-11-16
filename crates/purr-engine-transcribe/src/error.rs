@@ -1,6 +1,6 @@
 use purr_common::language::tag::LanguageTagError;
 use purr_core::{
-    accel::report::AttemptFailure,
+    accel::{plan::Candidate, report::AttemptFailure},
     engine::{
         error::{DecodeError, DetectError, OpenError},
         hypothesis::Completion,
@@ -42,18 +42,23 @@ impl From<TranscribeEngineError> for DetectError {
     }
 }
 
-/// Why the model could not be loaded on the device called `device`.
+/// Why the model could not be loaded on the device `candidate` stands for.
 #[allow(
     clippy::wildcard_enum_match_arm,
     reason = "the library's error enum is non-exhaustive"
 )]
-pub fn open_error(error: transcribe_cpp::Error, device: &str) -> OpenError {
+pub fn open_error(error: TranscribeEngineError, candidate: &Candidate) -> OpenError {
+    let device = candidate.name.clone();
     match error {
-        transcribe_cpp::Error::Backend(_) => AttemptFailure::DeviceInit {
-            device: device.to_owned(),
-        }
-        .into(),
-        error => TranscribeEngineError::from(error).into(),
+        TranscribeEngineError::Transcribe {
+            source: transcribe_cpp::Error::Backend(_),
+            ..
+        } => AttemptFailure::DeviceInit { device }.into(),
+        TranscribeEngineError::Transcribe {
+            source: transcribe_cpp::Error::OutOfMemory(_),
+            ..
+        } if candidate.backend.is_gpu() => AttemptFailure::DeviceOutOfMemory { device }.into(),
+        error => error.into(),
     }
 }
 
@@ -98,6 +103,9 @@ pub fn finished(
 
 #[cfg(test)]
 mod tests {
+    use purr_common::devices::DeviceKey;
+    use purr_core::accel::backend::AccelBackend;
+
     use super::*;
 
     fn message() -> String {
@@ -179,11 +187,49 @@ mod tests {
         ));
     }
 
+    fn candidate(backend: AccelBackend, name: &str) -> Candidate {
+        Candidate {
+            key: DeviceKey::cpu(),
+            backend,
+            name: name.to_owned(),
+            pci_id: None,
+        }
+    }
+
+    fn open(error: transcribe_cpp::Error, candidate: &Candidate) -> OpenError {
+        open_error(error.into(), candidate)
+    }
+
     #[test]
     fn a_backend_that_fails_to_load_the_model_lets_the_search_go_on() {
         assert!(matches!(
-            open_error(transcribe_cpp::Error::Backend(message()), "CPU"),
-            OpenError::Device { source: AttemptFailure::DeviceInit { device } } if device == "CPU"
+            open(
+                transcribe_cpp::Error::Backend(message()),
+                &candidate(AccelBackend::Vulkan, "Card")
+            ),
+            OpenError::Device { source: AttemptFailure::DeviceInit { device } } if device == "Card"
+        ));
+    }
+
+    #[test]
+    fn a_gpu_without_room_for_the_model_lets_the_search_go_on() {
+        assert!(matches!(
+            open(
+                transcribe_cpp::Error::OutOfMemory(message()),
+                &candidate(AccelBackend::Cuda, "Card")
+            ),
+            OpenError::Device { source: AttemptFailure::DeviceOutOfMemory { device } } if device == "Card"
+        ));
+    }
+
+    #[test]
+    fn a_processor_without_room_for_the_model_stops_the_search() {
+        assert!(matches!(
+            open(
+                transcribe_cpp::Error::OutOfMemory(message()),
+                &candidate(AccelBackend::Cpu, "CPU")
+            ),
+            OpenError::Engine { .. }
         ));
     }
 
@@ -192,9 +238,11 @@ mod tests {
         for error in [
             transcribe_cpp::Error::ModelLoad(message()),
             transcribe_cpp::Error::ModelFileNotFound(message()),
-            transcribe_cpp::Error::OutOfMemory(message()),
         ] {
-            assert!(matches!(open_error(error, "CPU"), OpenError::Engine { .. }));
+            assert!(matches!(
+                open(error, &candidate(AccelBackend::Vulkan, "Card")),
+                OpenError::Engine { .. }
+            ));
         }
     }
 }

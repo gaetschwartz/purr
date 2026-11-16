@@ -7,11 +7,11 @@ use purr_common::{
     model::engine::EngineId,
 };
 use purr_core::{
-    accel::{backend::AccelBackend, build_info::BuildInfo},
+    accel::build_info::BuildInfo,
     dev::Device,
     engine::{Engine, OpenSpec, decoder::WindowDecoder, error::OpenError, speech::SpeechDetector},
 };
-use transcribe_cpp::{Backend, Model, ModelOptions};
+use transcribe_cpp::Model;
 
 use crate::{
     build_info::build_info,
@@ -19,6 +19,7 @@ use crate::{
     devices::list_devices,
     error::{TranscribeEngineError, open_error},
     logging,
+    placement::model_options,
     runtime::{self, Unavailable},
     vad::SileroDetector,
 };
@@ -72,22 +73,12 @@ impl Engine for TranscribeEngine {
 
     fn open(&self, spec: &OpenSpec<'_>) -> Result<Box<dyn WindowDecoder>, OpenError> {
         runtime::get().map_err(|source| TranscribeEngineError::Library { source })?;
-        match spec.candidate.backend {
-            AccelBackend::Cpu => {}
-            AccelBackend::CoreMl
-            | AccelBackend::Cuda
-            | AccelBackend::Hip
-            | AccelBackend::Metal
-            | AccelBackend::Sycl
-            | AccelBackend::Vulkan => return Err(OpenError::NoDevice),
-        }
-        let options = ModelOptions {
-            backend: Backend::Cpu,
-            ..ModelOptions::default()
-        };
+        let options = model_options(spec.candidate, spec.devices)?;
         let model = Model::load_with(spec.model, &options)
-            .map_err(|error| open_error(error, &spec.candidate.name))?;
-        Ok(Box::new(TranscribeDecoder::new(&model, spec.threads)?))
+            .map_err(|error| open_error(error.into(), spec.candidate))?;
+        let decoder = TranscribeDecoder::new(&model, spec.threads)
+            .map_err(|error| open_error(error, spec.candidate))?;
+        Ok(Box::new(decoder))
     }
 
     fn open_speech_detector(&self, model: &Path) -> Result<Box<dyn SpeechDetector>, OpenError> {

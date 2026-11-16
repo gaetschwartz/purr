@@ -3,8 +3,9 @@ use purr_core::accel::{
     build_info::BuildInfo,
 };
 
-/// The backends this build asks transcribe.cpp for: the CPU only. Its CPU code is one module per instruction
-/// set tier, chosen at run time, so no single set of CPU features is compiled in.
+/// The backends this build asks transcribe.cpp for: the CPU, and the GPU backends of the cargo
+/// features that are on. Its CPU code is one module per instruction set tier, chosen at run time,
+/// so no single set of CPU features is compiled in.
 #[must_use]
 pub fn build_info() -> BuildInfo {
     BuildInfo {
@@ -16,15 +17,21 @@ pub fn build_info() -> BuildInfo {
     }
 }
 
-const fn backend_status(backend: AccelBackend) -> BuildStatus {
+const fn built(backend: AccelBackend) -> bool {
     match backend {
-        AccelBackend::Cpu => BuildStatus::Built,
-        AccelBackend::Cuda
-        | AccelBackend::CoreMl
-        | AccelBackend::Hip
-        | AccelBackend::Metal
-        | AccelBackend::Sycl
-        | AccelBackend::Vulkan => BuildStatus::NotBuilt,
+        AccelBackend::Cpu => true,
+        AccelBackend::Cuda => cfg!(feature = "cuda"),
+        AccelBackend::Metal => cfg!(all(feature = "metal", target_vendor = "apple")),
+        AccelBackend::Vulkan => cfg!(feature = "vulkan"),
+        AccelBackend::CoreMl | AccelBackend::Hip | AccelBackend::Sycl => false,
+    }
+}
+
+const fn backend_status(backend: AccelBackend) -> BuildStatus {
+    if built(backend) {
+        BuildStatus::Built
+    } else {
+        BuildStatus::NotBuilt
     }
 }
 
@@ -38,10 +45,28 @@ mod tests {
     }
 
     #[test]
-    fn the_cpu_is_built_and_cuda_is_not() {
+    fn the_cpu_is_always_built() {
+        assert_eq!(build_info().status(AccelBackend::Cpu), BuildStatus::Built);
+    }
+
+    #[test]
+    fn a_gpu_backend_is_built_when_its_feature_is_on() {
         let info = build_info();
-        assert_eq!(info.status(AccelBackend::Cpu), BuildStatus::Built);
-        assert_eq!(info.status(AccelBackend::Cuda), BuildStatus::NotBuilt);
+        let status = |on: bool| {
+            if on {
+                BuildStatus::Built
+            } else {
+                BuildStatus::NotBuilt
+            }
+        };
+        assert_eq!(
+            info.status(AccelBackend::Cuda),
+            status(cfg!(feature = "cuda"))
+        );
+        assert_eq!(
+            info.status(AccelBackend::Vulkan),
+            status(cfg!(feature = "vulkan"))
+        );
     }
 
     #[test]
