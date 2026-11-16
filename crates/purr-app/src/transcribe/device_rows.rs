@@ -684,6 +684,26 @@ mod tests {
     }
 
     #[test]
+    fn a_gpu_both_engines_see_is_offered_to_a_model_of_either() {
+        let mut rows = device_rows(&PerformanceSettings::default(), &system());
+        for row in rows.iter_mut().filter(|row| row.key == vulkan()) {
+            row.seen_by.push(EngineId::TranscribeCpp);
+        }
+        assert_eq!(
+            choices(&rows, Some(EngineId::TranscribeCpp)),
+            [
+                DeviceChoice::Automatic,
+                DeviceChoice::Device(vulkan()),
+                DeviceChoice::Device(DeviceKey::cpu()),
+            ]
+        );
+        assert_eq!(
+            override_for(Some(&vulkan()), &rows, Some(EngineId::TranscribeCpp)),
+            Some(vulkan())
+        );
+    }
+
+    #[test]
     fn a_device_the_new_models_engine_cannot_use_is_forgotten() {
         let rows = device_rows(&PerformanceSettings::default(), &system());
         assert_eq!(
