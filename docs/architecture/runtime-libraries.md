@@ -185,7 +185,7 @@ leave those DLLs out and the pack is the only place they ship.
   download step).
 - Scoop: a `purr-cuda-runtime` package that extracts the pack into `$persist_dir\runtime`, and a
   `env_set` of `PURR_RUNTIME_DIR` to that folder.
-- Homebrew and macOS: nothing, Metal is part of the system.
+- Homebrew and macOS: Metal is part of the system. The macOS CLI built with `transcribe` has a `lib` folder of transcribe.cpp's libraries that `@executable_path/lib` must reach, so the formula (`scripts/packaging/formula.rb.tmpl`) installs the whole archive into `libexec` and puts a wrapper in `bin` (the Linux formula installs a symlink; a symlink on macOS was not checked). Not run through `brew`.
 - A package built with `transcribe` ships the set the `transcribe-cpp-sys` build script stages next to the
   executable in the target directory: on Windows `transcribe.dll`, `ggml.dll`, `ggml-base.dll` and
   `ggml-cpu-<tier>.dll` for each instruction set tier (`x64`, `sse42`, `sandybridge`, `haswell`, `skylakex`,

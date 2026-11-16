@@ -236,6 +236,10 @@ The `transcribe` feature of `purr-cli` and `purr-app` adds `purr-engine-transcri
 
 Not built with it, and left as they were: the Linux `cpu`, `cuda` and `all` CLIs, the Linux desktop, the macOS desktop, `web`, and the single-backend Windows CLIs of a manual run. The Linux CUDA module (`libggml-cuda.so`) would add a CUDA arch list of ggml's own to the default Linux package, which is why only the Vulkan CLI carries the engine on Linux; the desktop packages have no verified layout for the libraries.
 
+#### Who installs these archives
+
+The Homebrew formula installs the macOS archive (`cli (macos, metal)`, now with a `lib` folder) with `libexec.install Dir["*"]` and `bin.write_exec_script`; before, it installed `purr` alone, which would no longer start. The Linux formula and the Scoop manifests use the `all` and `cuda-vulkan` archives. The `cli (linux, vulkan)` archive is a plain download. None of this was run through `brew` or `scoop`.
+
 #### What the GPU modules cost the jobs
 
 - `cli (windows, cuda-vulkan)` compiles the CUDA and the Vulkan modules of transcribe.cpp, on top of whisper.cpp's. Measured on the 32-thread development machine with the Visual Studio generator, `transcribe-cpp-sys` with `cuda` took 16 minutes, with `vulkan` a few minutes (a `cargo check` of the engine crate that built it finished in 2.5 minutes in all). The runner has 4 cores and the job builds with Ninja, so expect roughly the CUDA time of the whisper.cpp build again (about 30 minutes cold) on a run whose Rust cache misses. `transcribe-cpp-sys` runs with `-DGGML_CCACHE=OFF`, so ccache does not serve it. The Rust cache of the job holds the build once the key `...-transcribe-backends-...` is saved on `develop`.
