@@ -9,5 +9,5 @@ fn main() -> ExitCode {
             lib_dir.to_string_lossy()
         );
     }
-    purr_delayload::emit::report(purr_delayload::emit::emit_transcribe_env())
+    purr_delayload::emit::report(purr_delayload::emit::emit_transcribe_engine())
 }

@@ -31,16 +31,33 @@ pub const LINUX_VULKAN_DIRECT_CALLS: &[&str] = &[
     "vkCmdCopyBuffer",
 ];
 
-fn windows_link_directives(libraries: &RuntimeLibraries) -> Vec<String> {
+/// Which executables of the package being built get link arguments.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LinkScope {
+    Bins,
+    Tests,
+}
+
+impl LinkScope {
+    const fn directive(self) -> &'static str {
+        match self {
+            Self::Bins => "cargo::rustc-link-arg-bins",
+            Self::Tests => "cargo::rustc-link-arg-tests",
+        }
+    }
+}
+
+fn windows_link_directives(libraries: &RuntimeLibraries, scope: LinkScope) -> Vec<String> {
     if libraries.is_empty() {
         return Vec::new();
     }
+    let directive = scope.directive();
     libraries
         .delay_loaded()
-        .map(|dll| format!("cargo::rustc-link-arg-bins=/DELAYLOAD:{dll}"))
+        .map(|dll| format!("{directive}=/DELAYLOAD:{dll}"))
         .chain([
-            "cargo::rustc-link-arg-bins=delayimp.lib".to_owned(),
-            format!("cargo::rustc-link-arg-bins={LINKER_IGNORE_UNUSED_DELAYLOAD}"),
+            format!("{directive}=delayimp.lib"),
+            format!("{directive}={LINKER_IGNORE_UNUSED_DELAYLOAD}"),
         ])
         .collect()
 }
@@ -73,11 +90,12 @@ pub fn link_directives(
     target: LinkTarget,
     libraries: &RuntimeLibraries,
     transcribe: bool,
+    scope: LinkScope,
 ) -> Vec<String> {
-    match target {
-        LinkTarget::WindowsMsvc => windows_link_directives(libraries),
-        LinkTarget::LinuxGnu => linux_link_directives(libraries, transcribe),
-        LinkTarget::Other => Vec::new(),
+    match (target, scope) {
+        (LinkTarget::WindowsMsvc, scope) => windows_link_directives(libraries, scope),
+        (LinkTarget::LinuxGnu, LinkScope::Bins) => linux_link_directives(libraries, transcribe),
+        (LinkTarget::LinuxGnu, LinkScope::Tests) | (LinkTarget::Other, _) => Vec::new(),
     }
 }
 
@@ -121,6 +139,7 @@ pub fn emit_link_args() -> Result<(), DiscoveryError> {
         request.target,
         &libraries,
         request.transcribe,
+        LinkScope::Bins,
     ));
     Ok(())
 }
@@ -132,8 +151,9 @@ pub fn emit_runtime_env() -> Result<(), DiscoveryError> {
     Ok(())
 }
 
-/// Tell the transcribe.cpp engine crate which of its libraries its binaries load on demand.
-pub fn emit_transcribe_env() -> Result<(), DiscoveryError> {
+/// Make the test executables of the transcribe.cpp engine crate load its library on demand like
+/// the binaries do, and tell the crate which of its libraries that is.
+pub fn emit_transcribe_engine() -> Result<(), DiscoveryError> {
     let request = Request {
         transcribe: true,
         ..Request::from_cargo_env()
@@ -141,8 +161,15 @@ pub fn emit_transcribe_env() -> Result<(), DiscoveryError> {
     println!("cargo::rerun-if-env-changed={TRANSCRIBE_RUNTIME_DIR_VAR}");
     let runtime_dir = std::env::var_os(TRANSCRIBE_RUNTIME_DIR_VAR);
     let debug_assertions = std::env::var_os("CARGO_CFG_DEBUG_ASSERTIONS").is_some();
-    let directives: Vec<String> = env_directives(&request.resolve()?)
+    let libraries = request.resolve()?;
+    let directives: Vec<String> = env_directives(&libraries)
         .into_iter()
+        .chain(link_directives(
+            request.target,
+            &libraries,
+            request.transcribe,
+            LinkScope::Tests,
+        ))
         .chain(build_dir_directive(
             runtime_dir.as_deref().map(Path::new),
             debug_assertions,
@@ -179,7 +206,7 @@ mod tests {
     #[test]
     fn link_directives_delay_load_each_library_then_link_the_helper() {
         assert_eq!(
-            link_directives(LinkTarget::WindowsMsvc, &libraries(), true),
+            link_directives(LinkTarget::WindowsMsvc, &libraries(), true, LinkScope::Bins),
             [
                 "cargo::rustc-link-arg-bins=/DELAYLOAD:cublasLt64_13.dll",
                 "cargo::rustc-link-arg-bins=/DELAYLOAD:cublas64_13.dll",
@@ -192,10 +219,39 @@ mod tests {
     }
 
     #[test]
+    fn test_executables_get_the_delay_load_arguments_of_their_own_scope() {
+        let transcribe_only = RuntimeLibraries {
+            transcribe: vec!["transcribe.dll".to_owned()],
+            ..RuntimeLibraries::default()
+        };
+        assert_eq!(
+            link_directives(
+                LinkTarget::WindowsMsvc,
+                &transcribe_only,
+                true,
+                LinkScope::Tests
+            ),
+            [
+                "cargo::rustc-link-arg-tests=/DELAYLOAD:transcribe.dll",
+                "cargo::rustc-link-arg-tests=delayimp.lib",
+                "cargo::rustc-link-arg-tests=/IGNORE:4199",
+            ]
+        );
+    }
+
+    #[test]
+    fn linux_test_executables_get_no_link_arguments() {
+        assert_eq!(
+            link_directives(LinkTarget::LinuxGnu, &libraries(), true, LinkScope::Tests),
+            Vec::<String>::new()
+        );
+    }
+
+    #[test]
     fn nothing_to_delay_load_emits_no_link_arguments() {
         for target in [LinkTarget::WindowsMsvc, LinkTarget::LinuxGnu] {
             assert_eq!(
-                link_directives(target, &RuntimeLibraries::default(), false),
+                link_directives(target, &RuntimeLibraries::default(), false, LinkScope::Bins),
                 Vec::<String>::new()
             );
         }
@@ -209,7 +265,7 @@ mod tests {
             transcribe: Vec::new(),
         };
         assert_eq!(
-            link_directives(LinkTarget::LinuxGnu, &libraries, false),
+            link_directives(LinkTarget::LinuxGnu, &libraries, false, LinkScope::Bins),
             [
                 "cargo::rustc-link-arg-bins=-Wl,--wrap=vkGetInstanceProcAddr",
                 "cargo::rustc-link-arg-bins=-Wl,--undefined=__wrap_vkGetInstanceProcAddr",
@@ -228,7 +284,7 @@ mod tests {
             vulkan: vec!["libvulkan.so.1".to_owned()],
             transcribe: Vec::new(),
         };
-        let directives = link_directives(LinkTarget::LinuxGnu, &libraries, true);
+        let directives = link_directives(LinkTarget::LinuxGnu, &libraries, true, LinkScope::Bins);
         assert_eq!(
             directives.first().map(String::as_str),
             Some("cargo::rustc-link-arg-bins=-Wl,--exclude-libs,ALL")
@@ -239,7 +295,12 @@ mod tests {
     #[test]
     fn linux_with_transcribe_alone_only_hides_the_archive_symbols() {
         assert_eq!(
-            link_directives(LinkTarget::LinuxGnu, &RuntimeLibraries::default(), true),
+            link_directives(
+                LinkTarget::LinuxGnu,
+                &RuntimeLibraries::default(),
+                true,
+                LinkScope::Bins
+            ),
             ["cargo::rustc-link-arg-bins=-Wl,--exclude-libs,ALL"]
         );
     }
@@ -252,7 +313,7 @@ mod tests {
             transcribe: Vec::new(),
         };
         assert_eq!(
-            link_directives(LinkTarget::LinuxGnu, &libraries, false),
+            link_directives(LinkTarget::LinuxGnu, &libraries, false, LinkScope::Bins),
             Vec::<String>::new()
         );
     }
@@ -260,7 +321,7 @@ mod tests {
     #[test]
     fn other_targets_get_no_link_arguments() {
         assert_eq!(
-            link_directives(LinkTarget::Other, &libraries(), true),
+            link_directives(LinkTarget::Other, &libraries(), true, LinkScope::Bins),
             Vec::<String>::new()
         );
     }

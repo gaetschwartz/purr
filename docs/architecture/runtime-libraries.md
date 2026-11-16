@@ -79,6 +79,9 @@ backend, so it is not in `AccelBackend` or `detect_missing`. It has its own ggml
   inside it, and a DLL import names its DLL, so the two never bind to each other. `check-windows-imports.ps1`
   forbids `transcribe.dll` and `ggml*` among the hard imports and, with `-ExpectDelayLoaded transcribe.dll`,
   requires the delay-load.
+- The test executables of `purr-engine-transcribe` delay-load `transcribe.dll` the same way: its build script asks
+  `purr-delayload` for the arguments with `rustc-link-arg-tests`, so a test binary starts without the library next to it
+  and finds it through the build-output folder below. Linux keeps the rpath that build script sets for every target, and macOS is unchanged.
 - `/DELAYLOAD` only covers imports of the executable, which is all there is: `transcribe.dll` is the one
   library the executable imports. Its `ggml.dll`, `ggml-base.dll` and the backend modules are found by
   `transcribe.dll` itself, from its own folder, so they must sit next to it.
