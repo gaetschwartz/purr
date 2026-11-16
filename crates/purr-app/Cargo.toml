@@ -97,9 +97,9 @@ desktop = [
 # Mobile feature
 mobile = ["dioxus/mobile"]
 
-vulkan = ["purr-engine-whisper/vulkan"]
-cuda = ["purr-engine-whisper/cuda"]
-metal = ["purr-engine-whisper/metal"]
+vulkan = ["purr-engine-whisper/vulkan", "purr-engine-transcribe?/vulkan"]
+cuda = ["purr-engine-whisper/cuda", "purr-engine-transcribe?/cuda"]
+metal = ["purr-engine-whisper/metal", "purr-engine-transcribe?/metal"]
 coreml = ["purr-engine-whisper/coreml"]
 static-ffmpeg = ["purr-core/static-ffmpeg"]
 gloo-timers = ["dep:gloo-timers"]

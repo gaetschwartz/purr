@@ -51,9 +51,9 @@ strum = { version = "0.28.0", features = ["derive"] }
 parking_lot = "0.13.0"
 
 [features]
-cuda = ["purr-engine-whisper/cuda"]
-vulkan = ["purr-engine-whisper/vulkan"]
-metal = ["purr-engine-whisper/metal"]
+cuda = ["purr-engine-whisper/cuda", "purr-engine-transcribe?/cuda"]
+vulkan = ["purr-engine-whisper/vulkan", "purr-engine-transcribe?/vulkan"]
+metal = ["purr-engine-whisper/metal", "purr-engine-transcribe?/metal"]
 coreml = ["purr-engine-whisper/coreml"]
 static-ffmpeg = ["purr-core/static-ffmpeg"]
 transcribe = ["dep:purr-engine-transcribe"]

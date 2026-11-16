@@ -12,6 +12,11 @@ oopsie = { workspace = true }
 tracing = "0.1.41"
 transcribe-cpp = { version = "0.4.2", default-features = false, features = ["dynamic-backends"] }
 
+[features]
+cuda = ["transcribe-cpp/cuda", "purr-core/cuda"]
+vulkan = ["transcribe-cpp/vulkan", "purr-core/vulkan"]
+metal = ["transcribe-cpp/metal"]
+
 [lints]
 workspace = true
 

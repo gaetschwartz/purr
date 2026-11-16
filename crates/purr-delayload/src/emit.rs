@@ -155,6 +155,8 @@ pub fn emit_runtime_env() -> Result<(), DiscoveryError> {
 /// the binaries do, and tell the crate which of its libraries that is.
 pub fn emit_transcribe_engine() -> Result<(), DiscoveryError> {
     let request = Request {
+        cuda: false,
+        vulkan: false,
         transcribe: true,
         ..Request::from_cargo_env()
     };
