@@ -269,7 +269,10 @@ pub fn golden_whole_text(model: TranscribeModel, sample: Sample) -> TestResult<S
     let path = golden_path(model, sample, Mode::Whole);
     let golden = std::fs::read_to_string(&path).map_err(|source| MissingGolden { path, source })?;
     let golden: Value = serde_json::from_str(&golden)?;
-    let text = golden["text"].as_str().ok_or("the golden has no text")?;
+    let text = golden
+        .get("text")
+        .and_then(Value::as_str)
+        .ok_or("the golden has no text")?;
     Ok(text.to_owned())
 }
 

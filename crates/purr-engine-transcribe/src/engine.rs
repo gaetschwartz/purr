@@ -16,7 +16,7 @@ use transcribe_cpp::Model;
 use crate::{
     build_info::build_info,
     decoder::TranscribeDecoder,
-    devices::list_devices,
+    devices::{list_devices, registered},
     error::{TranscribeEngineError, open_error},
     logging,
     placement::model_options,
@@ -73,7 +73,7 @@ impl Engine for TranscribeEngine {
 
     fn open(&self, spec: &OpenSpec<'_>) -> Result<Box<dyn WindowDecoder>, OpenError> {
         runtime::get().map_err(|source| TranscribeEngineError::Library { source })?;
-        let options = model_options(spec.candidate, spec.devices)?;
+        let options = model_options(spec.candidate, spec.devices, registered)?;
         let model = Model::load_with(spec.model, &options)
             .map_err(|error| open_error(error.into(), spec.candidate))?;
         let decoder = TranscribeDecoder::new(&model, spec.threads)

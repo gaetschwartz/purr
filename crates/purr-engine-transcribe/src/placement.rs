@@ -29,7 +29,14 @@ fn registry_index(candidate: &Candidate, devices: &[Device]) -> Option<usize> {
 
 /// The options that load a model on `candidate`: the processor strictly, or exactly the GPU the
 /// candidate names, which transcribe.cpp does not replace by another device when it fails.
-pub fn model_options(candidate: &Candidate, devices: &[Device]) -> Result<ModelOptions, OpenError> {
+///
+/// `registered` gives the device at a position of transcribe.cpp's registry; a test passes its own,
+/// because a test executable that referenced the registry would import `transcribe.dll`.
+pub fn model_options(
+    candidate: &Candidate,
+    devices: &[Device],
+    registered: impl FnOnce(usize) -> Option<transcribe_cpp::Device>,
+) -> Result<ModelOptions, OpenError> {
     let backend = requested(candidate.backend).ok_or(OpenError::NoDevice)?;
     if candidate.backend == AccelBackend::Cpu {
         return Ok(ModelOptions {
@@ -38,10 +45,7 @@ pub fn model_options(candidate: &Candidate, devices: &[Device]) -> Result<ModelO
         });
     }
     let index = registry_index(candidate, devices).ok_or(OpenError::NoDevice)?;
-    let device = transcribe_cpp::devices()
-        .into_iter()
-        .nth(index)
-        .ok_or(OpenError::NoDevice)?;
+    let device = registered(index).ok_or(OpenError::NoDevice)?;
     Ok(ModelOptions {
         backend,
         device: Some(device),
@@ -94,7 +98,8 @@ mod tests {
 
     #[test]
     fn the_processor_needs_no_device() {
-        let options = model_options(&candidate(AccelBackend::Cpu, "CPU", None), &[]).unwrap();
+        let options =
+            model_options(&candidate(AccelBackend::Cpu, "CPU", None), &[], |_| None).unwrap();
         assert_eq!(options.backend, Backend::Cpu);
         assert!(options.device.is_none());
     }
@@ -104,7 +109,7 @@ mod tests {
         let listed = [gpu(0, "Card", "0000:05:00.0")];
         let wanted = candidate(AccelBackend::Vulkan, "Card", Some("0000:01:00.0"));
         assert!(matches!(
-            model_options(&wanted, &listed),
+            model_options(&wanted, &listed, |_| None),
             Err(OpenError::NoDevice)
         ));
     }

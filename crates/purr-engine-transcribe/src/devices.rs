@@ -23,6 +23,11 @@ pub fn list_devices() -> Vec<Device> {
         .collect()
 }
 
+/// The device at `index` of transcribe.cpp's registry, the position `list_devices` gives as its `id`.
+pub(crate) fn registered(index: usize) -> Option<transcribe_cpp::Device> {
+    transcribe_cpp::devices().into_iter().nth(index)
+}
+
 pub(crate) const fn device_type(device_type: transcribe_cpp::DeviceType) -> DeviceType {
     match device_type {
         transcribe_cpp::DeviceType::Cpu => DeviceType::Cpu,
