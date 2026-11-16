@@ -1,5 +1,7 @@
 //! Whole-file transcription of every sample.
 
+mod common;
+
 use purr_common::model::engine::EngineId;
 use purr_core::{
     ModelManager,
@@ -41,7 +43,7 @@ async fn test_transcribe_sample_files(#[files("../../samples/*")] sample_path: P
     let transcription = collect(
         transcribe(
             Input::File(sample_path.clone()),
-            RunConfig::new()
+            common::run_config()
                 .with_gpu(false)
                 .with_windowing(Windowing::Whole),
             &ModelRef::new(model, EngineId::WhisperCpp),

@@ -24,6 +24,11 @@ test *ARGS:
     @echo "{{BLUE}}[INFO]{{NC}} Running tests with nextest..."
     cargo nextest run $WINDOWS_TEST_ARGS {{ARGS}}
 
+# Run the tests that load a real model
+test-models *ARGS:
+    @echo "{{BLUE}}[INFO]{{NC}} Running the real-model tests..."
+    cargo nextest run --profile all -E 'test(/real_model_/) | binary_id(/real_model_/)' {{ARGS}}
+
 # Run tests for a specific crate
 test-crate crate *ARGS:
     @echo "{{BLUE}}[INFO]{{NC}} Testing crate: {{crate}}"

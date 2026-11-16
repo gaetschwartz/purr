@@ -3,6 +3,8 @@
 //! These tests require a Whisper model to be available and test the full
 //! audio-to-transcription pipeline including both sync and streaming modes.
 
+mod common;
+
 use futures::{Stream, StreamExt};
 use purr_common::model::engine::EngineId;
 use purr_common::{language::tag::LanguageTag, progress::ProgressPhase};
@@ -225,7 +227,7 @@ async fn test_sync_whisper_transcriber_creation() {
         return;
     }
 
-    let config = RunConfig::new()
+    let config = common::run_config()
         .with_gpu(false)
         .with_language(LanguageTag::english());
 
@@ -245,7 +247,7 @@ async fn test_sync_whisper_transcribe_audio_data() {
         return;
     }
 
-    let config = RunConfig::new()
+    let config = common::run_config()
         .with_gpu(false)
         .with_language(LanguageTag::english());
 
@@ -279,7 +281,7 @@ async fn test_sync_whisper_with_generated_audio() {
 
     let temp_audio = whisper_fixtures::create_short_test_audio().await.unwrap();
 
-    let config = RunConfig::new()
+    let config = common::run_config()
         .with_gpu(false)
         .with_language(LanguageTag::english());
 
@@ -311,7 +313,7 @@ async fn test_sync_transcription_high_level_api() {
 
     let temp_audio = whisper_fixtures::create_short_test_audio().await.unwrap();
 
-    let config = RunConfig::new()
+    let config = common::run_config()
         .with_gpu(false)
         .with_language(LanguageTag::english());
 
@@ -333,7 +335,7 @@ async fn test_streaming_whisper_transcriber_creation() {
         return;
     }
 
-    let config = RunConfig::new()
+    let config = common::run_config()
         .with_gpu(false)
         .with_language(LanguageTag::english());
 
@@ -357,7 +359,7 @@ async fn test_streaming_whisper_with_audio_stream() {
         .await
         .unwrap();
 
-    let config = RunConfig::new()
+    let config = common::run_config()
         .with_gpu(false)
         .with_language(LanguageTag::english());
 
@@ -410,7 +412,7 @@ async fn test_streaming_transcription_high_level_api() {
         .await
         .unwrap();
 
-    let config = RunConfig::new()
+    let config = common::run_config()
         .with_gpu(false)
         .with_language(LanguageTag::english());
 
@@ -467,7 +469,7 @@ async fn test_transcription_with_gpu_settings(#[case] use_gpu: bool) {
 
     let temp_audio = whisper_fixtures::create_short_test_audio().await.unwrap();
 
-    let config = RunConfig::new()
+    let config = common::run_config()
         .with_gpu(use_gpu)
         .with_language(LanguageTag::english());
 
@@ -505,7 +507,7 @@ async fn test_transcription_with_language_settings(#[case] language: &'static st
 
     let temp_audio = whisper_fixtures::create_short_test_audio().await.unwrap();
 
-    let mut config = RunConfig::new().with_gpu(false);
+    let mut config = common::run_config().with_gpu(false);
 
     if language != "auto" {
         config = config.with_language(language.parse().unwrap());
@@ -534,7 +536,7 @@ async fn test_transcription_with_thread_settings(#[case] num_threads: usize) {
 
     let temp_audio = whisper_fixtures::create_short_test_audio().await.unwrap();
 
-    let config = RunConfig::new()
+    let config = common::run_config()
         .with_gpu(false)
         .with_threads(num_threads)
         .with_language(LanguageTag::english());
@@ -559,7 +561,7 @@ async fn test_transcription_performance_sync() {
 
     let temp_audio = whisper_fixtures::create_short_test_audio().await.unwrap();
 
-    let config = RunConfig::new()
+    let config = common::run_config()
         .with_gpu(false)
         .with_language(LanguageTag::english());
 
@@ -601,7 +603,7 @@ async fn test_transcription_performance_streaming() {
         .await
         .unwrap();
 
-    let config = RunConfig::new()
+    let config = common::run_config()
         .with_gpu(false)
         .with_language(LanguageTag::english());
 
@@ -658,7 +660,7 @@ async fn test_whisper_error_handling_invalid_config() {
     }
 
     // Test with invalid model path
-    let config = RunConfig::new()
+    let config = common::run_config()
         .with_gpu(false)
         .with_language(LanguageTag::english());
 
@@ -678,7 +680,7 @@ async fn test_whisper_error_handling_empty_audio() {
         return;
     }
 
-    let config = RunConfig::new()
+    let config = common::run_config()
         .with_gpu(false)
         .with_language(LanguageTag::english());
 
@@ -732,7 +734,7 @@ async fn test_streaming_does_not_loop_on_fast_speech() {
         return;
     }
 
-    let config = RunConfig::new()
+    let config = common::run_config()
         .with_gpu(false)
         .with_language(LanguageTag::english());
 
@@ -833,7 +835,7 @@ async fn test_streaming_keeps_a_sentence_spoken_twice() {
     }
     let audio = spoken_twice("jfk.wav").await.unwrap();
 
-    let config = RunConfig::new().with_gpu(false);
+    let config = common::run_config().with_gpu(false);
     let mut configs = vec![config.clone()];
     match vad_model(&model_manager) {
         Some(vad) => configs.push(config.with_vad_model(Some(vad))),
@@ -880,7 +882,7 @@ async fn test_streaming_progress_follows_the_audio_consumed() {
         return;
     }
     let audio = spoken_twice("jfk.wav").await.unwrap();
-    let config = RunConfig::new().with_gpu(false);
+    let config = common::run_config().with_gpu(false);
 
     let mut stream = transcribe_file_stream(audio.path(), config, &model_path)
         .await
@@ -920,7 +922,7 @@ async fn test_regression_consistent_results() {
 
     let temp_audio = whisper_fixtures::create_short_test_audio().await.unwrap();
 
-    let config = RunConfig::new()
+    let config = common::run_config()
         .with_gpu(false)
         .with_language(LanguageTag::english());
 

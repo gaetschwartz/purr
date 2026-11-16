@@ -1,5 +1,7 @@
 //! Whole-file transcription of known samples and broken inputs.
 
+mod common;
+
 use purr_common::{language::tag::LanguageTag, model::engine::EngineId};
 use purr_core::{
     Error, ModelManager,
@@ -45,7 +47,7 @@ async fn transcribe_file_sync(
 
 #[test]
 fn test_transcription_config() {
-    let config = RunConfig::new()
+    let config = common::run_config()
         .with_language(LanguageTag::english())
         .with_gpu(false)
         .with_threads(2);
@@ -59,9 +61,9 @@ fn test_transcription_config() {
 }
 
 #[rstest]
-#[case(RunConfig::new().with_gpu(false).with_language(LanguageTag::english()))]
-#[case(RunConfig::new().with_gpu(false).with_threads(1))]
-#[case(RunConfig::new().with_gpu(false).with_word_timestamps(true))]
+#[case(common::run_config().with_gpu(false).with_language(LanguageTag::english()))]
+#[case(common::run_config().with_gpu(false).with_threads(1))]
+#[case(common::run_config().with_gpu(false).with_word_timestamps(true))]
 #[tokio::test]
 async fn test_transcription_configurations(#[case] config: RunConfig) {
     let Some(model) = default_model().await else {
@@ -89,7 +91,8 @@ async fn test_transcription_error_handling(#[case] invalid_path: &str) {
         println!("⏭ Skipping - no model available");
         return;
     };
-    let result = transcribe_file_sync(invalid_path, RunConfig::new().with_gpu(false), &model).await;
+    let result =
+        transcribe_file_sync(invalid_path, common::run_config().with_gpu(false), &model).await;
     assert!(
         matches!(
             result,

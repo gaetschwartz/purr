@@ -1,5 +1,5 @@
 [profile.default]
-default-filter = "not (test(/^(.*::)?slow_.*/) | binary_id(/^(.*::)?slow_.*/))"
+default-filter = "not (test(/^(.*::)?real_model_.*/) | binary_id(/^(.*::)?real_model_.*/))"
 
 [profile.all]
 default-filter = "all()"

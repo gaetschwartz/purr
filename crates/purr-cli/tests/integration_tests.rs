@@ -21,7 +21,7 @@ fn test_missing_audio_file() {
 #[rstest]
 #[timeout(Duration::from_secs(600))]
 #[tokio::test]
-async fn slow_test_cli_transcribe_sample_files(#[files("../../samples/*")] sample_path: PathBuf) {
+async fn real_model_cli_transcribe_sample_files(#[files("../../samples/*")] sample_path: PathBuf) {
     use purr_core::pipeline::result::SyncTranscriptionResult;
     assert!(
         Path::new(&TINY_MODEL).exists(),
@@ -37,7 +37,8 @@ async fn slow_test_cli_transcribe_sample_files(#[files("../../samples/*")] sampl
         .arg("--output")
         .arg("json") // Use JSON for easier validation
         .arg("--model")
-        .arg(TINY_MODEL);
+        .arg(TINY_MODEL)
+        .args(["--threads", "1"]);
 
     println!("Running command: {cmd:?}");
 
@@ -76,7 +77,7 @@ enum OutputFormat {
 #[case(OutputFormat::Srt)]
 #[timeout(Duration::from_secs(600))]
 #[tokio::test]
-async fn slow_test_cli_output_formats(#[case] format: OutputFormat) {
+async fn real_model_cli_output_formats(#[case] format: OutputFormat) {
     let sample_path = Path::new("../../samples/jfk.wav");
     assert!(
         Path::new(&TINY_MODEL).exists(),
@@ -89,7 +90,8 @@ async fn slow_test_cli_output_formats(#[case] format: OutputFormat) {
         .arg(<&str>::from(&format))
         .arg("--no-stream") // Disable streaming for faster tests
         .arg("--model")
-        .arg(TINY_MODEL);
+        .arg(TINY_MODEL)
+        .args(["--threads", "1"]);
 
     let output = cmd.output().unwrap();
 
