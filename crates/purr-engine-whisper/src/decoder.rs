@@ -3,7 +3,7 @@
 use std::{ffi::c_void, time::Duration};
 
 use purr_common::{language::tag::LanguageTag, model::profile::InputLimit};
-use whisper_rs::{FullParams, SamplingStrategy, WhisperState};
+use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperState};
 
 use purr_core::engine::{
     cancel::CancelToken,
@@ -25,24 +25,43 @@ const ENCODER_WINDOW: Duration = Duration::from_secs(30);
 
 /// A Whisper model loaded on one device.
 pub struct WhisperDecoder {
-    state: WhisperState,
+    context: WhisperContext,
+    /// A state no decode has used: the beam search's random generator lives in the state
+    pristine: Option<WhisperState>,
     /// End of text; every token id from here on is a special or timestamp token
     eot: i32,
     threads: usize,
 }
 
 impl WhisperDecoder {
-    pub const fn new(state: WhisperState, eot: i32, threads: usize) -> Self {
+    pub const fn new(
+        context: WhisperContext,
+        state: WhisperState,
+        eot: i32,
+        threads: usize,
+    ) -> Self {
         Self {
-            state,
+            context,
+            pristine: Some(state),
             eot,
             threads,
         }
     }
 
-    fn detect_language(&mut self, pcm: &[f32]) -> Result<LanguageEstimate, WhisperEngineError> {
-        self.state.pcm_to_mel(pcm, self.threads)?;
-        let (id, probabilities) = self.state.lang_detect(0, self.threads)?;
+    fn fresh_state(&mut self) -> Result<WhisperState, WhisperEngineError> {
+        match self.pristine.take() {
+            Some(state) => Ok(state),
+            None => Ok(self.context.create_state()?),
+        }
+    }
+
+    fn detect_language(
+        &self,
+        state: &mut WhisperState,
+        pcm: &[f32],
+    ) -> Result<LanguageEstimate, WhisperEngineError> {
+        state.pcm_to_mel(pcm, self.threads)?;
+        let (id, probabilities) = state.lang_detect(0, self.threads)?;
         let tag = detected_tag(id)?;
         let probability = usize::try_from(id)
             .ok()
@@ -79,10 +98,11 @@ impl WindowDecoder for WhisperDecoder {
                 completion: Completion::Cancelled,
             });
         }
+        let mut state = self.fresh_state()?;
         let (language, estimate) = match request.language {
             LanguageRequest::Use(tag) => (tag.clone(), None),
             LanguageRequest::Detect => {
-                let estimate = self.detect_language(request.pcm)?;
+                let estimate = self.detect_language(&mut state, request.pcm)?;
                 (estimate.tag.clone(), Some(estimate))
             }
         };
@@ -113,7 +133,7 @@ impl WindowDecoder for WhisperDecoder {
             );
         }
 
-        let outcome = self.state.full(params, request.pcm);
+        let outcome = state.full(params, request.pcm);
         let completion = match outcome {
             Ok(()) => Completion::Complete,
             Err(_) if request.cancel.is_cancelled() => Completion::Cancelled,
@@ -121,7 +141,7 @@ impl WindowDecoder for WhisperDecoder {
         };
         Ok(Decoded {
             hypothesis: Hypothesis {
-                segments: segments::read(&self.state, self.eot)?,
+                segments: segments::read(&state, self.eot)?,
                 language: estimate,
                 segmentation: Segmentation::Native,
             },

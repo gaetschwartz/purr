@@ -79,24 +79,8 @@ async fn tentative_text_shows_early_and_leaves_the_final_text_alone()
             tentative != TentativeText::Off,
             "{tentative:?}"
         );
-        final_texts.push(words(&finals));
+        final_texts.push(finals);
     }
     assert_eq!(final_texts[0], final_texts[1]);
     Ok(())
-}
-
-/// The words of `texts`, ignoring case and punctuation: where a window ends, and so where a
-/// comma falls, depends on how much audio had arrived when the decoder came to it.
-fn words(texts: &[String]) -> Vec<String> {
-    texts
-        .iter()
-        .flat_map(|text| text.split_whitespace())
-        .map(|word| {
-            word.chars()
-                .filter(|c| c.is_alphanumeric())
-                .flat_map(char::to_lowercase)
-                .collect::<String>()
-        })
-        .filter(|word| !word.is_empty())
-        .collect()
 }

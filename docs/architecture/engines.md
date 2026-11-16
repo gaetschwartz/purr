@@ -138,7 +138,10 @@ Each failed attempt costs a full encode of its window.
 - Cancel: whisper.cpp's abort callback reads the `CancelToken`. An aborted window of 30 s or less
   yields no segment; an aborted whole-file decode keeps the segments of the 30 s stretches it
   finished.
-- Beam search with 5 beams, always.
+- Beam search with 5 beams, always. whisper.cpp draws its beam candidates from a random generator
+  kept in the state and seeded once, so each decode runs on a state no earlier decode used (the one
+  made when the model opens serves the first); otherwise tentative decodes would change the text a
+  window commits.
 
 ## transcribe.cpp (`purr-engine-transcribe`)
 

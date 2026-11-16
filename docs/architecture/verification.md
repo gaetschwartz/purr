@@ -13,8 +13,8 @@ and by hand), **CI** (a workflow step, only a runner proves it), **manual** (som
 
 | Area | How it is checked | Windows status today |
 |---|---|---|
-| Whisper output on `base` and `small`, streaming and whole, with and without VAD, auto and fixed language, on jfk (11 s), mm1 (30 s), the first minute of a13 and all of a13 (179 s) | model-gated: `real_model_golden.rs`, 20 goldens in `crates/purr-engine-whisper/tests/golden/` named `<model>-<sample>-<mode>-<language>.json` | **Verified**, 20 of 20 goldens identical in two runs, one thread per test: `just test-models -p purr-engine-whisper --test real_model_golden`. The seven `base` goldens recorded before at 8 threads are identical at 1 thread and at 8 threads |
-| Whisper cancel, live stream with tentative text, a sentence spoken twice, progress | model-gated: `real_model_cancel.rs`, `real_model_live_stream.rs`, `real_model_whisper.rs` | **Verified**: 4 passed in the run below. Cancel races a one second timer against the decode of 179 s of audio, and the live stream feeds 11 s of audio at the pace of speech: both depend on time by nature |
+| Whisper output on `base` and `small`, streaming and whole, with and without VAD, auto and fixed language, on jfk (11 s), mm1 (30 s), the first minute of a13 and all of a13 (179 s) | model-gated: `real_model_golden.rs`, 20 goldens in `crates/purr-engine-whisper/tests/golden/` named `<model>-<sample>-<mode>-<language>.json` | **Verified**, 20 of 20 goldens identical in two runs, one thread per test: `just test-models -p purr-engine-whisper --test real_model_golden`. The six goldens of a13 streams were re-recorded when a Whisper decode stopped reusing a used state (see engines.md); every other golden is unchanged. The identity at 1 and at 8 threads was measured before that change and not repeated |
+| Whisper cancel, live stream with tentative text, a sentence spoken twice, progress | model-gated: `real_model_cancel.rs`, `real_model_live_stream.rs`, `real_model_whisper.rs` | **Verified**: 5 passed in the last run (the cancel test, the live stream, the repeated sentence, progress, and a window decoding the same after other decodes). Cancel races a one second timer against the decode of 179 s of audio, and the live stream feeds 11 s of audio at the pace of speech: both depend on time by nature |
 | Parakeet end to end through the shared pipeline (stream with and without VAD, whole, tentative text with words and scores) | model-gated: `crates/purr-engine-transcribe/tests/real_model_parakeet.rs`, 7 goldens in `tests/golden/` | **Verified**, 8 passed in the run below. Goldens on jfk, mm1 and the first minute of a13 |
 | Qwen3-ASR end to end through the shared pipeline (stream with and without VAD, `Whole`, language reported) | model-gated: `crates/purr-engine-transcribe/tests/real_model_qwen3.rs`, 7 goldens in `tests/golden/` | **Verified**, 8 passed in the run below (0.6B Q8_0). Text without times: the goldens carry no words, the language is `en`. The decoder's limit is `UpTo(_)` |
 | A window the engine stopped early on (`Completion::Truncated` / `Repeating`) | unit: scripted decoders in `purr-core/src/pipeline/tests.rs` and `pipeline/retry.rs`; `purr-engine-transcribe/src/error.rs` | **Verified** as unit tests. The path is proven with scripted engines only: no real Qwen3-ASR run on the samples tried so far truncated or looped |
@@ -61,12 +61,12 @@ The whole group: 47 passed in 215 s on the 7950X, three runs in a row (`cargo ne
 'test(/real_model_/) | binary_id(/real_model_/)'`, 32 tests at a time). After a change to the
 pipeline, the goldens are the regression gate: a mismatch prints a diff, and `PURR_GOLDEN=update`
 records them again once the change is understood. A golden holds exactly what one engine on this
-machine's CPU build produced; the Whisper goldens were identical at 1 and at 8 threads, so the
-thread count is not part of a golden.
+machine's CPU build produced; the Whisper goldens were identical at 1 and at 8 threads (before the
+re-recording of the a13 stream goldens), so the thread count is not part of a golden.
 
-The live stream test compares the words of the final text, not its chunks: with tentative text on
-and one thread, the windows end elsewhere than with it off (a comma moves, a chunk splits), because
-where a window ends depends on how much audio had arrived when the decoder came to it.
+The live stream test compares the final chunks exactly with and without tentative text: a tentative
+decode must not change what is committed, which holds because a Whisper decode never runs on a state
+an earlier decode used (`a_window_decodes_the_same_after_other_decodes`).
 
 With cargo 1.100's build layout the test binaries of `purr-engine-transcribe` are written under
 `target/debug/build/purr-engine-transcribe/<hash>/out/`, but `transcribe-cpp-sys` stages the DLLs

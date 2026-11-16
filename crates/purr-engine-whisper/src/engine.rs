@@ -67,7 +67,12 @@ impl Engine for WhisperEngine {
             debug!("whisper state creation failed: {error}");
             AttemptFailure::StateInit
         })?;
-        Ok(Box::new(WhisperDecoder::new(state, eot, spec.threads)))
+        Ok(Box::new(WhisperDecoder::new(
+            context,
+            state,
+            eot,
+            spec.threads,
+        )))
     }
 
     fn open_speech_detector(&self, model: &Path) -> Result<Box<dyn SpeechDetector>, OpenError> {

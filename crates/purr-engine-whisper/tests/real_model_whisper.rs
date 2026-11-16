@@ -5,12 +5,22 @@ mod common;
 
 use common::WhisperModel;
 use futures::StreamExt;
-use purr_common::{model::engine::EngineId, progress::ProgressPhase};
+use purr_common::{
+    devices::DeviceOrder,
+    language::tag::LanguageTag,
+    model::{engine::EngineId, profile::Timing},
+    progress::ProgressPhase,
+};
 use purr_core::{
     AudioStream,
     audio::AudioProcessor,
     config::{ModelRef, RunConfig},
-    engine::Engine,
+    engine::{
+        Engine,
+        cancel::CancelToken,
+        decoder::{DecodeRequest, LanguageRequest},
+        open::open_on_best_device,
+    },
     pipeline::{
         events::{StreamEvent, StreamingChunk, Transcription},
         run::{Input, transcribe},
@@ -148,5 +158,33 @@ async fn progress_follows_the_audio_consumed() -> TestResult {
     assert_eq!(last.frame.phase, ProgressPhase::Transcribing);
     assert_eq!(last.frame.transcribed_to, last.received);
     assert!((last.received - 24.0).abs() < 0.1, "{}", last.received);
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_window_decodes_the_same_after_other_decodes() -> TestResult {
+    let model = common::model_path(WhisperModel::Base).await?;
+    let audio = AudioProcessor::load_audio(
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../samples/jfk.wav"),
+    )
+    .await?;
+    let mut decoder =
+        open_on_best_device(&WhisperEngine, &model, &DeviceOrder::cpu_only(), 1)?.decoder;
+    let language = LanguageRequest::Use(LanguageTag::english());
+    let cancel = CancelToken::new();
+    let mut decode = |pcm: &[f32]| {
+        decoder.decode(DecodeRequest {
+            pcm,
+            language: &language,
+            timing: Timing::Segment,
+            cancel: &cancel,
+        })
+    };
+
+    let first = decode(&audio.samples)?;
+    for len in [32_000, 88_000, 160_000, audio.samples.len()] {
+        decode(&audio.samples[..len])?;
+        assert_eq!(decode(&audio.samples)?, first);
+    }
     Ok(())
 }
