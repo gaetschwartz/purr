@@ -236,22 +236,48 @@ async fn test_audio_processor_load_valid_wav() {
 
 #[tokio::test]
 async fn test_audio_processor_stream_nonexistent() {
-    use futures::StreamExt;
+    let mut stream = AudioProcessor::stream_file("nonexistent_file.wav")
+        .await
+        .unwrap();
 
-    let result = AudioProcessor::stream_file("nonexistent_file.wav").await;
-
-    // Stream creation might succeed, but the first chunk should contain an error
-    if let Ok(mut stream) = result {
-        // Try to get the first chunk - this should fail
-        if let Some(chunk_result) = stream.next().await {
-            assert!(
-                chunk_result.is_err(),
-                "Should get an error for nonexistent file"
-            );
-        }
-    } else {
-        // Also acceptable - immediate failure
+    match stream.next().await {
+        Some(Err(Error::AudioProcessing {
+            source: AudioProcessingError::ReadFailed { file, .. },
+        })) => assert_eq!(file, std::path::Path::new("nonexistent_file.wav")),
+        other => panic!("Expected a ReadFailed error, got: {other:?}"),
     }
+    assert!(stream.next().await.is_none());
+}
+
+#[tokio::test]
+async fn test_audio_processor_stream_text_file_without_audio() {
+    let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml");
+
+    let mut stream = AudioProcessor::stream_file(&manifest).await.unwrap();
+
+    match stream.next().await {
+        Some(Err(Error::AudioProcessing {
+            source: AudioProcessingError::NoAudioStream,
+        })) => {}
+        other => panic!("Expected a NoAudioStream error, got: {other:?}"),
+    }
+    assert!(stream.next().await.is_none());
+}
+
+#[tokio::test]
+async fn test_audio_processor_stream_non_audio_file() {
+    let temp_file = NamedTempFile::new().unwrap();
+    fs::write(temp_file.path(), b"not an audio file")
+        .await
+        .unwrap();
+
+    let mut stream = AudioProcessor::stream_file(temp_file.path()).await.unwrap();
+
+    match stream.next().await {
+        Some(Err(Error::OpenAudioInput { path, .. })) => assert_eq!(path, temp_file.path()),
+        other => panic!("Expected an OpenAudioInput error, got: {other:?}"),
+    }
+    assert!(stream.next().await.is_none());
 }
 
 #[tokio::test]

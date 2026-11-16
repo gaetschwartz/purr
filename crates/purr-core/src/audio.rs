@@ -11,7 +11,7 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 use tokio::sync::mpsc;
 use tokio::task;
-use tracing::warn;
+use tracing::{debug, warn};
 use url::Url;
 
 /// Audio data structure
@@ -153,13 +153,19 @@ impl AudioProcessor {
                 Ok(p) => p,
             };
 
-            if let Err(e) = processor.stream_audio(&path, tx) {
-                // Error will already be sent through channel if possible
-                warn!("Audio streaming failed: {}", e);
+            if let Err(error) = processor.stream_audio(&path, &tx) {
+                Self::send_failure(&tx, error);
             }
         });
 
         Ok(AudioStream::new(rx))
+    }
+
+    /// Ends the stream with `error`, so whoever reads the stream sees why it stopped.
+    fn send_failure(tx: &mpsc::UnboundedSender<Result<AudioChunk>>, error: Error) {
+        if tx.send(Err(error)).is_err() {
+            debug!("Audio stream dropped, failure not delivered");
+        }
     }
 
     /// Synchronous audio loading implementation
@@ -193,20 +199,13 @@ impl AudioProcessor {
     fn stream_audio(
         &mut self,
         path: &Path,
-        tx: mpsc::UnboundedSender<Result<AudioChunk>>,
+        tx: &mpsc::UnboundedSender<Result<AudioChunk>>,
     ) -> Result<()> {
-        // Validate file exists
         if !path.exists() {
-            let error_msg = format!("Audio file not found: {}", path.display());
-            let error = Error::from(AudioProcessingError::processing_failed(
-                "file validation",
-                std::io::Error::new(std::io::ErrorKind::NotFound, error_msg.clone()),
-            ));
-            let _ = tx.send(Err(Error::from(AudioProcessingError::processing_failed(
-                "file validation",
-                std::io::Error::new(std::io::ErrorKind::NotFound, error_msg),
-            ))));
-            return Err(error);
+            return Err(Error::from(AudioProcessingError::ReadFailed {
+                file: path.to_path_buf(),
+                source: std::io::Error::new(std::io::ErrorKind::NotFound, "File not found"),
+            }));
         }
 
         // Open input file and convert to AsyncCustomInput
@@ -327,9 +326,8 @@ impl AudioProcessor {
                 Ok(input) => input,
             };
 
-            if let Err(e) = processor.stream_audio_from_input(custom_input, tx) {
-                // Error will already be sent through channel if possible
-                warn!("URL audio streaming failed: {}", e);
+            if let Err(error) = processor.stream_audio_from_input(custom_input, &tx) {
+                Self::send_failure(&tx, error);
             }
         });
 
@@ -404,13 +402,7 @@ impl AudioProcessor {
 
         // Check if we got any audio data
         if samples.is_empty() {
-            return Err(Error::from(AudioProcessingError::processing_failed(
-                "audio extraction",
-                std::io::Error::new(
-                    std::io::ErrorKind::InvalidData,
-                    "No audio data could be extracted - the input may be corrupted or unsupported",
-                ),
-            )));
+            return Err(Error::from(AudioProcessingError::NoAudioData));
         }
 
         let duration = samples.len() as f32 / 16000.0;
@@ -447,7 +439,7 @@ impl AudioProcessor {
     fn stream_audio_from_input(
         &mut self,
         input: crate::input::AsyncCustomInput,
-        tx: mpsc::UnboundedSender<Result<AudioChunk>>,
+        tx: &mpsc::UnboundedSender<Result<AudioChunk>>,
     ) -> Result<()> {
         let mut ictx = input.into_input();
 
@@ -488,7 +480,7 @@ impl AudioProcessor {
                                 &mut output_samples,
                                 &mut chunk_index,
                                 &mut total_processed_time,
-                                &tx,
+                                tx,
                             ) {
                                 return Ok(());
                             }
@@ -498,15 +490,11 @@ impl AudioProcessor {
                         warn!("Skipping invalid chunk at stream index {}", stream_index);
                         continue;
                     }
-                    Err(e) => {
-                        let whisper_error = Error::DecodeAudioPacket {
+                    Err(source) => {
+                        return Err(Error::DecodeAudioPacket {
                             stream_index,
-                            source: e,
-                        };
-                        let _ = tx.send(Err(Error::NetworkError {
-                            message: format!("Failed to decode audio packet: {e}"),
-                        }));
-                        return Err(whisper_error);
+                            source,
+                        });
                     }
                 }
             }
@@ -522,7 +510,7 @@ impl AudioProcessor {
                         &mut output_samples,
                         &mut chunk_index,
                         &mut total_processed_time,
-                        &tx,
+                        tx,
                     ) {
                         return Ok(());
                     }
@@ -538,7 +526,7 @@ impl AudioProcessor {
             &mut output_samples,
             &mut chunk_index,
             &mut total_processed_time,
-            &tx,
+            tx,
         ) {
             return Ok(());
         }
@@ -549,22 +537,7 @@ impl AudioProcessor {
                 AudioChunk::new(output_samples, chunk_index, total_processed_time, true);
             let _ = tx.send(Ok(final_chunk));
         } else if chunk_index == 0 {
-            // No chunks were sent, send an error
-            let error = Error::from(AudioProcessingError::processing_failed(
-                "audio processing",
-                std::io::Error::new(
-                    std::io::ErrorKind::InvalidData,
-                    "No audio data could be processed from URL",
-                ),
-            ));
-            let _ = tx.send(Err(error));
-            return Err(Error::from(AudioProcessingError::processing_failed(
-                "audio processing",
-                std::io::Error::new(
-                    std::io::ErrorKind::InvalidData,
-                    "No audio data could be processed from URL",
-                ),
-            )));
+            return Err(Error::from(AudioProcessingError::NoAudioData));
         }
 
         Ok(())

@@ -309,6 +309,12 @@ pub enum AudioProcessingError {
     NoAudioStream,
 
     #[oopsie(
+        "No audio could be decoded from the input, it may be corrupted or unsupported",
+        code = "whisper::audio::no_data"
+    )]
+    NoAudioData,
+
+    #[oopsie(
         "Audio format conversion failed",
         code = "whisper::audio::format_conversion"
     )]
