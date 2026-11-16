@@ -11,7 +11,7 @@ use purr_core::{
     engine::Engine,
     pipeline::{
         events::StreamEvent,
-        result::collect,
+        result::{SyncTranscriptionResult, collect},
         run::{Input, transcribe},
     },
 };
@@ -220,8 +220,12 @@ async fn stream_run(model: &Path, config: RunConfig, samples: &[f32]) -> TestRes
     Ok(Value::Array(chunks))
 }
 
-async fn whole_run(model: &Path, config: RunConfig, samples: &[f32]) -> TestResult<Value> {
-    let result = collect(
+pub async fn whole_result(
+    model: &Path,
+    config: RunConfig,
+    samples: &[f32],
+) -> TestResult<SyncTranscriptionResult> {
+    Ok(collect(
         transcribe(
             Input::Audio(AudioStream::from_samples(samples)),
             config.with_windowing(Windowing::Whole),
@@ -230,7 +234,11 @@ async fn whole_run(model: &Path, config: RunConfig, samples: &[f32]) -> TestResu
         )
         .await?,
     )
-    .await?;
+    .await?)
+}
+
+async fn whole_run(model: &Path, config: RunConfig, samples: &[f32]) -> TestResult<Value> {
+    let result = whole_result(model, config, samples).await?;
     Ok(json!({
         "text": result.text,
         "segments": result.segments.iter().map(|segment| Ok(json!({
@@ -243,6 +251,26 @@ async fn whole_run(model: &Path, config: RunConfig, samples: &[f32]) -> TestResu
         "segment_count": result.stats.segment_count,
         "word_count": result.stats.word_count,
     }))
+}
+
+fn golden_path(model: TranscribeModel, sample: Sample, mode: Mode) -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/golden")
+        .join(format!(
+            "{}-{}-{}.json",
+            model.slug(),
+            sample.slug(),
+            mode.slug()
+        ))
+}
+
+/// The text of the golden recorded for the whole-source run of `sample`.
+pub fn golden_whole_text(model: TranscribeModel, sample: Sample) -> TestResult<String> {
+    let path = golden_path(model, sample, Mode::Whole);
+    let golden = std::fs::read_to_string(&path).map_err(|source| MissingGolden { path, source })?;
+    let golden: Value = serde_json::from_str(&golden)?;
+    let text = golden["text"].as_str().ok_or("the golden has no text")?;
+    Ok(text.to_owned())
 }
 
 /// Runs the pipeline over `sample` and compares what it produces with the recorded golden;
@@ -262,14 +290,7 @@ pub async fn assert_golden(model: TranscribeModel, sample: Sample, mode: Mode) -
         Mode::Whole => whole_run(&model_path, config, &samples).await?,
     };
 
-    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/golden")
-        .join(format!(
-            "{}-{}-{}.json",
-            model.slug(),
-            sample.slug(),
-            mode.slug()
-        ));
+    let path = golden_path(model, sample, mode);
     if std::env::var("PURR_GOLDEN").is_ok_and(|mode| mode == "update") {
         std::fs::write(&path, serde_json::to_string_pretty(&recorded)? + "\n")?;
         return Ok(());

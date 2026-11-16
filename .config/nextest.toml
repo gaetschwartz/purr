@@ -36,3 +36,7 @@ setup = ["build-purr", "download-parakeet"]
 [[profile.all.scripts]]
 filter = "binary_id(/real_model_qwen3/)"
 setup = ["build-purr", "download-qwen3"]
+
+[[profile.all.scripts]]
+filter = "binary_id(/real_model_gpu/)"
+setup = ["build-purr", "download-parakeet", "download-qwen3"]
