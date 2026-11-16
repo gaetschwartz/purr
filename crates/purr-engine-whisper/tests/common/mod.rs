@@ -49,33 +49,6 @@ impl fmt::Debug for MissingModel {
 
 impl std::error::Error for MissingModel {}
 
-pub struct MissingGolden {
-    pub path: PathBuf,
-    pub source: std::io::Error,
-}
-
-impl fmt::Display for MissingGolden {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "cannot read the golden {}: record it with PURR_GOLDEN=update",
-            self.path.display()
-        )
-    }
-}
-
-impl fmt::Debug for MissingGolden {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Display::fmt(self, f)
-    }
-}
-
-impl std::error::Error for MissingGolden {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        Some(&self.source)
-    }
-}
-
 pub type SetupResult<T> = Result<T, Box<dyn std::error::Error>>;
 
 pub fn run_config() -> RunConfig {

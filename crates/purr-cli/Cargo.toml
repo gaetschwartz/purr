@@ -49,6 +49,7 @@ rstest = "0.28"
 pretty_assertions = "1.4.1"
 strum = { version = "0.28.0", features = ["derive"] }
 parking_lot = "0.13.0"
+purr-golden = { path = "../purr-golden" }
 
 [features]
 cuda = ["purr-engine-whisper/cuda", "purr-engine-transcribe?/cuda"]

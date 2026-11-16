@@ -5558,6 +5558,7 @@ dependencies = [
  "purr-delayload",
  "purr-engine-transcribe",
  "purr-engine-whisper",
+ "purr-golden",
  "rstest",
  "serde",
  "serde_json",
@@ -5649,6 +5650,7 @@ dependencies = [
  "purr-common",
  "purr-core",
  "purr-delayload",
+ "purr-golden",
  "rstest",
  "serde_json",
  "tokio",
@@ -5665,11 +5667,21 @@ dependencies = [
  "pretty_assertions",
  "purr-common",
  "purr-core",
+ "purr-golden",
  "rstest",
  "serde_json",
  "tokio",
  "tracing",
  "whisper-rs",
+]
+
+[[package]]
+name = "purr-golden"
+version = "0.1.0"
+dependencies = [
+ "pretty_assertions",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

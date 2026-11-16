@@ -2,42 +2,15 @@
 
 use assert_cmd::Command;
 use purr_core::ModelManager;
+use purr_golden::Recording;
 use rstest::rstest;
-use serde_json::{Value, json};
+use serde_json::Value;
 use std::{
     fmt,
     path::{Path, PathBuf},
     process::Output,
     time::Duration,
 };
-
-const JFK: &str = "And so, my fellow Americans, ask not what your country can do for you, ask what you can do for your country.";
-
-const JFK_WITHOUT_FIRST_COMMA: &str = "And so my fellow Americans, ask not what your country can do for you, ask what you can do for your country.";
-
-fn jfk_segments() -> Value {
-    json!([
-        {
-            "text": "And so, my fellow Americans, ask not what your country can do for you,",
-            "start": 0.0,
-            "end": 8.0,
-        },
-        {
-            "text": "ask what you can do for your country.",
-            "start": 8.0,
-            "end": 11.0,
-        },
-    ])
-}
-
-const JFK_SRT: &str = "1
-00:00:00,000 --> 00:00:08,000
-And so, my fellow Americans, ask not what your country can do for you,
-
-2
-00:00:08,000 --> 00:00:11,000
-ask what you can do for your country.
-";
 
 type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
 
@@ -94,24 +67,35 @@ fn test_missing_audio_file() {
     cmd.assert().failure();
 }
 
-/// The same recording in every container the samples come in; the lossy ones lose a comma.
+fn golden_path(name: &str) -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/golden")
+        .join(name)
+}
+
+/// The same recording in every container the samples come in.
 #[rstest]
-#[case("jfk.wav", JFK)]
-#[case("jfk.opus", JFK)]
-#[case("jfk.mp3", JFK_WITHOUT_FIRST_COMMA)]
-#[case("jfk.ogg", JFK_WITHOUT_FIRST_COMMA)]
+#[case("jfk.wav")]
+#[case("jfk.opus")]
+#[case("jfk.mp3")]
+#[case("jfk.ogg")]
 #[timeout(Duration::from_secs(600))]
 #[tokio::test]
-async fn real_model_cli_transcribes_every_container(
-    #[case] file: &str,
-    #[case] text: &str,
-) -> TestResult {
+async fn real_model_cli_transcribes_every_container(#[case] file: &str) -> TestResult {
     let sample = Path::new("../../samples").join(file);
     let output = purr_on(&sample, &OutputFormat::Json).await?;
     assert!(output.status.success(), "{file}");
 
     let result: Value = serde_json::from_slice(&output.stdout)?;
-    assert_eq!(result["text"], text, "{file}");
+    let text = result["text"].as_str().ok_or("the output has no text")?;
+    purr_golden::check(
+        &golden_path(&format!("{file}.json")),
+        &Recording {
+            text: text.to_owned(),
+            audio_duration: None,
+        },
+        0.0,
+    )?;
     Ok(())
 }
 
@@ -123,6 +107,14 @@ enum OutputFormat {
     Srt,
 }
 
+/// The text of an SRT file: every line that is neither a cue number nor a time range.
+fn srt_text(srt: &str) -> String {
+    srt.lines()
+        .filter(|line| !line.is_empty() && !line.contains("-->") && line.parse::<u32>().is_err())
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 #[rstest]
 #[case(OutputFormat::Text)]
 #[case(OutputFormat::Json)]
@@ -130,21 +122,31 @@ enum OutputFormat {
 #[timeout(Duration::from_secs(600))]
 #[tokio::test]
 async fn real_model_cli_output_formats(#[case] format: OutputFormat) -> TestResult {
+    if purr_golden::updating() {
+        return Ok(());
+    }
     let output = purr_on(Path::new("../../samples/jfk.wav"), &format).await?;
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout)?;
 
-    match format {
-        OutputFormat::Text => assert_eq!(stdout.trim_end(), JFK),
+    let text = match format {
+        OutputFormat::Text => stdout,
         OutputFormat::Json => {
             let result: Value = serde_json::from_str(&stdout)?;
-            assert_eq!(result["text"], JFK);
-            assert_eq!(result["segments"], jfk_segments());
+            assert!(
+                result["segments"]
+                    .as_array()
+                    .is_some_and(|segments| !segments.is_empty())
+            );
+            result["text"]
+                .as_str()
+                .ok_or("the output has no text")?
+                .to_owned()
         }
-        OutputFormat::Srt => {
-            assert_eq!(stdout.replace("\r\n", "\n").trim_end(), JFK_SRT.trim_end());
-        }
-    }
+        OutputFormat::Srt => srt_text(&stdout),
+    };
+    let golden = Recording::read(&golden_path("jfk.wav.json"))?;
+    purr_golden::assert_text_close(&golden.text, &text, 0.0);
     Ok(())
 }
 

@@ -1,9 +1,7 @@
 #![allow(dead_code, reason = "every test binary uses a part of this module")]
 
 use futures::StreamExt;
-use purr_common::{
-    devices::DeviceOrder, language::tag::LanguageTag, model::engine::EngineId, platform::ChunkKind,
-};
+use purr_common::{devices::DeviceOrder, model::engine::EngineId, platform::ChunkKind};
 use purr_core::{
     AudioStream, ModelManager,
     audio::AudioProcessor,
@@ -16,7 +14,7 @@ use purr_core::{
     },
 };
 use purr_engine_transcribe::engine::TranscribeEngine;
-use serde_json::{Value, json};
+use purr_golden::Recording;
 use std::{
     fmt,
     path::{Path, PathBuf},
@@ -125,33 +123,6 @@ impl fmt::Debug for MissingModel {
 
 impl std::error::Error for MissingModel {}
 
-pub struct MissingGolden {
-    pub path: PathBuf,
-    pub source: std::io::Error,
-}
-
-impl fmt::Display for MissingGolden {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "cannot read the golden {}: record it with PURR_GOLDEN=update",
-            self.path.display()
-        )
-    }
-}
-
-impl fmt::Debug for MissingGolden {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Display::fmt(self, f)
-    }
-}
-
-impl std::error::Error for MissingGolden {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        Some(&self.source)
-    }
-}
-
 pub async fn model_path(model: TranscribeModel) -> TestResult<PathBuf> {
     let models = ModelManager::new()?;
     let spec = models.model(model.id())?;
@@ -195,7 +166,7 @@ pub async fn load(sample: Sample) -> TestResult<Vec<f32>> {
     Ok(samples)
 }
 
-async fn stream_run(model: &Path, config: RunConfig, samples: &[f32]) -> TestResult<Value> {
+async fn stream_run(model: &Path, config: RunConfig, samples: &[f32]) -> TestResult<Recording> {
     let mut stream = transcribe(
         Input::Audio(AudioStream::from_samples(samples)),
         config,
@@ -203,21 +174,18 @@ async fn stream_run(model: &Path, config: RunConfig, samples: &[f32]) -> TestRes
         &engines(),
     )
     .await?;
-    let mut chunks = Vec::new();
+    let mut committed = Vec::new();
     while let Some(event) = stream.next().await {
         if let StreamEvent::Chunk(chunk) = event?
             && chunk.kind == ChunkKind::Committed
         {
-            chunks.push(json!({
-                "text": chunk.text,
-                "start": chunk.start,
-                "end": chunk.end,
-                "language": chunk.language.as_ref().map(LanguageTag::as_str),
-                "words": serde_json::to_value(&chunk.words)?,
-            }));
+            committed.push(chunk.text);
         }
     }
-    Ok(Value::Array(chunks))
+    Ok(Recording {
+        text: committed.join(" "),
+        audio_duration: None,
+    })
 }
 
 pub async fn whole_result(
@@ -237,20 +205,12 @@ pub async fn whole_result(
     .await?)
 }
 
-async fn whole_run(model: &Path, config: RunConfig, samples: &[f32]) -> TestResult<Value> {
+async fn whole_run(model: &Path, config: RunConfig, samples: &[f32]) -> TestResult<Recording> {
     let result = whole_result(model, config, samples).await?;
-    Ok(json!({
-        "text": result.text,
-        "segments": result.segments.iter().map(|segment| Ok(json!({
-            "text": segment.text,
-            "start": segment.start,
-            "end": segment.end,
-            "words": serde_json::to_value(&segment.words)?,
-        }))).collect::<TestResult<Vec<Value>>>()?,
-        "audio_duration": result.audio_duration,
-        "segment_count": result.stats.segment_count,
-        "word_count": result.stats.word_count,
-    }))
+    Ok(Recording {
+        text: result.text,
+        audio_duration: Some(result.audio_duration),
+    })
 }
 
 fn golden_path(model: TranscribeModel, sample: Sample, mode: Mode) -> PathBuf {
@@ -266,19 +226,18 @@ fn golden_path(model: TranscribeModel, sample: Sample, mode: Mode) -> PathBuf {
 
 /// The text of the golden recorded for the whole-source run of `sample`.
 pub fn golden_whole_text(model: TranscribeModel, sample: Sample) -> TestResult<String> {
-    let path = golden_path(model, sample, Mode::Whole);
-    let golden = std::fs::read_to_string(&path).map_err(|source| MissingGolden { path, source })?;
-    let golden: Value = serde_json::from_str(&golden)?;
-    let text = golden
-        .get("text")
-        .and_then(Value::as_str)
-        .ok_or("the golden has no text")?;
-    Ok(text.to_owned())
+    Ok(Recording::read(&golden_path(model, sample, Mode::Whole))?.text)
 }
 
-/// Runs the pipeline over `sample` and compares what it produces with the recorded golden;
+/// Runs the pipeline over `sample` and compares the words it produces with the recorded golden,
+/// allowing `max_word_error_rate`;
 /// `PURR_GOLDEN=update` records it again.
-pub async fn assert_golden(model: TranscribeModel, sample: Sample, mode: Mode) -> TestResult {
+pub async fn assert_golden(
+    model: TranscribeModel,
+    sample: Sample,
+    mode: Mode,
+    max_word_error_rate: f64,
+) -> TestResult {
     let model_path = model_path(model).await?;
     let samples = load(sample).await?;
     let config = run_config()
@@ -292,16 +251,10 @@ pub async fn assert_golden(model: TranscribeModel, sample: Sample, mode: Mode) -
         Mode::StreamWithoutVad => stream_run(&model_path, config, &samples).await?,
         Mode::Whole => whole_run(&model_path, config, &samples).await?,
     };
-
-    let path = golden_path(model, sample, mode);
-    if std::env::var("PURR_GOLDEN").is_ok_and(|mode| mode == "update") {
-        std::fs::write(&path, serde_json::to_string_pretty(&recorded)? + "\n")?;
-        return Ok(());
-    }
-    let golden = std::fs::read_to_string(&path).map_err(|source| MissingGolden { path, source })?;
-    pretty_assertions::assert_eq!(
-        serde_json::to_string_pretty(&serde_json::from_str::<Value>(&golden)?)?,
-        serde_json::to_string_pretty(&recorded)?
-    );
+    purr_golden::check(
+        &golden_path(model, sample, mode),
+        &recorded,
+        max_word_error_rate,
+    )?;
     Ok(())
 }

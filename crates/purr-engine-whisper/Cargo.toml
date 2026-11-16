@@ -17,6 +17,7 @@ whisper-rs = { version = "0.16.0", default-features = false, features = ["tracin
 [dev-dependencies]
 futures = "0.3"
 pretty_assertions = "1.4.1"
+purr-golden = { path = "../purr-golden" }
 rstest = "0.28"
 serde_json = "1.0"
 tokio = { version = "1.47", features = ["full"] }

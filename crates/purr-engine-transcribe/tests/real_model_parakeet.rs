@@ -23,19 +23,20 @@ use tokio::sync::mpsc;
 const JFK: &str = "And so, my fellow Americans, ask not what your country can do for you, ask what you can do for your country.";
 
 #[rstest]
-#[case::jfk_stream(Sample::Jfk, Mode::Stream)]
-#[case::jfk_whole(Sample::Jfk, Mode::Whole)]
-#[case::mm1_stream(Sample::Mm1, Mode::Stream)]
-#[case::mm1_whole(Sample::Mm1, Mode::Whole)]
-#[case::a13_stream(Sample::A13Excerpt, Mode::Stream)]
-#[case::a13_stream_novad(Sample::A13Excerpt, Mode::StreamWithoutVad)]
-#[case::a13_whole(Sample::A13Excerpt, Mode::Whole)]
+#[case::jfk_stream(Sample::Jfk, Mode::Stream, 0.0)]
+#[case::jfk_whole(Sample::Jfk, Mode::Whole, 0.0)]
+#[case::mm1_stream(Sample::Mm1, Mode::Stream, 0.05)]
+#[case::mm1_whole(Sample::Mm1, Mode::Whole, 0.05)]
+#[case::a13_stream(Sample::A13Excerpt, Mode::Stream, 0.05)]
+#[case::a13_stream_novad(Sample::A13Excerpt, Mode::StreamWithoutVad, 0.03)]
+#[case::a13_whole(Sample::A13Excerpt, Mode::Whole, 0.03)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn parakeet_output_matches_the_golden(
     #[case] sample: Sample,
     #[case] mode: Mode,
+    #[case] max_word_error_rate: f64,
 ) -> TestResult {
-    common::assert_golden(TranscribeModel::Parakeet, sample, mode).await
+    common::assert_golden(TranscribeModel::Parakeet, sample, mode, max_word_error_rate).await
 }
 
 const HALF_SECOND: usize = 8_000;

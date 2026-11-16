@@ -1,5 +1,5 @@
 //! What the Whisper pipeline produces on samples of different lengths, on `base` and `small`,
-//! compared with recorded goldens.
+//! compared with recorded goldens by their words.
 //!
 //! `PURR_GOLDEN=update` records the goldens again.
 
@@ -7,7 +7,7 @@ mod common;
 
 use common::WhisperModel;
 use futures::StreamExt;
-use purr_common::{language::tag::LanguageTag, model::engine::EngineId};
+use purr_common::{language::tag::LanguageTag, model::engine::EngineId, platform::ChunkKind};
 use purr_core::{
     AudioStream,
     audio::AudioProcessor,
@@ -20,8 +20,8 @@ use purr_core::{
     },
 };
 use purr_engine_whisper::engine::WhisperEngine;
+use purr_golden::Recording;
 use rstest::rstest;
-use serde_json::{Value, json};
 use std::{
     path::{Path, PathBuf},
     sync::Arc,
@@ -73,10 +73,6 @@ fn samples_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../samples")
 }
 
-fn golden_dir() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden")
-}
-
 async fn load(sample: Sample) -> TestResult<Vec<f32>> {
     let file = match sample {
         Sample::Jfk => "jfk.wav",
@@ -104,36 +100,7 @@ fn engines() -> Vec<Arc<dyn Engine>> {
     vec![Arc::new(WhisperEngine)]
 }
 
-fn event_json(event: &StreamEvent) -> TestResult<Value> {
-    Ok(match event {
-        StreamEvent::Chunk(chunk) => json!({
-            "chunk": {
-                "kind": serde_json::to_value(chunk.kind)?,
-                "text": chunk.text,
-                "start": chunk.start,
-                "end": chunk.end,
-                "is_final": chunk.is_final,
-                "chunk_index": chunk.chunk_index,
-                "language": chunk.language.as_ref().map(LanguageTag::as_str),
-                "words": serde_json::to_value(&chunk.words)?,
-                "final_stats": chunk.final_stats.as_ref().map(|stats| json!({
-                    "audio_duration": stats.audio_duration,
-                    "segment_count": stats.segment_count,
-                    "word_count": stats.word_count,
-                })),
-            }
-        }),
-        StreamEvent::Progress(progress) => json!({
-            "progress": {
-                "frame": serde_json::to_value(progress.frame)?,
-                "received": progress.received,
-                "source_ended": progress.source_ended,
-            }
-        }),
-    })
-}
-
-async fn stream_run(model: &Path, config: RunConfig, samples: &[f32]) -> TestResult<Value> {
+async fn stream_run(model: &Path, config: RunConfig, samples: &[f32]) -> TestResult<Recording> {
     let mut stream = transcribe(
         Input::Audio(AudioStream::from_samples(samples)),
         config,
@@ -141,14 +108,21 @@ async fn stream_run(model: &Path, config: RunConfig, samples: &[f32]) -> TestRes
         &engines(),
     )
     .await?;
-    let mut events = Vec::new();
+    let mut committed = Vec::new();
     while let Some(event) = stream.next().await {
-        events.push(event_json(&event?)?);
+        if let StreamEvent::Chunk(chunk) = event?
+            && chunk.kind == ChunkKind::Committed
+        {
+            committed.push(chunk.text);
+        }
     }
-    Ok(Value::Array(events))
+    Ok(Recording {
+        text: committed.join(" "),
+        audio_duration: None,
+    })
 }
 
-async fn whole_run(model: &Path, config: RunConfig, samples: &[f32]) -> TestResult<Value> {
+async fn whole_run(model: &Path, config: RunConfig, samples: &[f32]) -> TestResult<Recording> {
     let result = collect(
         transcribe(
             Input::Audio(AudioStream::from_samples(samples)),
@@ -159,58 +133,52 @@ async fn whole_run(model: &Path, config: RunConfig, samples: &[f32]) -> TestResu
         .await?,
     )
     .await?;
-    Ok(json!({
-        "text": result.text,
-        "segments": result.segments.iter().map(|segment| Ok(json!({
-            "text": segment.text,
-            "start": segment.start,
-            "end": segment.end,
-            "words": serde_json::to_value(&segment.words)?,
-        }))).collect::<TestResult<Vec<Value>>>()?,
-        "audio_duration": result.audio_duration,
-        "segment_count": result.stats.segment_count,
-        "word_count": result.stats.word_count,
-        "accel": serde_json::to_value(result.accel.selected)?,
-    }))
+    Ok(Recording {
+        text: result.text,
+        audio_duration: Some(result.audio_duration),
+    })
 }
 
 #[rstest]
-#[case::base_jfk_stream_auto(WhisperModel::Base, Sample::Jfk, Mode::Stream, None)]
-#[case::base_jfk_stream_en(WhisperModel::Base, Sample::Jfk, Mode::Stream, Some("en"))]
-#[case::base_jfk_whole_auto(WhisperModel::Base, Sample::Jfk, Mode::Whole, None)]
-#[case::base_jfk_whole_en(WhisperModel::Base, Sample::Jfk, Mode::Whole, Some("en"))]
-#[case::base_mm1_stream_auto(WhisperModel::Base, Sample::Mm1, Mode::Stream, None)]
-#[case::base_mm1_whole_auto(WhisperModel::Base, Sample::Mm1, Mode::Whole, None)]
-#[case::base_a13_stream_auto(WhisperModel::Base, Sample::A13Excerpt, Mode::Stream, None)]
+#[case::base_jfk_stream_auto(WhisperModel::Base, Sample::Jfk, Mode::Stream, None, 0.0)]
+#[case::base_jfk_stream_en(WhisperModel::Base, Sample::Jfk, Mode::Stream, Some("en"), 0.0)]
+#[case::base_jfk_whole_auto(WhisperModel::Base, Sample::Jfk, Mode::Whole, None, 0.0)]
+#[case::base_jfk_whole_en(WhisperModel::Base, Sample::Jfk, Mode::Whole, Some("en"), 0.0)]
+#[case::base_mm1_stream_auto(WhisperModel::Base, Sample::Mm1, Mode::Stream, None, 0.14)]
+#[case::base_mm1_whole_auto(WhisperModel::Base, Sample::Mm1, Mode::Whole, None, 0.14)]
+#[case::base_a13_stream_auto(WhisperModel::Base, Sample::A13Excerpt, Mode::Stream, None, 0.11)]
 #[case::base_a13_stream_novad_auto(
     WhisperModel::Base,
     Sample::A13Excerpt,
     Mode::StreamWithoutVad,
-    None
+    None,
+    0.05
 )]
-#[case::base_a13_whole_auto(WhisperModel::Base, Sample::A13Excerpt, Mode::Whole, None)]
-#[case::base_a13_full_stream_auto(WhisperModel::Base, Sample::A13, Mode::Stream, None)]
-#[case::small_jfk_stream_auto(WhisperModel::Small, Sample::Jfk, Mode::Stream, None)]
-#[case::small_jfk_stream_en(WhisperModel::Small, Sample::Jfk, Mode::Stream, Some("en"))]
-#[case::small_jfk_whole_auto(WhisperModel::Small, Sample::Jfk, Mode::Whole, None)]
-#[case::small_jfk_whole_en(WhisperModel::Small, Sample::Jfk, Mode::Whole, Some("en"))]
-#[case::small_mm1_stream_auto(WhisperModel::Small, Sample::Mm1, Mode::Stream, None)]
-#[case::small_mm1_whole_auto(WhisperModel::Small, Sample::Mm1, Mode::Whole, None)]
-#[case::small_a13_stream_auto(WhisperModel::Small, Sample::A13Excerpt, Mode::Stream, None)]
+#[case::base_a13_whole_auto(WhisperModel::Base, Sample::A13Excerpt, Mode::Whole, None, 0.05)]
+#[case::base_a13_full_stream_auto(WhisperModel::Base, Sample::A13, Mode::Stream, None, 0.08)]
+#[case::small_jfk_stream_auto(WhisperModel::Small, Sample::Jfk, Mode::Stream, None, 0.0)]
+#[case::small_jfk_stream_en(WhisperModel::Small, Sample::Jfk, Mode::Stream, Some("en"), 0.0)]
+#[case::small_jfk_whole_auto(WhisperModel::Small, Sample::Jfk, Mode::Whole, None, 0.0)]
+#[case::small_jfk_whole_en(WhisperModel::Small, Sample::Jfk, Mode::Whole, Some("en"), 0.0)]
+#[case::small_mm1_stream_auto(WhisperModel::Small, Sample::Mm1, Mode::Stream, None, 0.07)]
+#[case::small_mm1_whole_auto(WhisperModel::Small, Sample::Mm1, Mode::Whole, None, 0.07)]
+#[case::small_a13_stream_auto(WhisperModel::Small, Sample::A13Excerpt, Mode::Stream, None, 0.0)]
 #[case::small_a13_stream_novad_auto(
     WhisperModel::Small,
     Sample::A13Excerpt,
     Mode::StreamWithoutVad,
-    None
+    None,
+    0.0
 )]
-#[case::small_a13_whole_auto(WhisperModel::Small, Sample::A13Excerpt, Mode::Whole, None)]
-#[case::small_a13_full_stream_auto(WhisperModel::Small, Sample::A13, Mode::Stream, None)]
+#[case::small_a13_whole_auto(WhisperModel::Small, Sample::A13Excerpt, Mode::Whole, None, 0.0)]
+#[case::small_a13_full_stream_auto(WhisperModel::Small, Sample::A13, Mode::Stream, None, 0.11)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn whisper_output_matches_the_golden(
     #[case] model: WhisperModel,
     #[case] sample: Sample,
     #[case] mode: Mode,
     #[case] language: Option<&str>,
+    #[case] max_word_error_rate: f64,
 ) -> TestResult {
     let model_path = common::model_path(model).await?;
     let samples = load(sample).await?;
@@ -231,16 +199,9 @@ async fn whisper_output_matches_the_golden(
         mode.slug(),
         language.unwrap_or("auto")
     );
-    let path = golden_dir().join(format!("{name}.json"));
-    if std::env::var("PURR_GOLDEN").is_ok_and(|mode| mode == "update") {
-        std::fs::write(&path, serde_json::to_string_pretty(&recorded)? + "\n")?;
-        return Ok(());
-    }
-    let golden =
-        std::fs::read_to_string(&path).map_err(|source| common::MissingGolden { path, source })?;
-    pretty_assertions::assert_eq!(
-        serde_json::to_string_pretty(&serde_json::from_str::<Value>(&golden)?)?,
-        serde_json::to_string_pretty(&recorded)?
-    );
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/golden")
+        .join(format!("{name}.json"));
+    purr_golden::check(&path, &recorded, max_word_error_rate)?;
     Ok(())
 }

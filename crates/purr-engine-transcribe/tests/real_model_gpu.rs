@@ -25,6 +25,10 @@ async fn the_gpu_gives_the_text_of_the_cpu_golden(#[case] model: TranscribeModel
         "the run was not on a GPU: {:?}",
         result.accel
     );
-    pretty_assertions::assert_eq!(common::golden_whole_text(model, Sample::Jfk)?, result.text);
+    purr_golden::assert_text_close(
+        &common::golden_whole_text(model, Sample::Jfk)?,
+        &result.text,
+        0.0,
+    );
     Ok(())
 }
