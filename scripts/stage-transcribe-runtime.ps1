@@ -5,12 +5,16 @@ param(
     [Parameter(Mandatory, ParameterSetName = 'Directory')]
     [Parameter(Mandatory, ParameterSetName = 'Messages')]
     [Parameter(Mandatory, ParameterSetName = 'BuildDirectory')][string]$Destination,
-    [Parameter(Mandatory, ParameterSetName = 'Check')][string]$Check
+    [Parameter(Mandatory, ParameterSetName = 'Check')][string]$Check,
+    [ValidateSet('vulkan', 'cuda')][string[]]$Backends = @(),
+    [Parameter(ParameterSetName = 'Directory')]
+    [Parameter(ParameterSetName = 'Messages')]
+    [Parameter(ParameterSetName = 'BuildDirectory')][string]$OptionalDestination
 )
 
 $ErrorActionPreference = 'Stop'
 
-$Libraries = @(
+$Core = @(
     'transcribe.dll',
     'ggml.dll',
     'ggml-base.dll',
@@ -25,6 +29,17 @@ $Libraries = @(
     'ggml-cpu-alderlake.dll'
 )
 
+$BackendModules = @{
+    vulkan = @('ggml-vulkan.dll')
+    cuda   = @('ggml-cuda.dll')
+}
+
+# A backend whose runtime libraries are large and not on every machine; with -OptionalDestination its
+# modules go there instead of next to the rest, ready to be packed as a runtime pack.
+$OptionalBackends = @('cuda')
+
+$Libraries = @($Core) + @($Backends | Sort-Object -Unique | ForEach-Object { $BackendModules[$_] })
+
 function Test-Owned([string]$name) {
     return $name -like 'transcribe*.dll' -or $name -like 'ggml*.dll'
 }
@@ -34,10 +49,18 @@ function Fail([string]$message) {
     exit 1
 }
 
+function Test-Optional([string]$name) {
+    foreach ($backend in $OptionalBackends) {
+        if ($BackendModules[$backend] -contains $name) { return $true }
+    }
+    return $false
+}
+
 if ($PSCmdlet.ParameterSetName -ne 'Check') {
     if ($PSCmdlet.ParameterSetName -eq 'Messages') {
-        $outDirs = @(Get-Content -LiteralPath $CargoMessages | Where-Object { $_ -match '"build-script-executed"' -and $_ -match 'transcribe-cpp-sys' } |
-            ForEach-Object { ($_ | ConvertFrom-Json).out_dir } | Select-Object -Unique)
+        $outDirs = @(Get-Content -LiteralPath $CargoMessages | Where-Object { $_ -match '"build-script-executed"' } |
+            ForEach-Object { $_ | ConvertFrom-Json } | Where-Object { $_.package_id -match 'transcribe-cpp-sys' } |
+            ForEach-Object { $_.out_dir } | Select-Object -Unique)
         if ($outDirs.Count -ne 1) { Fail "$CargoMessages names $($outDirs.Count) build script outputs of transcribe-cpp-sys, expected 1" }
         $Source = Join-Path $outDirs[0] 'bin'
     }
@@ -53,19 +76,24 @@ if ($PSCmdlet.ParameterSetName -ne 'Check') {
 
     $unlisted = @(Get-ChildItem -LiteralPath $Source -File -Filter *.dll | Where-Object { (Test-Owned $_.Name) -and ($Libraries -notcontains $_.Name) })
     if ($unlisted.Count -gt 0) {
-        Fail "$Source holds transcribe.cpp libraries that are not in the list of this script: $($unlisted.Name -join ', ')"
+        Fail "$Source holds transcribe.cpp libraries that are not in the list of this script for the backends '$($Backends -join ',')': $($unlisted.Name -join ', ')"
     }
 
-    New-Item -ItemType Directory -Force -Path $Destination | Out-Null
-    foreach ($stale in @(Get-ChildItem -LiteralPath $Destination -File -Filter *.dll | Where-Object { (Test-Owned $_.Name) -and ($Libraries -notcontains $_.Name) })) {
-        Remove-Item -LiteralPath $stale.FullName
+    $destinations = @($Destination)
+    if ($OptionalDestination) { $destinations += $OptionalDestination }
+    foreach ($directory in $destinations) {
+        New-Item -ItemType Directory -Force -Path $directory | Out-Null
+        foreach ($stale in @(Get-ChildItem -LiteralPath $directory -File -Filter *.dll | Where-Object { (Test-Owned $_.Name) })) {
+            Remove-Item -LiteralPath $stale.FullName
+        }
     }
 
     $total = 0
     foreach ($name in $Libraries) {
-        $item = Copy-Item -LiteralPath (Join-Path $Source $name) -Destination $Destination -PassThru
+        $target = if ($OptionalDestination -and (Test-Optional $name)) { $OptionalDestination } else { $Destination }
+        $item = Copy-Item -LiteralPath (Join-Path $Source $name) -Destination $target -PassThru
         $total += $item.Length
-        Write-Host ('{0,-28} {1,12:N0} bytes' -f $name, $item.Length)
+        Write-Host ('{0,-28} {1,12:N0} bytes -> {2}' -f $name, $item.Length, $target)
     }
     Write-Host ('{0,-28} {1,12:N0} bytes in {2} files' -f 'total', $total, $Libraries.Count)
     exit 0
@@ -91,5 +119,5 @@ else {
 $missing = @($Libraries | Where-Object { $present -notcontains $_ })
 $unlisted = @($present | Where-Object { (Test-Owned $_) -and ($Libraries -notcontains $_) })
 if ($missing.Count -gt 0) { Fail "$Check lacks $($missing -join ', ')" }
-if ($unlisted.Count -gt 0) { Fail "$Check holds transcribe.cpp libraries that are not in the list: $($unlisted -join ', ')" }
-Write-Host "$Check holds the $($Libraries.Count) transcribe.cpp libraries and no other"
+if ($unlisted.Count -gt 0) { Fail "$Check holds transcribe.cpp libraries that are not in the list for the backends '$($Backends -join ',')': $($unlisted -join ', ')" }
+Write-Host "$Check holds the $($Libraries.Count) transcribe.cpp libraries of the backends '$($Backends -join ',')' and no other"

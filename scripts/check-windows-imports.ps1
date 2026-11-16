@@ -1,12 +1,11 @@
 param(
     [Parameter(Mandatory)][string]$Exe,
-    [Parameter(Mandatory)][string[]]$Forbidden,
-    [string[]]$ExpectDelayLoaded = @()
+    [string[]]$Forbidden = @(),
+    [string[]]$ExpectDelayLoaded = @(),
+    [switch]$Module
 )
 
 $ErrorActionPreference = 'Stop'
-
-$Forbidden += '^vcruntime140', '^msvcp140', '^concrt140\.dll$', '^vcomp140\.dll$', '^transcribe\.dll$', '^ggml'
 
 $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
 $dumpbin = & $vswhere -latest -find 'VC\Tools\MSVC\**\bin\Hostx64\x64\dumpbin.exe' | Select-Object -First 1
@@ -32,11 +31,33 @@ Write-Host "$Exe imports: $($hard -join ' ')"
 Write-Host "$Exe delay-loads: $($delayed -join ' ')"
 
 $failed = $false
-foreach ($dll in $hard) {
-    foreach ($pattern in $Forbidden) {
-        if ($dll -match $pattern) {
-            Write-Host "::error::$Exe has a hard dependency on $dll"
+
+if ($Module) {
+    # A backend module of transcribe.cpp is opened by ggml, which skips it when one of its imports cannot be
+    # loaded. Its libraries may be the GPU runtime, ggml's own and the Windows ones, nothing else.
+    $allowed = '^ggml-base\.dll$', '^vulkan-1\.dll$', '^nvcuda\.dll$', '^cudart64_\d+\.dll$', '^cublas64_\d+\.dll$', '^cublasLt64_\d+\.dll$',
+        '^vcruntime140', '^msvcp140', '^api-ms-win-'
+    foreach ($dll in $hard) {
+        $system = Test-Path -LiteralPath (Join-Path $env:SystemRoot "System32\$dll")
+        $listed = @($allowed | Where-Object { $dll -match $_ }).Count -gt 0
+        if (-not $system -and -not $listed) {
+            Write-Host "::error::$Exe imports $dll, which is neither a Windows library nor one a ggml backend module may need"
             $failed = $true
+        }
+    }
+    if ($delayed.Count -gt 0) {
+        Write-Host "::error::$Exe delay-loads $($delayed -join ', '), a module has no delay-load hook to catch a missing library"
+        $failed = $true
+    }
+}
+else {
+    $Forbidden += '^vcruntime140', '^msvcp140', '^concrt140\.dll$', '^vcomp140\.dll$', '^transcribe\.dll$', '^ggml'
+    foreach ($dll in $hard) {
+        foreach ($pattern in $Forbidden) {
+            if ($dll -match $pattern) {
+                Write-Host "::error::$Exe has a hard dependency on $dll"
+                $failed = $true
+            }
         }
     }
 }

@@ -16,6 +16,7 @@ resources = [
   "dist-runtime/transcribe.dll",
   "dist-runtime/ggml.dll",
   "dist-runtime/ggml-base.dll",
+  "dist-runtime/ggml-vulkan.dll",
   "dist-runtime/ggml-cpu-x64.dll",
   "dist-runtime/ggml-cpu-sse42.dll",
   "dist-runtime/ggml-cpu-sandybridge.dll",

@@ -5,7 +5,7 @@ prefix="purr${1:+-$1}"
 src=release-artifacts
 out="$PWD/release-assets"
 runtime_pack="$prefix-runtime-cuda-windows-x64.zip"
-cuda_libraries=('cublas64_*.dll' 'cublasLt64_*.dll' 'cudart64_*.dll')
+cuda_libraries=('cublas64_*.dll' 'cublasLt64_*.dll' 'cudart64_*.dll' 'ggml-cuda.dll')
 mkdir -p "$out"
 
 for dir in "$src"/purr-cli-*; do
@@ -14,7 +14,12 @@ for dir in "$src"/purr-cli-*; do
   case "$name" in
     *windows*)
       if compgen -G "$dir/cublas64_*.dll" >/dev/null && [ ! -e "$out/$runtime_pack" ]; then
-        (cd "$dir" && zip -q "$out/$runtime_pack" cublas64_*.dll cublasLt64_*.dll)
+        (
+          cd "$dir"
+          pack_files=(cublas64_*.dll cublasLt64_*.dll)
+          if [ -e ggml-cuda.dll ]; then pack_files+=(ggml-cuda.dll); fi
+          zip -q "$out/$runtime_pack" "${pack_files[@]}"
+        )
       fi
       if [ "${PURR_SPLIT_CUDA_RUNTIME:-false}" = true ]; then
         (cd "$dir" && zip -qr "$out/$asset.zip" . -x "${cuda_libraries[@]}")
