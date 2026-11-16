@@ -73,6 +73,10 @@ The live stream test compares the final chunks exactly with and without tentativ
 decode must not change what is committed, which holds because a Whisper decode never runs on a state
 an earlier decode used (`a_window_decodes_the_same_after_other_decodes`).
 
+The unit tests of `purr-engine-transcribe` must not reference transcribe.cpp's functions: the library's own test executable gets no delay-load
+(observed: it imported the library hard although the build script passes `rustc-link-arg-tests`), so one reference makes it import `transcribe.dll` and fail to start without it. A GPU
+change had done that through `placement.rs`; the registry lookup is now an argument the tests replace (default `cargo nextest run --workspace`: 1262 passed in 5.3 s, 8 skipped).
+
 With cargo 1.100's build layout the test binaries of `purr-engine-transcribe` are written under
 `target/debug/build/purr-engine-transcribe/<hash>/out/`, but `transcribe-cpp-sys` stages the DLLs
 in `target/debug/build/deps/`: the binaries import `transcribe.dll` and the loader does not find it
