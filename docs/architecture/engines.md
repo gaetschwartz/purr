@@ -19,7 +19,8 @@ purr-engine-transcribe  transcribe.cpp (transcribe-cpp, with its own ggml in sha
                      decoding of any transcribe.cpp model, Silero VAD
 purr-cli, purr-app   composition roots: list the engines (`engines.rs`) and forward the cargo
                      features cuda, vulkan, metal, coreml to the whisper engine crate,
-                     static-ffmpeg to purr-core, and `transcribe` to add the transcribe.cpp engine
+                     static-ffmpeg to purr-core, and `transcribe` to add the transcribe.cpp engine;
+                     with `transcribe` on, cuda, vulkan and metal also reach that engine crate
 ```
 
 ## The engine boundary (`purr_core::engine`)
@@ -147,19 +148,30 @@ Each failed attempt costs a full encode of its window.
 
 - The two engines never share a ggml. whisper.cpp's is linked statically into the executable;
   transcribe.cpp is built by `transcribe-cpp-sys` with its `dynamic-backends` feature: `transcribe.dll`
-  (`libtranscribe.so`) with `ggml` and `ggml-base` next to it, and each CPU instruction set tier (and
-  Vulkan, when built) as a loadable module that the library registers at run time. On Windows the
-  executable imports nothing from `ggml.dll`, only `transcribe.dll`.
+  (`libtranscribe.so`) with `ggml` and `ggml-base` next to it, and each CPU instruction set tier and each GPU
+  backend of the cargo features that are on (`vulkan`: `ggml-vulkan`, `cuda`: `ggml-cuda`, `metal`: `ggml-metal`)
+  as a loadable module that the library registers at run time. On Windows the executable imports nothing from
+  `ggml.dll`, only `transcribe.dll`. A GPU module that cannot be loaded (its runtime library, the Vulkan loader or
+  the CUDA libraries, is missing or broken) is left out by ggml: the engine then lists the devices of the modules
+  that did load, always the CPU, and the process starts and runs as it does without the backend.
 - Nothing of transcribe.cpp may be called before `runtime::get()` has opened the library. It opens
   `transcribe.dll` from the runtime folders of [runtime-libraries.md](runtime-libraries.md), never through
   the system's search, then has transcribe.cpp load its backend modules from that folder. See there for why.
 - `id`, `build_info` and `install_logging` do not touch the library (`install_logging` only records the
-  request; the log callback is set right after the library is loaded). `devices` loads it and lists the
+  request; the log callback is set right after the library is loaded). `build_info` reports a GPU backend as
+  built when the engine crate's own cargo feature for it is on. `devices` loads the library and lists the
   devices of transcribe.cpp's own registry, which are not the ones `--device` indexes for a whisper.cpp
-  model. `availability()` is the typed outcome that `purr sys` prints under "Engines".
-- `open` loads the GGUF with `Backend::Cpu`: the build has no GPU backend module, so a plan candidate
-  of any other backend is `OpenError::NoDevice`. A load that fails in a backend is `OpenError::Device`;
-  any other failure stops the device search with `OpenError::Engine`.
+  model. A GPU the other engine also lists is one entry of the hardware union, seen by both. `availability()` is the typed outcome that `purr sys` prints under "Engines".
+- `open` (`placement.rs`) loads the GGUF on the device of the plan candidate: `Backend::Cpu` for the processor,
+  and for a GPU candidate the backend of its kind (`Cuda`, `Rocm`, `Metal`, `Vulkan`) together with exactly the
+  device `Candidate::find_gpu` finds among the engine's own devices (PCI id, else name and position among
+  that name, the match whisper.cpp uses), which transcribe.cpp never replaces by another device. A candidate
+  the engine does not list, or of CoreML or SYCL, is `OpenError::NoDevice`. A load or session setup that fails in
+  a backend is `OpenError::Device` (`AttemptFailure::DeviceInit`), as is a GPU that has too little memory for
+  the model (`AttemptFailure::DeviceOutOfMemory`), so the search goes on along the user's order and the report
+  carries the typed reason; the same out-of-memory on the processor, and any other failure (an unreadable model),
+  stops it with `OpenError::Engine`. The hint `--accel cpu` and `DeviceOrder::cpu_only()` never reach a GPU. A GPU
+  that loads the model but fails later, while decoding, is a `DecodeError`: there is no warm-up decode.
 - `open_speech_detector` loads the same Silero `.bin` the Whisper models use, through transcribe.cpp.
 - One decoder (`TranscribeDecoder`) serves every family, driven by what the loaded model says:
   `capabilities().languages` is the list `supports()` reads and the codes a hint goes out in (the

@@ -125,10 +125,57 @@ backend, so it is not in `AccelBackend` or `detect_missing`. It has its own ggml
   executable or a transcribe.cpp library binds to it. See [ci.md](ci.md#linux). The folder of the libraries is the
   install tree (`lib` under `OUT_DIR` of `transcribe-cpp-sys`), which also holds the backend modules, not the build tree.
 
+## GPU backend modules of transcribe.cpp
+
+The cargo features `vulkan`, `cuda` and `metal` of `purr-cli` and `purr-app` reach `purr-engine-transcribe` when `transcribe` is
+on, which asks `transcribe-cpp-sys` for the matching backend. Each backend is one more loadable module next to `transcribe.dll`:
+
+| Feature | Windows module | Imports of the module (`dumpbin /dependents`) | Size |
+|---|---|---|---:|
+| `vulkan` | `ggml-vulkan.dll` | `ggml-base.dll`, `vulkan-1.dll`, the Visual C++ runtime, system DLLs | 45,311,488 |
+| `cuda` | `ggml-cuda.dll` | `ggml-base.dll`, `cublas64_13.dll` (which pulls in `cublasLt64_13.dll`), the Visual C++ runtime, system DLLs | 148,412,416 |
+| `metal` | (macOS) `libggml-metal` module, metallib embedded | not measured | not measured |
+
+On Linux the modules are `libggml-vulkan.so` and `libggml-cuda.so` in the same `lib` folder as `libtranscribe.so`; not measured.
+The CUDA module links the CUDA runtime statically, so `cudart64_*.dll` is not one of its imports.
+
+- Nothing links a module. transcribe.cpp opens each `ggml-*` module of its own folder through the system loader when
+  `runtime::get` has it scan that folder, so the delay-load hook is not involved and no code path can abort for a module. A module
+  whose import cannot be loaded (no Vulkan loader, a `vulkan-1.dll` that is not a library, no cuBLAS) is skipped by ggml, which logs
+  it, and its devices are not listed. The engine is then loaded with the devices of the modules that did load, always the CPU.
+- The runtime libraries of the binary's own `cuda` and `vulkan` features are opened from the search folders by `runtime::get` itself
+  before it has transcribe.cpp scan its modules (`purr_core::accel::runtime_library::detect_missing`, the call `Inventory::detect` makes
+  for the other engine). transcribe.cpp scans once per process, `open_on_best_device` asks for `availability` before it detects, and a
+  module scanned before cuBLAS was opened from a folder outside `PATH` (`PURR_RUNTIME_DIR`, the per-user folder, `%CUDA_PATH%`) would be left
+  out for good. A library that cannot be opened is reported as `RuntimeLibraryMissing` for the backend whichever engine runs the model.
+- Modules are only found in the folder `transcribe.dll` was opened from, which `purr sys` prints. The per-user and the `runtime` folders
+  hold a module only if they hold `transcribe.dll` too.
+- Binary size: the Vulkan module adds 45.3 MB (14.2 MB deflated, 18.7 MB for the thirteen libraries together) and the CUDA module
+  148.4 MB (133.9 MB deflated), on top of twelve files and 12.6 MB (4.6 MB deflated) for the CPU build, see
+  [verification.md](verification.md#packaging-evidence).
+
+### Packaging the modules
+
+`scripts/stage-transcribe-runtime.ps1` lists the modules per backend (`-Backends vulkan`, `-Backends cuda`, both, or none) and fails
+when the source holds a `ggml*.dll` for a backend that was not named, or lacks one that was. `-OptionalDestination <dir>` puts the CUDA
+module there instead of next to the rest. `-Check` takes the same `-Backends`. `check-windows-imports.ps1 -Module` fails when a module
+imports anything but the GPU runtime, ggml's own libraries, the Visual C++ runtime and Windows libraries, or delay-loads anything.
+
+- The CUDA set is separable from the default packages: `ggml-cuda.dll`, `cublas64_*.dll` and `cublasLt64_*.dll`. `package-release-assets.sh`
+  puts `ggml-cuda.dll` in `purr-runtime-cuda-windows-x64.zip` next to the cuBLAS libraries when the CLI folder holds it, and with
+  `PURR_SPLIT_CUDA_RUNTIME: "true"` leaves it out of the CLI zip and the portable archive. A pack unpacked next to `purr.exe` (or next
+  to `transcribe.dll`) enables CUDA for both engines; unpacked into the per-user folder it only carries cuBLAS for Whisper, because the
+  module is not looked for there. Teaching `runtime::get` to scan the other runtime folders for modules (one `init_backends` per folder)
+  is not done.
+- The installer resources of `Dioxus.toml` name `ggml-vulkan.dll` and no CUDA module: the installer is "Vulkan and CPU".
+- Linux and macOS packages: the CLI jobs copy the whole `lib` folder of the `transcribe-cpp-sys` install tree into `lib` next to the
+  binary, so the modules go along; see [ci.md](ci.md#transcribecpp-the-second-ggml).
+
 ## Runtime pack (Windows)
 
-`purr-runtime-cuda-windows-x64.zip` holds `cublas64_*.dll` and `cublasLt64_*.dll` at its root and is
-produced by `scripts/package-release-assets.sh` from the CLI artifact. With
+`purr-runtime-cuda-windows-x64.zip` holds `cublas64_*.dll` and `cublasLt64_*.dll` at its root, and `ggml-cuda.dll` when the
+build has the CUDA backend of the transcribe.cpp engine, and is produced by `scripts/package-release-assets.sh` from the CLI
+artifact. With
 `PURR_SPLIT_CUDA_RUNTIME: "true"` in the workflow, the Windows CLI zip and the desktop portable zip
 leave those DLLs out and the pack is the only place they ship.
 
@@ -142,11 +189,13 @@ leave those DLLs out and the pack is the only place they ship.
 - A package built with `transcribe` ships the set the `transcribe-cpp-sys` build script stages next to the
   executable in the target directory: on Windows `transcribe.dll`, `ggml.dll`, `ggml-base.dll` and
   `ggml-cpu-<tier>.dll` for each instruction set tier (`x64`, `sse42`, `sandybridge`, `haswell`, `skylakex`,
-  `cannonlake`, `cascadelake`, `icelake`, `alderlake`), twelve files and about 12 MB, which is about 4.5 MB in a zip.
+  `cannonlake`, `cascadelake`, `icelake`, `alderlake`), twelve files and about 12 MB, which is about 4.5 MB in a zip, and one module per GPU backend of the build, see
+  [GPU backend modules](#gpu-backend-modules-of-transcribecpp).
   All sit in one folder next to `purr.exe` (or in a `runtime` folder, or the per-user one).
   `scripts/stage-transcribe-runtime.ps1` is the one place that lists them; it copies by name from the `out\bin` of the
   `transcribe-cpp-sys` build (not from the profile folder, where the build script only copies them when it runs),
-  fails on a missing file or on another `transcribe*.dll` or `ggml*.dll` in the source, and checks a folder or zip with `-Check`. A target
+  fails on a missing file or on another `transcribe*.dll` or `ggml*.dll` in the source (a backend module counts as unlisted unless `-Backends`
+  names its backend), and checks a folder or zip with `-Check`. A target
   directory that has seen other feature sets may hold stale modules, so nothing globs.
 - Windows CLI zip: the build job stages the libraries into the artifact folder, and the release scripts zip that
   folder whole (the CUDA split only leaves out the cuBLAS and cudart libraries).

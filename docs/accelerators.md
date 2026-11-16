@@ -12,13 +12,15 @@ The device list, the plan and the settings speak only of neutral devices: a back
 
 A build with the `transcribe` feature has two engines, and each has its own ggml and so its own device list. The same physical device is one device to Purr: it is told apart by its backend, its reported name and, when two share a name, its position among them (a PCI id only helps pair identical cards that two engines list in a different order; integrated GPUs and the CPU have none). `purr sys` and Settings > Hardware list each device once and say which engines can run on it ("seen by"); the CPU is seen by every engine that loads. An engine that is built in but cannot load (its library is missing, or a library it needs is) is reported with the reason and contributes no device.
 
+The `cuda`, `vulkan` and `metal` features of `purr-cli` and `purr-app` reach both engines when `transcribe` is on, so a GPU is usually seen by both. The transcribe.cpp engine takes each backend as a module next to its library; a module whose runtime library (the Vulkan loader, cuBLAS) is missing is left out, the engine then lists the CPU and the devices of the modules that did load, and the backend shows its missing library in `purr sys` like it does for Whisper. `--accel cpu` and `--no-gpu` keep either engine on the CPU.
+
 The saved order and the switches speak of devices, not engines. A run uses the devices the engine of its model can run on, in that order; a device that engine does not list is skipped and shows in the run's passed-over devices. `--device` is matched against the devices of the engine that runs the model, so an index is that engine's own (`purr sys` prints the index each engine knows a device by). When it names a device that only another engine sees, Purr stops and says which engine does, instead of using another device.
 
 | Backend | Hardware | Notes |
 |---|---|---|
 | CUDA | NVIDIA GPUs | needs the CUDA runtime libraries at run time |
 | Vulkan | Intel, AMD and NVIDIA GPUs, integrated or discrete | the path for Intel iGPUs and Arc; needs the system's Vulkan loader and driver |
-| Metal, CoreML | Apple silicon | needs a build with the `metal` or `coreml` feature of `purr-cli` or `purr-app`, which they forward to `purr-engine-whisper` |
+| Metal, CoreML | Apple silicon | needs a build with the `metal` or `coreml` feature of `purr-cli` or `purr-app`, which they forward to `purr-engine-whisper`; `metal` also reaches `purr-engine-transcribe` when `transcribe` is on, CoreML is whisper.cpp's alone |
 | ROCm, SYCL | AMD, Intel | recognised when ggml lists them; Purr has no build feature for them |
 | CPU | any | always works; last resort |
 

@@ -70,7 +70,7 @@ Available models:
 ### Parakeet models
 
 Builds with the `transcribe` cargo feature also run NVIDIA Parakeet TDT v3 through
-[transcribe.cpp](https://github.com/handy-computer/transcribe.cpp), on the CPU. It transcribes 25
+[transcribe.cpp](https://github.com/handy-computer/transcribe.cpp), on the CPU or, in a build with the `vulkan`, `cuda` or `metal` feature, on the GPU. It transcribes 25
 European languages (Bulgarian, Croatian, Czech, Danish, Dutch, English, Estonian, Finnish, French,
 German, Greek, Hungarian, Italian, Latvian, Lithuanian, Maltese, Polish, Portuguese, Romanian,
 Russian, Slovak, Slovenian, Spanish, Swedish, Ukrainian), finds the language itself and does not
