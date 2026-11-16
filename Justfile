@@ -24,10 +24,17 @@ test *ARGS:
     @echo "{{BLUE}}[INFO]{{NC}} Running tests with nextest..."
     cargo nextest run $WINDOWS_TEST_ARGS {{ARGS}}
 
-# Run the tests that load a real model
+# Run the tests that load a real model; nextest fetches the models they need first
 test-models *ARGS:
     @echo "{{BLUE}}[INFO]{{NC}} Running the real-model tests..."
     cargo nextest run --profile all -E 'test(/real_model_/) | binary_id(/real_model_/)' {{ARGS}}
+
+# Download the models the real-model tests need (a model already in the cache is kept)
+download-test-models:
+    cargo run --quiet -p purr-cli -- models download base
+    cargo run --quiet -p purr-cli -- models download small
+    cargo run --quiet -p purr-cli --features transcribe -- models download parakeet-tdt-0.6b-v3-q4_k_m
+    cargo run --quiet -p purr-cli --features transcribe -- models download qwen3-asr-0.6b-q8_0
 
 # Run tests for a specific crate
 test-crate crate *ARGS:

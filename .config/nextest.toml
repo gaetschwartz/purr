@@ -1,5 +1,38 @@
+experimental = ["setup-scripts"]
+
 [profile.default]
 default-filter = "not (test(/^(.*::)?real_model_.*/) | binary_id(/^(.*::)?real_model_.*/))"
 
 [profile.all]
 default-filter = "all()"
+
+[scripts.setup.build-purr]
+command = "cargo build --quiet -p purr-cli --features transcribe"
+
+[scripts.setup.download-base]
+command = { command-line = "debug/purr models download base", relative-to = "target" }
+
+[scripts.setup.download-small]
+command = { command-line = "debug/purr models download small", relative-to = "target" }
+
+[scripts.setup.download-parakeet]
+command = { command-line = "debug/purr models download parakeet-tdt-0.6b-v3-q4_k_m", relative-to = "target" }
+
+[scripts.setup.download-qwen3]
+command = { command-line = "debug/purr models download qwen3-asr-0.6b-q8_0", relative-to = "target" }
+
+[[profile.all.scripts]]
+filter = "(package(purr-engine-whisper) & binary_id(/real_model_/)) | test(/real_model_cli_/)"
+setup = ["build-purr", "download-base"]
+
+[[profile.all.scripts]]
+filter = "package(purr-engine-whisper) & binary_id(/real_model_golden/) & test(/small/)"
+setup = ["build-purr", "download-small"]
+
+[[profile.all.scripts]]
+filter = "binary_id(/real_model_parakeet/)"
+setup = ["build-purr", "download-parakeet"]
+
+[[profile.all.scripts]]
+filter = "binary_id(/real_model_qwen3/)"
+setup = ["build-purr", "download-qwen3"]
