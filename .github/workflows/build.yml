@@ -977,9 +977,9 @@ jobs:
             ### Command-line tool
             - Windows: `purr-cli-windows-x64-cuda-vulkan.zip`. Extract all files to one folder. Uses an NVIDIA GPU (CUDA) when the CUDA runtime is present, otherwise Vulkan, otherwise the CPU. Needs an x86-64 CPU with AVX2.
               - `purr-runtime-cuda-windows-x64.zip`: the NVIDIA cuBLAS libraries (CUDA runtime) for `purr` and the desktop app, and the CUDA module of the Parakeet and Qwen3-ASR engine when the build has one. ${{ env.PURR_SPLIT_CUDA_RUNTIME == 'true' && 'Not part of the other Windows downloads: extract it into `%LOCALAPPDATA%\purr\runtime` or next to `purr.exe` to enable CUDA.' || 'Already part of the other Windows downloads; only needed to share one copy: extract it into `%LOCALAPPDATA%\purr\runtime`.' }} `purr runtime status` shows where the libraries are looked for.
-            - macOS (Apple Silicon): `purr-cli-macos-arm64-metal.tar.gz`
+            - macOS (Apple Silicon): `purr-cli-macos-arm64-metal.tar.gz`. Keep the `lib` folder next to `purr`. Whisper, Parakeet and Qwen3-ASR use the GPU (Metal).
             - Linux: `purr-cli-linux-x64-all.tar.gz` (recommended). Keep the `lib` folder next to `purr`. Uses an NVIDIA GPU (CUDA) when the NVIDIA driver is installed, otherwise Vulkan, otherwise the CPU.
-              - `purr-cli-linux-x64-vulkan.tar.gz`: smaller, for AMD and Intel GPUs. Uses Vulkan when a Vulkan driver is installed, otherwise the CPU.
+              - `purr-cli-linux-x64-vulkan.tar.gz`: smaller, for AMD and Intel GPUs. Keep the `lib` folder next to `purr`. Whisper, Parakeet and Qwen3-ASR use Vulkan when a Vulkan driver is installed, otherwise the CPU.
               - `purr-cli-linux-x64-cpu.tar.gz`: smallest, CPU only.
               - `purr-cli-linux-x64-cuda.tar.gz`: NVIDIA only. Keep the `lib` folder next to `purr`. Does not start without the NVIDIA driver.
               - All Linux builds need an x86-64 CPU with AVX2 (2013 or later).
@@ -1145,9 +1145,9 @@ jobs:
             ### Command-line tool
             - Windows: `purr-VERSION-cli-windows-x64-cuda-vulkan.zip`. Extract all files to one folder. Needs an x86-64 CPU with AVX2.
               - `purr-VERSION-runtime-cuda-windows-x64.zip`: the NVIDIA cuBLAS libraries (CUDA runtime), and the CUDA module of the Parakeet and Qwen3-ASR engine when the build has one. ${{ env.PURR_SPLIT_CUDA_RUNTIME == 'true' && 'Not part of the other Windows downloads: extract it into `%LOCALAPPDATA%\purr\runtime` or next to `purr.exe` to enable CUDA.' || 'Already part of the other Windows downloads; only needed to share one copy: extract it into `%LOCALAPPDATA%\purr\runtime`.' }}
-            - macOS (Apple Silicon): `purr-VERSION-cli-macos-arm64-metal.tar.gz`
+            - macOS (Apple Silicon): `purr-VERSION-cli-macos-arm64-metal.tar.gz`; keep the `lib` folder next to `purr`
             - Linux: `purr-VERSION-cli-linux-x64-all.tar.gz` (recommended). Keep the `lib` folder next to `purr`. Uses CUDA, otherwise Vulkan, otherwise the CPU.
-              - `purr-VERSION-cli-linux-x64-vulkan.tar.gz`: smaller, Vulkan otherwise the CPU.
+              - `purr-VERSION-cli-linux-x64-vulkan.tar.gz`: smaller, Vulkan otherwise the CPU; keep the `lib` folder next to `purr`.
               - `purr-VERSION-cli-linux-x64-cpu.tar.gz`: smallest, CPU only.
               - `purr-VERSION-cli-linux-x64-cuda.tar.gz`: NVIDIA only; does not start without the NVIDIA driver.
               - All Linux builds need an x86-64 CPU with AVX2 (2013 or later).
