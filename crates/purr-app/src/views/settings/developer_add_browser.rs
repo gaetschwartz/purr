@@ -16,7 +16,7 @@ use purr_common::{
         BrowserModel, BrowserOrigin, Conversion, DeveloperModel, DeveloperModelId, DeveloperSource,
     },
     model::family::{ModelFamily, WhisperSize},
-    web_model::attributes::OnnxDtype,
+    web_model::{attributes::OnnxDtype, variant::TableStorage},
 };
 use uuid::Uuid;
 
@@ -90,7 +90,9 @@ pub fn AddBrowserModel() -> Element {
     let mut family = use_signal(|| ModelFamily::Whisper(WhisperSize::Tiny));
     let mut encoder = use_signal(|| OnnxDtype::Fp32);
     let mut decoder = use_signal(|| OnnxDtype::Q4);
-    let mut conversion = use_signal(|| Conversion::Streaming);
+    let mut conversion = use_signal(|| Conversion::Streaming {
+        table: TableStorage::Fp32,
+    });
     let mut english_only = use_signal(|| false);
     let mut status = use_signal(|| None::<String>);
     let mut busy = use_signal(|| false);
@@ -233,7 +235,14 @@ pub fn AddBrowserModel() -> Element {
                         label: "ONNX files",
                         value: conversion(),
                         options: vec![
-                            SelectOption::new(Conversion::Streaming, "Convert with Purr's converter"),
+                            SelectOption::new(
+                                Conversion::Streaming { table: TableStorage::Fp32 },
+                                "Convert with Purr's converter, table in fp32",
+                            ),
+                            SelectOption::new(
+                                Conversion::Streaming { table: TableStorage::Fp16 },
+                                "Convert with Purr's converter, table in fp16",
+                            ),
                             SelectOption::new(Conversion::AsIs, "Use as they are"),
                         ],
                         onchange: move |next| conversion.set(next),
