@@ -13,7 +13,8 @@ use crate::web_model::digest::Sha256Digest;
 use crate::web_model::error::{UnknownWebModelError, WebManifestError};
 use crate::web_model::file_role::ModelFileRole;
 use crate::web_model::manifest::{
-    HUGGING_FACE_ORIGIN, SUPPORTED_SCHEMA, WebManifest, WebManifestModel, file_url,
+    HUGGING_FACE_ORIGIN, SUPPORTED_SCHEMA, WebManifest, WebManifestConversion, WebManifestModel,
+    file_url,
 };
 use std::collections::HashSet;
 use std::sync::{Arc, LazyLock};
@@ -34,6 +35,47 @@ pub struct WebModelFile {
     pub path: String,
     pub size_bytes: u64,
     pub sha256: Sha256Digest,
+    /// The ONNX files become a graph and an external weights file while installing.
+    pub converted: Option<WebManifestConversion>,
+}
+
+/// A file as the browser stores it in its cache.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CachedFile {
+    /// Repository path the cache entry is keyed by.
+    pub path: String,
+    pub size_bytes: u64,
+    pub sha256: Sha256Digest,
+}
+
+impl WebModelFile {
+    /// Suffix transformers.js appends to an ONNX path to ask for its external weights.
+    pub const DATA_SUFFIX: &'static str = "_data";
+
+    /// The files the cache holds once this one is installed: the downloaded file itself, or for
+    /// an ONNX file its converted graph and weights.
+    #[must_use]
+    pub fn cached_files(&self) -> Vec<CachedFile> {
+        match &self.converted {
+            None => vec![CachedFile {
+                path: self.path.clone(),
+                size_bytes: self.size_bytes,
+                sha256: self.sha256,
+            }],
+            Some(converted) => vec![
+                CachedFile {
+                    path: self.path.clone(),
+                    size_bytes: converted.graph.size_bytes,
+                    sha256: converted.graph.sha256,
+                },
+                CachedFile {
+                    path: format!("{}{}", self.path, Self::DATA_SUFFIX),
+                    size_bytes: converted.data.size_bytes,
+                    sha256: converted.data.sha256,
+                },
+            ],
+        }
+    }
 }
 
 /// A browser model that transformers.js can download and run.
@@ -76,6 +118,21 @@ impl WebModelSpec {
     #[must_use]
     pub fn file_url(&self, file: &WebModelFile) -> String {
         file_url(&self.repo, &self.revision, &file.path)
+    }
+
+    /// Cache key of a stored file.
+    #[must_use]
+    pub fn cached_url(&self, file: &CachedFile) -> String {
+        file_url(&self.repo, &self.revision, &file.path)
+    }
+
+    /// Cache keys of everything the cache holds for `file`.
+    #[must_use]
+    pub fn cached_urls(&self, file: &WebModelFile) -> Vec<String> {
+        file.cached_files()
+            .iter()
+            .map(|cached| self.cached_url(cached))
+            .collect()
     }
 
     #[must_use]
@@ -269,11 +326,42 @@ fn resolve(entry: WebManifestModel) -> Result<WebModelSpec, WebManifestError> {
                 path: file.path.clone(),
             });
         }
-        if !expected.iter().any(|(_, path)| *path == file.path) {
+        let Some((role, _)) = expected.iter().find(|(_, path)| *path == file.path) else {
             return Err(WebManifestError::UnexpectedFile {
                 model_id: entry.id,
                 path: file.path.clone(),
             });
+        };
+        match (&file.converted, role.is_onnx()) {
+            (None, true) => {
+                return Err(WebManifestError::MissingConversion {
+                    model_id: entry.id,
+                    path: file.path.clone(),
+                });
+            }
+            (Some(_), false) => {
+                return Err(WebManifestError::UnexpectedConversion {
+                    model_id: entry.id,
+                    path: file.path.clone(),
+                });
+            }
+            (Some(converted), true) => {
+                for stored in [converted.graph, converted.data] {
+                    if stored.size_bytes == 0 {
+                        return Err(WebManifestError::ZeroSize {
+                            model_id: entry.id,
+                            path: file.path.clone(),
+                        });
+                    }
+                    if stored.sha256.is_zero() {
+                        return Err(WebManifestError::MissingDigest {
+                            model_id: entry.id,
+                            path: file.path.clone(),
+                        });
+                    }
+                }
+            }
+            (None, false) => {}
         }
     }
 
@@ -292,6 +380,7 @@ fn resolve(entry: WebManifestModel) -> Result<WebModelSpec, WebManifestError> {
             path,
             size_bytes: file.size_bytes,
             sha256: file.sha256,
+            converted: file.converted,
         });
     }
 

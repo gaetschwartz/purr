@@ -1,20 +1,26 @@
 //! Refreshes the file list, sizes and sha256 in `purr-common/manifests/web-models.json` from the
 //! Hugging Face tree API.
 //!
-//! Usage: `cargo run -p purr-core --example update_web_manifest -- [--bump] [MANIFEST_PATH]`
+//! Usage: `cargo run -p purr-core --example update_web_manifest -- [--bump] [--reconvert] [MANIFEST_PATH]`
 //!
 //! Every other field of the manifest is preserved. Without `--bump` each model is queried at its
 //! pinned revision; with `--bump` the revision is first advanced to the latest commit. LFS files
 //! take their digest from the tree listing; plain files are downloaded and hashed.
+//!
+//! Each ONNX file is also downloaded, verified against its digest and run through the browser's
+//! converter to record the size and digest of the graph and weights it stores. A file whose
+//! digest did not change keeps its recorded conversion unless `--reconvert` is given.
 
 use oopsie::{Welp, WelpResultExt as _};
-use purr_common::web_model::digest::Sha256Digest;
+use purr_common::web_model::digest::{FileDigest, Sha256Digest};
 use purr_common::web_model::file_role::ModelFileRole;
 use purr_common::web_model::manifest::{
-    HUGGING_FACE_ORIGIN, WebManifest, WebManifestFile, file_url,
+    HUGGING_FACE_ORIGIN, SUPPORTED_SCHEMA, WebManifest, WebManifestConversion, WebManifestFile,
+    file_url,
 };
 use purr_common::web_model::registry::WebModelRegistry;
 use purr_core::model::digest::Sha256Hasher;
+use purr_onnx_convert::tooling::{Measured, cache_dir, convert_file, fetch_verified};
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -48,16 +54,20 @@ struct RepoInfo {
 
 struct Args {
     bump: bool,
+    reconvert: bool,
     manifest_path: PathBuf,
 }
 
 impl Args {
     fn parse() -> Result<Self, Welp> {
         let mut bump = false;
+        let mut reconvert = false;
         let mut manifest_path = None;
         for arg in std::env::args().skip(1) {
             if arg == "--bump" {
                 bump = true;
+            } else if arg == "--reconvert" {
+                reconvert = true;
             } else if manifest_path.is_none() {
                 manifest_path = Some(PathBuf::from(arg));
             } else {
@@ -66,6 +76,7 @@ impl Args {
         }
         Ok(Self {
             bump,
+            reconvert,
             manifest_path: manifest_path.unwrap_or_else(|| {
                 PathBuf::from(env!("CARGO_MANIFEST_DIR"))
                     .join("..")
@@ -174,7 +185,43 @@ async fn describe_file(
         path: entry.path.clone(),
         size_bytes,
         sha256,
+        converted: None,
     })
+}
+
+type Conversions = HashMap<(String, String, String), WebManifestConversion>;
+
+fn parse_digest(measured: &Measured) -> Result<FileDigest, Welp> {
+    Ok(FileDigest {
+        size_bytes: measured.size_bytes,
+        sha256: measured.sha256.parse().welp()?,
+    })
+}
+
+async fn convert_onnx(
+    repo: &str,
+    revision: &str,
+    file: &WebManifestFile,
+) -> Result<WebManifestConversion, Welp> {
+    let url = file_url(repo, revision, &file.path);
+    let original = Measured {
+        size_bytes: file.size_bytes,
+        sha256: file.sha256.to_string(),
+    };
+    let destination = cache_dir()
+        .join(repo.replace('/', "--"))
+        .join(revision)
+        .join(&file.path);
+    tokio::task::spawn_blocking(move || {
+        fetch_verified(&url, &original, &destination)?;
+        let conversion = convert_file(&destination, None)?;
+        Ok(WebManifestConversion {
+            graph: parse_digest(&conversion.graph)?,
+            data: parse_digest(&conversion.data)?,
+        })
+    })
+    .await
+    .welp()?
 }
 
 #[tokio::main]
@@ -186,6 +233,7 @@ async fn main() -> Result<(), Welp> {
     let client = purr_core::http::client_builder().welp()?.build().welp()?;
 
     let mut changed = 0usize;
+    let mut conversions = Conversions::new();
     for model in &mut manifest.models {
         if args.bump {
             let latest = latest_revision(&client, &model.repo).await?;
@@ -205,7 +253,30 @@ async fn main() -> Result<(), Welp> {
                     model.repo, model.revision
                 ))
             })?;
-            files.push(describe_file(&client, &model.repo, &model.revision, entry).await?);
+            let mut file = describe_file(&client, &model.repo, &model.revision, entry).await?;
+            if role.is_onnx() {
+                let key = (
+                    model.repo.clone(),
+                    model.revision.clone(),
+                    file.path.clone(),
+                );
+                let recorded = model
+                    .files
+                    .iter()
+                    .find(|previous| previous.path == file.path && previous.sha256 == file.sha256)
+                    .and_then(|previous| previous.converted)
+                    .filter(|_| !args.reconvert);
+                let converted = match conversions.get(&key).copied().or(recorded) {
+                    Some(converted) => converted,
+                    None => {
+                        println!("{}: converting {}", model.id, file.path);
+                        convert_onnx(&model.repo, &model.revision, &file).await?
+                    }
+                };
+                conversions.insert(key, converted);
+                file.converted = Some(converted);
+            }
+            files.push(file);
         }
 
         if files != model.files {
@@ -216,6 +287,7 @@ async fn main() -> Result<(), Welp> {
         }
     }
 
+    manifest.schema = SUPPORTED_SCHEMA;
     let mut json = serde_json::to_string_pretty(&manifest).welp()?;
     json.push('\n');
     WebModelRegistry::from_json(&json).welp()?;

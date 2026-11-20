@@ -47,3 +47,11 @@ impl fmt::Debug for Sha256Digest {
         write!(f, "Sha256Digest({self})")
     }
 }
+
+/// Length and SHA-256 of a stored file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FileDigest {
+    pub size_bytes: u64,
+    pub sha256: Sha256Digest,
+}

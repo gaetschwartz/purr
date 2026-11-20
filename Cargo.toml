@@ -10,6 +10,7 @@ members = [
   "crates/purr-test-utils",
   "crates/purr-engine-transcribe",
   "crates/purr-golden",
+  "crates/purr-onnx-convert",
 ]
 resolver = "2"
 

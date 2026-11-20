@@ -47,6 +47,7 @@ axum = "0.8"
 axum-test = "21.1"
 tower = "0.5"
 tokio-util = { version = "0.7", features = ["io"] }
+purr-onnx-convert = { path = "../purr-onnx-convert", features = ["tooling"] }
 
 [features]
 cuda = []

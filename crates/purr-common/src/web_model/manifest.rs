@@ -3,11 +3,11 @@
 use crate::language::support::LanguageSupport;
 use crate::model::family::ModelFamily;
 use crate::web_model::attributes::OnnxDtype;
-use crate::web_model::digest::Sha256Digest;
+use crate::web_model::digest::{FileDigest, Sha256Digest};
 use crate::web_model::error::WebManifestError;
 use serde::{Deserialize, Serialize};
 
-pub const SUPPORTED_SCHEMA: u32 = 2;
+pub const SUPPORTED_SCHEMA: u32 = 3;
 pub const HUGGING_FACE_ORIGIN: &str = "https://huggingface.co";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -40,6 +40,17 @@ pub struct WebManifestFile {
     pub path: String,
     pub size_bytes: u64,
     pub sha256: Sha256Digest,
+    /// What the browser stores for an ONNX file after the install-time conversion.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub converted: Option<WebManifestConversion>,
+}
+
+/// The two files a converted ONNX file becomes: the graph and its external weights.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct WebManifestConversion {
+    pub graph: FileDigest,
+    pub data: FileDigest,
 }
 
 impl WebManifest {

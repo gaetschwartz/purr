@@ -67,6 +67,18 @@ pub enum WebManifestError {
     MissingDigest { model_id: String, path: String },
 
     #[oopsie(
+        "Web model {model_id} file {path} is an ONNX model but lists no converted files",
+        code = "purr::web_manifest::missing_conversion"
+    )]
+    MissingConversion { model_id: String, path: String },
+
+    #[oopsie(
+        "Web model {model_id} file {path} is not an ONNX model but lists converted files",
+        code = "purr::web_manifest::unexpected_conversion"
+    )]
+    UnexpectedConversion { model_id: String, path: String },
+
+    #[oopsie(
         "Web model {model_id} uses {dtype}, which the WebGPU execution provider cannot run",
         code = "purr::web_manifest::unsupported_dtype"
     )]

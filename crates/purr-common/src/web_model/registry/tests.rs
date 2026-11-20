@@ -11,18 +11,25 @@ fn files_json(encoder: OnnxDtype, decoder: OnnxDtype) -> Value {
         .iter()
         .zip(1u64..)
         .map(|(role, size)| {
-            json!({
+            let mut file = json!({
                 "path": role.path(encoder, decoder),
                 "size_bytes": size * 100,
                 "sha256": DIGEST,
-            })
+            });
+            if role.is_onnx() {
+                file["converted"] = json!({
+                    "graph": {"size_bytes": size * 10, "sha256": DIGEST},
+                    "data": {"size_bytes": size * 90, "sha256": DIGEST},
+                });
+            }
+            file
         })
         .collect()
 }
 
 fn manifest_json(edit: impl FnOnce(&mut Value)) -> String {
     let mut value = json!({
-        "schema": 2,
+        "schema": 3,
         "default": "alpha",
         "models": [
             {
@@ -559,5 +566,57 @@ fn the_q4_variant_shares_everything_but_the_encoder_with_the_original()
         .map(|file| file.role)
         .collect();
     assert_eq!(evicted, [ModelFileRole::Encoder]);
+    Ok(())
+}
+
+#[test]
+fn an_onnx_file_without_conversion_is_rejected() {
+    let result = registry_with(|v| {
+        if let Some(file) = v["models"][0]["files"]
+            .as_array_mut()
+            .and_then(|f| f.last_mut())
+        {
+            file.as_object_mut().map(|file| file.remove("converted"));
+        }
+    });
+    assert!(matches!(
+        result.err(),
+        Some(WebManifestError::MissingConversion { .. })
+    ));
+}
+
+#[test]
+fn a_conversion_on_a_plain_file_is_rejected() {
+    let result = registry_with(|v| {
+        v["models"][0]["files"][0]["converted"] = json!({
+            "graph": {"size_bytes": 1, "sha256": DIGEST},
+            "data": {"size_bytes": 1, "sha256": DIGEST},
+        });
+    });
+    assert!(matches!(
+        result.err(),
+        Some(WebManifestError::UnexpectedConversion { .. })
+    ));
+}
+
+#[test]
+fn a_converted_file_is_cached_as_its_graph_and_its_weights()
+-> Result<(), Box<dyn std::error::Error>> {
+    let registry = registry_with(|_| {})?;
+    let spec = registry.get("alpha")?;
+    let decoder = spec.files.last().ok_or("no files")?;
+    let cached = decoder.cached_files();
+    assert_eq!(
+        cached
+            .iter()
+            .map(|file| (file.path.as_str(), file.size_bytes))
+            .collect::<Vec<_>>(),
+        [
+            ("onnx/decoder_model_merged_q4.onnx", 70),
+            ("onnx/decoder_model_merged_q4.onnx_data", 630),
+        ]
+    );
+    let config = spec.files.first().ok_or("no files")?;
+    assert_eq!(config.cached_files().len(), 1);
     Ok(())
 }

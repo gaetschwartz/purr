@@ -26,6 +26,19 @@ impl ModelFileRole {
         Self::DecoderMerged,
     ];
 
+    /// Whether the file is an ONNX model, which the browser converts while installing it.
+    #[must_use]
+    pub const fn is_onnx(self) -> bool {
+        match self {
+            Self::Encoder | Self::DecoderMerged => true,
+            Self::Config
+            | Self::GenerationConfig
+            | Self::PreprocessorConfig
+            | Self::Tokenizer
+            | Self::TokenizerConfig => false,
+        }
+    }
+
     /// Repository path of this file for the given session dtypes.
     #[must_use]
     pub fn path(self, encoder: OnnxDtype, decoder: OnnxDtype) -> String {
