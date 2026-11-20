@@ -1,17 +1,19 @@
 //! C interface of the browser build: the host feeds bytes in and takes the two outputs.
 
-use crate::convert::{Options, convert};
+use crate::convert::{Options, TablePrecision, convert};
 use std::io::{Read, Write};
 
 const LOCATION_CAPACITY: usize = 256;
 const SINK_DATA: u32 = 0;
 const SINK_GRAPH: u32 = 1;
+const TABLE_HALF: u32 = 1;
 
 #[link(wasm_import_module = "purr")]
 unsafe extern "C" {
     fn purr_read(ptr: *mut u8, len: usize) -> isize;
     fn purr_write(sink: u32, ptr: *const u8, len: usize) -> i32;
     fn purr_location(ptr: *mut u8, capacity: usize) -> usize;
+    fn purr_table_precision() -> u32;
     fn purr_report_error(ptr: *const u8, len: usize);
 }
 
@@ -52,6 +54,11 @@ pub extern "C" fn purr_convert() -> i32 {
     // SAFETY: the host writes at most `capacity` bytes and returns how many.
     let length = unsafe { purr_location(location.as_mut_ptr(), location.len()) };
     location.truncate(length);
+    // SAFETY: the host returns a plain number.
+    let table = match unsafe { purr_table_precision() } {
+        TABLE_HALF => TablePrecision::Half,
+        _ => TablePrecision::Full,
+    };
     let outcome = String::from_utf8(location)
         .map_err(|error| error.to_string())
         .and_then(|location| {
@@ -61,6 +68,7 @@ pub extern "C" fn purr_convert() -> i32 {
                 &mut HostSink(SINK_GRAPH),
                 &Options {
                     data_location: &location,
+                    table,
                 },
             )
             .map_err(|error| error.to_string())

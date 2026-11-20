@@ -1,8 +1,10 @@
 mod common;
 
-use common::{Decoder, TestResult};
+use common::{Decoder, EmbeddingValues, LEADING_VALUES, TestResult};
+use half::f16;
 use protobuf::Message;
-use purr_onnx_convert::convert::{DATA_ALIGNMENT, Options, Summary, convert};
+use purr_onnx_convert::convert::{DATA_ALIGNMENT, Options, Summary, TablePrecision, convert};
+use purr_onnx_convert::error::ConvertError;
 use purr_onnx_convert::proto::onnx_proto3::tensor_proto::DataLocation;
 use purr_onnx_convert::proto::onnx_proto3::{GraphProto, ModelProto};
 
@@ -15,6 +17,10 @@ struct Converted {
 }
 
 fn run(input: &[u8]) -> Result<Converted, Box<dyn std::error::Error>> {
+    Ok(run_with(input, TablePrecision::Full)?)
+}
+
+fn run_with(input: &[u8], table: TablePrecision) -> Result<Converted, ConvertError> {
     let (mut data, mut graph) = (Vec::new(), Vec::new());
     let summary = convert(
         &mut &*input,
@@ -22,6 +28,7 @@ fn run(input: &[u8]) -> Result<Converted, Box<dyn std::error::Error>> {
         &mut graph,
         &Options {
             data_location: LOCATION,
+            table,
         },
     )?;
     Ok(Converted {
@@ -198,4 +205,212 @@ fn a_truncated_model_is_an_error() -> TestResult {
 #[test]
 fn a_model_without_a_graph_is_an_error() {
     assert!(run(&[]).is_err());
+}
+
+fn half_decoder() -> Decoder {
+    Decoder {
+        embedding_values: EmbeddingValues::Floats { largest: 3.0 },
+        ..Decoder::small()
+    }
+}
+
+fn entry(tensor: &purr_onnx_convert::proto::onnx_proto3::TensorProto, key: &str) -> Option<usize> {
+    tensor
+        .external_data
+        .iter()
+        .find(|entry| entry.key == key)
+        .and_then(|entry| entry.value.parse().ok())
+}
+
+#[test]
+fn a_half_table_is_stored_rounded_to_nearest_even_and_declared_as_half() -> TestResult {
+    let decoder = half_decoder();
+    let original = decoder.model();
+    let source = original
+        .graph
+        .initializer
+        .iter()
+        .find(|tensor| tensor.name == "embedding")
+        .ok_or("no embedding")?;
+    let converted = run_with(&decoder.bytes()?, TablePrecision::Half)?;
+    assert_eq!(converted.summary.half_precision_tables, 1);
+    let model = ModelProto::parse_from_bytes(&converted.graph)?;
+    let table = model
+        .graph
+        .initializer
+        .iter()
+        .find(|tensor| tensor.name == "embedding")
+        .ok_or("no embedding")?;
+    assert_eq!(table.data_type, 10);
+    assert_eq!(table.dims, source.dims);
+    let (offset, length) = (
+        entry(table, "offset").ok_or("no offset")?,
+        entry(table, "length").ok_or("no length")?,
+    );
+    assert_eq!(offset as u64 % DATA_ALIGNMENT, 0);
+    assert_eq!(length, source.raw_data.len() / 2);
+    let stored = converted
+        .data
+        .get(offset..offset + length)
+        .ok_or("data too short")?;
+    let expected: Vec<u8> = source
+        .raw_data
+        .chunks_exact(4)
+        .flat_map(|bytes| {
+            let value = f32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
+            f16::from_f32(value).to_le_bytes()
+        })
+        .collect();
+    assert_eq!(stored, expected.as_slice());
+    let leading: Vec<u16> = stored
+        .chunks_exact(2)
+        .take(LEADING_VALUES.len())
+        .map(|bytes| u16::from_le_bytes([bytes[0], bytes[1]]))
+        .collect();
+    assert_eq!(leading, [0x3C00, 0x3C00, 0x3C02, 0xC100]);
+    Ok(())
+}
+
+#[test]
+fn a_half_table_is_read_by_half_precision_lookups_and_head_in_every_branch() -> TestResult {
+    let converted = run_with(&half_decoder().bytes()?, TablePrecision::Half)?;
+    assert_eq!(converted.summary.tied_embedding_branches, 2);
+    let model = ModelProto::parse_from_bytes(&converted.graph)?;
+    for branch in branches(&model) {
+        let ops = op_types(branch);
+        assert!(!ops.contains(&"Transpose"));
+        assert!(!ops.contains(&"MatMul"));
+        let gather = branch
+            .node
+            .iter()
+            .position(|node| node.op_type == "Gather")
+            .ok_or("no Gather")?;
+        let gather_node = branch.node.get(gather).ok_or("no Gather")?;
+        assert_eq!(
+            gather_node.input.first().map(String::as_str),
+            Some("embedding")
+        );
+        let rows = gather_node.output.first().ok_or("no rows")?;
+        let after = branch.node.get(gather + 1).ok_or("no node after Gather")?;
+        assert_eq!(after.op_type, "Cast");
+        assert_eq!(after.input, std::slice::from_ref(rows));
+        assert_eq!(after.output, ["embedded".to_owned()]);
+        assert_eq!(after.attribute.first().map(|a| a.i), Some(1));
+
+        let gemm = branch
+            .node
+            .iter()
+            .position(|node| node.op_type == "Gemm")
+            .ok_or("no Gemm")?;
+        let gemm_node = branch.node.get(gemm).ok_or("no Gemm")?;
+        assert_eq!(
+            gemm_node.input.get(1).map(String::as_str),
+            Some("embedding")
+        );
+        let first_cast = branch
+            .node
+            .iter()
+            .filter(|node| node.op_type == "Cast")
+            .map(|node| {
+                (
+                    node.input.clone(),
+                    node.attribute.first().map_or(0, |a| a.i),
+                )
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(first_cast.len(), 3);
+        assert_eq!(first_cast.get(1).map(|cast| cast.1), Some(10));
+        assert_eq!(
+            first_cast.get(1).map(|cast| cast.0.clone()),
+            Some(vec!["hidden".to_owned()])
+        );
+        let last = branch.node.last().ok_or("empty branch")?;
+        assert_eq!(
+            (
+                last.op_type.as_str(),
+                last.output.clone(),
+                last.attribute.first().map(|a| a.i)
+            ),
+            ("Cast", vec!["logits".to_owned()], Some(1))
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn a_table_another_node_reads_stays_in_full_precision() -> TestResult {
+    let decoder = Decoder {
+        extra_table_reader: true,
+        ..half_decoder()
+    };
+    let converted = run_with(&decoder.bytes()?, TablePrecision::Half)?;
+    assert_eq!(converted.summary.half_precision_tables, 0);
+    assert_eq!(converted.summary.tied_embedding_branches, 2);
+    let model = ModelProto::parse_from_bytes(&converted.graph)?;
+    let table = model
+        .graph
+        .initializer
+        .iter()
+        .find(|tensor| tensor.name == "embedding")
+        .ok_or("no embedding")?;
+    assert_eq!(table.data_type, 1);
+    assert_eq!(entry(table, "length"), Some(32 * 16 * 4));
+    assert!(
+        branches(&model)
+            .iter()
+            .all(|branch| !op_types(branch).contains(&"Cast"))
+    );
+    Ok(())
+}
+
+#[test]
+fn a_model_without_the_pattern_has_no_half_table() -> TestResult {
+    let mut model = half_decoder().model();
+    model.graph.mut_or_insert_default().node.clear();
+    let converted = run_with(&model.write_to_bytes()?, TablePrecision::Half)?;
+    assert_eq!(converted.summary.half_precision_tables, 0);
+    assert_eq!(
+        converted.summary.data_bytes,
+        run(&model.write_to_bytes()?)?.summary.data_bytes
+    );
+    Ok(())
+}
+
+#[test]
+fn values_half_precision_cannot_hold_are_an_error() -> TestResult {
+    let decoder = Decoder {
+        embedding_values: EmbeddingValues::Floats { largest: 1.0e10 },
+        ..Decoder::small()
+    };
+    assert!(matches!(
+        run_with(&decoder.bytes()?, TablePrecision::Half),
+        Err(ConvertError::HalfOverflow { .. })
+    ));
+    Ok(())
+}
+
+#[test]
+fn nodes_serialized_after_the_weights_are_an_error_when_a_table_would_be_narrowed() -> TestResult {
+    let model = half_decoder().model();
+    let mut weights = GraphProto::new();
+    weights.initializer = model.graph.initializer.clone();
+    let mut nodes = GraphProto::new();
+    nodes.node = model.graph.node.clone();
+    let mut graph = weights.write_to_bytes()?;
+    graph.extend(nodes.write_to_bytes()?);
+
+    let mut head = model.clone();
+    head.graph.clear();
+    let mut bytes = head.write_to_bytes()?;
+    {
+        let mut output = protobuf::CodedOutputStream::vec(&mut bytes);
+        output.write_bytes(7, &graph)?;
+        output.flush()?;
+    }
+    assert!(matches!(
+        run_with(&bytes, TablePrecision::Half),
+        Err(ConvertError::TablesAfterWeights)
+    ));
+    assert!(run_with(&bytes, TablePrecision::Full).is_ok());
+    Ok(())
 }

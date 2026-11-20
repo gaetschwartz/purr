@@ -43,4 +43,28 @@ pub enum ConvertError {
         code = "purr::onnx_convert::already_external"
     )]
     AlreadyExternal { name: String },
+
+    #[oopsie(
+        "Table {name} does not hold whole 32-bit elements",
+        code = "purr::onnx_convert::half_table_size"
+    )]
+    HalfTableSize { name: String },
+
+    #[oopsie(
+        "Table {name} has values that half precision cannot hold",
+        code = "purr::onnx_convert::half_overflow"
+    )]
+    HalfOverflow { name: String },
+
+    #[oopsie(
+        "Something besides a lookup still reads table {name} as full precision",
+        code = "purr::onnx_convert::half_table_still_read"
+    )]
+    HalfTableStillRead { name: String },
+
+    #[oopsie(
+        "The graph's nodes came after the weights, so the tables to narrow were not known in time",
+        code = "purr::onnx_convert::tables_after_weights"
+    )]
+    TablesAfterWeights,
 }

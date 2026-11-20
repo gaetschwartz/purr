@@ -54,6 +54,15 @@ impl<M: Message> Remainder<M> {
             .add_value(number, protobuf::UnknownValue::LengthDelimited(bytes));
     }
 
+    /// Decodes a copy of the values gathered so far as `M`.
+    pub fn peek(&self) -> Result<M, ConvertError> {
+        let bytes = self
+            .message
+            .write_to_bytes()
+            .map_err(|source| ConvertError::Encode { source })?;
+        M::parse_from_bytes(&bytes).map_err(read_failed)
+    }
+
     /// Decodes the gathered values as `M`.
     pub fn finish(self) -> Result<M, ConvertError> {
         let bytes = self

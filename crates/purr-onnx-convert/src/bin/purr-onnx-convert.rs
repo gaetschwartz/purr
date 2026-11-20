@@ -1,4 +1,4 @@
-use purr_onnx_convert::convert::{Options, convert};
+use purr_onnx_convert::convert::{Options, TablePrecision, convert};
 use std::error::Error;
 use std::fs::File;
 use std::io::{BufReader, BufWriter, Write};
@@ -6,8 +6,15 @@ use std::path::PathBuf;
 
 fn main() -> Result<(), Box<dyn Error>> {
     let mut args = std::env::args().skip(1);
-    let (Some(input), Some(output_dir), None) = (args.next(), args.next(), args.next()) else {
-        return Err("usage: purr-onnx-convert <model.onnx> <output-dir>".into());
+    let (Some(input), Some(output_dir), flag, None) =
+        (args.next(), args.next(), args.next(), args.next())
+    else {
+        return Err("usage: purr-onnx-convert <model.onnx> <output-dir> [--half-table]".into());
+    };
+    let table = match flag.as_deref() {
+        None => TablePrecision::Full,
+        Some("--half-table") => TablePrecision::Half,
+        Some(other) => return Err(format!("unknown option {other}").into()),
     };
     let input = PathBuf::from(input);
     let name = input
@@ -27,6 +34,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         &mut graph,
         &Options {
             data_location: &data_name,
+            table,
         },
     )?;
     data.flush()?;

@@ -11,6 +11,7 @@ crate-type = ["cdylib", "rlib"]
 workspace = true
 
 [dependencies]
+half = "2.7.1"
 hex = { version = "0.4.3", optional = true }
 oopsie.workspace = true
 protobuf = "3.7.2"

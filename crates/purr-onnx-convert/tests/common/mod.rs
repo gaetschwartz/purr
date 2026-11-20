@@ -67,6 +67,8 @@ fn if_node(then_branch: GraphProto, else_branch: GraphProto) -> NodeProto {
     node
 }
 
+pub const LEADING_VALUES: [f32; 4] = [1.0, 1.0 + 1.0 / 2048.0, 1.0 + 3.0 / 2048.0, -2.5];
+
 pub struct Decoder {
     pub vocabulary: usize,
     pub width: usize,
@@ -74,6 +76,25 @@ pub struct Decoder {
     pub filler_bytes: usize,
     pub shared_transpose_in_else: bool,
     pub opset: i64,
+    pub embedding_values: EmbeddingValues,
+    pub extra_table_reader: bool,
+}
+
+#[derive(Clone, Copy)]
+pub enum EmbeddingValues {
+    Pattern,
+    Floats { largest: f32 },
+}
+
+pub fn embedding_floats(count: usize, largest: f32) -> Vec<f32> {
+    (0..count)
+        .map(|index| match LEADING_VALUES.get(index) {
+            Some(value) => *value,
+            None => (index as f32 * 0.37).sin() * 3.0,
+        })
+        .chain(std::iter::once(largest))
+        .take(count)
+        .collect()
 }
 
 impl Decoder {
@@ -85,6 +106,8 @@ impl Decoder {
             filler_bytes: 5000,
             shared_transpose_in_else: false,
             opset: 14,
+            embedding_values: EmbeddingValues::Pattern,
+            extra_table_reader: false,
         }
     }
 
@@ -92,6 +115,16 @@ impl Decoder {
         let embedding = filler("embedding", self.vocabulary * self.width * 4, 7);
         let mut embedding = embedding;
         embedding.dims = vec![dim(self.vocabulary), dim(self.width)];
+        if let EmbeddingValues::Floats { largest } = self.embedding_values {
+            let mut floats = embedding_floats(self.vocabulary * self.width, 0.0);
+            if let Some(last) = floats.last_mut() {
+                *last = largest;
+            }
+            embedding.raw_data = floats
+                .iter()
+                .flat_map(|value| value.to_le_bytes())
+                .collect();
+        }
         let mut graph = GraphProto::new();
         "decoder".clone_into(&mut graph.name);
         graph.initializer.push(embedding);
@@ -105,10 +138,13 @@ impl Decoder {
                 index as u8,
             ));
         }
-        graph.node = vec![if_node(
-            branch(false),
-            branch(self.shared_transpose_in_else),
-        )];
+        let mut then_branch = branch(false);
+        if self.extra_table_reader {
+            then_branch
+                .node
+                .push(node("Identity", &["embedding"], &["table_copy"]));
+        }
+        graph.node = vec![if_node(then_branch, branch(self.shared_transpose_in_else))];
         let mut opset = OperatorSetIdProto::new();
         opset.version = self.opset;
         let mut model = ModelProto::new();

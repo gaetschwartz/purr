@@ -1,7 +1,7 @@
 //! Helpers for the manifest generator and the real-model tests: fetching the pinned original
 //! files and measuring what the converter makes of them.
 
-use crate::convert::{Options, Summary, convert};
+use crate::convert::{Options, Summary, TablePrecision, convert};
 use oopsie::{Welp, WelpResultExt as _};
 use sha2::{Digest as _, Sha256};
 use std::fs::File;
@@ -121,7 +121,11 @@ pub fn data_name(model_name: &str) -> String {
 
 /// Converts `input` and measures both outputs. With `output_dir` the outputs are also written
 /// there under their final names.
-pub fn convert_file(input: &Path, output_dir: Option<&Path>) -> Result<Conversion, Welp> {
+pub fn convert_file(
+    input: &Path,
+    output_dir: Option<&Path>,
+    table: TablePrecision,
+) -> Result<Conversion, Welp> {
     let name = input
         .file_name()
         .and_then(|name| name.to_str())
@@ -147,6 +151,7 @@ pub fn convert_file(input: &Path, output_dir: Option<&Path>) -> Result<Conversio
         &mut graph,
         &Options {
             data_location: &data_name,
+            table,
         },
     )
     .welp()?;
