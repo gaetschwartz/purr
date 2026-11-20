@@ -1,4 +1,7 @@
-use super::{changes::report, dialog_handle::use_settings_dialog, saved_audio::SavedAudioGroup};
+use super::{
+    changes::report, developer::DeveloperGroup, dialog_handle::use_settings_dialog,
+    saved_audio::SavedAudioGroup,
+};
 use crate::{
     components::{
         dialog::{Dialog, DialogTone},
@@ -86,6 +89,7 @@ pub fn AdvancedPage() -> Element {
         if IS_WEB {
             SavedAudioGroup {}
         }
+        DeveloperGroup {}
         Group {
             Item {
                 title: "Reset all settings",

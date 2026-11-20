@@ -6,6 +6,7 @@ pub mod banner;
 pub mod brand_mark;
 pub mod button;
 pub mod chip;
+pub mod developer_panel;
 pub mod device_pill;
 pub mod dialog;
 pub mod drop_pad;

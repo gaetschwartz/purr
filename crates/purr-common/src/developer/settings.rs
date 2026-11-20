@@ -64,6 +64,56 @@ mod tests {
         assert_eq!(settings.active_session_options().unwrap().len(), 1);
     }
 
+    fn browser_model(id: &str) -> crate::developer::model::DeveloperModel {
+        use crate::developer::model::{
+            BrowserModel, BrowserOrigin, Conversion, DeveloperModel, DeveloperModelId,
+            DeveloperSource,
+        };
+        use crate::model::family::{ModelFamily, WhisperSize};
+        use crate::web_model::attributes::OnnxDtype;
+        DeveloperModel {
+            id: DeveloperModelId::from_unique(id),
+            name: "tiny".to_owned(),
+            family: ModelFamily::Whisper(WhisperSize::Tiny),
+            source: DeveloperSource::Browser(BrowserModel {
+                origin: BrowserOrigin::LocalFiles,
+                encoder_dtype: OnnxDtype::Fp32,
+                decoder_dtype: OnnxDtype::Fp32,
+                conversion: Conversion::AsIs,
+                english_only: false,
+            }),
+        }
+    }
+
+    #[test]
+    fn switching_the_mode_off_moves_a_selected_developer_model_back_to_the_default() {
+        let model = browser_model("aaaa");
+        let mut settings = Settings::default();
+        settings.set_developer_mode(true);
+        settings.developer.models.push(model.clone());
+        settings.model.model_name = model.id.as_str().to_owned();
+        settings.model.default_model = Some(model.id.as_str().to_owned());
+        settings.set_developer_mode(false);
+        assert_eq!(settings.model.model_name, "base");
+        assert_eq!(settings.model.default_model, None);
+        assert_eq!(settings.developer.models, vec![model]);
+    }
+
+    #[test]
+    fn removing_a_developer_model_moves_its_selection_back_to_the_default() {
+        let model = browser_model("bbbb");
+        let other = browser_model("cccc");
+        let mut settings = Settings::default();
+        settings.set_developer_mode(true);
+        settings.developer.models = vec![model.clone(), other.clone()];
+        settings.model.model_name = other.id.as_str().to_owned();
+        settings.remove_developer_model(model.id.as_str());
+        assert_eq!(settings.model.model_name, other.id.as_str());
+        settings.remove_developer_model(other.id.as_str());
+        assert_eq!(settings.model.model_name, "base");
+        assert_eq!(settings.developer.models, vec![]);
+    }
+
     #[test]
     fn settings_survive_a_toml_file() {
         let settings = Settings {

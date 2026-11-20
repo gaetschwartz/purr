@@ -8,7 +8,7 @@ use purr_common::{
         precision::Precision,
         profile::Speakers,
     },
-    platform::ModelInfo,
+    platform::{ModelInfo, ModelOrigin},
 };
 
 /// The tag text of the languages a model transcribes.
@@ -60,6 +60,7 @@ pub struct ModelEntry {
     pub installed: bool,
     /// Whether the engine that runs the model is part of this build.
     pub engine_built: bool,
+    pub origin: ModelOrigin,
 }
 
 impl ModelEntry {
@@ -92,6 +93,7 @@ impl ModelEntry {
             size_bytes: info.size_bytes,
             installed: info.is_installed,
             engine_built: info.engine_built,
+            origin: info.origin,
         }
     }
 
@@ -122,7 +124,10 @@ impl ModelEntry {
     /// The tag text of how the weights are stored.
     #[must_use]
     pub fn quantization_tag(&self) -> Option<String> {
-        quantization_tag(self.descriptor.weights)
+        match self.origin {
+            ModelOrigin::Developer => None,
+            ModelOrigin::Catalog => quantization_tag(self.descriptor.weights),
+        }
     }
 
     #[must_use]

@@ -309,3 +309,20 @@ mark.cur{background:var(--accent);color:#fff}
 .about-id p{margin:2px 0 0}
 .run-link{display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:var(--r-panel);font-size:14px;color:var(--fg-2);text-decoration:none;transition:background .2s}
 .run-link:hover{background:var(--solid-3);color:var(--fg)}
+.dev-launch{position:absolute;z-index:35;right:16px;bottom:16px;height:30px;padding:0 12px;border-radius:999px;background:var(--glass-2);color:var(--fg-2);font-size:12px;font-weight:600;box-shadow:var(--shadow-2)}
+.dev-launch:hover{color:var(--fg)}
+.dev-panel{position:absolute;z-index:50;right:16px;bottom:16px;width:min(420px,calc(100% - 32px));max-height:min(78%,640px);display:flex;flex-direction:column;border-radius:var(--r-panel);box-shadow:var(--shadow-3);overflow:hidden}
+.dev-head{display:flex;align-items:center;gap:8px;padding:10px 10px 10px 16px;border-bottom:1px solid var(--separator)}
+.dev-head h2{flex:1;margin:0;font-size:15px}
+.dev-body{overflow:auto;padding:4px 16px 12px;font-size:12.5px}
+.dev-body h3{margin:14px 0 4px;font-size:11px;font-weight:650;letter-spacing:.04em;text-transform:uppercase;color:var(--fg-3)}
+.dev-body dl{margin:0}
+.dev-body dl>div{display:flex;justify-content:space-between;gap:16px;padding:3px 0;border-bottom:1px solid var(--hairline)}
+.dev-body dt{color:var(--fg-2)}
+.dev-body dd{margin:0;text-align:right;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.dev-form{display:flex;flex-direction:column;gap:10px;padding:12px 16px}
+.dev-form label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--fg-2)}
+.dev-form textarea,.dev-form input[type=text]{border:0;border-radius:10px;background:var(--fill);padding:8px 12px;font:inherit;font-size:13px;color:var(--fg);outline:none}
+.dev-form textarea{min-height:96px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;resize:vertical}
+.dev-form textarea:focus-visible,.dev-form input[type=text]:focus-visible{box-shadow:0 0 0 2.5px var(--accent-soft-2),0 0 0 1px var(--accent) inset}
+.dev-form .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}

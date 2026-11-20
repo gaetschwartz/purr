@@ -5,6 +5,8 @@ use dioxus::prelude::*;
 pub mod appearance;
 /// The design-system components
 pub mod components;
+/// The developer panel as sections of rows
+mod developer_report;
 /// Saved transcriptions: building entries, searching them and the root store
 pub mod history;
 /// Custom hooks for state management and UI patterns
@@ -30,11 +32,13 @@ use appearance::use_appearance_provider;
 use components::{
     banner::{Banner, BannerTone},
     button::{Button, ButtonVariant},
+    developer_panel::{DeveloperLauncher, DeveloperPanel},
     icon::IconName,
     layer::{LayerOutlet, use_layer_host_provider},
     page::document_title,
     toast::{ToastRegion, use_toast_provider},
 };
+use hooks::use_developer_panel::use_developer_panel_provider;
 use hooks::use_models::use_models_provider;
 use hooks::use_system_probe::use_system_probe_provider;
 use main_app::MainApp;
@@ -116,6 +120,7 @@ pub fn App() -> Element {
     hooks::leave_guard::use_leave_guard_during_runs();
     use_layer_host_provider();
     use_settings_dialog_provider();
+    use_developer_panel_provider();
     use_shortcut_provider();
     let loading = settings.load_state() == LoadState::Loading;
 
@@ -154,6 +159,8 @@ pub fn App() -> Element {
                 }
             }
             LayerOutlet {}
+            DeveloperLauncher {}
+            DeveloperPanel {}
             ToastRegion {}
         }
     }

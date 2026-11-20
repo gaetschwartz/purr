@@ -5,7 +5,7 @@
 //! and validation methods.
 
 use crate::accel::{AccelBackend, AccelSelection};
-use crate::developer::settings::DeveloperSettings;
+use crate::developer::{model::DeveloperModelId, settings::DeveloperSettings};
 use crate::devices::{DeviceDefaults, DeviceOrder, DevicePreference};
 use crate::export_format::ExportFormat;
 use crate::hugging_face_token::HuggingFaceToken;
@@ -304,6 +304,41 @@ impl Settings {
         }
 
         errors
+    }
+
+    /// Turns developer mode on or off. Models loaded in developer mode are not offered while it
+    /// is off, so a selection of one moves back to the default model.
+    pub fn set_developer_mode(&mut self, enabled: bool) {
+        self.developer.enabled = enabled;
+        if !enabled {
+            self.forget_developer_selection();
+        }
+    }
+
+    /// Removes a developer model, moving a selection of it back to the default model.
+    pub fn remove_developer_model(&mut self, id: &str) {
+        self.developer
+            .models
+            .retain(|model| model.id.as_str() != id);
+        self.forget_developer_selection();
+    }
+
+    fn forget_developer_selection(&mut self) {
+        let offered = |name: &str| {
+            !DeveloperModelId::is_developer(name) || self.developer.model(name).is_some()
+        };
+        let fallback = ModelSettings::default().model_name;
+        if !offered(&self.model.model_name) {
+            self.model.model_name = fallback;
+        }
+        if self
+            .model
+            .default_model
+            .as_deref()
+            .is_some_and(|name| !offered(name))
+        {
+            self.model.default_model = None;
+        }
     }
 
     /// Rewrites the stored spoken languages under their current spelling, so `iw` reads as `he`.
