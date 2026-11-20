@@ -4,9 +4,10 @@ use crate::{
     model::engine::EngineId,
     platform::DeviceType,
 };
+use serde::Deserialize;
 
 /// A figure with the highest value seen since the peak was last reset.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 pub struct Peaked {
     pub current: u64,
     pub peak: u64,
@@ -19,7 +20,7 @@ pub enum ExecutionProvider {
 }
 
 /// A named value the browser reports about the adapter, shown as text.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct Field {
     pub name: String,
     pub value: String,
@@ -32,7 +33,7 @@ pub struct AdapterReading {
     pub limits: Vec<Field>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 pub struct JsHeapReading {
     pub used: Peaked,
     pub limit: u64,
@@ -40,7 +41,7 @@ pub struct JsHeapReading {
 
 /// GPU memory as ONNX Runtime allocates it: buffers created and not yet destroyed, since the
 /// browser exposes no real figure.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 pub struct GpuBuffers {
     pub bytes: Peaked,
     pub live: Peaked,
@@ -60,6 +61,8 @@ pub struct WorkerReading {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BrowserSnapshot {
+    /// Whether the worker was started with the collection hooks.
+    pub collecting: bool,
     pub worker: WorkerReading,
     /// The converter's WebAssembly heap while it runs or after its last run.
     pub converter_heap: Option<Peaked>,

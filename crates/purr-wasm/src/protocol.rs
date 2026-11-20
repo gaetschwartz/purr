@@ -3,6 +3,8 @@
 //! Both directions carry JSON text so the shapes are defined once, here, and covered by native
 //! tests. Audio samples travel beside the JSON as a transferred `Float32Array`.
 
+use purr_common::developer::session_options::SessionOptions;
+use purr_common::developer::snapshot::{Field, GpuBuffers, JsHeapReading, Peaked};
 use purr_common::language::tag::LanguageTag;
 use purr_common::platform::TranscriptSegment;
 use purr_common::web_model::attributes::OnnxDtype;
@@ -46,6 +48,20 @@ impl From<&WebModelSpec> for WorkerModel {
     }
 }
 
+/// Which external data files the worker asks for; catalog models always have both.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExternalData {
+    pub encoder: bool,
+    pub decoder: bool,
+}
+
+/// What developer mode adds to a request.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WorkerDeveloper {
+    pub session_options: SessionOptions,
+    pub external_data: Option<ExternalData>,
+}
+
 /// The ONNX Runtime execution provider a model runs on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Provider {
@@ -62,6 +78,7 @@ pub enum WorkerSetup {
         ort_module_url: String,
         ort_wasm_url: String,
         warm_up_url: String,
+        developer: bool,
     },
 }
 
@@ -74,6 +91,13 @@ pub enum WorkerRequest {
         request_id: RequestId,
         model: WorkerModel,
         provider: Provider,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        developer: Option<WorkerDeveloper>,
+    },
+    /// Read the developer panel figures; answered while another request runs.
+    DeveloperSnapshot {
+        request_id: RequestId,
+        reset_peaks: bool,
     },
     /// Transcribe the 16 kHz mono samples that accompany the message.
     Transcribe {
@@ -82,6 +106,8 @@ pub enum WorkerRequest {
         provider: Provider,
         language: Option<String>,
         english_only: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        developer: Option<WorkerDeveloper>,
     },
 }
 
@@ -89,9 +115,31 @@ impl WorkerRequest {
     #[must_use]
     pub const fn request_id(&self) -> RequestId {
         match self {
-            Self::LoadModel { request_id, .. } | Self::Transcribe { request_id, .. } => *request_id,
+            Self::LoadModel { request_id, .. }
+            | Self::DeveloperSnapshot { request_id, .. }
+            | Self::Transcribe { request_id, .. } => *request_id,
         }
     }
+}
+
+/// The browser's adapter as the worker read it; features are the names the adapter supports.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct WireAdapter {
+    pub info: Vec<Field>,
+    pub features: Vec<String>,
+    pub limits: Vec<Field>,
+}
+
+/// The developer figures of the worker.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct WorkerSnapshot {
+    pub hooks: bool,
+    pub wasm_heap: Option<Peaked>,
+    pub gpu_buffers: GpuBuffers,
+    pub js_heap: Option<JsHeapReading>,
+    pub model: Option<String>,
+    pub provider: Option<Provider>,
+    pub adapter: Option<WireAdapter>,
 }
 
 /// Why the worker gave up on a request.
@@ -152,6 +200,10 @@ pub enum WorkerEvent {
         request_id: RequestId,
         segments: Vec<TranscriptSegment>,
     },
+    DeveloperSnapshot {
+        request_id: RequestId,
+        snapshot: WorkerSnapshot,
+    },
     Completed {
         request_id: RequestId,
         processing_time: f64,
@@ -177,6 +229,7 @@ impl WorkerEvent {
             | Self::LanguageDetected { request_id, .. }
             | Self::Segment { request_id, .. }
             | Self::Segments { request_id, .. }
+            | Self::DeveloperSnapshot { request_id, .. }
             | Self::Completed { request_id, .. } => Some(*request_id),
             Self::Failed { request_id, .. } => *request_id,
         }
@@ -188,6 +241,7 @@ impl WorkerEvent {
 pub enum RequestKind {
     LoadModel,
     Transcribe,
+    Snapshot,
 }
 
 impl WorkerRequest {
@@ -195,6 +249,7 @@ impl WorkerRequest {
     pub const fn kind(&self) -> RequestKind {
         match self {
             Self::LoadModel { .. } => RequestKind::LoadModel,
+            Self::DeveloperSnapshot { .. } => RequestKind::Snapshot,
             Self::Transcribe { .. } => RequestKind::Transcribe,
         }
     }
@@ -207,6 +262,7 @@ impl WorkerEvent {
         match (self, kind) {
             (Self::Failed { .. }, _)
             | (Self::ModelReady { .. }, RequestKind::LoadModel)
+            | (Self::DeveloperSnapshot { .. }, RequestKind::Snapshot)
             | (Self::Completed { .. }, RequestKind::Transcribe) => true,
             (
                 Self::ModelFile { .. }
@@ -216,6 +272,7 @@ impl WorkerEvent {
                 | Self::LanguageDetected { .. }
                 | Self::Segment { .. }
                 | Self::Segments { .. }
+                | Self::DeveloperSnapshot { .. }
                 | Self::Completed { .. },
                 _,
             ) => false,
@@ -261,6 +318,7 @@ mod tests {
             provider: Provider::Cpu,
             language: Some("fr".to_owned()),
             english_only: false,
+            developer: None,
         };
         assert_eq!(
             serde_json::to_value(&request)?,
@@ -291,6 +349,7 @@ mod tests {
             provider: Provider::WebGpu,
             language: None,
             english_only: true,
+            developer: None,
         };
         assert_eq!(serde_json::to_value(&request)?["language"], json!(null));
         Ok(())
@@ -302,6 +361,7 @@ mod tests {
             ort_module_url: "/assets/ort.mjs".to_owned(),
             ort_wasm_url: "/assets/ort.wasm".to_owned(),
             warm_up_url: "/assets/warm_up.pcm".to_owned(),
+            developer: true,
         };
         assert_eq!(
             serde_json::to_value(&setup)?,
@@ -310,6 +370,7 @@ mod tests {
                 "ort_module_url": "/assets/ort.mjs",
                 "ort_wasm_url": "/assets/ort.wasm",
                 "warm_up_url": "/assets/warm_up.pcm",
+                "developer": true,
             })
         );
         Ok(())
@@ -321,6 +382,7 @@ mod tests {
             request_id: RequestId::new(3),
             model: model(),
             provider: Provider::WebGpu,
+            developer: None,
         };
         let decoded: WorkerRequest = serde_json::from_str(&serde_json::to_string(&request)?)?;
         assert_eq!(decoded, request);

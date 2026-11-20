@@ -124,6 +124,7 @@ impl TranscriptionMapper {
                 audio_duration: audio_duration as f32,
                 word_count,
             }),
+            WorkerEvent::DeveloperSnapshot { .. } => None,
             WorkerEvent::Failed { kind, message, .. } => Some(failure_status(kind, message)),
         }
     }
@@ -198,6 +199,7 @@ impl PreloadMapper {
             | WorkerEvent::LanguageDetected { .. }
             | WorkerEvent::Segment { .. }
             | WorkerEvent::Segments { .. }
+            | WorkerEvent::DeveloperSnapshot { .. }
             | WorkerEvent::Completed { .. } => PreloadStep::Ignored,
         }
     }

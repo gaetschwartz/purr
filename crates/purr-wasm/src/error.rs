@@ -400,6 +400,12 @@ pub enum WebError {
     )]
     Conversion { message: String },
 
+    #[oopsie(
+        "Developer model: {message}",
+        code = "purr::web::model::developer_model"
+    )]
+    DeveloperModel { message: String },
+
     #[oopsie("{source}")]
     Worker { source: WorkerError },
 
@@ -422,6 +428,12 @@ impl WebError {
         Self::ModelNotFound {
             model_id: model_id.into(),
             storage_type: storage_type.into(),
+        }
+    }
+
+    pub fn developer_model(message: impl Into<String>) -> Self {
+        Self::DeveloperModel {
+            message: message.into(),
         }
     }
 
@@ -501,9 +513,10 @@ impl WebError {
                 PlatformError::audio_processing(Box::new(self))
             }
             Self::Worker { .. } => PlatformError::initialization(Box::new(self)),
-            Self::Manifest { .. } | Self::Integrity { .. } | Self::Conversion { .. } => {
-                PlatformError::model_management(Box::new(self))
-            }
+            Self::Manifest { .. }
+            | Self::Integrity { .. }
+            | Self::Conversion { .. }
+            | Self::DeveloperModel { .. } => PlatformError::model_management(Box::new(self)),
             Self::ModelNotFound { model_id, .. } => PlatformError::model_not_found(model_id),
             Self::Storage { .. }
             | Self::IndexedDb { .. }

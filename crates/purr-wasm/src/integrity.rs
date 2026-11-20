@@ -7,7 +7,7 @@ use sha2::{Digest as _, Sha256};
 
 /// Hashes a file chunk by chunk so it never has to sit in memory as a whole.
 pub struct FileChecker<'a> {
-    file: &'a CachedFile,
+    file: Option<&'a CachedFile>,
     hasher: Sha256,
     received_bytes: u64,
 }
@@ -16,7 +16,17 @@ impl<'a> FileChecker<'a> {
     #[must_use]
     pub fn new(file: &'a CachedFile) -> Self {
         Self {
-            file,
+            file: Some(file),
+            hasher: Sha256::new(),
+            received_bytes: 0,
+        }
+    }
+
+    /// A checker that counts and hashes but accepts whatever it receives.
+    #[must_use]
+    pub fn unchecked() -> Self {
+        Self {
+            file: None,
             hasher: Sha256::new(),
             received_bytes: 0,
         }
@@ -33,23 +43,26 @@ impl<'a> FileChecker<'a> {
     }
 
     pub fn finish(self) -> Result<(), IntegrityError> {
-        if self.received_bytes != self.file.size_bytes {
+        let Some(file) = self.file else {
+            return Ok(());
+        };
+        if self.received_bytes != file.size_bytes {
             return Err(IntegrityError::SizeMismatch {
-                path: self.file.path.clone(),
-                expected: self.file.size_bytes,
+                path: file.path.clone(),
+                expected: file.size_bytes,
                 actual: self.received_bytes,
             });
         }
         let actual = hex::encode(self.hasher.finalize());
         let matches = actual
             .parse::<Sha256Digest>()
-            .is_ok_and(|digest| digest == self.file.sha256);
+            .is_ok_and(|digest| digest == file.sha256);
         if matches {
             Ok(())
         } else {
             Err(IntegrityError::DigestMismatch {
-                path: self.file.path.clone(),
-                expected: self.file.sha256.to_string(),
+                path: file.path.clone(),
+                expected: file.sha256.to_string(),
                 actual,
             })
         }

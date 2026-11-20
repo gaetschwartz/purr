@@ -171,6 +171,9 @@ fn parse_message(data: &JsValue) -> Option<ConverterEvent> {
                 _ => Sink::Graph,
             };
             let bytes = Uint8Array::new(&field("bytes")?);
+            if let Some(heap) = field("heap").and_then(|heap| heap.as_f64()) {
+                crate::developer::converter_heap_seen(heap as u64);
+            }
             Some(ConverterEvent::Output { sink, bytes })
         }
         "Done" => Some(

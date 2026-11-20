@@ -166,6 +166,13 @@ impl Platform for UnimplementedPlatformImpl {
         unsupported!()
     }
 
+    async fn developer_snapshot(
+        &self,
+        reset_peaks: bool,
+    ) -> Result<purr_common::developer::snapshot::DeveloperSnapshot, PlatformError> {
+        unsupported!()
+    }
+
     async fn load_settings(&self) -> Result<Settings, PlatformError> {
         unsupported!()
     }

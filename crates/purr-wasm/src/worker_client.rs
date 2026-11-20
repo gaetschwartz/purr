@@ -35,6 +35,7 @@ enum Input {
     Submit(Submission),
     Cancel(RequestId),
     ReleaseIdle,
+    Developer(bool),
     FromWorker(WorkerSignal),
 }
 
@@ -53,12 +54,21 @@ impl WorkerClient {
             worker_url,
             input: input.clone(),
             worker: None,
+            developer: false,
             pending: HashMap::new(),
         };
         spawn_local(router.run(receiver));
         Self {
             input,
             next_id: AtomicU64::new(1),
+        }
+    }
+
+    /// Whether the worker collects the developer panel figures. A worker that started the other
+    /// way is replaced when idle, since the hooks must exist before the model runtime starts.
+    pub fn set_developer(&self, enabled: bool) {
+        if self.input.send(Input::Developer(enabled)).is_err() {
+            tracing::debug!("The worker router has stopped; the developer setting is dropped");
         }
     }
 
@@ -163,13 +173,18 @@ fn describe_error_event(event: &JsValue, script: &str) -> String {
 
 struct LiveWorker {
     worker: Worker,
+    hooked: bool,
     _on_message: Closure<dyn FnMut(MessageEvent)>,
     _on_error: Closure<dyn FnMut(JsValue)>,
     _on_message_error: Closure<dyn FnMut(MessageEvent)>,
 }
 
 impl LiveWorker {
-    fn start(url: &str, input: &mpsc::UnboundedSender<Input>) -> Result<Self, String> {
+    fn start(
+        url: &str,
+        input: &mpsc::UnboundedSender<Input>,
+        developer: bool,
+    ) -> Result<Self, String> {
         let options = WorkerOptions::new();
         options.set_type(WorkerType::Module);
         let worker = Worker::new_with_options(url, &options).map_err(|e| {
@@ -183,6 +198,7 @@ impl LiveWorker {
             ort_module_url,
             ort_wasm_url,
             warm_up_url: crate::warm_up_url(),
+            developer,
         })
         .map_err(|e| e.to_string())?;
         let message = Object::new();
@@ -242,6 +258,7 @@ impl LiveWorker {
 
         Ok(Self {
             worker,
+            hooked: developer,
             _on_message: on_message,
             _on_error: on_error,
             _on_message_error: on_message_error,
@@ -286,6 +303,7 @@ struct Router {
     worker_url: String,
     input: mpsc::UnboundedSender<Input>,
     worker: Option<LiveWorker>,
+    developer: bool,
     pending: HashMap<RequestId, Pending>,
 }
 
@@ -296,6 +314,7 @@ impl Router {
                 Input::Submit(submission) => self.submit(submission),
                 Input::Cancel(id) => self.cancel(id),
                 Input::ReleaseIdle => self.release_idle(),
+                Input::Developer(enabled) => self.set_developer(enabled),
                 Input::FromWorker(WorkerSignal::Event(event)) => self.deliver(event),
                 Input::FromWorker(WorkerSignal::Malformed(message)) => {
                     tracing::error!("Malformed worker message: {message}");
@@ -335,7 +354,7 @@ impl Router {
         };
 
         if self.worker.is_none() {
-            match LiveWorker::start(&self.worker_url, &self.input) {
+            match LiveWorker::start(&self.worker_url, &self.input, self.developer) {
                 Ok(worker) => self.worker = Some(worker),
                 Err(reason) => {
                     fail(
@@ -420,6 +439,17 @@ impl Router {
         {
             tracing::info!("Stopping the idle transcription worker to drop the model it holds");
             worker.terminate();
+        }
+    }
+
+    fn set_developer(&mut self, enabled: bool) {
+        self.developer = enabled;
+        let stale = self
+            .worker
+            .as_ref()
+            .is_some_and(|worker| worker.hooked != enabled);
+        if stale {
+            self.release_idle();
         }
     }
 

@@ -11,6 +11,7 @@ use futures::join;
 use js_sys::Uint8Array;
 use purr_common::hugging_face_token::HuggingFaceToken;
 use purr_common::web_model::registry::{CachedFile, WebModelFile, WebModelSpec};
+use purr_common::web_model::variant::TableStorage;
 use wasm_bindgen::{JsCast as _, JsValue};
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{
@@ -33,13 +34,13 @@ pub enum InstallProgress<'a> {
     },
 }
 
-struct Reporter<'a> {
-    report: &'a mut dyn FnMut(InstallProgress<'_>),
-    last_ms: f64,
+pub(crate) struct Reporter<'a> {
+    pub(crate) report: &'a mut dyn FnMut(InstallProgress<'_>),
+    pub(crate) last_ms: f64,
 }
 
 impl Reporter<'_> {
-    fn receiving(&mut self, path: &str, loaded_bytes: u64) {
+    pub(crate) fn receiving(&mut self, path: &str, loaded_bytes: u64) {
         let now = js_sys::Date::now();
         if now - self.last_ms >= PROGRESS_INTERVAL_MS {
             self.last_ms = now;
@@ -47,7 +48,7 @@ impl Reporter<'_> {
         }
     }
 
-    fn installed(&mut self, path: &str) {
+    pub(crate) fn installed(&mut self, path: &str) {
         (self.report)(InstallProgress::Installed { path });
     }
 }
@@ -99,7 +100,7 @@ async fn install_file(
     }
 }
 
-async fn open_download(
+pub(crate) async fn open_download(
     url: &str,
     token: Option<&HuggingFaceToken>,
 ) -> WebResult<ReadableStreamDefaultReader> {
@@ -129,12 +130,13 @@ async fn open_download(
     body_reader(&response)
 }
 
-fn entry_headers(size_bytes: u64) -> WebResult<ResponseInit> {
+pub(crate) fn entry_headers(size_bytes: Option<u64>) -> WebResult<ResponseInit> {
     let headers = Headers::new().map_err(|e| WebError::web_api("Headers.new", e))?;
-    for (name, value) in [
-        ("Content-Type", "application/octet-stream".to_owned()),
-        ("Content-Length", size_bytes.to_string()),
-    ] {
+    let mut entries = vec![("Content-Type", "application/octet-stream".to_owned())];
+    if let Some(size) = size_bytes {
+        entries.push(("Content-Length", size.to_string()));
+    }
+    for (name, value) in entries {
         headers
             .set(name, &value)
             .map_err(|e| WebError::web_api("Headers.set", e))?;
@@ -144,8 +146,8 @@ fn entry_headers(size_bytes: u64) -> WebResult<ResponseInit> {
     Ok(init)
 }
 
-async fn put_bytes(cache: &Cache, url: &str, mut bytes: Vec<u8>) -> WebResult<()> {
-    let init = entry_headers(bytes.len() as u64)?;
+pub(crate) async fn put_bytes(cache: &Cache, url: &str, mut bytes: Vec<u8>) -> WebResult<()> {
+    let init = entry_headers(Some(bytes.len() as u64))?;
     let response = Response::new_with_opt_u8_array_and_init(Some(&mut bytes), &init)
         .map_err(|e| WebError::web_api("Response.new", e))?;
     JsFuture::from(cache.put_with_str(url, &response))
@@ -225,11 +227,10 @@ async fn drain(
 async fn feed(
     input: &mut crate::converter_worker::ConverterInput,
     reader: &ReadableStreamDefaultReader,
-    original: &CachedFile,
+    mut checker: FileChecker<'_>,
     path: &str,
     reporter: &mut Reporter<'_>,
 ) -> WebResult<()> {
-    let mut checker = FileChecker::new(original);
     let fed = async {
         while let Some(chunk) = next_chunk(reader).await? {
             let piece: Uint8Array = chunk;
@@ -257,6 +258,18 @@ fn basename(path: &str) -> &str {
     path.rsplit_once('/').map_or(path, |(_, name)| name)
 }
 
+/// What a conversion reads, writes and checks; a checker without an expectation checks nothing.
+pub(crate) struct Conversion<'a> {
+    pub path: &'a str,
+    pub table: TableStorage,
+    pub graph_url: String,
+    pub data_url: String,
+    pub data_size: Option<u64>,
+    pub original: FileChecker<'a>,
+    pub data: FileChecker<'a>,
+    pub graph: FileChecker<'a>,
+}
+
 async fn install_converted(
     cache: &Cache,
     spec: &WebModelSpec,
@@ -276,12 +289,46 @@ async fn install_converted(
         size_bytes: file.size_bytes,
         sha256: file.sha256,
     };
+    convert_into_cache(
+        cache,
+        reader,
+        Conversion {
+            path: &file.path,
+            table: spec.table,
+            graph_url: spec.cached_url(graph_file),
+            data_url: spec.cached_url(data_file),
+            data_size: Some(data_file.size_bytes),
+            original: FileChecker::new(&original),
+            data: FileChecker::new(data_file),
+            graph: FileChecker::new(graph_file),
+        },
+        reporter,
+    )
+    .await
+}
+
+pub(crate) async fn convert_into_cache(
+    cache: &Cache,
+    reader: &ReadableStreamDefaultReader,
+    conversion: Conversion<'_>,
+    reporter: &mut Reporter<'_>,
+) -> WebResult<()> {
+    let Conversion {
+        path,
+        table,
+        graph_url,
+        data_url,
+        data_size,
+        original,
+        data: mut data_checker,
+        graph: mut graph_checker,
+    } = conversion;
     let (worker_url, wasm_url) = crate::converter_urls();
     let (mut input, mut output) = start(
         &worker_url,
         &wasm_url,
-        &format!("{}{}", basename(&file.path), WebModelFile::DATA_SUFFIX),
-        spec.table,
+        &format!("{}{}", basename(path), WebModelFile::DATA_SUFFIX),
+        table,
     )?;
 
     let stream = TransformStream::new().map_err(|e| WebError::web_api("TransformStream.new", e))?;
@@ -289,24 +336,18 @@ async fn install_converted(
         .writable()
         .get_writer()
         .map_err(|e| WebError::web_api("WritableStream.getWriter", e))?;
-    let data_url = spec.cached_url(data_file);
     let data_response = Response::new_with_opt_readable_stream_and_init(
         Some(&stream.readable()),
-        &entry_headers(data_file.size_bytes)?,
+        &entry_headers(data_size)?,
     )
     .map_err(|e| WebError::web_api("Response.new", e))?;
     let data_put = JsFuture::from(cache.put_with_str(&data_url, &data_response));
 
-    let mut data_checker = FileChecker::new(data_file);
-    let mut graph_checker = FileChecker::new(graph_file);
-    let (fed, drained) = join!(
-        feed(&mut input, reader, &original, &file.path, reporter),
-        async {
-            let drained = drain(&mut output, &writer, &mut data_checker, &mut graph_checker).await;
-            output.stop();
-            drained
-        }
-    );
+    let (fed, drained) = join!(feed(&mut input, reader, original, path, reporter), async {
+        let drained = drain(&mut output, &writer, &mut data_checker, &mut graph_checker).await;
+        output.stop();
+        drained
+    });
 
     let outcome = match (fed, drained) {
         (Err(error), _) | (Ok(()), Err(error)) => Err(error),
@@ -337,5 +378,5 @@ async fn install_converted(
     data_put
         .await
         .map_err(|e| WebError::web_api("Cache.put", e))?;
-    put_bytes(cache, &spec.cached_url(graph_file), graph).await
+    put_bytes(cache, &graph_url, graph).await
 }

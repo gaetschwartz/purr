@@ -57,7 +57,7 @@ function startConversion({
             Atomics.wait(control, Slot.Acked, acked, WAIT_SLICE_MS);
         }
         const bytes = new Uint8Array(memory.buffer, pointer, length).slice();
-        postMessage({ type: "Chunk", sink, bytes: bytes.buffer }, [bytes.buffer]);
+        postMessage({ type: "Chunk", sink, bytes: bytes.buffer, heap: memory.buffer.byteLength }, [bytes.buffer]);
         sent += length;
         return 0;
     }

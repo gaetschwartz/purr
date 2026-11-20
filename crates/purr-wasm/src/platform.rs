@@ -2,13 +2,17 @@
 
 use crate::audio;
 use crate::compute_choice::{self, GpuFailure};
+use crate::developer;
+use crate::developer_install;
+use crate::developer_model;
+use crate::developer_run::{ModelSource, worker_developer};
 use crate::error::{IntegrityError, WebError, WebResult};
 use crate::local::run_local;
 use crate::model::WebModelManager;
 use crate::model_cache;
 use crate::model_info::model_info;
 use crate::model_install::{self, InstallProgress};
-use crate::protocol::{WorkerEvent, WorkerModel, WorkerRequest};
+use crate::protocol::{WorkerDeveloper, WorkerEvent, WorkerModel, WorkerRequest};
 use crate::status_mapper::{PreloadMapper, PreloadStep, TranscriptionMapper};
 use crate::storage::WebStorage;
 use crate::storage_space;
@@ -20,6 +24,9 @@ use purr_common::accel::SystemReport;
 use purr_common::adapter_name::{AdapterStrings, adapter_name};
 use purr_common::audio_overview::{AudioOverview, peaks};
 use purr_common::browser_compute::CpuReason;
+use purr_common::developer::model::{DeveloperModelId, DeveloperSource};
+use purr_common::developer::session_options::SessionOptions;
+use purr_common::developer::snapshot::DeveloperSnapshot;
 use purr_common::devices::DeviceOrder;
 use purr_common::history::{
     audio::{AudioOutcome, HistoryAudio},
@@ -64,6 +71,89 @@ pub struct WasmPlatformImpl {
 }
 
 impl WasmPlatformImpl {
+    /// Tells the worker and the page whether to collect developer readings, from the settings.
+    async fn sync_developer_mode(&self) -> Result<bool, PlatformError> {
+        let enabled = self.load_settings().await?.developer.enabled;
+        developer::set_collecting(enabled);
+        self.worker.set_developer(enabled);
+        Ok(enabled)
+    }
+
+    /// The model a request names, where its files come from, and the session options of
+    /// developer mode when it is on.
+    async fn resolve_model(
+        &self,
+        model_id: &str,
+    ) -> Result<(WebModel, ModelSource, Option<SessionOptions>), PlatformError> {
+        let settings = self.load_settings().await?;
+        let enabled = settings.developer.enabled;
+        developer::set_collecting(enabled);
+        self.worker.set_developer(enabled);
+        let session_options = if enabled {
+            Some(
+                settings
+                    .developer
+                    .active_session_options()
+                    .map_err(|error| PlatformError::settings_persistence(error.to_string()))?,
+            )
+        } else {
+            None
+        };
+        if !DeveloperModelId::is_developer(model_id) {
+            let model = self.model_manager.model(model_id)?.clone();
+            return Ok((model, ModelSource::Catalog, session_options));
+        }
+        let model = settings
+            .developer
+            .model(model_id)
+            .ok_or_else(|| PlatformError::model_not_found(model_id))?
+            .clone();
+        let DeveloperSource::Browser(browser) = model.source.clone() else {
+            return Err(PlatformError::model_not_found(model_id));
+        };
+        let web_model = developer_model::web_model(
+            &model,
+            &browser,
+            self.model_manager.default_model().baseline(),
+        );
+        Ok((
+            web_model,
+            ModelSource::Developer { model, browser },
+            session_options,
+        ))
+    }
+
+    async fn developer_infos(&self) -> Result<Vec<ModelInfo>, PlatformError> {
+        let settings = self.load_settings().await?;
+        let mut infos = Vec::new();
+        for model in settings.developer.active_models() {
+            let DeveloperSource::Browser(browser) = &model.source else {
+                continue;
+            };
+            let web_model = developer_model::web_model(
+                model,
+                browser,
+                self.model_manager.default_model().baseline(),
+            );
+            let spec = web_model.baseline();
+            let installed = developer_model::is_installed(&model.id, browser).await?;
+            let mut info = ModelInfo::new(
+                model.id.as_str().to_owned(),
+                model.name.clone(),
+                spec.description.clone(),
+                0,
+                installed,
+                spec.descriptor(),
+            )
+            .from_developer();
+            if installed {
+                info.mark_installed(PathBuf::from(model_cache::location(spec)));
+            }
+            infos.push(info);
+        }
+        Ok(infos)
+    }
+
     async fn ensure_initialized(&self) -> Result<(), PlatformError> {
         if *self.initialized.read().await {
             return Ok(());
@@ -178,6 +268,40 @@ impl WasmPlatformImpl {
     }
 }
 
+fn developer_model_id(model_id: &str) -> bool {
+    DeveloperModelId::is_developer(model_id)
+}
+
+async fn variant_installed(source: &ModelSource, spec: &WebModelSpec) -> WebResult<bool> {
+    match source {
+        ModelSource::Catalog => model_cache::is_installed(spec).await,
+        ModelSource::Developer { model, browser } => {
+            developer_model::is_installed(&model.id, browser).await
+        }
+    }
+}
+
+async fn verify_variant(source: &ModelSource, spec: &WebModelSpec) -> WebResult<()> {
+    match source {
+        ModelSource::Catalog => model_cache::verify(spec).await,
+        ModelSource::Developer { .. } => Ok(()),
+    }
+}
+
+async fn install_model(
+    source: &ModelSource,
+    spec: &WebModelSpec,
+    token: Option<&HuggingFaceToken>,
+    report: &mut dyn FnMut(InstallProgress<'_>),
+) -> WebResult<()> {
+    match source {
+        ModelSource::Catalog => model_install::install(spec, token, report).await,
+        ModelSource::Developer { model, browser } => {
+            developer_install::install(model, browser, token, report).await
+        }
+    }
+}
+
 fn now_ms() -> f64 {
     js_sys::Date::now()
 }
@@ -258,6 +382,8 @@ struct Transcription {
     language: Option<LanguageTag>,
     hugging_face_token: Option<HuggingFaceToken>,
     devices: DeviceOrder,
+    source: ModelSource,
+    session_options: Option<SessionOptions>,
 }
 
 fn init_failed(component: &str, reason: String, details: Option<&str>) -> TranscriptionStatus {
@@ -281,6 +407,8 @@ async fn run_transcription(
         language,
         hugging_face_token,
         devices,
+        source,
+        session_options,
     } = job;
     if !send_status(&tx, TranscriptionStatus::Starting)
         || !send_status(&tx, TranscriptionStatus::ProcessingAudio)
@@ -318,6 +446,13 @@ async fn run_transcription(
         }
     };
     let samples = decoded.samples;
+    let developer = match worker_developer(&source, session_options.as_ref()).await {
+        Ok(developer) => developer,
+        Err(error) => {
+            send_status(&tx, init_failed("Model", error.to_string(), None));
+            return;
+        }
+    };
     loop {
         let Some(spec) = model.variant(choice.variant) else {
             send_status(
@@ -330,7 +465,7 @@ async fn run_transcription(
             );
             return;
         };
-        let cached = match model_cache::is_installed(spec).await {
+        let cached = match variant_installed(&source, spec).await {
             Ok(cached) => cached,
             Err(error) => {
                 send_status(&tx, init_failed("Model", error.to_string(), None));
@@ -350,7 +485,7 @@ async fn run_transcription(
                     tracing::debug!("Nobody follows the install of {} any more", spec.id);
                 }
             };
-            let installing = model_install::install(spec, hugging_face_token.as_ref(), &mut report);
+            let installing = install_model(&source, spec, hugging_face_token.as_ref(), &mut report);
             let installed = tokio::select! {
                 () = tx.closed() => {
                     tracing::info!("Transcription stream dropped; cancelling");
@@ -393,6 +528,7 @@ async fn run_transcription(
             provider: choice.provider(),
             language: language.as_ref().map(|tag| whisper::code(tag).to_owned()),
             english_only: spec.english_only(),
+            developer: developer.clone(),
         };
         let mut events = match worker.submit(request, Some(samples.clone())) {
             Ok(events) => events,
@@ -448,11 +584,13 @@ fn load_request(
     worker: &WorkerClient,
     spec: &WebModelSpec,
     choice: &compute_choice::Choice,
+    developer: Option<WorkerDeveloper>,
 ) -> WorkerRequest {
     WorkerRequest::LoadModel {
         request_id: worker.next_request_id(),
         model: WorkerModel::from(spec),
         provider: choice.provider(),
+        developer,
     }
 }
 
@@ -487,9 +625,9 @@ enum Preparation {
 }
 
 /// Verifies the variant if it is installed, so a preload of a cached model also checks it.
-async fn prepare(spec: &WebModelSpec, tx: &PreloadSender) -> Preparation {
+async fn prepare(source: &ModelSource, spec: &WebModelSpec, tx: &PreloadSender) -> Preparation {
     let model_id = spec.id.as_str();
-    match model_cache::is_installed(spec).await {
+    match variant_installed(source, spec).await {
         Ok(true) => {
             let installing = ModelOperationProgress::Installing {
                 model_id: model_id.to_owned(),
@@ -497,7 +635,7 @@ async fn prepare(spec: &WebModelSpec, tx: &PreloadSender) -> Preparation {
             if !send_progress(tx, model_id, installing) {
                 return Preparation::Stopped;
             }
-            match model_cache::verify(spec).await {
+            match verify_variant(source, spec).await {
                 Ok(()) => Preparation::Verified,
                 Err(error) => {
                     let failure = failed(
@@ -527,6 +665,7 @@ async fn prepare(spec: &WebModelSpec, tx: &PreloadSender) -> Preparation {
 
 /// Installs the variant, reporting progress; false when the preload is over.
 async fn install_variant(
+    source: &ModelSource,
     spec: &WebModelSpec,
     token: Option<&HuggingFaceToken>,
     tx: &PreloadSender,
@@ -542,7 +681,7 @@ async fn install_variant(
         };
         send_progress(tx, model_id, progress);
     };
-    let installing = model_install::install(spec, token, &mut report);
+    let installing = install_model(source, spec, token, &mut report);
     let installed = tokio::select! {
         () = tx.closed() => {
             tracing::info!("Preload stream dropped; cancelling");
@@ -572,6 +711,8 @@ async fn run_preload(
     shader_f16: ShaderF16,
     hugging_face_token: Option<HuggingFaceToken>,
     devices: DeviceOrder,
+    source: ModelSource,
+    session_options: Option<SessionOptions>,
     tx: PreloadSender,
 ) {
     let model_id = model.id.clone();
@@ -606,7 +747,7 @@ async fn run_preload(
         send_progress(&tx, &model_id, failure);
         return;
     };
-    let mut verified_first = match prepare(spec, &tx).await {
+    let mut verified_first = match prepare(&source, spec, &tx).await {
         Preparation::Verified => true,
         Preparation::Missing => false,
         Preparation::Stopped => return,
@@ -614,11 +755,22 @@ async fn run_preload(
 
     let mut mapper = PreloadMapper::new(spec, now_ms());
     if !verified_first
-        && !install_variant(spec, hugging_face_token.as_ref(), &tx, &mut mapper).await
+        && !install_variant(&source, spec, hugging_face_token.as_ref(), &tx, &mut mapper).await
     {
         return;
     }
-    let mut events = match worker.submit(load_request(&worker, spec, &choice), None) {
+    let developer = match worker_developer(&source, session_options.as_ref()).await {
+        Ok(developer) => developer,
+        Err(error) => {
+            let failure = fail("download", error.to_string(), ModelFailureKind::Other);
+            send_progress(&tx, &model_id, failure);
+            return;
+        }
+    };
+    let mut events = match worker.submit(
+        load_request(&worker, spec, &choice, developer.clone()),
+        None,
+    ) {
         Ok(events) => events,
         Err(error) => {
             let failure = fail("download", error.to_string(), ModelFailureKind::Other);
@@ -653,18 +805,18 @@ async fn run_preload(
                             if cpu_spec.variant != spec.variant {
                                 spec = cpu_spec;
                                 mapper = PreloadMapper::new(spec, now_ms());
-                                verified_first = match prepare(spec, &tx).await {
+                                verified_first = match prepare(&source, spec, &tx).await {
                                     Preparation::Verified => true,
                                     Preparation::Missing => false,
                                     Preparation::Stopped => return,
                                 };
                                 if !verified_first
-                                    && !install_variant(spec, hugging_face_token.as_ref(), &tx, &mut mapper).await
+                                    && !install_variant(&source, spec, hugging_face_token.as_ref(), &tx, &mut mapper).await
                                 {
                                     return;
                                 }
                             }
-                            match worker.submit(load_request(&worker, spec, &choice), None) {
+                            match worker.submit(load_request(&worker, spec, &choice, developer.clone()), None) {
                                 Ok(retry) => {
                                     events = retry;
                                     continue;
@@ -702,7 +854,7 @@ async fn run_preload(
                         let verified = if verified_first {
                             Ok(())
                         } else {
-                            model_cache::verify(spec).await
+                            verify_variant(&source, spec).await
                         };
                         match verified {
                             Ok(()) => ModelOperationProgress::Completed {
@@ -787,7 +939,7 @@ impl Platform for WasmPlatformImpl {
         };
         audio::validate_size(bytes.len()).map_err(WebError::from)?;
 
-        let model = self.model_manager.model(request.model.as_str())?.clone();
+        let (model, source, session_options) = self.resolve_model(request.model.as_str()).await?;
         let shader_f16 = self.shader_f16().await?;
         let language = request.language;
 
@@ -809,6 +961,8 @@ impl Platform for WasmPlatformImpl {
                 language,
                 hugging_face_token: request.hugging_face_token,
                 devices: request.compute.devices,
+                source,
+                session_options,
             },
             tx,
         ));
@@ -912,6 +1066,12 @@ impl Platform for WasmPlatformImpl {
                 installed.push(model_info(model, spec, true));
             }
         }
+        installed.extend(
+            self.developer_infos()
+                .await?
+                .into_iter()
+                .filter(|info| info.is_installed),
+        );
         Ok(installed)
     }
 
@@ -924,6 +1084,7 @@ impl Platform for WasmPlatformImpl {
             let is_installed = self.model_manager.is_installed(spec).await?;
             available.push(model_info(model, spec, is_installed));
         }
+        available.extend(self.developer_infos().await?);
         Ok(available)
     }
 
@@ -934,7 +1095,7 @@ impl Platform for WasmPlatformImpl {
     ) -> Result<ModelProgressStream, PlatformError> {
         self.ensure_initialized().await?;
 
-        let model = self.model_manager.model(model_id)?.clone();
+        let (model, source, session_options) = self.resolve_model(model_id).await?;
         let devices = self.load_settings().await?.performance.device_order();
         let shader_f16 = self.shader_f16().await?;
         let (tx, rx) = mpsc::unbounded_channel();
@@ -944,6 +1105,8 @@ impl Platform for WasmPlatformImpl {
             shader_f16,
             token,
             devices,
+            source,
+            session_options,
             tx,
         ));
         Ok(Box::pin(UnboundedReceiverStream::new(rx)))
@@ -952,6 +1115,14 @@ impl Platform for WasmPlatformImpl {
     async fn get_model_info(&self, model_id: &str) -> Result<ModelInfo, PlatformError> {
         self.ensure_initialized().await?;
 
+        if developer_model_id(model_id) {
+            return self
+                .developer_infos()
+                .await?
+                .into_iter()
+                .find(|info| info.id == model_id)
+                .ok_or_else(|| PlatformError::model_not_found(model_id));
+        }
         let model = self.model_manager.model(model_id)?;
         let spec = self.shown_variant(model).await?;
         let is_installed = self.model_manager.is_installed(spec).await?;
@@ -960,6 +1131,14 @@ impl Platform for WasmPlatformImpl {
 
     async fn remove_model(&self, model_id: &str) -> Result<(), PlatformError> {
         self.ensure_initialized().await?;
+        if developer_model_id(model_id) {
+            let (_, source, _) = self.resolve_model(model_id).await?;
+            if let ModelSource::Developer { model, browser } = source {
+                developer_model::remove(&model.id, &browser).await?;
+            }
+            self.worker.release_idle();
+            return Ok(());
+        }
         self.model_manager.remove_model(model_id).await?;
         self.worker.release_idle();
         Ok(())
@@ -972,6 +1151,9 @@ impl Platform for WasmPlatformImpl {
     ) -> Result<ModelIntegrity, PlatformError> {
         self.ensure_initialized().await?;
 
+        if developer_model_id(model_id) {
+            return Ok(ModelIntegrity::Verified);
+        }
         let model = self.model_manager.model(model_id)?;
         let spec = self.shown_variant(model).await?;
         match model_cache::verify_with_progress(spec, progress).await {
@@ -983,6 +1165,15 @@ impl Platform for WasmPlatformImpl {
 
     async fn is_model_installed(&self, model_id: &str) -> Result<bool, PlatformError> {
         self.ensure_initialized().await?;
+        if developer_model_id(model_id) {
+            let (_, source, _) = self.resolve_model(model_id).await?;
+            return match source {
+                ModelSource::Developer { model, browser } => {
+                    Ok(developer_model::is_installed(&model.id, &browser).await?)
+                }
+                ModelSource::Catalog => Ok(false),
+            };
+        }
         let model = self.model_manager.model(model_id)?;
         let spec = self.shown_variant(model).await?;
         Ok(self.model_manager.is_installed(spec).await?)
@@ -991,6 +1182,10 @@ impl Platform for WasmPlatformImpl {
     async fn get_model_path(&self, model_id: &str) -> Result<String, PlatformError> {
         self.ensure_initialized().await?;
 
+        if developer_model_id(model_id) {
+            let (model, _, _) = self.resolve_model(model_id).await?;
+            return Ok(model_cache::location(model.baseline()));
+        }
         let model = self.model_manager.model(model_id)?;
         let spec = self.shown_variant(model).await?;
         if !self.model_manager.is_installed(spec).await? {
@@ -1019,6 +1214,31 @@ impl Platform for WasmPlatformImpl {
 
     async fn system_report(&self) -> Result<SystemReport, PlatformError> {
         Err(PlatformError::unsupported("a system report in the browser"))
+    }
+
+    async fn developer_snapshot(
+        &self,
+        reset_peaks: bool,
+    ) -> Result<DeveloperSnapshot, PlatformError> {
+        self.sync_developer_mode().await?;
+        let mut events = self.worker.submit(
+            WorkerRequest::DeveloperSnapshot {
+                request_id: self.worker.next_request_id(),
+                reset_peaks,
+            },
+            None,
+        )?;
+        match events.next().await {
+            Some(WorkerEvent::DeveloperSnapshot { snapshot, .. }) => Ok(
+                DeveloperSnapshot::Browser(developer::browser_snapshot(snapshot, reset_peaks)),
+            ),
+            Some(WorkerEvent::Failed { message, .. }) => Err(PlatformError::unsupported(format!(
+                "the developer readings: {message}"
+            ))),
+            Some(_) | None => Err(PlatformError::unsupported(
+                "the developer readings: the worker answered nothing",
+            )),
+        }
     }
 
     async fn load_settings(&self) -> Result<Settings, PlatformError> {

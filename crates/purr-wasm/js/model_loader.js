@@ -1,6 +1,7 @@
 import { env, LogLevel, pipeline } from "@huggingface/transformers";
 import { emit, FailureKind, WorkerFailure } from "./events.js";
 import { requireWebGpu } from "./gpu.js";
+import { mergeSessionOptions } from "./developer.js";
 import { pinRevision } from "./offline.js";
 
 env.allowLocalModels = false;
@@ -35,8 +36,14 @@ function sessionOptions(provider) {
     return options;
 }
 
-function modelKey(model, provider) {
-    return `${model.repo}@${model.revision}:${model.precision}:${model.encoder_dtype}/${model.decoder_dtype}:${provider}`;
+function externalData(developer) {
+    const external = developer?.external_data;
+    return external ? { encoder_model: external.encoder, decoder_model_merged: external.decoder } : true;
+}
+
+function modelKey(model, provider, developer) {
+    const options = developer ? JSON.stringify([developer.session_options, developer.external_data]) : "";
+    return `${model.repo}@${model.revision}:${model.precision}:${model.encoder_dtype}/${model.decoder_dtype}:${provider}:${options}`;
 }
 
 export function asProviderFailure(provider, error) {
@@ -95,7 +102,7 @@ async function release(entry) {
     }
 }
 
-export async function loadTranscriber(model, provider, requestId) {
+export async function loadTranscriber(model, provider, requestId, developer) {
     const device = DEVICES[provider];
     if (device === undefined) {
         throw new WorkerFailure(FailureKind.Protocol, `Unknown execution provider: ${provider}`);
@@ -104,7 +111,7 @@ export async function loadTranscriber(model, provider, requestId) {
         await requireWebGpu(model);
     }
     pinRevision(model.repo, model.revision);
-    const key = modelKey(model, provider);
+    const key = modelKey(model, provider, developer);
     if (loaded.key !== key) {
         const previous = loaded;
         loaded = { key: null, promise: null };
@@ -120,8 +127,11 @@ export async function loadTranscriber(model, provider, requestId) {
                     decoder_model_merged: model.decoder_dtype,
                 },
                 device,
-                use_external_data_format: true,
-                session_options: sessionOptions(provider),
+                use_external_data_format: externalData(developer),
+                session_options: mergeSessionOptions(
+                    sessionOptions(provider),
+                    developer?.session_options,
+                ),
                 progress_callback: progressReporter(requestId),
             }),
         };

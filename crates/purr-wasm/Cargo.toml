@@ -23,6 +23,7 @@ wasm-bindgen-futures = "0.4"
 web-sys = { version = "0.3", features = [
   "Window",
   "Navigator",
+  "Performance",
   "Gpu",
   "GpuAdapter",
   "GpuAdapterInfo",
@@ -55,6 +56,10 @@ web-sys = { version = "0.3", features = [
   "IdbVersionChangeEvent",
   "Event",
   "Blob",
+  "File",
+  "FileList",
+  "Document",
+  "HtmlInputElement",
   "BlobPropertyBag",
   "DomStringList",
   "AudioBuffer",

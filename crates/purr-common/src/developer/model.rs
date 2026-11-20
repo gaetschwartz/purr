@@ -1,6 +1,6 @@
 use crate::{
     model::{family::ModelFamily, format::ModelFormat},
-    web_model::attributes::OnnxDtype,
+    web_model::{attributes::OnnxDtype, variant::TableStorage},
 };
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -49,10 +49,22 @@ pub enum BrowserOrigin {
 /// What the browser does to the ONNX files before it loads them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Conversion {
-    /// The streaming converter: external weights and the tied embedding fix.
-    Streaming,
+    /// The streaming converter: external weights and the tied embedding fix, with the table
+    /// stored as `table`.
+    Streaming { table: TableStorage },
     /// The files exactly as they were given.
     AsIs,
+}
+
+impl Conversion {
+    /// How the converter stores the tied table; none when the files are used as they are.
+    #[must_use]
+    pub const fn table(&self) -> Option<TableStorage> {
+        match self {
+            Self::Streaming { table } => Some(*table),
+            Self::AsIs => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -113,7 +125,9 @@ mod tests {
                 },
                 encoder_dtype: OnnxDtype::Fp32,
                 decoder_dtype: OnnxDtype::Q4,
-                conversion: Conversion::Streaming,
+                conversion: Conversion::Streaming {
+                    table: TableStorage::Fp16,
+                },
                 english_only: false,
             }),
         };

@@ -1,5 +1,6 @@
 import "./console_filter.js";
 import "./offline.js";
+import { installDeveloperHooks, noteModel, snapshot } from "./developer.js";
 import { emit, emitFailure, FailureKind, WorkerFailure } from "./events.js";
 import { asProviderFailure, configureRuntime, loadTranscriber, Provider } from "./model_loader.js";
 import { transcribe } from "./transcriber.js";
@@ -12,7 +13,13 @@ let queue = Promise.resolve();
 
 // Firefox builds every WebGPU pipeline again on each page load, one at a time: https://bugzilla.mozilla.org/show_bug.cgi?id=2083378
 async function readyTranscriber(message) {
-    const transcriber = await loadTranscriber(message.model, message.provider, message.request_id);
+    const transcriber = await loadTranscriber(
+        message.model,
+        message.provider,
+        message.request_id,
+        message.developer,
+    );
+    noteModel(message.model, message.provider);
     if (message.provider === Provider.WebGpu) {
         try {
             await warmUp(transcriber, message.english_only);
@@ -26,11 +33,20 @@ async function readyTranscriber(message) {
 async function handle(message) {
     switch (message.type) {
         case "Configure":
+            if (message.developer) {
+                installDeveloperHooks();
+            }
             configureRuntime(message);
             configureWarmUp(message.warm_up_url);
             return;
         case "LoadModel":
-            await loadTranscriber(message.model, message.provider, message.request_id);
+            await loadTranscriber(
+                message.model,
+                message.provider,
+                message.request_id,
+                message.developer,
+            );
+            noteModel(message.model, message.provider);
             return;
         case "Transcribe": {
             const transcriber = await readyTranscriber(message);
@@ -58,7 +74,30 @@ function decode(data) {
     return message;
 }
 
+// answered outside the queue so a reading does not wait for the run in progress
+function answerSnapshot(request) {
+    snapshot(request.reset_peaks)
+        .then((reading) =>
+            emit({ type: "DeveloperSnapshot", request_id: request.request_id, snapshot: reading }),
+        )
+        .catch((error) => emitFailure(request.request_id, error));
+}
+
+function peekSnapshotRequest(data) {
+    try {
+        const request = JSON.parse(data.request);
+        return request.type === "DeveloperSnapshot" ? request : null;
+    } catch {
+        return null;
+    }
+}
+
 self.addEventListener("message", (event) => {
+    const snapshotRequest = peekSnapshotRequest(event.data);
+    if (snapshotRequest !== null) {
+        answerSnapshot(snapshotRequest);
+        return;
+    }
     let message = null;
     queue = queue
         .then(() => {

@@ -209,6 +209,16 @@ pub struct WebModel {
 }
 
 impl WebModel {
+    /// A model offered in one variant only.
+    #[must_use]
+    pub fn single(spec: WebModelSpec) -> Self {
+        Self {
+            id: spec.id.clone(),
+            baseline: spec,
+            others: Vec::new(),
+        }
+    }
+
     /// Every variant, the baseline first.
     pub fn variants(&self) -> impl Iterator<Item = &WebModelSpec> {
         std::iter::once(&self.baseline).chain(&self.others)
