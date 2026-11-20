@@ -1,5 +1,5 @@
 import "./console_filter.js";
-import { useHuggingFaceToken } from "./hugging_face_auth.js";
+import "./offline.js";
 import { emit, emitFailure, FailureKind, WorkerFailure } from "./events.js";
 import { asProviderFailure, configureRuntime, loadTranscriber, Provider } from "./model_loader.js";
 import { transcribe } from "./transcriber.js";
@@ -12,7 +12,6 @@ let queue = Promise.resolve();
 
 // Firefox builds every WebGPU pipeline again on each page load, one at a time: https://bugzilla.mozilla.org/show_bug.cgi?id=2083378
 async function readyTranscriber(message) {
-    useHuggingFaceToken(message.hugging_face_token);
     const transcriber = await loadTranscriber(message.model, message.provider, message.request_id);
     if (message.provider === Provider.WebGpu) {
         try {
@@ -31,7 +30,6 @@ async function handle(message) {
             configureWarmUp(message.warm_up_url);
             return;
         case "LoadModel":
-            useHuggingFaceToken(message.hugging_face_token);
             await loadTranscriber(message.model, message.provider, message.request_id);
             return;
         case "Transcribe": {

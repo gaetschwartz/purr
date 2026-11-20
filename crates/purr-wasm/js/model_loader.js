@@ -1,9 +1,9 @@
 import { env, LogLevel, pipeline } from "@huggingface/transformers";
 import { emit, FailureKind, WorkerFailure } from "./events.js";
 import { requireWebGpu } from "./gpu.js";
+import { pinRevision } from "./offline.js";
 
 env.allowLocalModels = false;
-env.allowRemoteModels = false;
 env.logLevel = LogLevel.ERROR;
 env.useWasmCache = false;
 
@@ -103,6 +103,7 @@ export async function loadTranscriber(model, provider, requestId) {
     if (provider === Provider.WebGpu) {
         await requireWebGpu(model);
     }
+    pinRevision(model.repo, model.revision);
     const key = modelKey(model, provider);
     if (loaded.key !== key) {
         const previous = loaded;

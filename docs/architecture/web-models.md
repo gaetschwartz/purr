@@ -55,8 +55,10 @@ the graph and `<path>_data`. A cache filled by an older version (unconverted `.o
 reads as not installed and is installed again. `model_cache::verify` hashes every cached entry
 against the sizes and digests the manifest records for what is stored.
 
-The transcription worker never downloads: `env.allowRemoteModels` is off and the pipeline is created
-with `use_external_data_format`, so transformers.js reads the graph and `<path>_data` from the cache.
+The transcription worker never downloads: `js/offline.js` replaces transformers.js's `fetch` with a
+lookup in the cache (a miss is a 404, and the few requests it makes for `main` are answered from the
+pinned revision), and the pipeline is created with `use_external_data_format`, so it reads the graph
+and `<path>_data` from the cache. The Hugging Face token is used only by the page's downloads.
 
 ## Manifest
 

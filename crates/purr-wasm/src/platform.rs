@@ -341,7 +341,6 @@ async fn run_transcription(
             provider: choice.provider(),
             language: language.as_ref().map(|tag| whisper::code(tag).to_owned()),
             english_only: spec.english_only(),
-            hugging_face_token: hugging_face_token.clone(),
         };
         let mut events = match worker.submit(request, Some(samples.clone())) {
             Ok(events) => events,
@@ -404,13 +403,11 @@ fn load_request(
     worker: &WorkerClient,
     spec: &WebModelSpec,
     choice: &compute_choice::Choice,
-    hugging_face_token: Option<&HuggingFaceToken>,
 ) -> WorkerRequest {
     WorkerRequest::LoadModel {
         request_id: worker.next_request_id(),
         model: WorkerModel::from(spec),
         provider: choice.provider(),
-        hugging_face_token: hugging_face_token.cloned(),
     }
 }
 
@@ -532,10 +529,7 @@ async fn run_preload(
             return;
         }
     }
-    let mut events = match worker.submit(
-        load_request(&worker, &spec, &choice, hugging_face_token.as_ref()),
-        None,
-    ) {
+    let mut events = match worker.submit(load_request(&worker, &spec, &choice), None) {
         Ok(events) => events,
         Err(error) => {
             let failure = fail("download", error.to_string(), ModelFailureKind::Other);
@@ -560,7 +554,7 @@ async fn run_preload(
                             tracing::warn!("WebGPU could not load {model_id}, loading it for the CPU: {message}");
                             choice = cpu;
                             worker.release_idle();
-                            match worker.submit(load_request(&worker, &spec, &choice, hugging_face_token.as_ref()), None) {
+                            match worker.submit(load_request(&worker, &spec, &choice), None) {
                                 Ok(retry) => {
                                     events = retry;
                                     continue;
