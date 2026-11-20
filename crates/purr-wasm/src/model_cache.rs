@@ -1,15 +1,15 @@
 //! The Cache Storage bucket transformers.js downloads model files into.
 
+use crate::byte_stream::{body_reader, next_chunk};
 use crate::error::{IntegrityError, WebError, WebResult};
 use crate::integrity::FileChecker;
 use crate::local::run_local;
 use gloo_timers::future::TimeoutFuture;
-use js_sys::Uint8Array;
 use purr_common::platform::{ModelCheckProgress, ModelCheckSender};
-use purr_common::web_model::registry::{WebModelFile, WebModelSpec};
+use purr_common::web_model::registry::{CachedFile, WebModelFile, WebModelSpec};
 use wasm_bindgen::{JsCast as _, JsValue};
 use wasm_bindgen_futures::JsFuture;
-use web_sys::{Cache, CacheStorage, ReadableStreamDefaultReader, Response};
+use web_sys::{Cache, CacheStorage, Response};
 
 const CACHE_NAME: &str = "transformers-cache";
 const YIELD_EVERY_BYTES: usize = 4 * 1024 * 1024;
@@ -23,7 +23,16 @@ fn cache_storage() -> WebResult<CacheStorage> {
         .map_err(|e| WebError::web_api("CacheStorage", e))
 }
 
-async fn open_existing() -> WebResult<Option<Cache>> {
+/// The cache transformers.js reads, created if the browser has none yet.
+pub async fn open_for_writing() -> WebResult<Cache> {
+    JsFuture::from(cache_storage()?.open(CACHE_NAME))
+        .await
+        .map_err(|e| WebError::web_api("CacheStorage.open", e))?
+        .dyn_into::<Cache>()
+        .map_err(|e| WebError::web_api("Cache cast", e))
+}
+
+pub async fn open_existing() -> WebResult<Option<Cache>> {
     let storage = cache_storage()?;
     let exists = JsFuture::from(storage.has(CACHE_NAME))
         .await
@@ -56,6 +65,16 @@ async fn cached_response(cache: &Cache, url: &str) -> WebResult<Option<Response>
     hit.dyn_into::<Response>()
         .map(Some)
         .map_err(|e| WebError::web_api("Response cast", e))
+}
+
+/// Whether the cache holds everything `file` is stored as.
+pub async fn has_file(cache: &Cache, spec: &WebModelSpec, file: &WebModelFile) -> WebResult<bool> {
+    for url in spec.cached_urls(file) {
+        if cached_response(cache, &url).await?.is_none() {
+            return Ok(false);
+        }
+    }
+    Ok(true)
 }
 
 async fn all_cached(urls: Vec<String>) -> WebResult<bool> {
@@ -105,7 +124,7 @@ impl CheckReporter {
 async fn hash_cached_file(
     cache: &Cache,
     url: &str,
-    file: &WebModelFile,
+    file: &CachedFile,
     checked_before: u64,
     reporter: &CheckReporter,
 ) -> WebResult<()> {
@@ -114,38 +133,10 @@ async fn hash_cached_file(
         .ok_or_else(|| IntegrityError::Missing {
             path: file.path.clone(),
         })?;
-    let body = response.body().ok_or_else(|| {
-        WebError::web_api(
-            "Response.body",
-            JsValue::from_str("the cached file has no body"),
-        )
-    })?;
-    let reader = body
-        .get_reader()
-        .dyn_into::<ReadableStreamDefaultReader>()
-        .map_err(|e| WebError::web_api("ReadableStream.getReader", e.into()))?;
+    let reader = body_reader(&response)?;
     let mut checker = FileChecker::new(file);
     let mut unyielded = 0_usize;
-    loop {
-        let step = JsFuture::from(reader.read())
-            .await
-            .map_err(|e| WebError::web_api("ReadableStreamDefaultReader.read", e))?;
-        let done = js_sys::Reflect::get(&step, &JsValue::from_str("done"))
-            .map_err(|e| WebError::web_api("ReadableStreamDefaultReader.read", e))?
-            .as_bool()
-            .ok_or_else(|| {
-                WebError::web_api(
-                    "ReadableStreamDefaultReader.read",
-                    JsValue::from_str("the read result has no `done` flag"),
-                )
-            })?;
-        if done {
-            break;
-        }
-        let chunk = js_sys::Reflect::get(&step, &JsValue::from_str("value"))
-            .map_err(|e| WebError::web_api("ReadableStreamDefaultReader.read", e))?
-            .dyn_into::<Uint8Array>()
-            .map_err(|e| WebError::web_api("ReadableStream chunk", e))?;
+    while let Some(chunk) = next_chunk(&reader).await? {
         let bytes = chunk.to_vec();
         checker.update(&bytes);
         unyielded += bytes.len();
@@ -161,7 +152,7 @@ async fn hash_cached_file(
 }
 
 async fn verify_all(
-    files: Vec<(String, WebModelFile)>,
+    files: Vec<(String, CachedFile)>,
     progress: Option<ModelCheckSender>,
 ) -> WebResult<()> {
     let cache = open_existing()
@@ -183,10 +174,13 @@ async fn verify_all(
 }
 
 fn file_urls(spec: &WebModelSpec) -> Vec<String> {
-    spec.files.iter().map(|file| spec.file_url(file)).collect()
+    spec.files
+        .iter()
+        .flat_map(|file| spec.cached_urls(file))
+        .collect()
 }
 
-/// Whether every file of the model is cached.
+/// Whether every file of the model is cached, converted files as both their graph and weights.
 pub async fn is_installed(spec: &WebModelSpec) -> WebResult<bool> {
     let urls = file_urls(spec);
     run_local(move || all_cached(urls)).await
@@ -194,7 +188,10 @@ pub async fn is_installed(spec: &WebModelSpec) -> WebResult<bool> {
 
 /// Drops the given cached files of the model.
 pub async fn remove(spec: &WebModelSpec, files: &[&WebModelFile]) -> WebResult<()> {
-    let urls = files.iter().map(|file| spec.file_url(file)).collect();
+    let urls = files
+        .iter()
+        .flat_map(|file| spec.cached_urls(file))
+        .collect();
     run_local(move || delete_all(urls)).await
 }
 
@@ -216,10 +213,11 @@ async fn verify_reporting(
     spec: &WebModelSpec,
     progress: Option<ModelCheckSender>,
 ) -> WebResult<()> {
-    let files: Vec<(String, WebModelFile)> = spec
+    let files: Vec<(String, CachedFile)> = spec
         .files
         .iter()
-        .map(|file| (spec.file_url(file), file.clone()))
+        .flat_map(WebModelFile::cached_files)
+        .map(|file| (spec.cached_url(&file), file))
         .collect();
     let outcome = run_local(move || verify_all(files, progress)).await;
     if matches!(outcome, Err(WebError::Integrity { .. })) {

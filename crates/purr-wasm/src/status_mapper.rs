@@ -75,17 +75,23 @@ impl TranscriptionMapper {
         }
     }
 
+    /// The status after `loaded_bytes` of the file `path` have been received.
+    pub fn receiving(&mut self, path: &str, loaded_bytes: u64) -> TranscriptionStatus {
+        self.progress.record(path, loaded_bytes);
+        self.loading()
+    }
+
+    /// The status after the file `path` is installed.
+    pub fn installed(&mut self, path: &str) -> TranscriptionStatus {
+        self.progress.finish(path);
+        self.loading()
+    }
+
     /// The status to report for `event`, if it changes anything the user sees.
     pub fn map(&mut self, event: WorkerEvent) -> Option<TranscriptionStatus> {
         match event {
-            WorkerEvent::ModelFile { file, loaded, .. } => {
-                self.progress.record(&file, loaded);
-                Some(self.loading())
-            }
-            WorkerEvent::ModelFileDone { file, .. } => {
-                self.progress.finish(&file);
-                Some(self.loading())
-            }
+            WorkerEvent::ModelFile { file, loaded, .. } => Some(self.receiving(&file, loaded)),
+            WorkerEvent::ModelFileDone { file, .. } => Some(self.installed(&file)),
             WorkerEvent::ModelReady { .. } => None,
             WorkerEvent::Transcribing { .. } => Some(TranscriptionStatus::Transcribing),
             WorkerEvent::LanguageDetected { language, .. } => {
@@ -161,15 +167,30 @@ impl PreloadMapper {
         }
     }
 
+    /// The progress after `loaded_bytes` of the file `path` have been received.
+    pub fn receiving(
+        &mut self,
+        path: &str,
+        loaded_bytes: u64,
+        now_ms: f64,
+    ) -> ModelOperationProgress {
+        self.progress.record(path, loaded_bytes);
+        self.downloading(now_ms)
+    }
+
+    /// The progress after the file `path` is installed.
+    pub fn installed(&mut self, path: &str, now_ms: f64) -> ModelOperationProgress {
+        self.progress.finish(path);
+        self.downloading(now_ms)
+    }
+
     pub fn map(&mut self, event: WorkerEvent, now_ms: f64) -> PreloadStep {
         match event {
             WorkerEvent::ModelFile { file, loaded, .. } => {
-                self.progress.record(&file, loaded);
-                PreloadStep::Progress(self.downloading(now_ms))
+                PreloadStep::Progress(self.receiving(&file, loaded, now_ms))
             }
             WorkerEvent::ModelFileDone { file, .. } => {
-                self.progress.finish(&file);
-                PreloadStep::Progress(self.downloading(now_ms))
+                PreloadStep::Progress(self.installed(&file, now_ms))
             }
             WorkerEvent::ModelReady { .. } => PreloadStep::Loaded,
             WorkerEvent::Failed { message, .. } => PreloadStep::Failed(message),

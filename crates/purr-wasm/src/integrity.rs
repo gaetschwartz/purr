@@ -2,19 +2,19 @@
 
 use crate::error::IntegrityError;
 use purr_common::web_model::digest::Sha256Digest;
-use purr_common::web_model::registry::WebModelFile;
+use purr_common::web_model::registry::CachedFile;
 use sha2::{Digest as _, Sha256};
 
 /// Hashes a file chunk by chunk so it never has to sit in memory as a whole.
 pub struct FileChecker<'a> {
-    file: &'a WebModelFile,
+    file: &'a CachedFile,
     hasher: Sha256,
     received_bytes: u64,
 }
 
 impl<'a> FileChecker<'a> {
     #[must_use]
-    pub fn new(file: &'a WebModelFile) -> Self {
+    pub fn new(file: &'a CachedFile) -> Self {
         Self {
             file,
             hasher: Sha256::new(),
@@ -60,13 +60,11 @@ impl<'a> FileChecker<'a> {
 mod tests {
     use super::*;
     use purr_common::platform::{IntegrityProblem, ModelIntegrity};
-    use purr_common::web_model::file_role::ModelFileRole;
 
     const ABC_DIGEST: &str = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
 
-    fn abc_file(size_bytes: u64, digest: &str) -> Result<WebModelFile, Box<dyn std::error::Error>> {
-        Ok(WebModelFile {
-            role: ModelFileRole::Config,
+    fn abc_file(size_bytes: u64, digest: &str) -> Result<CachedFile, Box<dyn std::error::Error>> {
+        Ok(CachedFile {
             path: "config.json".to_owned(),
             size_bytes,
             sha256: digest.parse()?,

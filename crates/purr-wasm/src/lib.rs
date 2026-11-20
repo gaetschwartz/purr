@@ -5,7 +5,9 @@
 use manganis::{Asset, AssetOptions, asset};
 
 pub mod audio;
+pub mod byte_stream;
 pub mod compute_choice;
+pub mod converter_worker;
 pub mod error;
 pub mod history_audio;
 pub mod history_store;
@@ -16,6 +18,7 @@ pub mod logging;
 pub mod model;
 pub mod model_cache;
 pub mod model_info;
+pub mod model_install;
 pub mod model_progress;
 pub mod platform;
 pub mod protocol;
@@ -41,6 +44,22 @@ static ORT_WASM: Asset =
 #[must_use]
 pub fn ort_urls() -> (String, String) {
     (ORT_MODULE.to_string(), ORT_WASM.to_string())
+}
+
+static CONVERTER_WORKER_SCRIPT: Asset = asset!(
+    "/dist/convert_worker.js",
+    AssetOptions::js().with_minify(false).into_asset_options()
+);
+
+static CONVERTER_WASM: Asset = asset!("/dist/purr_onnx_convert.wasm");
+
+/// Absolute URL paths of the script of the worker that converts ONNX files while a model installs, and of its WebAssembly module.
+#[must_use]
+pub fn converter_urls() -> (String, String) {
+    (
+        CONVERTER_WORKER_SCRIPT.to_string(),
+        CONVERTER_WASM.to_string(),
+    )
 }
 
 static WARM_UP: Asset = asset!("/assets/warm_up.pcm");

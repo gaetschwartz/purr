@@ -394,6 +394,12 @@ pub enum WebError {
     )]
     WebAudioApi { operation: String, js_error: String },
 
+    #[oopsie(
+        "Converting the model failed: {message}",
+        code = "purr::web::model::conversion_failed"
+    )]
+    Conversion { message: String },
+
     #[oopsie("{source}")]
     Worker { source: WorkerError },
 
@@ -416,6 +422,12 @@ impl WebError {
         Self::ModelNotFound {
             model_id: model_id.into(),
             storage_type: storage_type.into(),
+        }
+    }
+
+    pub fn conversion(message: impl Into<String>) -> Self {
+        Self::Conversion {
+            message: message.into(),
         }
     }
 
@@ -489,7 +501,7 @@ impl WebError {
                 PlatformError::audio_processing(Box::new(self))
             }
             Self::Worker { .. } => PlatformError::initialization(Box::new(self)),
-            Self::Manifest { .. } | Self::Integrity { .. } => {
+            Self::Manifest { .. } | Self::Integrity { .. } | Self::Conversion { .. } => {
                 PlatformError::model_management(Box::new(self))
             }
             Self::ModelNotFound { model_id, .. } => PlatformError::model_not_found(model_id),

@@ -7,6 +7,7 @@ use crate::local::run_local;
 use crate::model::WebModelManager;
 use crate::model_cache;
 use crate::model_info::model_info;
+use crate::model_install::{self, InstallProgress};
 use crate::protocol::{WorkerEvent, WorkerModel, WorkerRequest};
 use crate::status_mapper::{PreloadMapper, PreloadStep, TranscriptionMapper};
 use crate::storage::WebStorage;
@@ -288,6 +289,41 @@ async fn run_transcription(
             return;
         }
     };
+    if !model_cached {
+        let mut report = |step: InstallProgress<'_>| {
+            let status = match step {
+                InstallProgress::Receiving { path, loaded_bytes } => {
+                    mapper.receiving(path, loaded_bytes)
+                }
+                InstallProgress::Installed { path } => mapper.installed(path),
+            };
+            if !send_status(&tx, status) {
+                tracing::debug!("Nobody follows the install of {} any more", spec.id);
+            }
+        };
+        let installing = model_install::install(&spec, hugging_face_token.as_ref(), &mut report);
+        let installed = tokio::select! {
+            () = tx.closed() => {
+                tracing::info!("Transcription stream dropped; cancelling");
+                return;
+            }
+            result = installing => result,
+        };
+        if let Err(error) = installed {
+            send_status(
+                &tx,
+                TranscriptionStatus::InitFailed {
+                    component: "Model".to_owned(),
+                    reason: error.to_string(),
+                    error_details: Some(
+                        "Check your internet connection and try again. Files that were already downloaded are kept.".to_owned(),
+                    ),
+                },
+            );
+            return;
+        }
+        mapper = TranscriptionMapper::new(&spec, true);
+    }
     let samples = decoded.samples;
     loop {
         tracing::info!("Transcribing with {} on {:?}", spec.id, choice.compute);
@@ -460,6 +496,42 @@ async fn run_preload(
             return;
         }
     };
+    let mut mapper = PreloadMapper::new(&spec, now_ms());
+    if !verified_first {
+        let mut report = |step: InstallProgress<'_>| {
+            let progress = match step {
+                InstallProgress::Receiving { path, loaded_bytes } => {
+                    mapper.receiving(path, loaded_bytes, now_ms())
+                }
+                InstallProgress::Installed { path } => mapper.installed(path, now_ms()),
+            };
+            if tx.send(Ok(progress)).is_err() {
+                tracing::debug!("Nobody follows the install of {model_id} any more");
+            }
+        };
+        let installing = model_install::install(&spec, hugging_face_token.as_ref(), &mut report);
+        let installed = tokio::select! {
+            () = tx.closed() => {
+                tracing::info!("Preload stream dropped; cancelling");
+                return;
+            }
+            result = installing => result,
+        };
+        if let Err(error) = installed {
+            let kind = if matches!(error, WebError::Integrity { .. }) {
+                ModelFailureKind::Integrity
+            } else {
+                download_failure_kind()
+            };
+            if tx
+                .send(Ok(fail("download", error.to_string(), kind)))
+                .is_err()
+            {
+                tracing::warn!("Install of {model_id} failed after its listener left");
+            }
+            return;
+        }
+    }
     let mut events = match worker.submit(
         load_request(&worker, &spec, &choice, hugging_face_token.as_ref()),
         None,
@@ -474,7 +546,6 @@ async fn run_preload(
         }
     };
 
-    let mut mapper = PreloadMapper::new(&spec, now_ms());
     loop {
         tokio::select! {
             () = tx.closed() => {

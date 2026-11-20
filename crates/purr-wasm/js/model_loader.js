@@ -3,6 +3,7 @@ import { emit, FailureKind, WorkerFailure } from "./events.js";
 import { requireWebGpu } from "./gpu.js";
 
 env.allowLocalModels = false;
+env.allowRemoteModels = false;
 env.logLevel = LogLevel.ERROR;
 env.useWasmCache = false;
 
@@ -118,6 +119,7 @@ export async function loadTranscriber(model, provider, requestId) {
                     decoder_model_merged: model.decoder_dtype,
                 },
                 device,
+                use_external_data_format: true,
                 session_options: sessionOptions(provider),
                 progress_callback: progressReporter(requestId),
             }),

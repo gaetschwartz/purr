@@ -19,6 +19,7 @@ The project consists of these crates:
 - **`purr-core`**: Core library with transcription functionality
 - **`purr-cli`**: Command-line interface using the core library
 - **`purr-app`**: The Dioxus interface shared by the desktop app and the browser build (see `crates/purr-app/README.md`)
+- **`purr-onnx-convert`**: Streaming ONNX rewrite run at browser install time (see `docs/architecture/web-models.md`)
 - **`purr-wasm`**: The browser platform: transcription with transformers.js in a worker, on WebGPU or on the CPU through WebAssembly, and IndexedDB storage
 - **`purr-common`**: Types shared by the desktop and the browser, the `Platform` trait and the settings
 
