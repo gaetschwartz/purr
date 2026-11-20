@@ -100,7 +100,11 @@ the files without any hash check, converting the ONNX files with the same conver
 
 - A developer model's cache keys use a repository of their own, `purr-developer/<id>`, so they never
   collide with a catalog model of the same source. Verification, eviction and `is_installed` of the
-  catalog never look at them. The model is described to the pipeline by a `WebModelSpec` with no files.
+  catalog never look at them.
+- A developer model is a `WebModel` of one variant and no files (`developer_model::web_model`): the
+  dtypes and, when converting, the table precision the user chose decide whether that variant is
+  `fp16` or `fp32`. Nothing switches between precisions for it, not even the WebGPU to CPU fallback,
+  and the choice of the converter's table precision (full or half) is part of the model.
 - Files used as they are keep their external weights only when the repository or the picked files
   have them; the worker then asks transformers.js for external data per ONNX file.
 - The session options typed in the settings are merged into the ones `model_loader.js` builds:
