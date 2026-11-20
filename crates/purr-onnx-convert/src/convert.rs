@@ -103,7 +103,7 @@ impl DataSink<'_> {
         length: u32,
         name: &str,
     ) -> Result<(u64, u32), ConvertError> {
-        if length % 4 != 0 {
+        if !length.is_multiple_of(4) {
             return Err(ConvertError::HalfTableSize {
                 name: name.to_owned(),
             });
@@ -133,19 +133,14 @@ impl DataSink<'_> {
 }
 
 fn narrow(full: &[u8], half: &mut Vec<u8>, name: &str) -> Result<(), ConvertError> {
-    let elements = full.chunks_exact(4);
-    if !elements.remainder().is_empty() {
+    let (elements, remainder) = full.as_chunks::<4>();
+    if !remainder.is_empty() {
         return Err(ConvertError::HalfTableSize {
             name: name.to_owned(),
         });
     }
-    for element in elements {
-        let bytes: [u8; 4] = element
-            .try_into()
-            .map_err(|_| ConvertError::HalfTableSize {
-                name: name.to_owned(),
-            })?;
-        let value = f32::from_le_bytes(bytes);
+    for bytes in elements {
+        let value = f32::from_le_bytes(*bytes);
         let narrowed = f16::from_f32(value);
         if value.is_finite() && !narrowed.is_finite() {
             return Err(ConvertError::HalfOverflow {

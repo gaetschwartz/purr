@@ -86,14 +86,13 @@ pub enum EmbeddingValues {
     Floats { largest: f32 },
 }
 
-pub fn embedding_floats(count: usize, largest: f32) -> Vec<f32> {
+pub fn embedding_floats(count: usize) -> Vec<f32> {
     (0..count)
-        .map(|index| match LEADING_VALUES.get(index) {
-            Some(value) => *value,
-            None => (index as f32 * 0.37).sin() * 3.0,
+        .map(|index| {
+            LEADING_VALUES
+                .get(index)
+                .map_or_else(|| (index as f32 * 0.37).sin() * 3.0, |value| *value)
         })
-        .chain(std::iter::once(largest))
-        .take(count)
         .collect()
 }
 
@@ -116,7 +115,7 @@ impl Decoder {
         let mut embedding = embedding;
         embedding.dims = vec![dim(self.vocabulary), dim(self.width)];
         if let EmbeddingValues::Floats { largest } = self.embedding_values {
-            let mut floats = embedding_floats(self.vocabulary * self.width, 0.0);
+            let mut floats = embedding_floats(self.vocabulary * self.width);
             if let Some(last) = floats.last_mut() {
                 *last = largest;
             }

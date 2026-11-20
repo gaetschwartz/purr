@@ -255,17 +255,18 @@ fn a_half_table_is_stored_rounded_to_nearest_even_and_declared_as_half() -> Test
         .ok_or("data too short")?;
     let expected: Vec<u8> = source
         .raw_data
-        .chunks_exact(4)
-        .flat_map(|bytes| {
-            let value = f32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
-            f16::from_f32(value).to_le_bytes()
-        })
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .flat_map(|bytes| f16::from_f32(f32::from_le_bytes(*bytes)).to_le_bytes())
         .collect();
     assert_eq!(stored, expected.as_slice());
     let leading: Vec<u16> = stored
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .take(LEADING_VALUES.len())
-        .map(|bytes| u16::from_le_bytes([bytes[0], bytes[1]]))
+        .map(|bytes| u16::from_le_bytes(*bytes))
         .collect();
     assert_eq!(leading, [0x3C00, 0x3C00, 0x3C02, 0xC100]);
     Ok(())
@@ -399,7 +400,7 @@ fn nodes_serialized_after_the_weights_are_an_error_when_a_table_would_be_narrowe
     let mut graph = weights.write_to_bytes()?;
     graph.extend(nodes.write_to_bytes()?);
 
-    let mut head = model.clone();
+    let mut head = model;
     head.graph.clear();
     let mut bytes = head.write_to_bytes()?;
     {
