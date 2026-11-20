@@ -14,6 +14,7 @@ use std::process::Command;
 static ALLOCATOR: CountingAllocator = CountingAllocator;
 
 const MODEL_ID: &str = "tiny";
+const TINY_LAYERS: usize = 4;
 const GRAPH_BUDGET_BYTES: usize = 8 * 1024 * 1024;
 
 fn precision(table: TableStorage) -> TablePrecision {
@@ -111,6 +112,11 @@ fn real_model_conversion_gives_the_pinned_files_in_bounded_memory() -> TestResul
             assert_eq!(
                 conversion.summary.tied_embedding_branches,
                 usize::from(is_decoder) * 2,
+                "{label}"
+            );
+            assert_eq!(
+                conversion.summary.fused_attention_blocks,
+                usize::from(file.role == ModelFileRole::Encoder) * TINY_LAYERS,
                 "{label}"
             );
             let narrowed = is_decoder && spec.table == TableStorage::Fp16;

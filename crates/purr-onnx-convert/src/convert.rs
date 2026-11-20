@@ -1,6 +1,7 @@
 //! One streaming pass over an ONNX model: big initializers go to a data sink, everything else
 //! stays in a small graph that is written last.
 
+use crate::attention_fusion;
 use crate::error::ConvertError;
 use crate::fields::{Field, Remainder, next_field, read_failed};
 use crate::proto::onnx_proto3::tensor_proto::{DataLocation, DataType};
@@ -44,6 +45,7 @@ pub struct Summary {
     pub external_tensors: usize,
     pub tied_embedding_branches: usize,
     pub half_precision_tables: usize,
+    pub fused_attention_blocks: usize,
 }
 
 struct DataSink<'w> {
@@ -334,6 +336,7 @@ pub fn convert(
         .filter(|tensor| tensor.data_location.enum_value() == Ok(DataLocation::EXTERNAL))
         .count();
     let tied_embedding_branches = tied_embedding::rewrite(&mut model, &converted)?;
+    let fused_attention_blocks = attention_fusion::fuse(&mut model);
 
     let encoded = model
         .write_to_bytes()
@@ -350,5 +353,6 @@ pub fn convert(
         external_tensors,
         tied_embedding_branches,
         half_precision_tables: converted.len(),
+        fused_attention_blocks,
     })
 }

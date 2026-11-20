@@ -1,6 +1,7 @@
 //! Streaming ONNX rewrite for the browser model install: initializers above a size threshold move
 //! to an external data file, and a tied embedding stops being copied by ONNX Runtime.
 
+mod attention_fusion;
 pub mod convert;
 pub mod error;
 mod fields;

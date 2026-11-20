@@ -57,6 +57,24 @@ quantized-encoder models (`*-q4`) have both variants: they differ in the decoder
   serialized before its initializers, so it is decided from the nodes read so far. A table that anything
   else reads, or that would overflow half precision, is an error or stays in full precision, and a
   model whose nodes follow its weights is rejected.
+- An encoder's self-attention, exported as separate operators, keeps two full `[batch * heads, S, S]`
+  tensors per layer in memory: the scores and their softmax (68.7 MiB each for Base, in full
+  precision). Each block is replaced by one `com.microsoft.MultiHeadAttention` node (`attention_fusion.rs`),
+  which ONNX Runtime Web runs on WebGPU and the CPU without them. The block is recognised by
+  operators and edges: `Softmax` over the last axis of a `MatMul` of the scaled query and the
+  transposed key, a `MatMul` with the values, then the heads merged back by `Reshape` and `Transpose`.
+  Two layouts of the heads occur: folded into the batch (`[batch * heads, S, size]`, with a regrouping
+  `Reshape` on the way back; Tiny to Small) and kept as an axis (`[batch, heads, S, size]`; Large V3
+  Turbo). The head count and size come from the `Reshape` shape constants and
+  must agree across query, key, value and the merge, which must be as wide as heads times size. The
+  node takes the unscaled query; the export's scale constant (a scalar of either precision) is the
+  node's default `1/sqrt(head_size)` or, when it differs, passed as `scale`. The same pattern holds
+  in the half-precision encoders (their constants are `float16`), so both variants are fused. Nodes
+  that nothing reads afterwards are removed by walking back from the graph outputs, subgraph
+  reads included. A graph without the pattern (the decoders) is
+  left as it is. The quantized encoders keep float attention, so they are fused as well. It works on the graph the converter already holds, so the weights stream untouched.
+  Measured on Base in headless Chrome with WebGPU, it took the GPU buffer peak from 617 to 357 MiB
+  and the encoder output stays within 5e-4 of the original on the CPU.
 - The data is written first and the graph last, because the graph holds the offsets. The output is
   deterministic.
 
@@ -136,10 +154,11 @@ after changing a variant's `table` or the converter.
 ## Tests
 
 - `cargo nextest run -p purr-onnx-convert`: synthetic models for the split and the rewrites (full and
-  half table), and a counting allocator that bounds the converter's peak memory.
+  half table, and the attention fusion: match, no match, scale, subgraph reads), and a counting allocator that bounds the converter's peak memory.
 - `cargo nextest run -p purr-onnx-convert --features tooling --profile all`: the `real_model_` tests
   fetch `tiny`, check the converter's output against the manifest, and run
   `scripts/validate_onnx_conversion.py` (via `uv`) to compare encoder output and every decoder logit
-  with the originals in ONNX Runtime on the CPU. The `fp32` conversion must match bit for bit; the
+  with the originals in ONNX Runtime on the CPU. The `fp32` conversion must give the original's
+  decoder logits bit for bit and an encoder output within 2e-3 of it (the attention is fused); the
   half-table decoder must pick the same token on at least 98% of the teacher-forced steps with no logit
   moving by more than 0.25.

@@ -1,6 +1,7 @@
 #![allow(dead_code, reason = "each test binary uses a part of this module")]
 
 pub mod counting_allocator;
+pub mod encoder;
 
 use protobuf::{EnumOrUnknown, Message, MessageField};
 use purr_onnx_convert::proto::onnx_proto3::attribute_proto::AttributeType;

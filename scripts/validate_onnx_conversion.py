@@ -8,7 +8,8 @@ usage: uv run scripts/validate_onnx_conversion.py REPO ORIGINAL_DIR CONVERTED_DI
 
 REPO is the Hugging Face repository the tokenizer and feature extractor come from. ENCODER and
 DECODER are file names found in both directories; the converted `<name>_data` sits beside them.
-Exits non-zero unless the encoder output and every decoder logit are bit-identical.
+The converted encoder fuses its attention, so its output must stay within a tolerance of the
+original's; the decoder, fed the original encoder output, must give bit-identical logits.
 
 With `half-table` the converted decoder stores its embedding table as half precision, so only the
 decoder is compared, fed the original encoder output: it must pick the same token as the original
@@ -27,6 +28,7 @@ from transformers import WhisperFeatureExtractor, WhisperTokenizer
 MAX_NEW_TOKENS = 60
 MIN_TOP1_AGREEMENT = 0.98
 MAX_LOGIT_DIFF = 0.25
+MAX_ENCODER_DIFF = 2e-3
 
 
 def load_audio(path):
@@ -124,7 +126,7 @@ def main():
     hidden = {}
     for label, directory in (("original", original_dir), ("converted", converted_dir)):
         hidden[label] = session(f"{directory}/{encoder}").run(None, {"input_features": features})[0]
-    encoder_identical = np.array_equal(hidden["original"], hidden["converted"])
+    encoder_diff = float(np.max(np.abs(hidden["original"] - hidden["converted"])))
 
     original = session(f"{original_dir}/{decoder}")
     converted = session(f"{converted_dir}/{decoder}")
@@ -136,13 +138,13 @@ def main():
     report = {
         "text": tokenizer.decode(tokens, skip_special_tokens=True),
         "same_tokens": tokens == converted_tokens,
-        "encoder_identical": bool(encoder_identical),
+        "encoder_max_diff": encoder_diff,
         "logits_identical": bool(logits_identical),
         "max_logit_diff": max(float(np.max(np.abs(forced[i] - reference[i]))) for i in range(count)),
         "steps": count,
     }
     print(json.dumps(report, indent=1))
-    if not (report["same_tokens"] and encoder_identical and logits_identical):
+    if not (report["same_tokens"] and encoder_diff <= MAX_ENCODER_DIFF and logits_identical):
         sys.exit(1)
 
 
