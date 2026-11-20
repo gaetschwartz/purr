@@ -40,6 +40,7 @@ pub fn DeveloperModelsGroup() -> Element {
     let models = settings.with(|settings| settings.developer.models.clone());
 
     rsx! {
+        if !models.is_empty() {
         Group {
             header: "Developer models",
             footer: "Loaded without a manifest entry and without hash checks. They appear in the model picker marked as developer models.",
@@ -72,6 +73,7 @@ pub fn DeveloperModelsGroup() -> Element {
                     },
                 }
             }
+        }
         }
         if IS_WEB {
             AddBrowserModel {}

@@ -7,7 +7,7 @@ use crate::{
 use dioxus::prelude::*;
 use purr_common::developer::session_options::parse;
 
-const HINT: &str = r#"A JSON object merged into the options the browser builds, such as {"executionProviders":[{"name":"webgpu","storageBufferCacheMode":"disabled"}]}. Applies from the next model load."#;
+const HINT: &str = r#"A JSON object merged into the options the browser builds, such as {"executionProviders":[{"name":"webgpu","storageBufferCacheMode":"simple"}]}. Applies from the next model load."#;
 
 /// ONNX Runtime session options as JSON, merged into the ones the browser builds.
 #[component]

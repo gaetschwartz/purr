@@ -92,6 +92,25 @@ lookup in the cache (a miss is a 404, and the few requests it makes for `main` a
 pinned revision), and the pipeline is created with `use_external_data_format`, so it reads the graph
 and `<path>_data` from the cache. The Hugging Face token is used only by the page's downloads.
 
+## Developer models
+
+With developer mode on (Settings, Advanced) a model can be loaded without a manifest entry: from a
+Hugging Face repository and revision, or from files picked on disk. `developer_install.rs` stores
+the files without any hash check, converting the ONNX files with the same converter only when asked.
+
+- A developer model's cache keys use a repository of their own, `purr-developer/<id>`, so they never
+  collide with a catalog model of the same source. Verification, eviction and `is_installed` of the
+  catalog never look at them. The model is described to the pipeline by a `WebModelSpec` with no files.
+- Files used as they are keep their external weights only when the repository or the picked files
+  have them; the worker then asks transformers.js for external data per ONNX file.
+- The session options typed in the settings are merged into the ones `model_loader.js` builds:
+  objects key by key, execution providers by name, anything else replaced.
+- The worker collects the developer panel figures only when started with developer mode on
+  (`developer.js`): it wraps `WebAssembly.Memory`, `WebAssembly.instantiate*`,
+  `GPUDevice.prototype.createBuffer` and `GPUBuffer.prototype.destroy` before ONNX Runtime starts.
+  The GPU figure counts buffers allocated and not yet destroyed, since browsers expose no real VRAM
+  figure. An idle worker started the other way is replaced when the setting changes.
+
 ## Manifest
 
 Schema 4. A model has `files` (configuration and tokenizer) and `variants`. A variant has its
