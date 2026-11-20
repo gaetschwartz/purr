@@ -4,6 +4,7 @@ pub use purr_common::platform::*;
 use purr_common::{
     accel::SystemReport,
     audio_overview::AudioOverview,
+    developer::snapshot::DeveloperSnapshot,
     history::{
         audio::{AudioOutcome, HistoryAudio},
         entry::{HistoryEntry, HistoryId, HistoryRecord},
@@ -34,6 +35,10 @@ pub mod log_export;
 /// Settings and machine probes as purr-core configuration and reports
 #[cfg(feature = "desktop")]
 mod compute_options;
+
+/// Models loaded from a file and the developer panel readings
+#[cfg(feature = "desktop")]
+mod developer;
 
 /// The speech recognition engines the desktop build carries
 #[cfg(feature = "desktop")]

@@ -62,6 +62,7 @@ strum = { version = "0.28.0", features = ["derive"] }
 ambassador = "0.5.1"
 parking_lot = { version = "0.13.0", optional = true }
 purr-engine-transcribe = { version = "0.1.0", path = "../purr-engine-transcribe", optional = true }
+memory-stats = { version = "1.2.0", optional = true }
 
 [features]
 default = ["desktop"]
@@ -92,6 +93,7 @@ desktop = [
   "directories",
   "toml",
   "parking_lot",
+  "memory-stats",
 ]
 
 # Mobile feature
@@ -106,6 +108,7 @@ gloo-timers = ["dep:gloo-timers"]
 parking_lot = ["dep:parking_lot"]
 web-sys = ["dep:web-sys"]
 transcribe = ["dep:purr-engine-transcribe"]
+memory-stats = ["dep:memory-stats"]
 
 [dev-dependencies]
 rstest = "0.28"

@@ -13,6 +13,7 @@ use std::{
     str::FromStr,
 };
 
+use crate::developer::snapshot::DeveloperSnapshot;
 use crate::{
     accel::{LastRun, SystemReport},
     audio_overview::AudioOverview,
@@ -1139,9 +1140,7 @@ pub trait Platform: Send + Sync + 'static {
     fn developer_snapshot(
         &self,
         reset_peaks: bool,
-    ) -> impl std::future::Future<
-        Output = Result<crate::developer::snapshot::DeveloperSnapshot, PlatformError>,
-    > + Send;
+    ) -> impl std::future::Future<Output = Result<DeveloperSnapshot, PlatformError>> + Send;
 
     // ========================================
     // Settings Persistence Operations

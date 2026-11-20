@@ -3,7 +3,7 @@
 use super::{
     Platform, PlatformError, TranscriptionRequest, TranscriptionStatus,
     compute_options::{apply_compute, backend_reports, last_run, probe},
-    engines,
+    developer, engines,
     history_store::HistoryDir,
 };
 use bytes::Bytes;
@@ -11,6 +11,7 @@ use futures::{SinkExt, Stream, StreamExt, channel::mpsc};
 use parking_lot::Mutex;
 use purr_common::accel::{LastRun, SystemReport};
 use purr_common::audio_overview::{AudioOverview, PeakFold};
+use purr_common::developer::{model::DeveloperModelId, snapshot::DeveloperSnapshot};
 use purr_common::history::{
     audio::{AudioOutcome, HistoryAudio},
     entry::{HistoryEntry, HistoryId, HistoryRecord},
@@ -149,14 +150,7 @@ impl Platform for DesktopPlatformImpl {
             FileSource::Uploaded(file_id) => self.temp_dir.join(file_id),
         };
         let manager = &self.model_manager;
-        let model = lookup(manager, request.model.as_str())?;
-        let installed = manager
-            .is_model_downloaded(model)
-            .await
-            .map_err(PlatformError::model_management)?;
-        if !installed {
-            return Err(PlatformError::model_not_found(request.model.to_string()));
-        }
+        let (model_ref, model_bytes) = self.model_to_load(request.model.as_str()).await?;
         let vad = vad_or_none(manager.vad_model_path().await);
         if vad.is_none() {
             self.fetch_vad_in_background(request.hugging_face_token.clone());
@@ -169,7 +163,6 @@ impl Platform for DesktopPlatformImpl {
                 .with_tentative(TentativeText::Decoded),
             &request.compute,
         );
-        let model_ref = ModelRef::new(manager.get_model_path(model), model.engine);
         info!(
             "Transcribing {} with {}",
             audio_path.display(),
@@ -183,7 +176,7 @@ impl Platform for DesktopPlatformImpl {
                 model: model_ref,
                 engines: Arc::clone(&self.engines),
             },
-            model.file.size_bytes,
+            model_bytes,
             Arc::clone(&self.last_run),
         ))
     }
@@ -299,6 +292,7 @@ impl Platform for DesktopPlatformImpl {
 
     async fn list_available_models(&self) -> Result<Vec<ModelInfo>, PlatformError> {
         let mut model_infos = Vec::new();
+        let developer_infos = developer::infos(&self.load_settings().await?.developer);
         let manager = &self.model_manager;
 
         for model in manager.registry().models() {
@@ -308,6 +302,7 @@ impl Platform for DesktopPlatformImpl {
                 .map_err(PlatformError::model_management)?;
             model_infos.push(model_info(manager, model, is_installed));
         }
+        model_infos.extend(developer_infos);
 
         Ok(model_infos)
     }
@@ -321,6 +316,12 @@ impl Platform for DesktopPlatformImpl {
     }
 
     async fn get_model_info(&self, model_id: &str) -> Result<ModelInfo, PlatformError> {
+        if DeveloperModelId::is_developer(model_id) {
+            return developer::infos(&self.load_settings().await?.developer)
+                .into_iter()
+                .find(|info| info.id == model_id)
+                .ok_or_else(|| PlatformError::model_not_found(model_id));
+        }
         let manager = &self.model_manager;
         let model = lookup(manager, model_id)?;
         let is_installed = manager
@@ -332,6 +333,11 @@ impl Platform for DesktopPlatformImpl {
     }
 
     async fn remove_model(&self, model_id: &str) -> Result<(), PlatformError> {
+        if DeveloperModelId::is_developer(model_id) {
+            return Err(PlatformError::unsupported(
+                "deleting a developer model's file; remove it from the developer settings instead",
+            ));
+        }
         let manager = &self.model_manager;
         let model = lookup(manager, model_id)?;
         manager
@@ -347,6 +353,9 @@ impl Platform for DesktopPlatformImpl {
         model_id: &str,
         progress: ModelCheckSender,
     ) -> Result<ModelIntegrity, PlatformError> {
+        if DeveloperModelId::is_developer(model_id) {
+            return Ok(ModelIntegrity::Verified);
+        }
         let manager = &self.model_manager;
         let model = lookup(manager, model_id)?;
         let integrity = manager
@@ -374,6 +383,11 @@ impl Platform for DesktopPlatformImpl {
     }
 
     async fn is_model_installed(&self, model_id: &str) -> Result<bool, PlatformError> {
+        if DeveloperModelId::is_developer(model_id) {
+            let settings = self.load_settings().await?;
+            return Ok(developer::choice(&settings.developer, model_id)
+                .is_some_and(|(choice, _)| choice.path.is_file()));
+        }
         let manager = &self.model_manager;
         let model = lookup(manager, model_id)?;
         manager
@@ -383,6 +397,12 @@ impl Platform for DesktopPlatformImpl {
     }
 
     async fn get_model_path(&self, model_id: &str) -> Result<String, PlatformError> {
+        if DeveloperModelId::is_developer(model_id) {
+            let settings = self.load_settings().await?;
+            return developer::choice(&settings.developer, model_id)
+                .map(|(choice, _)| choice.path.to_string_lossy().into_owned())
+                .ok_or_else(|| PlatformError::model_not_found(model_id.to_owned()));
+        }
         let manager = &self.model_manager;
         let model = lookup(manager, model_id)?;
         let is_installed = manager
@@ -402,6 +422,19 @@ impl Platform for DesktopPlatformImpl {
             .into_iter()
             .flat_map(|report| report.devices)
             .collect())
+    }
+
+    async fn developer_snapshot(
+        &self,
+        reset_peaks: bool,
+    ) -> Result<DeveloperSnapshot, PlatformError> {
+        let last = self.last_run.lock().clone();
+        let engines = Arc::clone(&self.engines);
+        tokio::task::spawn_blocking(move || {
+            DeveloperSnapshot::Native(developer::snapshot(&engines, last, reset_peaks))
+        })
+        .await
+        .map_err(PlatformError::device_detection)
     }
 
     async fn system_report(&self) -> Result<SystemReport, PlatformError> {
@@ -934,11 +967,43 @@ impl DesktopPlatformImpl {
         ));
     }
 
+    /// The file and engine of a model, and its size: a catalog model must be downloaded, a
+    /// developer model must still be on disk.
+    async fn model_to_load(&self, model_id: &str) -> Result<(ModelRef, u64), PlatformError> {
+        if DeveloperModelId::is_developer(model_id) {
+            let settings = self.load_settings().await?;
+            let (choice, size) = developer::choice(&settings.developer, model_id)
+                .ok_or_else(|| PlatformError::model_not_found(model_id.to_owned()))?;
+            if !choice.path.is_file() {
+                return Err(PlatformError::model_not_found(model_id.to_owned()));
+            }
+            return Ok((ModelRef::new(choice.path, choice.engine), size));
+        }
+        let manager = &self.model_manager;
+        let model = lookup(manager, model_id)?;
+        let installed = manager
+            .is_model_downloaded(model)
+            .await
+            .map_err(PlatformError::model_management)?;
+        if !installed {
+            return Err(PlatformError::model_not_found(model_id.to_owned()));
+        }
+        Ok((
+            ModelRef::new(manager.get_model_path(model), model.engine),
+            model.file.size_bytes,
+        ))
+    }
+
     fn start_download(
         &self,
         model_id: &str,
         token: Option<HuggingFaceToken>,
     ) -> Result<ModelProgressStream, PlatformError> {
+        if DeveloperModelId::is_developer(model_id) {
+            return Err(PlatformError::unsupported(
+                "downloading a developer model; it is loaded from the file it names",
+            ));
+        }
         let model = lookup_shared(&self.model_manager, model_id)?;
         let manager = Arc::clone(&self.model_manager);
         let (tx, rx) = mpsc::channel(10);
