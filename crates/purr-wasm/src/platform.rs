@@ -705,7 +705,8 @@ async fn install_variant(
     true
 }
 
-async fn run_preload(
+/// Everything one preload needs besides the channel it reports on.
+struct Preload {
     worker: Arc<WorkerClient>,
     model: WebModel,
     shader_f16: ShaderF16,
@@ -713,8 +714,18 @@ async fn run_preload(
     devices: DeviceOrder,
     source: ModelSource,
     session_options: Option<SessionOptions>,
-    tx: PreloadSender,
-) {
+}
+
+async fn run_preload(job: Preload, tx: PreloadSender) {
+    let Preload {
+        worker,
+        model,
+        shader_f16,
+        hugging_face_token,
+        devices,
+        source,
+        session_options,
+    } = job;
     let model_id = model.id.clone();
     let fail = |operation: &str, error_message: String, kind: ModelFailureKind| {
         failed(&model_id, operation, error_message, kind)
@@ -1100,13 +1111,15 @@ impl Platform for WasmPlatformImpl {
         let shader_f16 = self.shader_f16().await?;
         let (tx, rx) = mpsc::unbounded_channel();
         spawn_local(run_preload(
-            Arc::clone(&self.worker),
-            model,
-            shader_f16,
-            token,
-            devices,
-            source,
-            session_options,
+            Preload {
+                worker: Arc::clone(&self.worker),
+                model,
+                shader_f16,
+                hugging_face_token: token,
+                devices,
+                source,
+                session_options,
+            },
             tx,
         ));
         Ok(Box::pin(UnboundedReceiverStream::new(rx)))
