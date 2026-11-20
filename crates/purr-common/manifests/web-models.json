@@ -1,5 +1,5 @@
 {
-  "schema": 3,
+  "schema": 4,
   "default": "base",
   "models": [
     {
@@ -8,8 +8,6 @@
       "revision": "ff4177021cc41f7db950912b73ea4fdf7d01d8e7",
       "family": "tiny",
       "languages": "any",
-      "encoder_dtype": "fp32",
-      "decoder_dtype": "q4",
       "description": "Fastest, lowest accuracy",
       "files": [
         {
@@ -36,36 +34,83 @@
           "path": "tokenizer_config.json",
           "size_bytes": 282683,
           "sha256": "2a4c4281cf9f51ac6ccc406fdc711a087afe6530f671fa7b80953edc498275ce"
+        }
+      ],
+      "variants": [
+        {
+          "precision": "fp16",
+          "encoder_dtype": "fp16",
+          "decoder_dtype": "q4",
+          "table": "fp16",
+          "files": [
+            {
+              "path": "onnx/encoder_model_fp16.onnx",
+              "size_bytes": 16519192,
+              "sha256": "fc4bf9f3fadc450b128c3ef0711a4e61a55797447b6a700abe7fb97d9f549518",
+              "converted": {
+                "graph": {
+                  "size_bytes": 132400,
+                  "sha256": "d6bda293076f61cb2495943d3403fe39d3e67aedaba857fba9fba5c0d1e0b45d"
+                },
+                "data": {
+                  "size_bytes": 16396288,
+                  "sha256": "93d5897b5dc76768bb20b106c8bd773e8d774cc57b295a8c4c0a13643dc43ab5"
+                }
+              }
+            },
+            {
+              "path": "onnx/decoder_model_merged_q4.onnx",
+              "size_bytes": 86713702,
+              "sha256": "a7573efde84f7d018d59e50e7f860c03e26623d68e23eb6037b76135367e72eb",
+              "converted": {
+                "graph": {
+                  "size_bytes": 368662,
+                  "sha256": "a8b785c1f18bee5ecc09e19a3e3bda4c95f0b4a021bfccbffabc783e171c9f25"
+                },
+                "data": {
+                  "size_bytes": 46739456,
+                  "sha256": "b51040238ece8c332287133a6dd459dc1d242178efa7cf31ae018e0debd7759d"
+                }
+              }
+            }
+          ]
         },
         {
-          "path": "onnx/encoder_model.onnx",
-          "size_bytes": 32904992,
-          "sha256": "6642befb640f950d4a8cbbd17834d59e7e75f575b81ccf213e06b050623ab1dd",
-          "converted": {
-            "graph": {
-              "size_bytes": 76140,
-              "sha256": "480a96de2d3ad3fbbbd6cddf4218291c0874471f757fa35aebadb7ee34c8a9b6"
+          "precision": "fp32",
+          "encoder_dtype": "fp32",
+          "decoder_dtype": "q4",
+          "files": [
+            {
+              "path": "onnx/encoder_model.onnx",
+              "size_bytes": 32904992,
+              "sha256": "6642befb640f950d4a8cbbd17834d59e7e75f575b81ccf213e06b050623ab1dd",
+              "converted": {
+                "graph": {
+                  "size_bytes": 76140,
+                  "sha256": "480a96de2d3ad3fbbbd6cddf4218291c0874471f757fa35aebadb7ee34c8a9b6"
+                },
+                "data": {
+                  "size_bytes": 32935936,
+                  "sha256": "6adc7f1c17e27d2c033b1a3485a15a29ce799e12c090a569260fd34ab75b1edc"
+                }
+              }
             },
-            "data": {
-              "size_bytes": 32935936,
-              "sha256": "6adc7f1c17e27d2c033b1a3485a15a29ce799e12c090a569260fd34ab75b1edc"
+            {
+              "path": "onnx/decoder_model_merged_q4.onnx",
+              "size_bytes": 86713702,
+              "sha256": "a7573efde84f7d018d59e50e7f860c03e26623d68e23eb6037b76135367e72eb",
+              "converted": {
+                "graph": {
+                  "size_bytes": 368092,
+                  "sha256": "def65c78a7d6a9e787945f18ca4c5ddb6c7d406448b5b1b026fb9a268810e2b3"
+                },
+                "data": {
+                  "size_bytes": 86573056,
+                  "sha256": "220dcc2404e4c6e033a88f335494bc0acec4af93e2496430a33e8c7f1627f30d"
+                }
+              }
             }
-          }
-        },
-        {
-          "path": "onnx/decoder_model_merged_q4.onnx",
-          "size_bytes": 86713702,
-          "sha256": "a7573efde84f7d018d59e50e7f860c03e26623d68e23eb6037b76135367e72eb",
-          "converted": {
-            "graph": {
-              "size_bytes": 368092,
-              "sha256": "def65c78a7d6a9e787945f18ca4c5ddb6c7d406448b5b1b026fb9a268810e2b3"
-            },
-            "data": {
-              "size_bytes": 86573056,
-              "sha256": "220dcc2404e4c6e033a88f335494bc0acec4af93e2496430a33e8c7f1627f30d"
-            }
-          }
+          ]
         }
       ]
     },
@@ -79,8 +124,6 @@
           "en"
         ]
       },
-      "encoder_dtype": "fp32",
-      "decoder_dtype": "q4",
       "description": "Fastest, lowest accuracy",
       "files": [
         {
@@ -107,36 +150,83 @@
           "path": "tokenizer_config.json",
           "size_bytes": 282662,
           "sha256": "93879c3dccdd4b976f709acd85b44778873f30c275e67026f30ca1e4c975230c"
+        }
+      ],
+      "variants": [
+        {
+          "precision": "fp16",
+          "encoder_dtype": "fp16",
+          "decoder_dtype": "q4",
+          "table": "fp16",
+          "files": [
+            {
+              "path": "onnx/encoder_model_fp16.onnx",
+              "size_bytes": 16519192,
+              "sha256": "a89d421642a8652afd3456661060de9ee4d58b5435cf765cda0395919b11aeaf",
+              "converted": {
+                "graph": {
+                  "size_bytes": 132400,
+                  "sha256": "4a72c8401ba680ecc49a86bf82075d222d2b747abbae587a2d116d95fb8e160e"
+                },
+                "data": {
+                  "size_bytes": 16396288,
+                  "sha256": "47375c1ffc9c00439722b9a5667748bf85b6546d2e16e38523d76e0fc131c37b"
+                }
+              }
+            },
+            {
+              "path": "onnx/decoder_model_merged_q4.onnx",
+              "size_bytes": 86712166,
+              "sha256": "57d4303f3bbc8bb4016273b172285236f5719c75e8a7d23b7265cfa1d71494a4",
+              "converted": {
+                "graph": {
+                  "size_bytes": 368662,
+                  "sha256": "db9c27715d84452719729cba052aea2ad8b84ed42e592a12d04b7c06e6d2be18"
+                },
+                "data": {
+                  "size_bytes": 46739456,
+                  "sha256": "6c5c87ebd20698ddcd48d917c1c7c0cf5861d385e0ffd1ef5f65e38fecffc84d"
+                }
+              }
+            }
+          ]
         },
         {
-          "path": "onnx/encoder_model.onnx",
-          "size_bytes": 32904992,
-          "sha256": "8c361b9430a5ef6619ee64b7fe06c725df19f36d508cc8b847064b34a888a3fe",
-          "converted": {
-            "graph": {
-              "size_bytes": 76140,
-              "sha256": "480a96de2d3ad3fbbbd6cddf4218291c0874471f757fa35aebadb7ee34c8a9b6"
+          "precision": "fp32",
+          "encoder_dtype": "fp32",
+          "decoder_dtype": "q4",
+          "files": [
+            {
+              "path": "onnx/encoder_model.onnx",
+              "size_bytes": 32904992,
+              "sha256": "8c361b9430a5ef6619ee64b7fe06c725df19f36d508cc8b847064b34a888a3fe",
+              "converted": {
+                "graph": {
+                  "size_bytes": 76140,
+                  "sha256": "480a96de2d3ad3fbbbd6cddf4218291c0874471f757fa35aebadb7ee34c8a9b6"
+                },
+                "data": {
+                  "size_bytes": 32935936,
+                  "sha256": "fd0733e11d37d05ec8df54b8c223539a456732a33b650ea32fee3f87b106e60b"
+                }
+              }
             },
-            "data": {
-              "size_bytes": 32935936,
-              "sha256": "fd0733e11d37d05ec8df54b8c223539a456732a33b650ea32fee3f87b106e60b"
+            {
+              "path": "onnx/decoder_model_merged_q4.onnx",
+              "size_bytes": 86712166,
+              "sha256": "57d4303f3bbc8bb4016273b172285236f5719c75e8a7d23b7265cfa1d71494a4",
+              "converted": {
+                "graph": {
+                  "size_bytes": 368092,
+                  "sha256": "5e13e938304c32c4d293512592e254e242e76d3e898a70fd85d53db4a70b29c7"
+                },
+                "data": {
+                  "size_bytes": 86568960,
+                  "sha256": "bc43a84d3107d3d0167615913bfb521682920bc5fae1d59f31651b758de0c10b"
+                }
+              }
             }
-          }
-        },
-        {
-          "path": "onnx/decoder_model_merged_q4.onnx",
-          "size_bytes": 86712166,
-          "sha256": "57d4303f3bbc8bb4016273b172285236f5719c75e8a7d23b7265cfa1d71494a4",
-          "converted": {
-            "graph": {
-              "size_bytes": 368092,
-              "sha256": "5e13e938304c32c4d293512592e254e242e76d3e898a70fd85d53db4a70b29c7"
-            },
-            "data": {
-              "size_bytes": 86568960,
-              "sha256": "bc43a84d3107d3d0167615913bfb521682920bc5fae1d59f31651b758de0c10b"
-            }
-          }
+          ]
         }
       ]
     },
@@ -146,8 +236,6 @@
       "revision": "27a07b4b52b3a4c5886134bb4320e93e1a4bbc7c",
       "family": "base",
       "languages": "any",
-      "encoder_dtype": "fp32",
-      "decoder_dtype": "q4",
       "description": "Balanced speed and accuracy",
       "files": [
         {
@@ -174,36 +262,83 @@
           "path": "tokenizer_config.json",
           "size_bytes": 282682,
           "sha256": "2e036e4dbacfdeb7242c7d4ec4149f4a16e86026048f94d1637e3a8ee9c6a573"
+        }
+      ],
+      "variants": [
+        {
+          "precision": "fp16",
+          "encoder_dtype": "fp16",
+          "decoder_dtype": "q4",
+          "table": "fp16",
+          "files": [
+            {
+              "path": "onnx/encoder_model_fp16.onnx",
+              "size_bytes": 41332612,
+              "sha256": "ffba51b20185377c1b89362b1128148d0132de936a32b200af973da2a11a5369",
+              "converted": {
+                "graph": {
+                  "size_bytes": 158698,
+                  "sha256": "12d044bd5c6b7ecf55dc11aea566160a86bfc70423c176c0782c35e1be86047f"
+                },
+                "data": {
+                  "size_bytes": 41340928,
+                  "sha256": "5055bedfd3ea55f6043b8bb717a9c1459b886f745a936a568f74e0440ceac80d"
+                }
+              }
+            },
+            {
+              "path": "onnx/decoder_model_merged_q4.onnx",
+              "size_bytes": 123602419,
+              "sha256": "09f83b71ceedc97dab1d90b914715dc532a646a147abda11d83c64867b7c319c",
+              "converted": {
+                "graph": {
+                  "size_bytes": 542724,
+                  "sha256": "039b8bcb28120e91e8343c603c4e9ccfe0c8db1394421b913435be25c4719ecf"
+                },
+                "data": {
+                  "size_bytes": 70135808,
+                  "sha256": "3a121dd1bc61fb678011762530f8119ba28f87b5a77f7e777a2d9361203d37a2"
+                }
+              }
+            }
+          ]
         },
         {
-          "path": "onnx/encoder_model.onnx",
-          "size_bytes": 82468078,
-          "sha256": "a9f3b752833b49e880dec91ee5b6d936112be7c3ea07c221024ba493439f46fe",
-          "converted": {
-            "graph": {
-              "size_bytes": 112519,
-              "sha256": "2e76dc2458ae434aff0b44d605b3a6be50d1b315da20717c80ec2a7e362a8730"
+          "precision": "fp32",
+          "encoder_dtype": "fp32",
+          "decoder_dtype": "q4",
+          "files": [
+            {
+              "path": "onnx/encoder_model.onnx",
+              "size_bytes": 82468078,
+              "sha256": "a9f3b752833b49e880dec91ee5b6d936112be7c3ea07c221024ba493439f46fe",
+              "converted": {
+                "graph": {
+                  "size_bytes": 112519,
+                  "sha256": "2e76dc2458ae434aff0b44d605b3a6be50d1b315da20717c80ec2a7e362a8730"
+                },
+                "data": {
+                  "size_bytes": 82468864,
+                  "sha256": "15e777247693cd5956a250338c29fff1dfc12c064a4bc79419089686d9f4b58f"
+                }
+              }
             },
-            "data": {
-              "size_bytes": 82468864,
-              "sha256": "15e777247693cd5956a250338c29fff1dfc12c064a4bc79419089686d9f4b58f"
+            {
+              "path": "onnx/decoder_model_merged_q4.onnx",
+              "size_bytes": 123602419,
+              "sha256": "09f83b71ceedc97dab1d90b914715dc532a646a147abda11d83c64867b7c319c",
+              "converted": {
+                "graph": {
+                  "size_bytes": 542410,
+                  "sha256": "771eb55e1a45b60db82b0dd60f0e456f52057a7426b09ff76461ebd10d7fd921"
+                },
+                "data": {
+                  "size_bytes": 123244544,
+                  "sha256": "1ddb887ebb74ab0936c7bc86421d9d41a585670534f1360f20dbac8d3cafbdcc"
+                }
+              }
             }
-          }
-        },
-        {
-          "path": "onnx/decoder_model_merged_q4.onnx",
-          "size_bytes": 123602419,
-          "sha256": "09f83b71ceedc97dab1d90b914715dc532a646a147abda11d83c64867b7c319c",
-          "converted": {
-            "graph": {
-              "size_bytes": 542410,
-              "sha256": "771eb55e1a45b60db82b0dd60f0e456f52057a7426b09ff76461ebd10d7fd921"
-            },
-            "data": {
-              "size_bytes": 123244544,
-              "sha256": "1ddb887ebb74ab0936c7bc86421d9d41a585670534f1360f20dbac8d3cafbdcc"
-            }
-          }
+          ]
         }
       ]
     },
@@ -213,8 +348,6 @@
       "revision": "27a07b4b52b3a4c5886134bb4320e93e1a4bbc7c",
       "family": "base",
       "languages": "any",
-      "encoder_dtype": "q4",
-      "decoder_dtype": "q4",
       "description": "Balanced speed and accuracy",
       "files": [
         {
@@ -241,36 +374,83 @@
           "path": "tokenizer_config.json",
           "size_bytes": 282682,
           "sha256": "2e036e4dbacfdeb7242c7d4ec4149f4a16e86026048f94d1637e3a8ee9c6a573"
+        }
+      ],
+      "variants": [
+        {
+          "precision": "fp16",
+          "encoder_dtype": "q4",
+          "decoder_dtype": "q4",
+          "table": "fp16",
+          "files": [
+            {
+              "path": "onnx/encoder_model_q4.onnx",
+              "size_bytes": 18772451,
+              "sha256": "9d4e9c31e8559e71de3e0e49d60b830951484699ef53747a4a06261bbbc8cb88",
+              "converted": {
+                "graph": {
+                  "size_bytes": 120785,
+                  "sha256": "cc040ea2210ef5cc3740225b573c7929f0319214d62a25bc14310e968f9f6df0"
+                },
+                "data": {
+                  "size_bytes": 18767872,
+                  "sha256": "b585563101c9368186dbf0b58140950dc4ad8124998c673b225c5ed1b3e8d12f"
+                }
+              }
+            },
+            {
+              "path": "onnx/decoder_model_merged_q4.onnx",
+              "size_bytes": 123602419,
+              "sha256": "09f83b71ceedc97dab1d90b914715dc532a646a147abda11d83c64867b7c319c",
+              "converted": {
+                "graph": {
+                  "size_bytes": 542724,
+                  "sha256": "039b8bcb28120e91e8343c603c4e9ccfe0c8db1394421b913435be25c4719ecf"
+                },
+                "data": {
+                  "size_bytes": 70135808,
+                  "sha256": "3a121dd1bc61fb678011762530f8119ba28f87b5a77f7e777a2d9361203d37a2"
+                }
+              }
+            }
+          ]
         },
         {
-          "path": "onnx/encoder_model_q4.onnx",
-          "size_bytes": 18772451,
-          "sha256": "9d4e9c31e8559e71de3e0e49d60b830951484699ef53747a4a06261bbbc8cb88",
-          "converted": {
-            "graph": {
-              "size_bytes": 120785,
-              "sha256": "cc040ea2210ef5cc3740225b573c7929f0319214d62a25bc14310e968f9f6df0"
+          "precision": "fp32",
+          "encoder_dtype": "q4",
+          "decoder_dtype": "q4",
+          "files": [
+            {
+              "path": "onnx/encoder_model_q4.onnx",
+              "size_bytes": 18772451,
+              "sha256": "9d4e9c31e8559e71de3e0e49d60b830951484699ef53747a4a06261bbbc8cb88",
+              "converted": {
+                "graph": {
+                  "size_bytes": 120785,
+                  "sha256": "cc040ea2210ef5cc3740225b573c7929f0319214d62a25bc14310e968f9f6df0"
+                },
+                "data": {
+                  "size_bytes": 18767872,
+                  "sha256": "b585563101c9368186dbf0b58140950dc4ad8124998c673b225c5ed1b3e8d12f"
+                }
+              }
             },
-            "data": {
-              "size_bytes": 18767872,
-              "sha256": "b585563101c9368186dbf0b58140950dc4ad8124998c673b225c5ed1b3e8d12f"
+            {
+              "path": "onnx/decoder_model_merged_q4.onnx",
+              "size_bytes": 123602419,
+              "sha256": "09f83b71ceedc97dab1d90b914715dc532a646a147abda11d83c64867b7c319c",
+              "converted": {
+                "graph": {
+                  "size_bytes": 542410,
+                  "sha256": "771eb55e1a45b60db82b0dd60f0e456f52057a7426b09ff76461ebd10d7fd921"
+                },
+                "data": {
+                  "size_bytes": 123244544,
+                  "sha256": "1ddb887ebb74ab0936c7bc86421d9d41a585670534f1360f20dbac8d3cafbdcc"
+                }
+              }
             }
-          }
-        },
-        {
-          "path": "onnx/decoder_model_merged_q4.onnx",
-          "size_bytes": 123602419,
-          "sha256": "09f83b71ceedc97dab1d90b914715dc532a646a147abda11d83c64867b7c319c",
-          "converted": {
-            "graph": {
-              "size_bytes": 542410,
-              "sha256": "771eb55e1a45b60db82b0dd60f0e456f52057a7426b09ff76461ebd10d7fd921"
-            },
-            "data": {
-              "size_bytes": 123244544,
-              "sha256": "1ddb887ebb74ab0936c7bc86421d9d41a585670534f1360f20dbac8d3cafbdcc"
-            }
-          }
+          ]
         }
       ]
     },
@@ -284,8 +464,6 @@
           "en"
         ]
       },
-      "encoder_dtype": "fp32",
-      "decoder_dtype": "q4",
       "description": "Balanced speed and accuracy",
       "files": [
         {
@@ -312,36 +490,83 @@
           "path": "tokenizer_config.json",
           "size_bytes": 282662,
           "sha256": "93879c3dccdd4b976f709acd85b44778873f30c275e67026f30ca1e4c975230c"
+        }
+      ],
+      "variants": [
+        {
+          "precision": "fp16",
+          "encoder_dtype": "fp16",
+          "decoder_dtype": "q4",
+          "table": "fp16",
+          "files": [
+            {
+              "path": "onnx/encoder_model_fp16.onnx",
+              "size_bytes": 41332612,
+              "sha256": "572e94410d027b338fe74b73cccb335cc4f649485ae0b8e36663971f8bdfec7d",
+              "converted": {
+                "graph": {
+                  "size_bytes": 158698,
+                  "sha256": "12d044bd5c6b7ecf55dc11aea566160a86bfc70423c176c0782c35e1be86047f"
+                },
+                "data": {
+                  "size_bytes": 41340928,
+                  "sha256": "bd22ce6c56dae8b281b9b331ab3d5c3333c6faf9cfc9c4a40c0707910a7705ad"
+                }
+              }
+            },
+            {
+              "path": "onnx/decoder_model_merged_q4.onnx",
+              "size_bytes": 123600371,
+              "sha256": "7770ac574b71a704191ec52becac42b4a4126af26f54ed653f31c8f16af31f99",
+              "converted": {
+                "graph": {
+                  "size_bytes": 542724,
+                  "sha256": "d2aeed0422af42a94de528afcb010823510a35b043ea73a11a260b4b6d5f676c"
+                },
+                "data": {
+                  "size_bytes": 70131712,
+                  "sha256": "a94eb76c61503c6b78847c36aadb30b940a3c88ad57ca0744619710b79b69ef0"
+                }
+              }
+            }
+          ]
         },
         {
-          "path": "onnx/encoder_model.onnx",
-          "size_bytes": 82468078,
-          "sha256": "1cc86302d480b061452d348638064383ab41b6f3333ddd0e423532d14edaf535",
-          "converted": {
-            "graph": {
-              "size_bytes": 112519,
-              "sha256": "2e76dc2458ae434aff0b44d605b3a6be50d1b315da20717c80ec2a7e362a8730"
+          "precision": "fp32",
+          "encoder_dtype": "fp32",
+          "decoder_dtype": "q4",
+          "files": [
+            {
+              "path": "onnx/encoder_model.onnx",
+              "size_bytes": 82468078,
+              "sha256": "1cc86302d480b061452d348638064383ab41b6f3333ddd0e423532d14edaf535",
+              "converted": {
+                "graph": {
+                  "size_bytes": 112519,
+                  "sha256": "2e76dc2458ae434aff0b44d605b3a6be50d1b315da20717c80ec2a7e362a8730"
+                },
+                "data": {
+                  "size_bytes": 82468864,
+                  "sha256": "eb20a5f1e5eb28abe25de0f8553f9c69ebf7b7a880bb9388112493ee173eaa5c"
+                }
+              }
             },
-            "data": {
-              "size_bytes": 82468864,
-              "sha256": "eb20a5f1e5eb28abe25de0f8553f9c69ebf7b7a880bb9388112493ee173eaa5c"
+            {
+              "path": "onnx/decoder_model_merged_q4.onnx",
+              "size_bytes": 123600371,
+              "sha256": "7770ac574b71a704191ec52becac42b4a4126af26f54ed653f31c8f16af31f99",
+              "converted": {
+                "graph": {
+                  "size_bytes": 542410,
+                  "sha256": "b7b964e2bd01e3f9063c1f5f97481a59fabfe6b3ceb8133c20954b720463be75"
+                },
+                "data": {
+                  "size_bytes": 123240448,
+                  "sha256": "0548f5eb52f36b107ed33c0c7794069deec96a37bce18ad1186e2b0036994f2f"
+                }
+              }
             }
-          }
-        },
-        {
-          "path": "onnx/decoder_model_merged_q4.onnx",
-          "size_bytes": 123600371,
-          "sha256": "7770ac574b71a704191ec52becac42b4a4126af26f54ed653f31c8f16af31f99",
-          "converted": {
-            "graph": {
-              "size_bytes": 542410,
-              "sha256": "b7b964e2bd01e3f9063c1f5f97481a59fabfe6b3ceb8133c20954b720463be75"
-            },
-            "data": {
-              "size_bytes": 123240448,
-              "sha256": "0548f5eb52f36b107ed33c0c7794069deec96a37bce18ad1186e2b0036994f2f"
-            }
-          }
+          ]
         }
       ]
     },
@@ -355,8 +580,6 @@
           "en"
         ]
       },
-      "encoder_dtype": "q4",
-      "decoder_dtype": "q4",
       "description": "Balanced speed and accuracy",
       "files": [
         {
@@ -383,36 +606,83 @@
           "path": "tokenizer_config.json",
           "size_bytes": 282662,
           "sha256": "93879c3dccdd4b976f709acd85b44778873f30c275e67026f30ca1e4c975230c"
+        }
+      ],
+      "variants": [
+        {
+          "precision": "fp16",
+          "encoder_dtype": "q4",
+          "decoder_dtype": "q4",
+          "table": "fp16",
+          "files": [
+            {
+              "path": "onnx/encoder_model_q4.onnx",
+              "size_bytes": 18772451,
+              "sha256": "e7e6d1103e14c9c0beb838eaa011f8bcdbfb3abc7f15a87edae1373ff5a6d678",
+              "converted": {
+                "graph": {
+                  "size_bytes": 120785,
+                  "sha256": "cc040ea2210ef5cc3740225b573c7929f0319214d62a25bc14310e968f9f6df0"
+                },
+                "data": {
+                  "size_bytes": 18767872,
+                  "sha256": "d9e60c1ed4b6d44ae30fd08a7b0a9caa4eb8bfde055b599742e1546867074bfe"
+                }
+              }
+            },
+            {
+              "path": "onnx/decoder_model_merged_q4.onnx",
+              "size_bytes": 123600371,
+              "sha256": "7770ac574b71a704191ec52becac42b4a4126af26f54ed653f31c8f16af31f99",
+              "converted": {
+                "graph": {
+                  "size_bytes": 542724,
+                  "sha256": "d2aeed0422af42a94de528afcb010823510a35b043ea73a11a260b4b6d5f676c"
+                },
+                "data": {
+                  "size_bytes": 70131712,
+                  "sha256": "a94eb76c61503c6b78847c36aadb30b940a3c88ad57ca0744619710b79b69ef0"
+                }
+              }
+            }
+          ]
         },
         {
-          "path": "onnx/encoder_model_q4.onnx",
-          "size_bytes": 18772451,
-          "sha256": "e7e6d1103e14c9c0beb838eaa011f8bcdbfb3abc7f15a87edae1373ff5a6d678",
-          "converted": {
-            "graph": {
-              "size_bytes": 120785,
-              "sha256": "cc040ea2210ef5cc3740225b573c7929f0319214d62a25bc14310e968f9f6df0"
+          "precision": "fp32",
+          "encoder_dtype": "q4",
+          "decoder_dtype": "q4",
+          "files": [
+            {
+              "path": "onnx/encoder_model_q4.onnx",
+              "size_bytes": 18772451,
+              "sha256": "e7e6d1103e14c9c0beb838eaa011f8bcdbfb3abc7f15a87edae1373ff5a6d678",
+              "converted": {
+                "graph": {
+                  "size_bytes": 120785,
+                  "sha256": "cc040ea2210ef5cc3740225b573c7929f0319214d62a25bc14310e968f9f6df0"
+                },
+                "data": {
+                  "size_bytes": 18767872,
+                  "sha256": "d9e60c1ed4b6d44ae30fd08a7b0a9caa4eb8bfde055b599742e1546867074bfe"
+                }
+              }
             },
-            "data": {
-              "size_bytes": 18767872,
-              "sha256": "d9e60c1ed4b6d44ae30fd08a7b0a9caa4eb8bfde055b599742e1546867074bfe"
+            {
+              "path": "onnx/decoder_model_merged_q4.onnx",
+              "size_bytes": 123600371,
+              "sha256": "7770ac574b71a704191ec52becac42b4a4126af26f54ed653f31c8f16af31f99",
+              "converted": {
+                "graph": {
+                  "size_bytes": 542410,
+                  "sha256": "b7b964e2bd01e3f9063c1f5f97481a59fabfe6b3ceb8133c20954b720463be75"
+                },
+                "data": {
+                  "size_bytes": 123240448,
+                  "sha256": "0548f5eb52f36b107ed33c0c7794069deec96a37bce18ad1186e2b0036994f2f"
+                }
+              }
             }
-          }
-        },
-        {
-          "path": "onnx/decoder_model_merged_q4.onnx",
-          "size_bytes": 123600371,
-          "sha256": "7770ac574b71a704191ec52becac42b4a4126af26f54ed653f31c8f16af31f99",
-          "converted": {
-            "graph": {
-              "size_bytes": 542410,
-              "sha256": "b7b964e2bd01e3f9063c1f5f97481a59fabfe6b3ceb8133c20954b720463be75"
-            },
-            "data": {
-              "size_bytes": 123240448,
-              "sha256": "0548f5eb52f36b107ed33c0c7794069deec96a37bce18ad1186e2b0036994f2f"
-            }
-          }
+          ]
         }
       ]
     },
@@ -422,8 +692,6 @@
       "revision": "36050c46d777d46dc4b5f43f6d90574fc38f8732",
       "family": "small",
       "languages": "any",
-      "encoder_dtype": "fp32",
-      "decoder_dtype": "q4",
       "description": "Good accuracy",
       "files": [
         {
@@ -450,36 +718,83 @@
           "path": "tokenizer_config.json",
           "size_bytes": 282683,
           "sha256": "2a4c4281cf9f51ac6ccc406fdc711a087afe6530f671fa7b80953edc498275ce"
+        }
+      ],
+      "variants": [
+        {
+          "precision": "fp16",
+          "encoder_dtype": "fp16",
+          "decoder_dtype": "q4",
+          "table": "fp16",
+          "files": [
+            {
+              "path": "onnx/encoder_model_fp16.onnx",
+              "size_bytes": 176607756,
+              "sha256": "5549cd8666ff4b694ceb128bfa48b95bdcceec29075cf2c2212f90002cc058de",
+              "converted": {
+                "graph": {
+                  "size_bytes": 313631,
+                  "sha256": "1b6a66065c21c8095b8fbfe86acb8beaab3fa78fba878e9d90fced5157b9f6eb"
+                },
+                "data": {
+                  "size_bytes": 176590848,
+                  "sha256": "0fa3c955552e0fc26d794900a7bd66875894f0dc6c5228aa3d24d762d2962d0e"
+                }
+              }
+            },
+            {
+              "path": "onnx/decoder_model_merged_q4.onnx",
+              "size_bytes": 233149327,
+              "sha256": "795c61b344576719c2b249cc9911c78b4cc552c8c6a5407be21a3380a0791b13",
+              "converted": {
+                "graph": {
+                  "size_bytes": 1067656,
+                  "sha256": "76fb419463a6cd45761e8ee3acfd68aa1316cdfe86acf1c835c796da8576848a"
+                },
+                "data": {
+                  "size_bytes": 152616960,
+                  "sha256": "d5c79eccd1a499e890e7b61675ec231f632ccfc705a81ae39eb6e4d9b97d5f83"
+                }
+              }
+            }
+          ]
         },
         {
-          "path": "onnx/encoder_model.onnx",
-          "size_bytes": 352825870,
-          "sha256": "b37cd6625dc36f9178ec7539a1876b9680ea26a910097e092be39dc766320c7b",
-          "converted": {
-            "graph": {
-              "size_bytes": 222636,
-              "sha256": "b2ee7d433a73070cfc6f392ebd3f7376a990966c88e6ef84afe85281a2862328"
+          "precision": "fp32",
+          "encoder_dtype": "fp32",
+          "decoder_dtype": "q4",
+          "files": [
+            {
+              "path": "onnx/encoder_model.onnx",
+              "size_bytes": 352825870,
+              "sha256": "b37cd6625dc36f9178ec7539a1876b9680ea26a910097e092be39dc766320c7b",
+              "converted": {
+                "graph": {
+                  "size_bytes": 222636,
+                  "sha256": "b2ee7d433a73070cfc6f392ebd3f7376a990966c88e6ef84afe85281a2862328"
+                },
+                "data": {
+                  "size_bytes": 352718848,
+                  "sha256": "c1b7470e54e0900a6d16073568758a2294c6956a0317ab838a4d8b57c79977db"
+                }
+              }
             },
-            "data": {
-              "size_bytes": 352718848,
-              "sha256": "c1b7470e54e0900a6d16073568758a2294c6956a0317ab838a4d8b57c79977db"
+            {
+              "path": "onnx/decoder_model_merged_q4.onnx",
+              "size_bytes": 233149327,
+              "sha256": "795c61b344576719c2b249cc9911c78b4cc552c8c6a5407be21a3380a0791b13",
+              "converted": {
+                "graph": {
+                  "size_bytes": 1067341,
+                  "sha256": "c6f00a124c8ab87a5773af3004501b9dbb4194b1b17bef9fc3b3a0fb5dbfe939"
+                },
+                "data": {
+                  "size_bytes": 232280064,
+                  "sha256": "2ca79ef3557ede0322ebf36d1a94ea3fd292696433e3311d574c71ed4c96fb04"
+                }
+              }
             }
-          }
-        },
-        {
-          "path": "onnx/decoder_model_merged_q4.onnx",
-          "size_bytes": 233149327,
-          "sha256": "795c61b344576719c2b249cc9911c78b4cc552c8c6a5407be21a3380a0791b13",
-          "converted": {
-            "graph": {
-              "size_bytes": 1067341,
-              "sha256": "c6f00a124c8ab87a5773af3004501b9dbb4194b1b17bef9fc3b3a0fb5dbfe939"
-            },
-            "data": {
-              "size_bytes": 232280064,
-              "sha256": "2ca79ef3557ede0322ebf36d1a94ea3fd292696433e3311d574c71ed4c96fb04"
-            }
-          }
+          ]
         }
       ]
     },
@@ -489,8 +804,6 @@
       "revision": "36050c46d777d46dc4b5f43f6d90574fc38f8732",
       "family": "small",
       "languages": "any",
-      "encoder_dtype": "q4",
-      "decoder_dtype": "q4",
       "description": "Good accuracy",
       "files": [
         {
@@ -517,36 +830,83 @@
           "path": "tokenizer_config.json",
           "size_bytes": 282683,
           "sha256": "2a4c4281cf9f51ac6ccc406fdc711a087afe6530f671fa7b80953edc498275ce"
+        }
+      ],
+      "variants": [
+        {
+          "precision": "fp16",
+          "encoder_dtype": "q4",
+          "decoder_dtype": "q4",
+          "table": "fp16",
+          "files": [
+            {
+              "path": "onnx/encoder_model_q4.onnx",
+              "size_bytes": 66182104,
+              "sha256": "9f088ad0fe15ba2cf094c9fb22ac7fe1111fc9ef317c1e4d1f6a3bca38a931ba",
+              "converted": {
+                "graph": {
+                  "size_bytes": 239219,
+                  "sha256": "f4f843f767cffcaf8552eeecafa02138928a114419de1b927e5468b601e35a48"
+                },
+                "data": {
+                  "size_bytes": 66064384,
+                  "sha256": "4a6426ebac9f51e5c8c8c0ca8ee85c815440836bff6f4793c0f45a1236647654"
+                }
+              }
+            },
+            {
+              "path": "onnx/decoder_model_merged_q4.onnx",
+              "size_bytes": 233149327,
+              "sha256": "795c61b344576719c2b249cc9911c78b4cc552c8c6a5407be21a3380a0791b13",
+              "converted": {
+                "graph": {
+                  "size_bytes": 1067656,
+                  "sha256": "76fb419463a6cd45761e8ee3acfd68aa1316cdfe86acf1c835c796da8576848a"
+                },
+                "data": {
+                  "size_bytes": 152616960,
+                  "sha256": "d5c79eccd1a499e890e7b61675ec231f632ccfc705a81ae39eb6e4d9b97d5f83"
+                }
+              }
+            }
+          ]
         },
         {
-          "path": "onnx/encoder_model_q4.onnx",
-          "size_bytes": 66182104,
-          "sha256": "9f088ad0fe15ba2cf094c9fb22ac7fe1111fc9ef317c1e4d1f6a3bca38a931ba",
-          "converted": {
-            "graph": {
-              "size_bytes": 239219,
-              "sha256": "f4f843f767cffcaf8552eeecafa02138928a114419de1b927e5468b601e35a48"
+          "precision": "fp32",
+          "encoder_dtype": "q4",
+          "decoder_dtype": "q4",
+          "files": [
+            {
+              "path": "onnx/encoder_model_q4.onnx",
+              "size_bytes": 66182104,
+              "sha256": "9f088ad0fe15ba2cf094c9fb22ac7fe1111fc9ef317c1e4d1f6a3bca38a931ba",
+              "converted": {
+                "graph": {
+                  "size_bytes": 239219,
+                  "sha256": "f4f843f767cffcaf8552eeecafa02138928a114419de1b927e5468b601e35a48"
+                },
+                "data": {
+                  "size_bytes": 66064384,
+                  "sha256": "4a6426ebac9f51e5c8c8c0ca8ee85c815440836bff6f4793c0f45a1236647654"
+                }
+              }
             },
-            "data": {
-              "size_bytes": 66064384,
-              "sha256": "4a6426ebac9f51e5c8c8c0ca8ee85c815440836bff6f4793c0f45a1236647654"
+            {
+              "path": "onnx/decoder_model_merged_q4.onnx",
+              "size_bytes": 233149327,
+              "sha256": "795c61b344576719c2b249cc9911c78b4cc552c8c6a5407be21a3380a0791b13",
+              "converted": {
+                "graph": {
+                  "size_bytes": 1067341,
+                  "sha256": "c6f00a124c8ab87a5773af3004501b9dbb4194b1b17bef9fc3b3a0fb5dbfe939"
+                },
+                "data": {
+                  "size_bytes": 232280064,
+                  "sha256": "2ca79ef3557ede0322ebf36d1a94ea3fd292696433e3311d574c71ed4c96fb04"
+                }
+              }
             }
-          }
-        },
-        {
-          "path": "onnx/decoder_model_merged_q4.onnx",
-          "size_bytes": 233149327,
-          "sha256": "795c61b344576719c2b249cc9911c78b4cc552c8c6a5407be21a3380a0791b13",
-          "converted": {
-            "graph": {
-              "size_bytes": 1067341,
-              "sha256": "c6f00a124c8ab87a5773af3004501b9dbb4194b1b17bef9fc3b3a0fb5dbfe939"
-            },
-            "data": {
-              "size_bytes": 232280064,
-              "sha256": "2ca79ef3557ede0322ebf36d1a94ea3fd292696433e3311d574c71ed4c96fb04"
-            }
-          }
+          ]
         }
       ]
     },
@@ -560,8 +920,6 @@
           "en"
         ]
       },
-      "encoder_dtype": "fp32",
-      "decoder_dtype": "q4",
       "description": "Good accuracy",
       "files": [
         {
@@ -588,36 +946,83 @@
           "path": "tokenizer_config.json",
           "size_bytes": 282662,
           "sha256": "93879c3dccdd4b976f709acd85b44778873f30c275e67026f30ca1e4c975230c"
+        }
+      ],
+      "variants": [
+        {
+          "precision": "fp16",
+          "encoder_dtype": "fp16",
+          "decoder_dtype": "q4",
+          "table": "fp16",
+          "files": [
+            {
+              "path": "onnx/encoder_model_fp16.onnx",
+              "size_bytes": 176607756,
+              "sha256": "719a2f2d4450fef5bba1cf9df585336ddd1fddcf2ed0011a274d89609b25ccd2",
+              "converted": {
+                "graph": {
+                  "size_bytes": 313631,
+                  "sha256": "1b6a66065c21c8095b8fbfe86acb8beaab3fa78fba878e9d90fced5157b9f6eb"
+                },
+                "data": {
+                  "size_bytes": 176590848,
+                  "sha256": "64b9d669cce830705444ec40cc3d2f2e1446f2191a49058de1329953ccea3201"
+                }
+              }
+            },
+            {
+              "path": "onnx/decoder_model_merged_q4.onnx",
+              "size_bytes": 233146255,
+              "sha256": "86a8c61d69876771dda2717b6f7037deb4f55dbc54fac9d6c13520036e4ba88f",
+              "converted": {
+                "graph": {
+                  "size_bytes": 1067656,
+                  "sha256": "bb657c8ac0e3b7723bb00be31a1ea02a16321f53a9410e55dfcba66f852af0cb"
+                },
+                "data": {
+                  "size_bytes": 152612864,
+                  "sha256": "a4e85845d97e598e390d99126fa0c92c65363241f37c16dcc26af6b0c945d40f"
+                }
+              }
+            }
+          ]
         },
         {
-          "path": "onnx/encoder_model.onnx",
-          "size_bytes": 352825870,
-          "sha256": "695836adae236d456605813b548bdab33df8924587e2252d7eba01cdfeb015b3",
-          "converted": {
-            "graph": {
-              "size_bytes": 222636,
-              "sha256": "b2ee7d433a73070cfc6f392ebd3f7376a990966c88e6ef84afe85281a2862328"
+          "precision": "fp32",
+          "encoder_dtype": "fp32",
+          "decoder_dtype": "q4",
+          "files": [
+            {
+              "path": "onnx/encoder_model.onnx",
+              "size_bytes": 352825870,
+              "sha256": "695836adae236d456605813b548bdab33df8924587e2252d7eba01cdfeb015b3",
+              "converted": {
+                "graph": {
+                  "size_bytes": 222636,
+                  "sha256": "b2ee7d433a73070cfc6f392ebd3f7376a990966c88e6ef84afe85281a2862328"
+                },
+                "data": {
+                  "size_bytes": 352718848,
+                  "sha256": "ab26ecabe1dc1b3d43be3359cc1b39dd438e622cafca68b395c33dd91e3f6288"
+                }
+              }
             },
-            "data": {
-              "size_bytes": 352718848,
-              "sha256": "ab26ecabe1dc1b3d43be3359cc1b39dd438e622cafca68b395c33dd91e3f6288"
+            {
+              "path": "onnx/decoder_model_merged_q4.onnx",
+              "size_bytes": 233146255,
+              "sha256": "86a8c61d69876771dda2717b6f7037deb4f55dbc54fac9d6c13520036e4ba88f",
+              "converted": {
+                "graph": {
+                  "size_bytes": 1067341,
+                  "sha256": "2f0fde574947bc735c3239e9f1fafec9fa8611c0e11d1af81de9506de5a6e6f7"
+                },
+                "data": {
+                  "size_bytes": 232275968,
+                  "sha256": "10c086423c28cceeaf782a6559255b8906dfcf70ce48be004408f8fb5064ed05"
+                }
+              }
             }
-          }
-        },
-        {
-          "path": "onnx/decoder_model_merged_q4.onnx",
-          "size_bytes": 233146255,
-          "sha256": "86a8c61d69876771dda2717b6f7037deb4f55dbc54fac9d6c13520036e4ba88f",
-          "converted": {
-            "graph": {
-              "size_bytes": 1067341,
-              "sha256": "2f0fde574947bc735c3239e9f1fafec9fa8611c0e11d1af81de9506de5a6e6f7"
-            },
-            "data": {
-              "size_bytes": 232275968,
-              "sha256": "10c086423c28cceeaf782a6559255b8906dfcf70ce48be004408f8fb5064ed05"
-            }
-          }
+          ]
         }
       ]
     },
@@ -631,8 +1036,6 @@
           "en"
         ]
       },
-      "encoder_dtype": "q4",
-      "decoder_dtype": "q4",
       "description": "Good accuracy",
       "files": [
         {
@@ -659,36 +1062,83 @@
           "path": "tokenizer_config.json",
           "size_bytes": 282662,
           "sha256": "93879c3dccdd4b976f709acd85b44778873f30c275e67026f30ca1e4c975230c"
+        }
+      ],
+      "variants": [
+        {
+          "precision": "fp16",
+          "encoder_dtype": "q4",
+          "decoder_dtype": "q4",
+          "table": "fp16",
+          "files": [
+            {
+              "path": "onnx/encoder_model_q4.onnx",
+              "size_bytes": 66182104,
+              "sha256": "937cd280efefc108f405908a03bf126e5a507a2676e358038be36e777e220ad3",
+              "converted": {
+                "graph": {
+                  "size_bytes": 239219,
+                  "sha256": "f4f843f767cffcaf8552eeecafa02138928a114419de1b927e5468b601e35a48"
+                },
+                "data": {
+                  "size_bytes": 66064384,
+                  "sha256": "3adf5c1f0692acc58d851d76277b027ee20583977ad1fc36dace444b6acd07bb"
+                }
+              }
+            },
+            {
+              "path": "onnx/decoder_model_merged_q4.onnx",
+              "size_bytes": 233146255,
+              "sha256": "86a8c61d69876771dda2717b6f7037deb4f55dbc54fac9d6c13520036e4ba88f",
+              "converted": {
+                "graph": {
+                  "size_bytes": 1067656,
+                  "sha256": "bb657c8ac0e3b7723bb00be31a1ea02a16321f53a9410e55dfcba66f852af0cb"
+                },
+                "data": {
+                  "size_bytes": 152612864,
+                  "sha256": "a4e85845d97e598e390d99126fa0c92c65363241f37c16dcc26af6b0c945d40f"
+                }
+              }
+            }
+          ]
         },
         {
-          "path": "onnx/encoder_model_q4.onnx",
-          "size_bytes": 66182104,
-          "sha256": "937cd280efefc108f405908a03bf126e5a507a2676e358038be36e777e220ad3",
-          "converted": {
-            "graph": {
-              "size_bytes": 239219,
-              "sha256": "f4f843f767cffcaf8552eeecafa02138928a114419de1b927e5468b601e35a48"
+          "precision": "fp32",
+          "encoder_dtype": "q4",
+          "decoder_dtype": "q4",
+          "files": [
+            {
+              "path": "onnx/encoder_model_q4.onnx",
+              "size_bytes": 66182104,
+              "sha256": "937cd280efefc108f405908a03bf126e5a507a2676e358038be36e777e220ad3",
+              "converted": {
+                "graph": {
+                  "size_bytes": 239219,
+                  "sha256": "f4f843f767cffcaf8552eeecafa02138928a114419de1b927e5468b601e35a48"
+                },
+                "data": {
+                  "size_bytes": 66064384,
+                  "sha256": "3adf5c1f0692acc58d851d76277b027ee20583977ad1fc36dace444b6acd07bb"
+                }
+              }
             },
-            "data": {
-              "size_bytes": 66064384,
-              "sha256": "3adf5c1f0692acc58d851d76277b027ee20583977ad1fc36dace444b6acd07bb"
+            {
+              "path": "onnx/decoder_model_merged_q4.onnx",
+              "size_bytes": 233146255,
+              "sha256": "86a8c61d69876771dda2717b6f7037deb4f55dbc54fac9d6c13520036e4ba88f",
+              "converted": {
+                "graph": {
+                  "size_bytes": 1067341,
+                  "sha256": "2f0fde574947bc735c3239e9f1fafec9fa8611c0e11d1af81de9506de5a6e6f7"
+                },
+                "data": {
+                  "size_bytes": 232275968,
+                  "sha256": "10c086423c28cceeaf782a6559255b8906dfcf70ce48be004408f8fb5064ed05"
+                }
+              }
             }
-          }
-        },
-        {
-          "path": "onnx/decoder_model_merged_q4.onnx",
-          "size_bytes": 233146255,
-          "sha256": "86a8c61d69876771dda2717b6f7037deb4f55dbc54fac9d6c13520036e4ba88f",
-          "converted": {
-            "graph": {
-              "size_bytes": 1067341,
-              "sha256": "2f0fde574947bc735c3239e9f1fafec9fa8611c0e11d1af81de9506de5a6e6f7"
-            },
-            "data": {
-              "size_bytes": 232275968,
-              "sha256": "10c086423c28cceeaf782a6559255b8906dfcf70ce48be004408f8fb5064ed05"
-            }
-          }
+          ]
         }
       ]
     },
@@ -698,8 +1148,6 @@
       "revision": "360ebcde2559d60bb474678be3c1de9ef347d01a",
       "family": "large-v3-turbo",
       "languages": "any",
-      "encoder_dtype": "fp16",
-      "decoder_dtype": "q4",
       "description": "High accuracy, faster large model",
       "files": [
         {
@@ -726,36 +1174,46 @@
           "path": "tokenizer_config.json",
           "size_bytes": 282843,
           "sha256": "844b642c73a91359722f47b35705f7174686df33d252695d8572cf9ac03a6389"
-        },
+        }
+      ],
+      "variants": [
         {
-          "path": "onnx/encoder_model_fp16.onnx",
-          "size_bytes": 1274342603,
-          "sha256": "fdadc70836e6b028fd5e580417c312208dad073d2d01e509e2d127c1373399d8",
-          "converted": {
-            "graph": {
-              "size_bytes": 441202,
-              "sha256": "c90ccc2a8db3d521a4d59cd2e35d41c740286a924df1efe37bee3016de707a39"
+          "precision": "fp16",
+          "encoder_dtype": "fp16",
+          "decoder_dtype": "q4",
+          "table": "fp16",
+          "files": [
+            {
+              "path": "onnx/encoder_model_fp16.onnx",
+              "size_bytes": 1274342603,
+              "sha256": "fdadc70836e6b028fd5e580417c312208dad073d2d01e509e2d127c1373399d8",
+              "converted": {
+                "graph": {
+                  "size_bytes": 441202,
+                  "sha256": "c90ccc2a8db3d521a4d59cd2e35d41c740286a924df1efe37bee3016de707a39"
+                },
+                "data": {
+                  "size_bytes": 1274403328,
+                  "sha256": "47690c54afe5dbdfabd07188453afccaf2b59fc7aefcb519ae128d9dc69c85f1"
+                }
+              }
             },
-            "data": {
-              "size_bytes": 1274403328,
-              "sha256": "47690c54afe5dbdfabd07188453afccaf2b59fc7aefcb519ae128d9dc69c85f1"
+            {
+              "path": "onnx/decoder_model_merged_q4.onnx",
+              "size_bytes": 334147222,
+              "sha256": "8b933ac24074a24a1635084d06a4ed37e387ef22d980f184a5fc27418e9ceeb8",
+              "converted": {
+                "graph": {
+                  "size_bytes": 8629609,
+                  "sha256": "d9362ec3ca1c27902d423773032103a47869af14559742b10c2160ac466cee32"
+                },
+                "data": {
+                  "size_bytes": 192909312,
+                  "sha256": "2ff46ac388152e1281a30b427438ddd6688826ef95324736803cbd81df714cc5"
+                }
+              }
             }
-          }
-        },
-        {
-          "path": "onnx/decoder_model_merged_q4.onnx",
-          "size_bytes": 334147222,
-          "sha256": "8b933ac24074a24a1635084d06a4ed37e387ef22d980f184a5fc27418e9ceeb8",
-          "converted": {
-            "graph": {
-              "size_bytes": 8629039,
-              "sha256": "b8711f1a5246341f497826c96a8d51dfef6e85557d0f8ea074e1077a8092e429"
-            },
-            "data": {
-              "size_bytes": 325685248,
-              "sha256": "1b7a8048a572934049c587940802be29dfcbe61106d589505da205fcceed0f2b"
-            }
-          }
+          ]
         }
       ]
     },
@@ -765,8 +1223,6 @@
       "revision": "360ebcde2559d60bb474678be3c1de9ef347d01a",
       "family": "large-v3-turbo",
       "languages": "any",
-      "encoder_dtype": "q4f16",
-      "decoder_dtype": "q4f16",
       "description": "High accuracy, faster large model",
       "files": [
         {
@@ -793,36 +1249,45 @@
           "path": "tokenizer_config.json",
           "size_bytes": 282843,
           "sha256": "844b642c73a91359722f47b35705f7174686df33d252695d8572cf9ac03a6389"
-        },
+        }
+      ],
+      "variants": [
         {
-          "path": "onnx/encoder_model_q4f16.onnx",
-          "size_bytes": 369974078,
-          "sha256": "aafd3383f1aa372db0825a885730ebbbae7e34871ec0460428663c69641a63d0",
-          "converted": {
-            "graph": {
-              "size_bytes": 485153,
-              "sha256": "36ff4cf9524543c0b7370b791c50c624aa742e03eac2b7d0d93287532a04b18b"
+          "precision": "fp16",
+          "encoder_dtype": "q4f16",
+          "decoder_dtype": "q4f16",
+          "files": [
+            {
+              "path": "onnx/encoder_model_q4f16.onnx",
+              "size_bytes": 369974078,
+              "sha256": "aafd3383f1aa372db0825a885730ebbbae7e34871ec0460428663c69641a63d0",
+              "converted": {
+                "graph": {
+                  "size_bytes": 485153,
+                  "sha256": "36ff4cf9524543c0b7370b791c50c624aa742e03eac2b7d0d93287532a04b18b"
+                },
+                "data": {
+                  "size_bytes": 370006528,
+                  "sha256": "be3d17803debf4ccc6171772a1974161735d762353fb02c6b73602fb996a66fb"
+                }
+              }
             },
-            "data": {
-              "size_bytes": 370006528,
-              "sha256": "be3d17803debf4ccc6171772a1974161735d762353fb02c6b73602fb996a66fb"
+            {
+              "path": "onnx/decoder_model_merged_q4f16.onnx",
+              "size_bytes": 193505017,
+              "sha256": "45981cdd958a4c8e1447839850d2e6e27e30974ccbe31b4a1e5ebe9ad8965a5f",
+              "converted": {
+                "graph": {
+                  "size_bytes": 7814429,
+                  "sha256": "cad5f7e058bbada862df96f48872e9563133069fd4ea2354dce8170ece5fe549"
+                },
+                "data": {
+                  "size_bytes": 185788928,
+                  "sha256": "1d21e97897995fbdb88c74fafe4cd4f2b7a03590307fa16f22bf6ec8b1dc2035"
+                }
+              }
             }
-          }
-        },
-        {
-          "path": "onnx/decoder_model_merged_q4f16.onnx",
-          "size_bytes": 193505017,
-          "sha256": "45981cdd958a4c8e1447839850d2e6e27e30974ccbe31b4a1e5ebe9ad8965a5f",
-          "converted": {
-            "graph": {
-              "size_bytes": 7814429,
-              "sha256": "cad5f7e058bbada862df96f48872e9563133069fd4ea2354dce8170ece5fe549"
-            },
-            "data": {
-              "size_bytes": 185788928,
-              "sha256": "1d21e97897995fbdb88c74fafe4cd4f2b7a03590307fa16f22bf6ec8b1dc2035"
-            }
-          }
+          ]
         }
       ]
     }

@@ -213,7 +213,10 @@ mod tests {
     const ID: RequestId = RequestId::new(1);
 
     fn tiny() -> Result<WebModelSpec, Box<dyn std::error::Error>> {
-        Ok(WebModelRegistry::embedded()?.get("tiny")?.clone())
+        Ok(WebModelRegistry::embedded()?
+            .get("tiny")?
+            .baseline()
+            .clone())
     }
 
     #[test]

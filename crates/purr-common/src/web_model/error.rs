@@ -1,6 +1,7 @@
 //! Errors for the browser model manifest.
 
 use crate::web_model::attributes::OnnxDtype;
+use crate::web_model::variant::VariantKind;
 
 /// Error for an invalid or inconsistent web model manifest
 #[oopsie::oopsie]
@@ -83,6 +84,24 @@ pub enum WebManifestError {
         code = "purr::web_manifest::unsupported_dtype"
     )]
     UnsupportedDtype { model_id: String, dtype: OnnxDtype },
+
+    #[oopsie(
+        "Web model {model_id} lists no variants",
+        code = "purr::web_manifest::no_variants"
+    )]
+    NoVariants { model_id: String },
+
+    #[oopsie(
+        "Web model {model_id} lists the {kind} variant twice",
+        code = "purr::web_manifest::duplicate_variant"
+    )]
+    DuplicateVariant { model_id: String, kind: VariantKind },
+
+    #[oopsie(
+        "Web model {model_id} has a {kind} variant whose weights do not fit it",
+        code = "purr::web_manifest::inconsistent_variant"
+    )]
+    InconsistentVariant { model_id: String, kind: VariantKind },
 
     #[oopsie(
         "Default web model {id} is not in the manifest",

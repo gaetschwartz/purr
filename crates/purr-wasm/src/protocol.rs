@@ -7,6 +7,7 @@ use purr_common::language::tag::LanguageTag;
 use purr_common::platform::TranscriptSegment;
 use purr_common::web_model::attributes::OnnxDtype;
 use purr_common::web_model::registry::WebModelSpec;
+use purr_common::web_model::variant::VariantKind;
 use serde::{Deserialize, Serialize};
 
 /// Correlates a worker request with the events it produces.
@@ -26,6 +27,7 @@ impl RequestId {
 pub struct WorkerModel {
     pub repo: String,
     pub revision: String,
+    pub precision: VariantKind,
     pub encoder_dtype: OnnxDtype,
     pub decoder_dtype: OnnxDtype,
     pub requires_shader_f16: bool,
@@ -36,6 +38,7 @@ impl From<&WebModelSpec> for WorkerModel {
         Self {
             repo: spec.repo.clone(),
             revision: spec.revision.clone(),
+            precision: spec.variant,
             encoder_dtype: spec.encoder_dtype,
             decoder_dtype: spec.decoder_dtype,
             requires_shader_f16: spec.requires_shader_f16(),
@@ -229,6 +232,7 @@ mod tests {
         WorkerModel {
             repo: "onnx-community/whisper-tiny".to_owned(),
             revision: "ff4177021cc41f7db950912b73ea4fdf7d01d8e7".to_owned(),
+            precision: VariantKind::Fp32,
             encoder_dtype: OnnxDtype::Fp32,
             decoder_dtype: OnnxDtype::Q4,
             requires_shader_f16: false,
@@ -239,8 +243,13 @@ mod tests {
     fn the_worker_model_carries_the_shader_f16_requirement()
     -> Result<(), Box<dyn std::error::Error>> {
         let registry = purr_common::web_model::registry::WebModelRegistry::embedded()?;
-        assert!(!WorkerModel::from(registry.get("base-q4")?).requires_shader_f16);
-        assert!(WorkerModel::from(registry.get("large-v3-turbo-q4f16")?).requires_shader_f16);
+        let worker_model = |id: &str, kind| -> Result<WorkerModel, Box<dyn std::error::Error>> {
+            let spec = registry.get(id)?.variant(kind).ok_or("no such variant")?;
+            Ok(WorkerModel::from(spec))
+        };
+        assert!(!worker_model("base-q4", VariantKind::Fp32)?.requires_shader_f16);
+        assert!(worker_model("base-q4", VariantKind::Fp16)?.requires_shader_f16);
+        assert!(worker_model("large-v3-turbo-q4f16", VariantKind::Fp16)?.requires_shader_f16);
         Ok(())
     }
 
@@ -261,6 +270,7 @@ mod tests {
                 "model": {
                     "repo": "onnx-community/whisper-tiny",
                     "revision": "ff4177021cc41f7db950912b73ea4fdf7d01d8e7",
+                    "precision": "fp32",
                     "encoder_dtype": "fp32",
                     "decoder_dtype": "q4",
                     "requires_shader_f16": false,

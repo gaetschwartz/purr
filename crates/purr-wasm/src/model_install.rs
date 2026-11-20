@@ -281,6 +281,7 @@ async fn install_converted(
         &worker_url,
         &wasm_url,
         &format!("{}{}", basename(&file.path), WebModelFile::DATA_SUFFIX),
+        spec.table,
     )?;
 
     let stream = TransformStream::new().map_err(|e| WebError::web_api("TransformStream.new", e))?;

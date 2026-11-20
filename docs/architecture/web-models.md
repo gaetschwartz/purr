@@ -14,6 +14,28 @@ WebGPU load over it:
 - Weights inside the `.onnx` pass through the WebAssembly heap about three times while loading. With
   external data, ONNX Runtime Web uploads them from JavaScript to the GPU directly.
 
+## Variants
+
+Every model is offered as up to two variants, each with its own ONNX files, sizes and digests:
+
+- `fp16`: the half-precision encoder (`encoder_model_fp16.onnx`, or the model's quantized encoder
+  where that is what it uses) and the q4 merged decoder whose tied embedding table is stored once as
+  half precision. It needs the WebGPU `shader-f16` feature.
+- `fp32`: the encoder as it was (full precision or quantized) and the same decoder with its table in
+  full precision. This is the only variant the WebAssembly CPU runtime runs.
+
+Rust picks the variant (`compute_choice.rs`, `VariantKind`): WebGPU takes `fp16` when the adapter has
+`shader-f16` and `fp32` otherwise; the CPU, and a run that falls back to it after WebGPU failed, take
+`fp32` and install it first. Only the variant that will run is installed. The two variants of a model
+share their configuration files and, for a quantized encoder, the encoder; the decoder has the same
+cache key in both, so installing one replaces the other, and a file counts as installed only when its
+cache entry has the length the manifest expects. The Models page shows the size and installed state
+of the variant a run would use.
+
+Models without a variant that does not need `shader-f16` list only `fp16`: `large-v3-turbo` (an fp32
+encoder would be about 2.4 GB) and `large-v3-turbo-q4f16`, which is half precision throughout. The
+quantized-encoder models (`*-q4`) have both variants: they differ in the decoder.
+
 ## The converter
 
 `crates/purr-onnx-convert` reads an ONNX file once, as a stream, and writes two files: a graph
@@ -26,11 +48,21 @@ WebGPU load over it:
 - Where an `If` branch transposes an initializer for a `MatMul` and also gathers rows from it, the
   `Transpose` and `MatMul` become `Reshape`, `Gemm` with `transB`, `Reshape`. The result is bit
   identical on the CPU. A model without that pattern passes through unchanged.
+- With the half-table option a table that the nodes show to be tied (the `Gemm` form above) is
+  rounded to half precision, to nearest even, as its bytes stream through in the same 1 MiB chunks,
+  and declared `FLOAT16`. Each branch's lookup then reads the half table and a `Cast` to full precision
+  produces the original output; the head casts the hidden state to half, runs the `Gemm` and casts the
+  logits back. The table is never cast on its own: ONNX Runtime would fold that into a full-precision
+  copy. Which tensor is the table must be known before its bytes arrive, and the graph's nodes are
+  serialized before its initializers, so it is decided from the nodes read so far. A table that anything
+  else reads, or that would overflow half precision, is an error or stays in full precision, and a
+  model whose nodes follow its weights is rejected.
 - The data is written first and the graph last, because the graph holds the offsets. The output is
   deterministic.
 
 The crate also builds as a `cdylib` for `wasm32-unknown-unknown` with a C interface (`src/abi.rs`):
-the host supplies `purr_read`, `purr_write`, `purr_location` and `purr_report_error`, and calls
+the host supplies `purr_read`, `purr_write`, `purr_location`, `purr_table_precision` and
+`purr_report_error`, and calls
 `purr_convert`. `purr-wasm`'s `build.rs` compiles it in its own target directory and ships it as
 `dist/purr_onnx_convert.wasm` next to `dist/convert_worker.js`.
 
@@ -62,23 +94,29 @@ and `<path>_data` from the cache. The Hugging Face token is used only by the pag
 
 ## Manifest
 
-Schema 3. Each file has `size_bytes` and `sha256` of the original. Each ONNX file also has
-`converted.graph` and `converted.data`, each with `size_bytes` and `sha256`; the registry rejects an
-ONNX file without them and a plain file with them. Never edit these by hand:
+Schema 4. A model has `files` (configuration and tokenizer) and `variants`. A variant has its
+`precision` (`fp16` or `fp32`), the encoder and decoder dtypes, `table` (`fp16` when the converter
+stores the tied table as half precision; omitted for `fp32`) and its ONNX `files`. Each file has
+`size_bytes` and `sha256` of the original. Each ONNX file also has `converted.graph` and
+`converted.data`, each with `size_bytes` and `sha256`; the registry rejects an ONNX file without them
+and a plain file with them, and an `fp32` variant that needs `shader-f16`. Never edit these by hand:
 
 ```
 cargo run -p purr-core --example update_web_manifest [-- --bump] [--reconvert]
 ```
 
-downloads every ONNX file (a few GB; kept under `target/web-model-cache`), verifies it against its
-digest and runs the converter to record the outputs. A file whose original digest is unchanged keeps
-its recorded conversion unless `--reconvert` is given.
+downloads every ONNX file of every variant (a few GB; kept under `target/web-model-cache`), verifies
+it against its digest and runs the converter with the variant's `table` to record the outputs. A file
+whose original digest is unchanged keeps its recorded conversion unless `--reconvert` is given; pass it
+after changing a variant's `table` or the converter.
 
 ## Tests
 
-- `cargo nextest run -p purr-onnx-convert`: synthetic models for the split and the rewrite, and a
-  counting allocator that bounds the converter's peak memory.
+- `cargo nextest run -p purr-onnx-convert`: synthetic models for the split and the rewrites (full and
+  half table), and a counting allocator that bounds the converter's peak memory.
 - `cargo nextest run -p purr-onnx-convert --features tooling --profile all`: the `real_model_` tests
   fetch `tiny`, check the converter's output against the manifest, and run
   `scripts/validate_onnx_conversion.py` (via `uv`) to compare encoder output and every decoder logit
-  with the originals in ONNX Runtime on the CPU.
+  with the originals in ONNX Runtime on the CPU. The `fp32` conversion must match bit for bit; the
+  half-table decoder must pick the same token on at least 98% of the teacher-forced steps with no logit
+  moving by more than 0.25.

@@ -2,7 +2,7 @@
 
 use crate::error::WebResult;
 use crate::model_cache;
-use purr_common::web_model::registry::{WebModelRegistry, WebModelSpec};
+use purr_common::web_model::registry::{WebModel, WebModelRegistry, WebModelSpec};
 use std::sync::Arc;
 
 /// Lists the pinned browser models and reports which ones transformers.js has cached.
@@ -22,34 +22,39 @@ impl WebModelManager {
     }
 
     #[must_use]
-    pub fn models(&self) -> &[Arc<WebModelSpec>] {
+    pub fn models(&self) -> &[Arc<WebModel>] {
         self.registry.models()
     }
 
-    pub fn model(&self, model_id: &str) -> WebResult<&WebModelSpec> {
+    pub fn model(&self, model_id: &str) -> WebResult<&WebModel> {
         Ok(self.registry.get(model_id)?)
     }
 
     #[must_use]
-    pub fn default_model(&self) -> &WebModelSpec {
+    pub fn default_model(&self) -> &WebModel {
         self.registry.default_model()
     }
 
-    /// Whether every file of the model is in the browser cache.
-    pub async fn is_model_installed(&self, model_id: &str) -> WebResult<bool> {
-        model_cache::is_installed(self.model(model_id)?).await
+    /// Whether every file of the variant is in the browser cache.
+    pub async fn is_installed(&self, spec: &WebModelSpec) -> WebResult<bool> {
+        model_cache::is_installed(spec).await
     }
 
-    /// Evicts the model's files from the browser cache, keeping those an installed sibling
-    /// variant still loads.
+    /// Evicts the files of every variant of the model from the browser cache, keeping those an
+    /// installed sibling still loads.
     pub async fn remove_model(&self, model_id: &str) -> WebResult<()> {
-        let spec = self.model(model_id)?;
+        let model = self.model(model_id)?;
         let mut kept = Vec::new();
-        for sibling in self.registry.siblings(spec) {
-            if model_cache::is_installed(sibling).await? {
-                kept.push(sibling);
+        for sibling in self.registry.siblings(model) {
+            for spec in sibling.variants() {
+                if model_cache::is_installed(spec).await? {
+                    kept.push(spec);
+                }
             }
         }
-        model_cache::remove(spec, &spec.files_not_loaded_by(&kept)).await
+        for spec in model.variants() {
+            model_cache::remove(spec, &spec.files_not_loaded_by(&kept)).await?;
+        }
+        Ok(())
     }
 }

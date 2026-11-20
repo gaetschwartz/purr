@@ -7,11 +7,13 @@
 //! pinned revision; with `--bump` the revision is first advanced to the latest commit. LFS files
 //! take their digest from the tree listing; plain files are downloaded and hashed.
 //!
-//! Each ONNX file is also downloaded, verified against its digest and run through the browser's
-//! converter to record the size and digest of the graph and weights it stores. A file whose
-//! digest did not change keeps its recorded conversion unless `--reconvert` is given.
+//! Each ONNX file of each variant is also downloaded, verified against its digest and run through
+//! the browser's converter, with the variant's table storage, to record the size and digest of the
+//! graph and weights it stores. A file whose digest and table storage did not change keeps its
+//! recorded conversion unless `--reconvert` is given.
 
 use oopsie::{Welp, WelpResultExt as _};
+use purr_common::web_model::attributes::OnnxDtype;
 use purr_common::web_model::digest::{FileDigest, Sha256Digest};
 use purr_common::web_model::file_role::ModelFileRole;
 use purr_common::web_model::manifest::{
@@ -19,7 +21,9 @@ use purr_common::web_model::manifest::{
     file_url,
 };
 use purr_common::web_model::registry::WebModelRegistry;
+use purr_common::web_model::variant::TableStorage;
 use purr_core::model::digest::Sha256Hasher;
+use purr_onnx_convert::convert::TablePrecision;
 use purr_onnx_convert::tooling::{Measured, cache_dir, convert_file, fetch_verified};
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -189,7 +193,7 @@ async fn describe_file(
     })
 }
 
-type Conversions = HashMap<(String, String, String), WebManifestConversion>;
+type Conversions = HashMap<(String, String, String, TableStorage), WebManifestConversion>;
 
 fn parse_digest(measured: &Measured) -> Result<FileDigest, Welp> {
     Ok(FileDigest {
@@ -198,10 +202,18 @@ fn parse_digest(measured: &Measured) -> Result<FileDigest, Welp> {
     })
 }
 
+const fn precision(table: TableStorage) -> TablePrecision {
+    match table {
+        TableStorage::Fp32 => TablePrecision::Full,
+        TableStorage::Fp16 => TablePrecision::Half,
+    }
+}
+
 async fn convert_onnx(
     repo: &str,
     revision: &str,
     file: &WebManifestFile,
+    table: TableStorage,
 ) -> Result<WebManifestConversion, Welp> {
     let url = file_url(repo, revision, &file.path);
     let original = Measured {
@@ -214,7 +226,7 @@ async fn convert_onnx(
         .join(&file.path);
     tokio::task::spawn_blocking(move || {
         fetch_verified(&url, &original, &destination)?;
-        let conversion = convert_file(&destination, None)?;
+        let conversion = convert_file(&destination, None, precision(table))?;
         Ok(WebManifestConversion {
             graph: parse_digest(&conversion.graph)?,
             data: parse_digest(&conversion.data)?,
@@ -244,23 +256,38 @@ async fn main() -> Result<(), Welp> {
         }
 
         let tree = fetch_tree(&client, &model.repo, &model.revision).await?;
-        let mut files = Vec::with_capacity(ModelFileRole::ALL.len());
-        for role in ModelFileRole::ALL {
-            let path = role.path(model.encoder_dtype, model.decoder_dtype);
+        let mut plain = Vec::new();
+        for role in ModelFileRole::ALL.iter().filter(|role| !role.is_onnx()) {
+            let path = role.path(OnnxDtype::Fp32, OnnxDtype::Fp32);
             let entry = tree.get(&path).ok_or_else(|| {
                 Welp::new(format!(
                     "{path} is not in {}@{}",
                     model.repo, model.revision
                 ))
             })?;
-            let mut file = describe_file(&client, &model.repo, &model.revision, entry).await?;
-            if role.is_onnx() {
+            plain.push(describe_file(&client, &model.repo, &model.revision, entry).await?);
+        }
+        let mut model_changed = plain != model.files;
+        model.files = plain;
+
+        for variant in &mut model.variants {
+            let mut files = Vec::new();
+            for role in ModelFileRole::ALL.iter().filter(|role| role.is_onnx()) {
+                let path = role.path(variant.encoder_dtype, variant.decoder_dtype);
+                let entry = tree.get(&path).ok_or_else(|| {
+                    Welp::new(format!(
+                        "{path} is not in {}@{}",
+                        model.repo, model.revision
+                    ))
+                })?;
+                let mut file = describe_file(&client, &model.repo, &model.revision, entry).await?;
                 let key = (
                     model.repo.clone(),
                     model.revision.clone(),
                     file.path.clone(),
+                    variant.table,
                 );
-                let recorded = model
+                let recorded = variant
                     .files
                     .iter()
                     .find(|previous| previous.path == file.path && previous.sha256 == file.sha256)
@@ -269,21 +296,29 @@ async fn main() -> Result<(), Welp> {
                 let converted = match conversions.get(&key).copied().or(recorded) {
                     Some(converted) => converted,
                     None => {
-                        println!("{}: converting {}", model.id, file.path);
-                        convert_onnx(&model.repo, &model.revision, &file).await?
+                        println!(
+                            "{}: converting {} ({} variant, {} table)",
+                            model.id, file.path, variant.precision, variant.table
+                        );
+                        convert_onnx(&model.repo, &model.revision, &file, variant.table).await?
                     }
                 };
                 conversions.insert(key, converted);
                 file.converted = Some(converted);
+                files.push(file);
             }
-            files.push(file);
+            if files != variant.files {
+                let total: u64 = files.iter().map(|file| file.size_bytes).sum();
+                println!(
+                    "{}: {} variant, {} ONNX bytes",
+                    model.id, variant.precision, total
+                );
+                model_changed = true;
+                variant.files = files;
+            }
         }
-
-        if files != model.files {
-            let total: u64 = files.iter().map(|file| file.size_bytes).sum();
-            println!("{}: {} files, {total} bytes", model.id, files.len());
+        if model_changed {
             changed += 1;
-            model.files = files;
         }
     }
 

@@ -34,11 +34,12 @@ use purr_common::platform::{
     TranscriptionRequest, TranscriptionStatus, TranscriptionStream,
 };
 use purr_common::settings::Settings;
-use purr_common::web_model::registry::WebModelSpec;
+use purr_common::web_model::registry::{WebModel, WebModelSpec};
+use purr_common::web_model::variant::ShaderF16;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use tokio::sync::{Mutex, RwLock, mpsc};
+use tokio::sync::{Mutex, OnceCell, RwLock, mpsc};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use wasm_bindgen::JsCast as _;
 use wasm_bindgen_futures::{JsFuture, spawn_local};
@@ -55,6 +56,7 @@ pub struct WasmPlatformImpl {
     storage: Arc<WebStorage>,
     model_manager: Arc<WebModelManager>,
     worker: Arc<WorkerClient>,
+    shader_f16: OnceCell<ShaderF16>,
     initialized: RwLock<bool>,
     config_mutex: Mutex<()>,
     history_lock: Mutex<()>,
@@ -141,6 +143,24 @@ impl WasmPlatformImpl {
         })
     }
 
+    async fn shader_f16(&self) -> Result<ShaderF16, PlatformError> {
+        let support = self
+            .shader_f16
+            .get_or_try_init(|| run_local(detect_shader_f16))
+            .await?;
+        Ok(*support)
+    }
+
+    /// The variant of `model` that a run would use, which is what the Models page shows.
+    async fn shown_variant<'a>(
+        &self,
+        model: &'a WebModel,
+    ) -> Result<&'a WebModelSpec, PlatformError> {
+        let devices = self.load_settings().await?.performance.device_order();
+        let shader_f16 = self.shader_f16().await?;
+        Ok(compute_choice::shown_variant(model, &devices, shader_f16))
+    }
+
     pub fn new() -> Result<Self, PlatformError> {
         let storage = Arc::new(WebStorage::new());
         let model_manager = Arc::new(WebModelManager::new()?);
@@ -149,6 +169,7 @@ impl WasmPlatformImpl {
             storage,
             model_manager,
             worker,
+            shader_f16: OnceCell::new(),
             initialized: RwLock::new(false),
             config_mutex: Mutex::new(()),
             history_lock: Mutex::new(()),
@@ -231,12 +252,20 @@ fn send_status(
 struct Transcription {
     decode_lock: Arc<Mutex<()>>,
     worker: Arc<WorkerClient>,
-    spec: WebModelSpec,
-    model_cached: bool,
+    model: WebModel,
+    shader_f16: ShaderF16,
     bytes: Bytes,
     language: Option<LanguageTag>,
     hugging_face_token: Option<HuggingFaceToken>,
     devices: DeviceOrder,
+}
+
+fn init_failed(component: &str, reason: String, details: Option<&str>) -> TranscriptionStatus {
+    TranscriptionStatus::InitFailed {
+        component: component.to_owned(),
+        reason,
+        error_details: details.map(str::to_owned),
+    }
 }
 
 async fn run_transcription(
@@ -246,8 +275,8 @@ async fn run_transcription(
     let Transcription {
         decode_lock,
         worker,
-        spec,
-        model_cached,
+        model,
+        shader_f16,
         bytes,
         language,
         hugging_face_token,
@@ -278,55 +307,78 @@ async fn run_transcription(
     tracing::info!(
         "Decoded {:.1}s of audio for model {}",
         decoded.duration_seconds(),
-        spec.id
+        model.id
     );
 
-    let mut mapper = TranscriptionMapper::new(&spec, model_cached);
-    let mut choice = match compute_choice::choose(&spec, &devices) {
+    let mut choice = match compute_choice::choose(&model, &devices, shader_f16) {
         Ok(choice) => choice,
         Err(reason) => {
             send_status(&tx, cannot_run(reason));
             return;
         }
     };
-    if !model_cached {
-        let mut report = |step: InstallProgress<'_>| {
-            let status = match step {
-                InstallProgress::Receiving { path, loaded_bytes } => {
-                    mapper.receiving(path, loaded_bytes)
-                }
-                InstallProgress::Installed { path } => mapper.installed(path),
-            };
-            if !send_status(&tx, status) {
-                tracing::debug!("Nobody follows the install of {} any more", spec.id);
-            }
-        };
-        let installing = model_install::install(&spec, hugging_face_token.as_ref(), &mut report);
-        let installed = tokio::select! {
-            () = tx.closed() => {
-                tracing::info!("Transcription stream dropped; cancelling");
-                return;
-            }
-            result = installing => result,
-        };
-        if let Err(error) = installed {
-            send_status(
-                &tx,
-                TranscriptionStatus::InitFailed {
-                    component: "Model".to_owned(),
-                    reason: error.to_string(),
-                    error_details: Some(
-                        "Check your internet connection and try again. Files that were already downloaded are kept.".to_owned(),
-                    ),
-                },
-            );
-            return;
-        }
-        mapper = TranscriptionMapper::new(&spec, true);
-    }
     let samples = decoded.samples;
     loop {
-        tracing::info!("Transcribing with {} on {:?}", spec.id, choice.compute);
+        let Some(spec) = model.variant(choice.variant) else {
+            send_status(
+                &tx,
+                init_failed(
+                    "Model",
+                    format!("{} has no {} variant", model.id, choice.variant),
+                    None,
+                ),
+            );
+            return;
+        };
+        let cached = match model_cache::is_installed(spec).await {
+            Ok(cached) => cached,
+            Err(error) => {
+                send_status(&tx, init_failed("Model", error.to_string(), None));
+                return;
+            }
+        };
+        let mut mapper = TranscriptionMapper::new(spec, cached);
+        if !cached {
+            let mut report = |step: InstallProgress<'_>| {
+                let status = match step {
+                    InstallProgress::Receiving { path, loaded_bytes } => {
+                        mapper.receiving(path, loaded_bytes)
+                    }
+                    InstallProgress::Installed { path } => mapper.installed(path),
+                };
+                if !send_status(&tx, status) {
+                    tracing::debug!("Nobody follows the install of {} any more", spec.id);
+                }
+            };
+            let installing = model_install::install(spec, hugging_face_token.as_ref(), &mut report);
+            let installed = tokio::select! {
+                () = tx.closed() => {
+                    tracing::info!("Transcription stream dropped; cancelling");
+                    return;
+                }
+                result = installing => result,
+            };
+            if let Err(error) = installed {
+                send_status(
+                    &tx,
+                    init_failed(
+                        "Model",
+                        error.to_string(),
+                        Some(
+                            "Check your internet connection and try again. Files that were already downloaded are kept.",
+                        ),
+                    ),
+                );
+                return;
+            }
+            mapper = TranscriptionMapper::new(spec, true);
+        }
+        tracing::info!(
+            "Transcribing with {} ({}) on {:?}",
+            spec.id,
+            spec.variant,
+            choice.compute
+        );
         if !send_status(
             &tx,
             TranscriptionStatus::BrowserCompute {
@@ -337,7 +389,7 @@ async fn run_transcription(
         }
         let request = WorkerRequest::Transcribe {
             request_id: worker.next_request_id(),
-            model: WorkerModel::from(&spec),
+            model: WorkerModel::from(spec),
             provider: choice.provider(),
             language: language.as_ref().map(|tag| whisper::code(tag).to_owned()),
             english_only: spec.english_only(),
@@ -345,14 +397,7 @@ async fn run_transcription(
         let mut events = match worker.submit(request, Some(samples.clone())) {
             Ok(events) => events,
             Err(error) => {
-                send_status(
-                    &tx,
-                    TranscriptionStatus::InitFailed {
-                        component: "Worker".to_owned(),
-                        reason: error.to_string(),
-                        error_details: None,
-                    },
-                );
+                send_status(&tx, init_failed("Worker", error.to_string(), None));
                 return;
             }
         };
@@ -411,131 +456,173 @@ fn load_request(
     }
 }
 
-async fn run_preload(
-    worker: Arc<WorkerClient>,
-    spec: WebModelSpec,
-    hugging_face_token: Option<HuggingFaceToken>,
-    devices: DeviceOrder,
-    tx: mpsc::UnboundedSender<Result<ModelOperationProgress, PlatformError>>,
-) {
-    let model_id = spec.id.clone();
-    let fail = |operation: &str, error_message: String, kind: ModelFailureKind| {
-        ModelOperationProgress::Failed {
-            model_id: model_id.clone(),
-            operation: operation.to_owned(),
-            error_message,
-            kind,
-        }
-    };
-    if tx
-        .send(Ok(ModelOperationProgress::Starting {
-            model_id: model_id.clone(),
-        }))
-        .is_err()
-    {
-        return;
-    }
+type PreloadSender = mpsc::UnboundedSender<Result<ModelOperationProgress, PlatformError>>;
 
-    let verified_first = match model_cache::is_installed(&spec).await {
+fn failed(
+    model_id: &str,
+    operation: &str,
+    error_message: String,
+    kind: ModelFailureKind,
+) -> ModelOperationProgress {
+    ModelOperationProgress::Failed {
+        model_id: model_id.to_owned(),
+        operation: operation.to_owned(),
+        error_message,
+        kind,
+    }
+}
+
+fn send_progress(tx: &PreloadSender, model_id: &str, progress: ModelOperationProgress) -> bool {
+    if tx.send(Ok(progress)).is_err() {
+        tracing::debug!("Nobody follows the preload of {model_id} any more");
+        return false;
+    }
+    true
+}
+
+enum Preparation {
+    Verified,
+    Missing,
+    Stopped,
+}
+
+/// Verifies the variant if it is installed, so a preload of a cached model also checks it.
+async fn prepare(spec: &WebModelSpec, tx: &PreloadSender) -> Preparation {
+    let model_id = spec.id.as_str();
+    match model_cache::is_installed(spec).await {
         Ok(true) => {
-            if tx
-                .send(Ok(ModelOperationProgress::Installing {
-                    model_id: model_id.clone(),
-                }))
-                .is_err()
-            {
-                return;
+            let installing = ModelOperationProgress::Installing {
+                model_id: model_id.to_owned(),
+            };
+            if !send_progress(tx, model_id, installing) {
+                return Preparation::Stopped;
             }
-            if let Err(error) = model_cache::verify(&spec).await {
-                if tx
-                    .send(Ok(fail(
+            match model_cache::verify(spec).await {
+                Ok(()) => Preparation::Verified,
+                Err(error) => {
+                    let failure = failed(
+                        model_id,
                         "verification",
                         error.to_string(),
                         verification_failure_kind(&error),
-                    )))
-                    .is_err()
-                {
-                    tracing::warn!("Verification of {model_id} failed after its listener left");
+                    );
+                    send_progress(tx, model_id, failure);
+                    Preparation::Stopped
                 }
-                return;
             }
-            true
         }
-        Ok(false) => false,
+        Ok(false) => Preparation::Missing,
         Err(error) => {
-            if tx
-                .send(Ok(fail(
-                    "verification",
-                    error.to_string(),
-                    ModelFailureKind::Other,
-                )))
-                .is_err()
-            {
-                tracing::warn!("Checking {model_id} failed after its listener left");
-            }
-            return;
-        }
-    };
-
-    let mut choice = match compute_choice::choose(&spec, &devices) {
-        Ok(choice) => choice,
-        Err(reason) => {
-            if tx
-                .send(Ok(fail(
-                    "download",
-                    reason.gpu_only_refusal().to_owned(),
-                    ModelFailureKind::Other,
-                )))
-                .is_err()
-            {
-                tracing::warn!("Preload of {model_id} failed after its listener left");
-            }
-            return;
-        }
-    };
-    let mut mapper = PreloadMapper::new(&spec, now_ms());
-    if !verified_first {
-        let mut report = |step: InstallProgress<'_>| {
-            let progress = match step {
-                InstallProgress::Receiving { path, loaded_bytes } => {
-                    mapper.receiving(path, loaded_bytes, now_ms())
-                }
-                InstallProgress::Installed { path } => mapper.installed(path, now_ms()),
-            };
-            if tx.send(Ok(progress)).is_err() {
-                tracing::debug!("Nobody follows the install of {model_id} any more");
-            }
-        };
-        let installing = model_install::install(&spec, hugging_face_token.as_ref(), &mut report);
-        let installed = tokio::select! {
-            () = tx.closed() => {
-                tracing::info!("Preload stream dropped; cancelling");
-                return;
-            }
-            result = installing => result,
-        };
-        if let Err(error) = installed {
-            let kind = if matches!(error, WebError::Integrity { .. }) {
-                ModelFailureKind::Integrity
-            } else {
-                download_failure_kind()
-            };
-            if tx
-                .send(Ok(fail("download", error.to_string(), kind)))
-                .is_err()
-            {
-                tracing::warn!("Install of {model_id} failed after its listener left");
-            }
-            return;
+            let failure = failed(
+                model_id,
+                "verification",
+                error.to_string(),
+                ModelFailureKind::Other,
+            );
+            send_progress(tx, model_id, failure);
+            Preparation::Stopped
         }
     }
-    let mut events = match worker.submit(load_request(&worker, &spec, &choice), None) {
+}
+
+/// Installs the variant, reporting progress; false when the preload is over.
+async fn install_variant(
+    spec: &WebModelSpec,
+    token: Option<&HuggingFaceToken>,
+    tx: &PreloadSender,
+    mapper: &mut PreloadMapper,
+) -> bool {
+    let model_id = spec.id.as_str();
+    let mut report = |step: InstallProgress<'_>| {
+        let progress = match step {
+            InstallProgress::Receiving { path, loaded_bytes } => {
+                mapper.receiving(path, loaded_bytes, now_ms())
+            }
+            InstallProgress::Installed { path } => mapper.installed(path, now_ms()),
+        };
+        send_progress(tx, model_id, progress);
+    };
+    let installing = model_install::install(spec, token, &mut report);
+    let installed = tokio::select! {
+        () = tx.closed() => {
+            tracing::info!("Preload stream dropped; cancelling");
+            return false;
+        }
+        result = installing => result,
+    };
+    if let Err(error) = installed {
+        let kind = if matches!(error, WebError::Integrity { .. }) {
+            ModelFailureKind::Integrity
+        } else {
+            download_failure_kind()
+        };
+        send_progress(
+            tx,
+            model_id,
+            failed(model_id, "download", error.to_string(), kind),
+        );
+        return false;
+    }
+    true
+}
+
+async fn run_preload(
+    worker: Arc<WorkerClient>,
+    model: WebModel,
+    shader_f16: ShaderF16,
+    hugging_face_token: Option<HuggingFaceToken>,
+    devices: DeviceOrder,
+    tx: PreloadSender,
+) {
+    let model_id = model.id.clone();
+    let fail = |operation: &str, error_message: String, kind: ModelFailureKind| {
+        failed(&model_id, operation, error_message, kind)
+    };
+    let starting = ModelOperationProgress::Starting {
+        model_id: model_id.clone(),
+    };
+    if !send_progress(&tx, &model_id, starting) {
+        return;
+    }
+
+    let mut choice = match compute_choice::choose(&model, &devices, shader_f16) {
+        Ok(choice) => choice,
+        Err(reason) => {
+            let failure = fail(
+                "download",
+                reason.gpu_only_refusal().to_owned(),
+                ModelFailureKind::Other,
+            );
+            send_progress(&tx, &model_id, failure);
+            return;
+        }
+    };
+    let Some(mut spec) = model.variant(choice.variant) else {
+        let failure = fail(
+            "download",
+            format!("{model_id} has no {} variant", choice.variant),
+            ModelFailureKind::Other,
+        );
+        send_progress(&tx, &model_id, failure);
+        return;
+    };
+    let mut verified_first = match prepare(spec, &tx).await {
+        Preparation::Verified => true,
+        Preparation::Missing => false,
+        Preparation::Stopped => return,
+    };
+
+    let mut mapper = PreloadMapper::new(spec, now_ms());
+    if !verified_first
+        && !install_variant(spec, hugging_face_token.as_ref(), &tx, &mut mapper).await
+    {
+        return;
+    }
+    let mut events = match worker.submit(load_request(&worker, spec, &choice), None) {
         Ok(events) => events,
         Err(error) => {
             let failure = fail("download", error.to_string(), ModelFailureKind::Other);
-            if tx.send(Ok(failure)).is_err() {
-                tracing::warn!("Preload of {model_id} failed after its listener left");
-            }
+            send_progress(&tx, &model_id, failure);
             return;
         }
     };
@@ -554,67 +641,87 @@ async fn run_preload(
                             tracing::warn!("WebGPU could not load {model_id}, loading it for the CPU: {message}");
                             choice = cpu;
                             worker.release_idle();
-                            match worker.submit(load_request(&worker, &spec, &choice), None) {
+                            let Some(cpu_spec) = model.variant(choice.variant) else {
+                                let failure = fail(
+                                    "download",
+                                    format!("{model_id} has no {} variant", choice.variant),
+                                    ModelFailureKind::Other,
+                                );
+                                send_progress(&tx, &model_id, failure);
+                                return;
+                            };
+                            if cpu_spec.variant != spec.variant {
+                                spec = cpu_spec;
+                                mapper = PreloadMapper::new(spec, now_ms());
+                                verified_first = match prepare(spec, &tx).await {
+                                    Preparation::Verified => true,
+                                    Preparation::Missing => false,
+                                    Preparation::Stopped => return,
+                                };
+                                if !verified_first
+                                    && !install_variant(spec, hugging_face_token.as_ref(), &tx, &mut mapper).await
+                                {
+                                    return;
+                                }
+                            }
+                            match worker.submit(load_request(&worker, spec, &choice), None) {
                                 Ok(retry) => {
                                     events = retry;
                                     continue;
                                 }
                                 Err(error) => {
-                                    if tx.send(Ok(fail("download", error.to_string(), ModelFailureKind::Other))).is_err() {
-                                        tracing::warn!("Preload of {model_id} failed after its listener left");
-                                    }
+                                    let failure = fail("download", error.to_string(), ModelFailureKind::Other);
+                                    send_progress(&tx, &model_id, failure);
                                     return;
                                 }
                             }
                         }
                         GpuFailure::CannotRun(reason) => {
                             worker.release_idle();
-                            if tx.send(Ok(fail("download", reason.gpu_only_refusal().to_owned(), ModelFailureKind::Other))).is_err() {
-                                tracing::warn!("Preload of {model_id} failed after its listener left");
-                            }
+                            let failure = fail("download", reason.gpu_only_refusal().to_owned(), ModelFailureKind::Other);
+                            send_progress(&tx, &model_id, failure);
                             return;
                         }
                         GpuFailure::Unrelated => {}
                     }
                 }
                 let outcome = match mapper.map(event, now_ms()) {
-                    PreloadStep::Progress(progress) => Ok(progress),
+                    PreloadStep::Progress(progress) => progress,
                     PreloadStep::Ignored => continue,
                     PreloadStep::Failed(message) => {
                         worker.release_idle();
-                        Ok(fail("download", message, download_failure_kind()))
+                        fail("download", message, download_failure_kind())
                     }
                     PreloadStep::Loaded => {
-                        if !verified_first
-                            && tx
-                                .send(Ok(ModelOperationProgress::Installing { model_id: model_id.clone() }))
-                                .is_err()
-                        {
-                            return;
+                        if !verified_first {
+                            let installing = ModelOperationProgress::Installing { model_id: model_id.clone() };
+                            if !send_progress(&tx, &model_id, installing) {
+                                return;
+                            }
                         }
                         let verified = if verified_first {
                             Ok(())
                         } else {
-                            model_cache::verify(&spec).await
+                            model_cache::verify(spec).await
                         };
                         match verified {
-                            Ok(()) => Ok(ModelOperationProgress::Completed {
+                            Ok(()) => ModelOperationProgress::Completed {
                                 model_id: model_id.clone(),
-                                local_path: PathBuf::from(model_cache::location(&spec)),
-                            }),
+                                local_path: PathBuf::from(model_cache::location(spec)),
+                            },
                             Err(error) => {
                                 worker.release_idle();
-                                let (message, kind) = downloaded_check_failure(&spec, &error).await;
-                                Ok(fail("verification", message, kind))
+                                let (message, kind) = downloaded_check_failure(spec, &error).await;
+                                fail("verification", message, kind)
                             }
                         }
                     }
                 };
                 let finished = matches!(
                     outcome,
-                    Ok(ModelOperationProgress::Completed { .. } | ModelOperationProgress::Failed { .. })
+                    ModelOperationProgress::Completed { .. } | ModelOperationProgress::Failed { .. }
                 );
-                if tx.send(outcome).is_err() || finished {
+                if !send_progress(&tx, &model_id, outcome) || finished {
                     return;
                 }
             }
@@ -680,15 +787,14 @@ impl Platform for WasmPlatformImpl {
         };
         audio::validate_size(bytes.len()).map_err(WebError::from)?;
 
-        let spec = self.model_manager.model(request.model.as_str())?.clone();
-        let model_cached = self.model_manager.is_model_installed(&spec.id).await?;
+        let model = self.model_manager.model(request.model.as_str())?.clone();
+        let shader_f16 = self.shader_f16().await?;
         let language = request.language;
 
         tracing::info!(
-            "Transcribing {} bytes with {} ({}), language {:?}",
+            "Transcribing {} bytes with {}, language {:?}",
             bytes.len(),
-            spec.id,
-            spec.repo,
+            model.id,
             language
         );
 
@@ -697,8 +803,8 @@ impl Platform for WasmPlatformImpl {
             Transcription {
                 decode_lock: Arc::clone(&self.decode_lock),
                 worker: Arc::clone(&self.worker),
-                spec,
-                model_cached,
+                model,
+                shader_f16,
                 bytes,
                 language,
                 hugging_face_token: request.hugging_face_token,
@@ -800,9 +906,10 @@ impl Platform for WasmPlatformImpl {
         self.ensure_initialized().await?;
 
         let mut installed = Vec::new();
-        for spec in self.model_manager.models() {
-            if self.model_manager.is_model_installed(&spec.id).await? {
-                installed.push(model_info(spec, true));
+        for model in self.model_manager.models() {
+            let spec = self.shown_variant(model).await?;
+            if self.model_manager.is_installed(spec).await? {
+                installed.push(model_info(model, spec, true));
             }
         }
         Ok(installed)
@@ -812,9 +919,10 @@ impl Platform for WasmPlatformImpl {
         self.ensure_initialized().await?;
 
         let mut available = Vec::with_capacity(self.model_manager.models().len());
-        for spec in self.model_manager.models() {
-            let is_installed = self.model_manager.is_model_installed(&spec.id).await?;
-            available.push(model_info(spec, is_installed));
+        for model in self.model_manager.models() {
+            let spec = self.shown_variant(model).await?;
+            let is_installed = self.model_manager.is_installed(spec).await?;
+            available.push(model_info(model, spec, is_installed));
         }
         Ok(available)
     }
@@ -826,12 +934,14 @@ impl Platform for WasmPlatformImpl {
     ) -> Result<ModelProgressStream, PlatformError> {
         self.ensure_initialized().await?;
 
-        let spec = self.model_manager.model(model_id)?.clone();
+        let model = self.model_manager.model(model_id)?.clone();
         let devices = self.load_settings().await?.performance.device_order();
+        let shader_f16 = self.shader_f16().await?;
         let (tx, rx) = mpsc::unbounded_channel();
         spawn_local(run_preload(
             Arc::clone(&self.worker),
-            spec,
+            model,
+            shader_f16,
             token,
             devices,
             tx,
@@ -842,9 +952,10 @@ impl Platform for WasmPlatformImpl {
     async fn get_model_info(&self, model_id: &str) -> Result<ModelInfo, PlatformError> {
         self.ensure_initialized().await?;
 
-        let spec = self.model_manager.model(model_id)?;
-        let is_installed = self.model_manager.is_model_installed(model_id).await?;
-        Ok(model_info(spec, is_installed))
+        let model = self.model_manager.model(model_id)?;
+        let spec = self.shown_variant(model).await?;
+        let is_installed = self.model_manager.is_installed(spec).await?;
+        Ok(model_info(model, spec, is_installed))
     }
 
     async fn remove_model(&self, model_id: &str) -> Result<(), PlatformError> {
@@ -861,7 +972,8 @@ impl Platform for WasmPlatformImpl {
     ) -> Result<ModelIntegrity, PlatformError> {
         self.ensure_initialized().await?;
 
-        let spec = self.model_manager.model(model_id)?;
+        let model = self.model_manager.model(model_id)?;
+        let spec = self.shown_variant(model).await?;
         match model_cache::verify_with_progress(spec, progress).await {
             Ok(()) => Ok(ModelIntegrity::Verified),
             Err(WebError::Integrity { source: problem }) => Ok(problem.into()),
@@ -871,14 +983,17 @@ impl Platform for WasmPlatformImpl {
 
     async fn is_model_installed(&self, model_id: &str) -> Result<bool, PlatformError> {
         self.ensure_initialized().await?;
-        Ok(self.model_manager.is_model_installed(model_id).await?)
+        let model = self.model_manager.model(model_id)?;
+        let spec = self.shown_variant(model).await?;
+        Ok(self.model_manager.is_installed(spec).await?)
     }
 
     async fn get_model_path(&self, model_id: &str) -> Result<String, PlatformError> {
         self.ensure_initialized().await?;
 
-        let spec = self.model_manager.model(model_id)?;
-        if !self.model_manager.is_model_installed(model_id).await? {
+        let model = self.model_manager.model(model_id)?;
+        let spec = self.shown_variant(model).await?;
+        if !self.model_manager.is_installed(spec).await? {
             return Err(PlatformError::model_not_found(model_id));
         }
         Ok(model_cache::location(spec))
@@ -994,4 +1109,16 @@ async fn detect_webgpu() -> WebResult<Option<DeviceInfo>> {
         key: None,
         seen_by: Vec::new(),
     }))
+}
+
+async fn detect_shader_f16() -> WebResult<ShaderF16> {
+    let capable = detect_webgpu().await?.is_some_and(|gpu| {
+        gpu.capabilities
+            .is_some_and(|capabilities| capabilities.contains_key("shader-f16"))
+    });
+    Ok(if capable {
+        ShaderF16::Supported
+    } else {
+        ShaderF16::Missing
+    })
 }

@@ -1,18 +1,23 @@
 //! Conversion of pinned web models into the platform-neutral model description.
 
 use crate::model_cache;
-use purr_common::{platform::ModelInfo, web_model::registry::WebModelSpec};
+use purr_common::{
+    platform::ModelInfo,
+    web_model::registry::{WebModel, WebModelSpec},
+};
 use std::path::PathBuf;
 
+/// The model as people see it, sized and marked installed for the variant `spec` that would run.
 #[must_use]
-pub fn model_info(spec: &WebModelSpec, is_installed: bool) -> ModelInfo {
+pub fn model_info(model: &WebModel, spec: &WebModelSpec, is_installed: bool) -> ModelInfo {
+    let baseline = model.baseline();
     let mut info = ModelInfo::new(
         spec.id.clone(),
-        spec.display_name(),
-        spec.description.clone(),
+        baseline.display_name(),
+        baseline.description.clone(),
         spec.total_size_bytes(),
         false,
-        spec.descriptor(),
+        baseline.descriptor(),
     )
     .with_download_url(spec.repo_url());
     if is_installed {
@@ -38,7 +43,20 @@ mod tests {
 
     fn info(id: &str, installed: bool) -> Result<ModelInfo, Box<dyn std::error::Error>> {
         let registry = WebModelRegistry::embedded()?;
-        Ok(model_info(registry.get(id)?, installed))
+        let model = registry.get(id)?;
+        Ok(model_info(model, model.baseline(), installed))
+    }
+
+    #[test]
+    fn the_size_is_that_of_the_variant_shown() -> Result<(), Box<dyn std::error::Error>> {
+        let registry = WebModelRegistry::embedded()?;
+        let model = registry.get("base")?;
+        for spec in model.variants() {
+            let shown = model_info(model, spec, false);
+            assert_eq!(shown.size_bytes, spec.total_size_bytes());
+            assert_eq!(shown.descriptor, model.baseline().descriptor());
+        }
+        Ok(())
     }
 
     #[test]
@@ -58,8 +76,9 @@ mod tests {
     fn every_browser_model_is_described_by_the_browser_profile()
     -> Result<(), Box<dyn std::error::Error>> {
         let registry = WebModelRegistry::embedded()?;
-        for spec in registry.models() {
-            let descriptor = model_info(spec, false).descriptor;
+        for model in registry.models() {
+            let spec = model.baseline();
+            let descriptor = model_info(model, spec, false).descriptor;
             assert_eq!(descriptor.engine, EngineId::Browser, "{}", spec.id);
             assert_eq!(descriptor.format, ModelFormat::Onnx, "{}", spec.id);
             assert_eq!(

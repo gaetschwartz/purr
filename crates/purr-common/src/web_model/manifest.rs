@@ -5,9 +5,10 @@ use crate::model::family::ModelFamily;
 use crate::web_model::attributes::OnnxDtype;
 use crate::web_model::digest::{FileDigest, Sha256Digest};
 use crate::web_model::error::WebManifestError;
+use crate::web_model::variant::{TableStorage, VariantKind};
 use serde::{Deserialize, Serialize};
 
-pub const SUPPORTED_SCHEMA: u32 = 3;
+pub const SUPPORTED_SCHEMA: u32 = 4;
 pub const HUGGING_FACE_ORIGIN: &str = "https://huggingface.co";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -28,9 +29,22 @@ pub struct WebManifestModel {
     pub revision: String,
     pub family: ModelFamily,
     pub languages: LanguageSupport,
+    pub description: String,
+    /// The configuration and tokenizer files every variant loads.
+    pub files: Vec<WebManifestFile>,
+    pub variants: Vec<WebManifestVariant>,
+}
+
+/// One set of ONNX weights a model can run.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct WebManifestVariant {
+    pub precision: VariantKind,
     pub encoder_dtype: OnnxDtype,
     pub decoder_dtype: OnnxDtype,
-    pub description: String,
+    /// How the converter stores the decoder's tied embedding table.
+    #[serde(default, skip_serializing_if = "TableStorage::is_fp32")]
+    pub table: TableStorage,
     pub files: Vec<WebManifestFile>,
 }
 

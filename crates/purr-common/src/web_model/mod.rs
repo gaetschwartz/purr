@@ -6,3 +6,4 @@ pub mod error;
 pub mod file_role;
 pub mod manifest;
 pub mod registry;
+pub mod variant;

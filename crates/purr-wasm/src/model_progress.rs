@@ -62,7 +62,7 @@ mod tests {
 
     fn tiny_progress() -> Result<ModelProgress, Box<dyn std::error::Error>> {
         let registry = WebModelRegistry::embedded()?;
-        Ok(ModelProgress::for_model(registry.get("tiny")?))
+        Ok(ModelProgress::for_model(registry.get("tiny")?.baseline()))
     }
 
     #[test]
@@ -71,7 +71,7 @@ mod tests {
         let progress = tiny_progress()?;
         assert_eq!(
             progress.total_bytes(),
-            registry.get("tiny")?.total_size_bytes()
+            registry.get("tiny")?.baseline().total_size_bytes()
         );
         assert_eq!(progress.loaded_bytes(), 0);
         Ok(())

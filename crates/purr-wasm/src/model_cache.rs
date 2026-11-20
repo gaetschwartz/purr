@@ -67,22 +67,53 @@ async fn cached_response(cache: &Cache, url: &str) -> WebResult<Option<Response>
         .map_err(|e| WebError::web_api("Response cast", e))
 }
 
-/// Whether the cache holds everything `file` is stored as.
-pub async fn has_file(cache: &Cache, spec: &WebModelSpec, file: &WebModelFile) -> WebResult<bool> {
-    for url in spec.cached_urls(file) {
-        if cached_response(cache, &url).await?.is_none() {
+/// A cache key and the size of the file the manifest expects behind it.
+struct Expected {
+    url: String,
+    size_bytes: u64,
+}
+
+fn expected_entries(spec: &WebModelSpec, files: &[&WebModelFile]) -> Vec<Expected> {
+    files
+        .iter()
+        .flat_map(|file| file.cached_files())
+        .map(|cached| Expected {
+            url: spec.cached_url(&cached),
+            size_bytes: cached.size_bytes,
+        })
+        .collect()
+}
+
+/// Whether the cache holds an entry of the expected length, which tells the files of two variants
+/// that share a cache key apart without hashing them.
+async fn holds(cache: &Cache, expected: &Expected) -> WebResult<bool> {
+    let Some(response) = cached_response(cache, &expected.url).await? else {
+        return Ok(false);
+    };
+    let length = response
+        .headers()
+        .get("Content-Length")
+        .map_err(|e| WebError::web_api("Headers.get", e))?
+        .and_then(|value| value.parse::<u64>().ok());
+    Ok(length == Some(expected.size_bytes))
+}
+
+async fn all_cached(entries: Vec<Expected>) -> WebResult<bool> {
+    let Some(cache) = open_existing().await? else {
+        return Ok(false);
+    };
+    for expected in &entries {
+        if !holds(&cache, expected).await? {
             return Ok(false);
         }
     }
     Ok(true)
 }
 
-async fn all_cached(urls: Vec<String>) -> WebResult<bool> {
-    let Some(cache) = open_existing().await? else {
-        return Ok(false);
-    };
-    for url in &urls {
-        if cached_response(&cache, url).await?.is_none() {
+/// Whether the cache holds everything `file` is stored as.
+pub async fn has_file(cache: &Cache, spec: &WebModelSpec, file: &WebModelFile) -> WebResult<bool> {
+    for expected in expected_entries(spec, &[file]) {
+        if !holds(cache, &expected).await? {
             return Ok(false);
         }
     }
@@ -173,17 +204,12 @@ async fn verify_all(
     Ok(())
 }
 
-fn file_urls(spec: &WebModelSpec) -> Vec<String> {
-    spec.files
-        .iter()
-        .flat_map(|file| spec.cached_urls(file))
-        .collect()
-}
-
-/// Whether every file of the model is cached, converted files as both their graph and weights.
+/// Whether every file of the variant is cached at its manifest size, converted files as both
+/// their graph and weights.
 pub async fn is_installed(spec: &WebModelSpec) -> WebResult<bool> {
-    let urls = file_urls(spec);
-    run_local(move || all_cached(urls)).await
+    let files: Vec<&WebModelFile> = spec.files.iter().collect();
+    let entries = expected_entries(spec, &files);
+    run_local(move || all_cached(entries)).await
 }
 
 /// Drops the given cached files of the model.

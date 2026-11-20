@@ -36,7 +36,7 @@ function sessionOptions(provider) {
 }
 
 function modelKey(model, provider) {
-    return `${model.repo}@${model.revision}:${model.encoder_dtype}/${model.decoder_dtype}:${provider}`;
+    return `${model.repo}@${model.revision}:${model.precision}:${model.encoder_dtype}/${model.decoder_dtype}:${provider}`;
 }
 
 export function asProviderFailure(provider, error) {

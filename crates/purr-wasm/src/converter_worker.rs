@@ -8,6 +8,7 @@
 use crate::error::{WebError, WebResult};
 use gloo_timers::future::TimeoutFuture;
 use js_sys::{Atomics, Int32Array, Object, Reflect, SharedArrayBuffer, Uint8Array};
+use purr_common::web_model::variant::TableStorage;
 use std::cell::Cell;
 use std::rc::Rc;
 use tokio::sync::mpsc;
@@ -77,11 +78,20 @@ pub struct ConverterOutput {
     handle: Rc<Handle>,
 }
 
-/// Starts a converter worker that names its weights file `data_location` inside the graph.
+const fn table_code(table: TableStorage) -> u32 {
+    match table {
+        TableStorage::Fp32 => 0,
+        TableStorage::Fp16 => 1,
+    }
+}
+
+/// Starts a converter worker that names its weights file `data_location` inside the graph and
+/// stores the tied embedding table as `table`.
 pub fn start(
     worker_url: &str,
     wasm_url: &str,
     data_location: &str,
+    table: TableStorage,
 ) -> WebResult<(ConverterInput, ConverterOutput)> {
     let shared = SharedArrayBuffer::new(HEADER_BYTES + RING_BYTES);
     let control = Int32Array::new_with_byte_offset_and_length(&shared, 0, HEADER_BYTES / 4);
@@ -123,6 +133,10 @@ pub fn start(
     for (key, value) in [
         ("wasm_url", JsValue::from_str(wasm_url)),
         ("data_location", JsValue::from_str(data_location)),
+        (
+            "table_precision",
+            JsValue::from_f64(f64::from(table_code(table))),
+        ),
         ("shared", shared.into()),
     ] {
         Reflect::set(&start, &JsValue::from_str(key), &value)

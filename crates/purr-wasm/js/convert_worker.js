@@ -11,7 +11,12 @@ const WAIT_SLICE_MS = 1000;
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
-function startConversion({ wasm_url: wasmUrl, data_location: dataLocation, shared }) {
+function startConversion({
+    wasm_url: wasmUrl,
+    data_location: dataLocation,
+    table_precision: tablePrecision,
+    shared,
+}) {
     const control = new Int32Array(shared, 0, HEADER_BYTES / Int32Array.BYTES_PER_ELEMENT);
     const ring = new Uint8Array(shared, HEADER_BYTES);
     const mask = ring.length - 1;
@@ -79,6 +84,7 @@ function startConversion({ wasm_url: wasmUrl, data_location: dataLocation, share
                     purr_read: readInput,
                     purr_write: writeOutput,
                     purr_location: writeLocation,
+                    purr_table_precision: () => tablePrecision,
                     purr_report_error: reportError,
                 },
             }),
