@@ -592,6 +592,17 @@ pub struct ModelInfo {
     /// Whether the engine that runs the model is part of this build
     #[serde(default = "engine_built_by_default")]
     pub engine_built: bool,
+    /// Whether the model is in the catalog or was loaded by hand in developer mode
+    #[serde(default)]
+    pub origin: ModelOrigin,
+}
+
+/// Where a model comes from.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ModelOrigin {
+    #[default]
+    Catalog,
+    Developer,
 }
 
 const fn engine_built_by_default() -> bool {
@@ -619,7 +630,15 @@ impl ModelInfo {
             local_path: None,
             descriptor,
             engine_built: true,
+            origin: ModelOrigin::Catalog,
         }
+    }
+
+    /// Marks the model as one loaded by hand in developer mode
+    #[must_use]
+    pub const fn from_developer(mut self) -> Self {
+        self.origin = ModelOrigin::Developer;
+        self
     }
 
     /// Marks the model as one whose engine this build lacks
@@ -1115,6 +1134,14 @@ pub trait Platform: Send + Sync + 'static {
     fn system_report(
         &self,
     ) -> impl std::future::Future<Output = Result<SystemReport, PlatformError>> + Send;
+
+    /// The readings of the developer panel, optionally starting its peaks over.
+    fn developer_snapshot(
+        &self,
+        reset_peaks: bool,
+    ) -> impl std::future::Future<
+        Output = Result<crate::developer::snapshot::DeveloperSnapshot, PlatformError>,
+    > + Send;
 
     // ========================================
     // Settings Persistence Operations

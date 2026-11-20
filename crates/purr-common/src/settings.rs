@@ -5,6 +5,7 @@
 //! and validation methods.
 
 use crate::accel::{AccelBackend, AccelSelection};
+use crate::developer::settings::DeveloperSettings;
 use crate::devices::{DeviceDefaults, DeviceOrder, DevicePreference};
 use crate::export_format::ExportFormat;
 use crate::hugging_face_token::HuggingFaceToken;
@@ -42,6 +43,10 @@ pub struct Settings {
 
     /// Logging configuration
     pub logging: LoggingSettings,
+
+    /// Developer mode
+    #[serde(default)]
+    pub developer: DeveloperSettings,
 }
 
 /// Model configuration settings
@@ -141,6 +146,7 @@ impl Default for Settings {
             ui: UiSettings::default(),
             performance: PerformanceSettings::default(),
             logging: LoggingSettings::default(),
+            developer: DeveloperSettings::default(),
         }
     }
 }
@@ -289,6 +295,14 @@ impl Settings {
             errors.push(SettingsError::InvalidHuggingFaceToken);
         }
 
+        if let Some(options) = &self.developer.session_options
+            && let Err(error) = crate::developer::session_options::parse(options)
+        {
+            errors.push(SettingsError::InvalidSessionOptions {
+                reason: error.to_string(),
+            });
+        }
+
         errors
     }
 
@@ -361,6 +375,9 @@ pub enum SettingsError {
 
     #[oopsie("The Hugging Face token can only contain letters, digits and punctuation")]
     InvalidHuggingFaceToken,
+
+    #[oopsie("{reason}")]
+    InvalidSessionOptions { reason: String },
 
     #[oopsie("Unsupported settings version: current={current}, target={target}")]
     UnsupportedVersion { current: u32, target: u32 },
