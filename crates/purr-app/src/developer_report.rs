@@ -162,13 +162,15 @@ const fn device_type_label(device_type: DeviceType) -> &'static str {
 }
 
 fn native_sections(snapshot: &NativeSnapshot) -> Vec<Section> {
-    let run = match &snapshot.last_run {
-        Some(last) => vec![
-            Row::new("Backend", last.backend.label()),
-            Row::new("Device", last.device.as_deref().unwrap_or("the processor")),
-        ],
-        None => vec![Row::new("Last run", "no transcription yet")],
-    };
+    let run = snapshot.last_run.as_ref().map_or_else(
+        || vec![Row::new("Last run", "no transcription yet")],
+        |last| {
+            vec![
+                Row::new("Backend", last.backend.label()),
+                Row::new("Device", last.device.as_deref().unwrap_or("the processor")),
+            ]
+        },
+    );
     let memory = vec![
         peaked("Process working set", snapshot.process_memory),
         peaked("Process virtual memory", snapshot.process_virtual),
@@ -230,16 +232,17 @@ pub fn sections(snapshot: &DeveloperSnapshot) -> Vec<Section> {
 /// The same content as plain text, for the clipboard.
 #[must_use]
 pub fn as_text(sections: &[Section]) -> String {
-    let mut text = String::new();
-    for section in sections {
-        text.push_str(&section.title);
-        text.push('\n');
-        for row in &section.rows {
-            text.push_str(&format!("  {}: {}\n", row.label, row.value));
-        }
-        text.push('\n');
-    }
-    text
+    sections
+        .iter()
+        .map(|section| {
+            let rows: String = section
+                .rows
+                .iter()
+                .map(|row| format!("  {}: {}\n", row.label, row.value))
+                .collect();
+            format!("{}\n{rows}\n", section.title)
+        })
+        .collect()
 }
 
 #[cfg(test)]

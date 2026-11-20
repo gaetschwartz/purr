@@ -383,9 +383,12 @@ fn matching_onnx(files: &[LocalFile], role: ModelFileRole) -> Option<&LocalFile>
         | ModelFileRole::Tokenizer
         | ModelFileRole::TokenizerConfig => return None,
     };
-    let mut matches = files
-        .iter()
-        .filter(|file| file.name.starts_with(stem) && file.name.ends_with(".onnx"));
+    let mut matches = files.iter().filter(|file| {
+        file.name.starts_with(stem)
+            && std::path::Path::new(&file.name)
+                .extension()
+                .is_some_and(|extension| extension.eq_ignore_ascii_case("onnx"))
+    });
     let first = matches.next()?;
     matches.next().is_none().then_some(first)
 }

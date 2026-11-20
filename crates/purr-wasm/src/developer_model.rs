@@ -118,6 +118,10 @@ pub async fn remove(id: &DeveloperModelId, model: &BrowserModel) -> WebResult<()
 /// is checked against a manifest. The variant follows what the dtypes and the table need, and
 /// there is no other to switch to.
 #[must_use]
+#[allow(
+    clippy::needless_update,
+    reason = "a catalog spec may gain fields this does not set"
+)]
 pub fn web_model(model: &DeveloperModel, browser: &BrowserModel, base: &WebModelSpec) -> WebModel {
     let table = browser.conversion.table().unwrap_or_default();
     let needs_half = browser.encoder_dtype.requires_shader_f16()
@@ -145,4 +149,107 @@ pub fn web_model(model: &DeveloperModel, browser: &BrowserModel, base: &WebModel
         files: Vec::new(),
         ..base.clone()
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use purr_common::developer::model::{BrowserOrigin, Conversion};
+    use purr_common::web_model::attributes::OnnxDtype;
+    use purr_common::web_model::variant::TableStorage;
+
+    fn browser(conversion: Conversion) -> BrowserModel {
+        BrowserModel {
+            origin: BrowserOrigin::LocalFiles,
+            encoder_dtype: OnnxDtype::Fp32,
+            decoder_dtype: OnnxDtype::Q4,
+            conversion,
+            english_only: false,
+        }
+    }
+
+    #[test]
+    fn files_live_under_a_namespace_no_catalog_repository_uses() {
+        let id = DeveloperModelId::from_unique("0123456789ab");
+        assert_eq!(
+            cached_url(&id, "config.json"),
+            "https://huggingface.co/purr-developer/dev-0123456789ab/resolve/main/config.json"
+        );
+    }
+
+    #[test]
+    fn a_converted_model_needs_its_weights_files_and_never_the_optional_generation_config() {
+        let id = DeveloperModelId::from_unique("0123456789ab");
+        let urls = required_urls(
+            &id,
+            &browser(Conversion::Streaming {
+                table: TableStorage::Fp32,
+            }),
+        );
+        let names: Vec<&str> = urls
+            .iter()
+            .filter_map(|url| url.rsplit_once("/main/").map(|(_, name)| name))
+            .collect();
+        assert_eq!(
+            names,
+            [
+                "config.json",
+                "preprocessor_config.json",
+                "tokenizer.json",
+                "tokenizer_config.json",
+                "onnx/encoder_model.onnx_data",
+                "onnx/encoder_model.onnx",
+                "onnx/decoder_model_merged_q4.onnx_data",
+                "onnx/decoder_model_merged_q4.onnx",
+            ]
+        );
+    }
+
+    #[test]
+    fn a_model_used_as_it_is_needs_no_weights_files() {
+        let id = DeveloperModelId::from_unique("0123456789ab");
+        let urls = required_urls(&id, &browser(Conversion::AsIs));
+        assert_eq!(urls.len(), 6);
+    }
+
+    fn variant_of(
+        encoder: OnnxDtype,
+        conversion: Conversion,
+    ) -> Result<VariantKind, Box<dyn std::error::Error>> {
+        let registry = purr_common::web_model::registry::WebModelRegistry::embedded()?;
+        let model = DeveloperModel {
+            id: DeveloperModelId::from_unique("0123456789ab"),
+            name: "tiny".to_owned(),
+            family: purr_common::model::family::ModelFamily::Whisper(
+                purr_common::model::family::WhisperSize::Tiny,
+            ),
+            source: purr_common::developer::model::DeveloperSource::Browser(browser(
+                Conversion::AsIs,
+            )),
+        };
+        let mut chosen = browser(conversion);
+        chosen.encoder_dtype = encoder;
+        let web = web_model(&model, &chosen, registry.default_model().baseline());
+        assert_eq!(web.variants().count(), 1);
+        Ok(web.baseline().variant)
+    }
+
+    #[test]
+    fn a_developer_model_is_the_one_variant_its_dtypes_and_table_call_for()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let full = Conversion::Streaming {
+            table: TableStorage::Fp32,
+        };
+        let half = Conversion::Streaming {
+            table: TableStorage::Fp16,
+        };
+        assert_eq!(variant_of(OnnxDtype::Fp32, full)?, VariantKind::Fp32);
+        assert_eq!(variant_of(OnnxDtype::Fp32, half)?, VariantKind::Fp16);
+        assert_eq!(variant_of(OnnxDtype::Fp16, full)?, VariantKind::Fp16);
+        assert_eq!(
+            variant_of(OnnxDtype::Fp32, Conversion::AsIs)?,
+            VariantKind::Fp32
+        );
+        Ok(())
+    }
 }

@@ -342,6 +342,69 @@ mod tests {
     }
 
     #[test]
+    fn a_developer_request_carries_the_session_options_and_external_data()
+    -> Result<(), serde_json::Error> {
+        let mut session_options = SessionOptions::new();
+        session_options.insert("logSeverityLevel".to_owned(), json!(2));
+        let request = WorkerRequest::LoadModel {
+            request_id: RequestId::new(4),
+            model: model(),
+            provider: Provider::WebGpu,
+            developer: Some(WorkerDeveloper {
+                session_options,
+                external_data: Some(ExternalData {
+                    encoder: true,
+                    decoder: false,
+                }),
+            }),
+        };
+        assert_eq!(
+            serde_json::to_value(&request)?["developer"],
+            json!({
+                "session_options": {"logSeverityLevel": 2},
+                "external_data": {"encoder": true, "decoder": false},
+            })
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn a_snapshot_request_ends_with_its_snapshot() -> Result<(), serde_json::Error> {
+        let request = WorkerRequest::DeveloperSnapshot {
+            request_id: RequestId::new(9),
+            reset_peaks: true,
+        };
+        assert_eq!(
+            serde_json::to_value(&request)?,
+            json!({"type": "DeveloperSnapshot", "request_id": 9, "reset_peaks": true})
+        );
+        let event = parse(&json!({
+            "type": "DeveloperSnapshot",
+            "request_id": 9,
+            "snapshot": {
+                "hooks": true,
+                "wasm_heap": {"current": 10, "peak": 20},
+                "gpu_buffers": {
+                    "bytes": {"current": 1, "peak": 2},
+                    "live": {"current": 3, "peak": 4},
+                },
+                "js_heap": null,
+                "model": null,
+                "provider": "WebGpu",
+                "adapter": {
+                    "info": [{"name": "vendor", "value": "nvidia"}],
+                    "features": ["shader-f16"],
+                    "limits": [],
+                },
+            },
+        }))?;
+        assert_eq!(event.request_id(), Some(RequestId::new(9)));
+        assert!(event.ends(RequestKind::Snapshot));
+        assert!(!event.ends(RequestKind::Transcribe));
+        Ok(())
+    }
+
+    #[test]
     fn automatic_language_serialises_as_null() -> Result<(), serde_json::Error> {
         let request = WorkerRequest::Transcribe {
             request_id: RequestId::new(1),

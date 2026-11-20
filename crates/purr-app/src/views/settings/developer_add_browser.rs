@@ -195,7 +195,7 @@ pub fn AddBrowserModel() -> Element {
                     SourceKind::LocalFiles => rsx! {
                         label { r#for: files_id.clone(),
                             "Config, tokenizer and ONNX files"
-                            input { id: files_id.clone(), r#type: "file", multiple: true }
+                            input { id: files_id, r#type: "file", multiple: true }
                         }
                     },
                 }

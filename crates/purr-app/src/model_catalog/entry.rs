@@ -83,6 +83,13 @@ impl ModelEntry {
         if speaker_turns {
             label = format!("{label} · Speaker turns");
         }
+        match info.origin {
+            ModelOrigin::Catalog => {}
+            ModelOrigin::Developer => {
+                name.clone_from(&info.name);
+                label = format!("{name} · Developer model");
+            }
+        }
 
         Self {
             id: info.id.clone(),
@@ -191,6 +198,17 @@ mod tests {
         assert_eq!(entry.group, ModelGroup::Tiny);
         assert!(entry.is_english_only());
         assert!(!entry.is_multilingual());
+    }
+
+    #[test]
+    fn a_developer_model_keeps_its_own_name_and_says_what_it_is() {
+        let model = info("dev-0123456789ab", "tiny", 0, Some("q5_1"), false).from_developer();
+        let entry = ModelEntry::from_info(&model);
+        assert_eq!(entry.name, "dev-0123456789ab");
+        assert_eq!(entry.label, "dev-0123456789ab · Developer model");
+        assert_eq!(entry.group, ModelGroup::Tiny);
+        assert_eq!(entry.quantization_tag(), None);
+        assert_eq!(entry.origin, ModelOrigin::Developer);
     }
 
     #[test]
