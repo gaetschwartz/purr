@@ -80,9 +80,17 @@ quantized-encoder models (`*-q4`) have both variants: they differ in the decoder
 
 The crate also builds as a `cdylib` for `wasm32-unknown-unknown` with a C interface (`src/abi.rs`):
 the host supplies `purr_read`, `purr_write`, `purr_location`, `purr_table_precision` and
-`purr_report_error`, and calls
-`purr_convert`. `purr-wasm`'s `build.rs` compiles it in its own target directory and ships it as
-`dist/purr_onnx_convert.wasm` next to `dist/convert_worker.js`.
+`purr_report_error`, and calls `purr_convert`; `purr_abi_version` reports the interface version held in
+`crates/purr-onnx-convert/ABI_VERSION`.
+
+The module is not part of the app's build: it is built on its own with `just web-converter` (the
+`converter` cargo profile) and copied to `crates/purr-app/public/converter/v<N>/purr_onnx_convert.wasm`,
+so it is served next to the app and the path names the interface version. `purr-wasm`'s `build.rs`
+reads the same `ABI_VERSION` file, builds the URL from it and hands the number to
+`js/convert_worker.js`, which refuses a module that reports another one. A missing file, or a response
+that is not WebAssembly, fails the install with a message that names `just web-converter`. `just
+web-serve` builds the module and then runs `dx serve`; the `web` CI job runs `just web-converter`
+before `dx bundle`.
 
 ## Installing a model
 

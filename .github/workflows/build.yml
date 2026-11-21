@@ -379,6 +379,11 @@ jobs:
       - uses: ./.github/actions/setup-dioxus
         with:
           version: ${{ env.DIOXUS_VERSION }}
+      - uses: taiki-e/install-action@v2.90.3
+        with:
+          tool: just
+      - name: Build the ONNX converter module
+        run: just web-converter
       - name: Build the web app
         run: |
           dx bundle --verbose -p purr-app --release --web --out-dir dist-web

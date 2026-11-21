@@ -11,8 +11,15 @@ const WAIT_SLICE_MS = 1000;
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
+const WASM_MAGIC = [0x00, 0x61, 0x73, 0x6d];
+
+function missingConverter(wasmUrl, detail) {
+    return new Error(`The converter module is missing at ${wasmUrl} (${detail}); build it with \`just web-converter\``);
+}
+
 function startConversion({
     wasm_url: wasmUrl,
+    abi_version: expectedAbi,
     data_location: dataLocation,
     table_precision: tablePrecision,
     shared,
@@ -74,12 +81,16 @@ function startConversion({
     return fetch(wasmUrl)
         .then((response) => {
             if (!response.ok) {
-                throw new Error(`Fetching the converter failed with status ${response.status}`);
+                throw missingConverter(wasmUrl, `status ${response.status}`);
             }
             return response.arrayBuffer();
         })
-        .then((bytes) =>
-            WebAssembly.instantiate(bytes, {
+        .then((bytes) => {
+            const head = new Uint8Array(bytes, 0, Math.min(bytes.byteLength, WASM_MAGIC.length));
+            if (head.length < WASM_MAGIC.length || WASM_MAGIC.some((byte, index) => head[index] !== byte)) {
+                throw missingConverter(wasmUrl, "the response is not a WebAssembly module");
+            }
+            return WebAssembly.instantiate(bytes, {
                 purr: {
                     purr_read: readInput,
                     purr_write: writeOutput,
@@ -87,9 +98,15 @@ function startConversion({
                     purr_table_precision: () => tablePrecision,
                     purr_report_error: reportError,
                 },
-            }),
-        )
+            });
+        })
         .then(({ instance }) => {
+            const abi = instance.exports.purr_abi_version?.();
+            if (String(abi) !== String(expectedAbi)) {
+                throw new Error(
+                    `The converter module at ${wasmUrl} speaks interface version ${abi ?? "unknown"}, but the app expects ${expectedAbi}; rebuild it with \`just web-converter\``,
+                );
+            }
             memory = instance.exports.memory;
             const status = instance.exports.purr_convert();
             return status === 0 ? null : (failure ?? `The converter failed with status ${status}`);

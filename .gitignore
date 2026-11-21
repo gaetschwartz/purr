@@ -37,3 +37,5 @@ hive-mind-prompt-*.txt
 .vercel
 
 .playwright-mcp/
+
+/crates/purr-app/public/converter/

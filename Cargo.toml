@@ -101,6 +101,14 @@ opt-level = 1
 [profile.server-dev]
 inherits = "dev"
 
+[profile.converter]
+inherits = "release"
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = "symbols"
+
 # Short desktop profile for path length optimization
 [profile.d]
 inherits = "dev"

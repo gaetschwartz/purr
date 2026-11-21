@@ -56,14 +56,22 @@ static CONVERTER_WORKER_SCRIPT: Asset = asset!(
     AssetOptions::js().with_minify(false).into_asset_options()
 );
 
-static CONVERTER_WASM: Asset = asset!("/dist/purr_onnx_convert.wasm");
+const CONVERTER_ABI: &str = env!("PURR_CONVERTER_ABI");
+
+/// The converter's interface version.
+#[must_use]
+pub const fn converter_abi() -> &'static str {
+    CONVERTER_ABI
+}
 
 /// Absolute URL paths of the script of the worker that converts ONNX files while a model installs, and of its WebAssembly module.
+///
+/// The module is built apart from the app (`just web-converter`) and served under a path that names its interface version.
 #[must_use]
 pub fn converter_urls() -> (String, String) {
     (
         CONVERTER_WORKER_SCRIPT.to_string(),
-        CONVERTER_WASM.to_string(),
+        format!("/converter/v{CONVERTER_ABI}/purr_onnx_convert.wasm"),
     )
 }
 

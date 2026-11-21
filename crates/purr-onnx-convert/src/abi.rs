@@ -3,6 +3,11 @@
 use crate::convert::{Options, TablePrecision, convert};
 use std::io::{Read, Write};
 
+const ABI_VERSION: u32 = match u32::from_str_radix(include_str!("../ABI_VERSION").trim_ascii(), 10)
+{
+    Ok(version) => version,
+    Err(_) => panic!("ABI_VERSION must hold one unsigned integer"),
+};
 const LOCATION_CAPACITY: usize = 256;
 const SINK_DATA: u32 = 0;
 const SINK_GRAPH: u32 = 1;
@@ -45,6 +50,12 @@ impl Write for HostSink {
     fn flush(&mut self) -> std::io::Result<()> {
         Ok(())
     }
+}
+
+/// Version of this interface; the host refuses a module that reports another one.
+#[unsafe(no_mangle)]
+pub extern "C" fn purr_abi_version() -> u32 {
+    ABI_VERSION
 }
 
 /// Converts the model the host supplies; returns 0, or 1 after reporting the failure.

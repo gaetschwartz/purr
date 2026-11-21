@@ -197,3 +197,18 @@ dx-build *ARGS:
 dx-bundle *ARGS:
     $env:CARGO_TARGET_DIR="{{invocation_directory()}}\t" ; \
     dx bundle -p purr-app --release --desktop --profile r {{ARGS}}
+# Build the ONNX converter module the web app fetches at runtime, under a path that names its interface version
+web-converter:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo -e "{{BLUE}}[INFO]{{NC}} Building the ONNX converter module..."
+    cargo build -p purr-onnx-convert --lib --locked --target wasm32-unknown-unknown --profile converter
+    version="$(tr -d '[:space:]' < crates/purr-onnx-convert/ABI_VERSION)"
+    dest="crates/purr-app/public/converter/v${version}"
+    mkdir -p "$dest"
+    cp "${CARGO_TARGET_DIR:-target}/wasm32-unknown-unknown/converter/purr_onnx_convert.wasm" "$dest/"
+    echo -e "{{GREEN}}[SUCCESS]{{NC}} Converter written to $dest"
+
+# Serve the web app with dx after building the converter module
+web-serve *ARGS: web-converter
+    dx serve -p purr-app --web {{ARGS}}

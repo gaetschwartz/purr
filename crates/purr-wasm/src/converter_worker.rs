@@ -132,6 +132,7 @@ pub fn start(
     let start = Object::new();
     for (key, value) in [
         ("wasm_url", JsValue::from_str(wasm_url)),
+        ("abi_version", JsValue::from_str(crate::converter_abi())),
         ("data_location", JsValue::from_str(data_location)),
         (
             "table_precision",
