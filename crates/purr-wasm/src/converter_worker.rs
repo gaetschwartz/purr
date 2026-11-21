@@ -40,6 +40,14 @@ pub enum ConverterEvent {
     Failed(String),
 }
 
+/// How far a write got.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Written {
+    All,
+    /// The converter finished or failed first; its own event says why.
+    ConverterStopped,
+}
+
 struct Handle {
     worker: Worker,
     stopped: Cell<bool>,
@@ -194,13 +202,11 @@ impl ConverterInput {
     }
 
     /// Feeds `bytes` to the converter, waiting while the ring is full.
-    pub async fn write(&mut self, bytes: &[u8]) -> WebResult<()> {
+    pub async fn write(&mut self, bytes: &[u8]) -> WebResult<Written> {
         let mut rest = bytes;
         while !rest.is_empty() {
             if self.handle.stopped.get() {
-                return Err(failure(
-                    "The converter stopped before reading all of the file",
-                ));
+                return Ok(Written::ConverterStopped);
             }
             let tail = Atomics::load(&self.control, SLOT_TAIL)
                 .map_err(|e| js_error("Atomics.load", e))? as u32;
@@ -221,7 +227,7 @@ impl ConverterInput {
             self.wake_worker()?;
             rest = later;
         }
-        Ok(())
+        Ok(Written::All)
     }
 
     fn finish_with(&self, state: i32) -> WebResult<()> {

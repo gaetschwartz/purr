@@ -3,7 +3,7 @@
 //! worker, so the cache only ever holds files that are verified and ready to load.
 
 use crate::byte_stream::{body_reader, next_chunk};
-use crate::converter_worker::{ConverterEvent, ConverterOutput, Sink, start};
+use crate::converter_worker::{ConverterEvent, ConverterOutput, Sink, Written, start};
 use crate::error::{WebError, WebResult};
 use crate::integrity::FileChecker;
 use crate::model_cache::{has_file, open_for_writing};
@@ -230,21 +230,27 @@ async fn feed(
     mut checker: FileChecker<'_>,
     path: &str,
     reporter: &mut Reporter<'_>,
-) -> WebResult<()> {
+) -> WebResult<Written> {
     let fed = async {
         while let Some(chunk) = next_chunk(reader).await? {
             let piece: Uint8Array = chunk;
             let bytes = piece.to_vec();
             checker.update(&bytes);
-            input.write(&bytes).await?;
-            reporter.receiving(path, checker.received_bytes());
+            match input.write(&bytes).await? {
+                Written::All => reporter.receiving(path, checker.received_bytes()),
+                Written::ConverterStopped => return Ok(Written::ConverterStopped),
+            }
         }
-        Ok::<(), WebError>(())
+        Ok::<Written, WebError>(Written::All)
     }
     .await;
-    let verified = fed.and_then(|()| checker.finish().map_err(WebError::from));
+    let verified = fed.and_then(|written| match written {
+        Written::All => checker.finish().map(|()| written).map_err(WebError::from),
+        Written::ConverterStopped => Ok(written),
+    });
     match verified {
-        Ok(()) => input.end(),
+        Ok(Written::All) => input.end().map(|()| Written::All),
+        Ok(Written::ConverterStopped) => Ok(Written::ConverterStopped),
         Err(error) => {
             if let Err(abort_error) = input.abort() {
                 tracing::warn!("Could not stop the converter: {abort_error}");
@@ -350,8 +356,11 @@ pub(crate) async fn convert_into_cache(
     });
 
     let outcome = match (fed, drained) {
-        (Err(error), _) | (Ok(()), Err(error)) => Err(error),
-        (Ok(()), Ok(drained)) => data_checker
+        (Err(error), _) | (Ok(Written::All | Written::ConverterStopped), Err(error)) => Err(error),
+        (Ok(Written::ConverterStopped), Ok(_)) => Err(WebError::conversion(
+            "The converter stopped before reading all of the file",
+        )),
+        (Ok(Written::All), Ok(drained)) => data_checker
             .finish()
             .and_then(|()| graph_checker.finish())
             .map(|()| drained.graph)
