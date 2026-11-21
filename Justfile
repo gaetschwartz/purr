@@ -24,6 +24,11 @@ test *ARGS:
     @echo "{{BLUE}}[INFO]{{NC}} Running tests with nextest..."
     cargo nextest run $WINDOWS_TEST_ARGS {{ARGS}}
 
+[linux]
+test *ARGS:
+    @echo "{{BLUE}}[INFO]{{NC}} Running tests with nextest..."
+    cargo nextest run {{ARGS}}
+
 # Run the tests that load a real model; nextest fetches the models they need first
 test-models *ARGS:
     @echo "{{BLUE}}[INFO]{{NC}} Running the real-model tests..."
@@ -197,6 +202,7 @@ dx-build *ARGS:
 dx-bundle *ARGS:
     $env:CARGO_TARGET_DIR="{{invocation_directory()}}\t" ; \
     dx bundle -p purr-app --release --desktop --profile r {{ARGS}}
+
 # Build the ONNX converter module the web app fetches at runtime, under a path that names its interface version
 web-converter:
     #!/usr/bin/env bash
