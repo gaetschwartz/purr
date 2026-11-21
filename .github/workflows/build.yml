@@ -589,8 +589,8 @@ jobs:
           cache: true
           # rust-cache joins the target onto the workspace path, and CARGO_TARGET_DIR is D:\t
           cache-workspaces: ". -> ../../../t"
-          # whisper-rs-sys does not rebuild ggml when GGML_* or the GPU SDKs change, so each configuration needs its own cache
-          cache-key: ${{ matrix.label || matrix.backend }}${{ matrix.transcribe && '-transcribe-backends' || '' }}-ggml-native-${{ env.GGML_NATIVE }}-crt-static-${{ env.CMAKE_GENERATOR_x86_64_pc_windows_msvc || 'msbuild' }}-cuda-${{ env.CUDA_VERSION }}-vulkan-${{ env.VULKAN_SDK_VERSION }}
+          # whisper-rs-sys does not rebuild ggml when GGML_*, the GPU SDKs or the MSVC toolset change, so each configuration needs its own cache
+          cache-key: ${{ matrix.label || matrix.backend }}${{ matrix.transcribe && '-transcribe-backends' || '' }}-ggml-native-${{ env.GGML_NATIVE }}-crt-static-${{ env.CMAKE_GENERATOR_x86_64_pc_windows_msvc || 'msbuild' }}-cuda-${{ env.CUDA_VERSION }}-vulkan-${{ env.VULKAN_SDK_VERSION }}-msvc-${{ env.MSVC_TOOLS_VERSION }}
           cache-save: ${{ github.ref == 'refs/heads/develop' && matrix.is_release == true }}
       - uses: ./.github/actions/setup-compiler-cache
         with:
@@ -707,8 +707,8 @@ jobs:
           cache: true
           # rust-cache joins the target onto the workspace path, and CARGO_TARGET_DIR is D:\t
           cache-workspaces: ". -> ../../../t"
-          # whisper-rs-sys does not rebuild ggml when GGML_* or the GPU SDKs change, so each configuration needs its own cache
-          cache-key: cuda-vulkan${{ env.PURR_DESKTOP_TRANSCRIBE == 'on' && '-transcribe-backends' || '' }}-ggml-native-${{ env.GGML_NATIVE }}-crt-static-${{ env.CMAKE_GENERATOR_x86_64_pc_windows_msvc || 'msbuild' }}-cuda-${{ env.CUDA_VERSION }}-vulkan-${{ env.VULKAN_SDK_VERSION }}
+          # whisper-rs-sys does not rebuild ggml when GGML_*, the GPU SDKs or the MSVC toolset change, so each configuration needs its own cache
+          cache-key: cuda-vulkan${{ env.PURR_DESKTOP_TRANSCRIBE == 'on' && '-transcribe-backends' || '' }}-ggml-native-${{ env.GGML_NATIVE }}-crt-static-${{ env.CMAKE_GENERATOR_x86_64_pc_windows_msvc || 'msbuild' }}-cuda-${{ env.CUDA_VERSION }}-vulkan-${{ env.VULKAN_SDK_VERSION }}-msvc-${{ env.MSVC_TOOLS_VERSION }}
           cache-save: ${{ github.ref == 'refs/heads/develop' }}
       - uses: ./.github/actions/setup-dioxus
         with:

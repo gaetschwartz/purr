@@ -1,7 +1,8 @@
 name: Set up MSVC
 description: >
-  Point bindgen at Visual Studio's libclang, put MSBuild on the PATH and check that the
-  preinstalled Visual Studio is the one the build expects.
+  Point bindgen at Visual Studio's libclang, put MSBuild on the PATH, check that the
+  preinstalled Visual Studio is the one the build expects and export its default MSVC toolset
+  version as MSVC_TOOLS_VERSION.
 inputs:
   vs-major:
     description: Visual Studio major version the cmake crate must pick its generator from
@@ -25,6 +26,10 @@ runs:
         $libclang = "$($installation.installationPath)\VC\Tools\LLVM\x64\bin"
         if (-not (Test-Path "$libclang\libclang.dll")) { throw "libclang.dll not found in $libclang" }
         Add-Content $env:GITHUB_ENV "LIBCLANG_PATH=$libclang"
+        $toolsVersion = (Get-Content "$($installation.installationPath)\VC\Auxiliary\Build\Microsoft.VCToolsVersion.default.txt" -Raw).Trim()
+        if ($toolsVersion -notmatch '^\d+\.\d+\.\d+$') { throw "unexpected MSVC toolset version '$toolsVersion'" }
+        Write-Host "MSVC toolset $toolsVersion"
+        Add-Content $env:GITHUB_ENV "MSVC_TOOLS_VERSION=$toolsVersion"
         cmake --version
         $generator = "Visual Studio $env:VS_MAJOR"
         if (-not (cmake --help | Select-String -SimpleMatch $generator)) { throw "cmake has no '$generator' generator" }
