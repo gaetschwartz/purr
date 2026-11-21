@@ -543,7 +543,7 @@ jobs:
     name: cli (windows, ${{ matrix.backend == 'none' && 'cpu' || matrix.label || matrix.backend }})
     needs: [ffmpeg-windows]
     runs-on: windows-2025-vs2026
-    timeout-minutes: 120
+    timeout-minutes: 180
     permissions:
       contents: read
       actions: write
