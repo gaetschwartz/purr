@@ -47,6 +47,8 @@ jobs:
         with:
           triplet: x64-linux
       - uses: ./.github/actions/setup-rust
+        with:
+          targets: wasm32-unknown-unknown
       - uses: taiki-e/install-action@v2.90.3
         with:
           tool: cargo-nextest
