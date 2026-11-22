@@ -323,7 +323,7 @@ async fn real_model_cli_interrupt_known_length_leaves_part_and_exits_130() -> Te
     write_long_sample(&dir.path().join("long.wav"), 40).await?;
     let output = purr_in(
         dir.path(),
-        &["long.wav", "-f", "{stem}.txt", "--interrupt-after", "8000"],
+        &["long.wav", "-f", "{stem}.txt", "--interrupt-after", "25000"],
     )
     .await?;
     assert_eq!(output.status.code(), Some(130));
@@ -378,7 +378,7 @@ async fn real_model_cli_stop_on_unknown_length_completes_the_file() -> TestResul
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn real_model_cli_interrupt_between_inputs_leaves_the_rest_unstarted() -> TestResult {
+async fn real_model_cli_interrupt_at_the_start_leaves_the_second_input_unstarted() -> TestResult {
     let dir = workspace_with(&["a.wav", "b.wav"])?;
     let output = purr_in(
         dir.path(),
@@ -397,5 +397,26 @@ async fn real_model_cli_interrupt_between_inputs_leaves_the_rest_unstarted() -> 
     assert!(!dir.path().join("a.txt").exists());
     assert!(!dir.path().join("b.txt").exists());
     assert!(!dir.path().join("b.txt.part").exists());
+    let stderr = String::from_utf8(output.stderr)?;
+    let summary = stderr.lines().find(|line| {
+        *line == "Summary: 2 not started" || *line == "Summary: 1 interrupted, 1 not started"
+    });
+    assert!(summary.is_some(), "{stderr}");
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn real_model_cli_no_stream_stop_on_unknown_length_writes_what_arrived() -> TestResult {
+    let dir = TempDir::new()?;
+    let url = serve_live_sample().await?;
+    let output = purr_in(
+        dir.path(),
+        &[&url, "-S", "-f", "radio.txt", "--interrupt-after", "4000"],
+    )
+    .await?;
+    assert_eq!(output.status.code(), Some(0));
+
+    assert_eq!(file_names(dir.path())?, ["radio.txt"]);
+    assert_ne!(fs::read_to_string(dir.path().join("radio.txt"))?, "");
     Ok(())
 }
