@@ -73,6 +73,9 @@ jobs:
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-msvc
+        with:
+          vs-major: "18"
       - uses: ./.github/actions/setup-ffmpeg
         with:
           triplet: x64-windows-static
@@ -597,8 +600,9 @@ jobs:
           enabled: ${{ env.PURR_COMPILER_CACHE }}
           base-dir: ${{ env.CARGO_TARGET_DIR }}
       - name: Build the CLI
+        timeout-minutes: 140
         run: |
-          cargo build -p purr-cli --release --features static-ffmpeg${{ matrix.backend != 'none' && format(',{0}', matrix.backend) || '' }}${{ matrix.transcribe && ',transcribe' || '' }} --message-format=json-render-diagnostics > "$env:RUNNER_TEMP\cargo-messages.jsonl"
+          cargo build -vv -p purr-cli --release --features static-ffmpeg${{ matrix.backend != 'none' && format(',{0}', matrix.backend) || '' }}${{ matrix.transcribe && ',transcribe' || '' }} --message-format=json-render-diagnostics > "$env:RUNNER_TEMP\cargo-messages.jsonl"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Prepare CLI artifact
         run: |

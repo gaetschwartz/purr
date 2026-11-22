@@ -4,7 +4,7 @@ description: >
   In prepare mode, only check the cache and build and save it on a miss.
 inputs:
   triplet:
-    description: vcpkg triplet (part of the cache key on Windows only, where it selects the static CRT)
+    description: vcpkg triplet (part of the cache key on Windows only, where it selects the static CRT, together with the MSVC toolset version that setup-msvc exports)
     required: true
   prepare:
     description: "true: build and save the cache on a miss, without exporting anything"
@@ -21,12 +21,19 @@ inputs:
 runs:
   using: composite
   steps:
+    - name: Require the MSVC toolset version
+      if: runner.os == 'Windows' && env.MSVC_TOOLS_VERSION == ''
+      shell: pwsh
+      run: |
+        Write-Host '::error::MSVC_TOOLS_VERSION is not set; run setup-msvc before setup-ffmpeg'
+        exit 1
+
     - name: Restore the vcpkg binaries
       id: cache
       uses: actions/cache/restore@v6
       with:
         path: .vcpkg-cache
-        key: vcpkg-ffmpeg-${{ runner.os }}-${{ runner.os == 'Windows' && format('{0}-', inputs.triplet) || '' }}${{ inputs.vcpkg-commit }}
+        key: vcpkg-ffmpeg-${{ runner.os }}-${{ runner.os == 'Windows' && format('{0}-msvc-{1}-', inputs.triplet, env.MSVC_TOOLS_VERSION) || '' }}${{ inputs.vcpkg-commit }}
         lookup-only: ${{ inputs.prepare }}
 
     - name: Install the FFmpeg build tools

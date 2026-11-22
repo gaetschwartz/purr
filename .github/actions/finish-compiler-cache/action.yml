@@ -2,14 +2,15 @@ name: Finish the compiler cache
 description: >
   Closing steps of a job that ran setup-compiler-cache. Prints the ccache statistics and adds a hit
   rate table to the step summary. In the one job per OS that writes the cache, saves a new entry
-  when something was compiled and then deletes the older ones. Needs the actions: write permission
-  for the deletion. Run it with if: always(), before prune-rust-cache.
+  when something was compiled, whatever the outcome of the job, so a build cut short by its time
+  limit keeps its work, and then deletes the older ones. Needs the actions: write permission for
+  the deletion. Run it with if: always(), before prune-rust-cache.
 inputs:
   label:
     description: Name of the job in the step summary
     required: true
   job-status:
-    description: The job.status of the calling job
+    description: The job.status of the calling job. The Rust cache is only shrunk after a success
     required: true
   save:
     description: "true: this job is the writer of its OS and saves the entry"
@@ -32,7 +33,6 @@ runs:
       shell: bash
       env:
         LABEL: ${{ inputs.label }}
-        JOB_STATUS: ${{ inputs.job-status }}
         SAVE: ${{ inputs.save }}
       run: |
         set -euo pipefail
@@ -50,8 +50,6 @@ runs:
           reason="this job only restores the cache"
         elif [ "$GITHUB_REF" != "refs/heads/develop" ]; then
           reason="only develop saves the cache"
-        elif [ "$JOB_STATUS" != "success" ]; then
-          reason="the job did not succeed"
         elif [ "$misses" -eq 0 ]; then
           reason="nothing new was compiled, so the existing entry is kept"
         fi

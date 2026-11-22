@@ -60,6 +60,8 @@ The script only reads names in this list. The other build variants upload as `pu
 
 On Windows the `cmake` crate builds ggml with Ninja, set through `CMAKE_GENERATOR_x86_64_pc_windows_msvc`. That variable reaches only the `cmake` crate, not vcpkg. It takes the MSVC environment from the `cc` crate. Ninja runs nvcc on every core, while the Visual Studio generator compiles the CUDA sources one at a time.
 
+The Windows CLI build runs `cargo build -vv`, because cargo shows a build script's output only with it and the ggml builds run inside build scripts. Its step has its own time limit, shorter than the job's, so the compiler cache is still saved when a cold build does not finish. A cold build is not expected to finish in one run: after a new MSVC toolset every ggml object misses, and the cache fills over the following runs.
+
 Fallbacks:
 
 - Full CUDA toolkit: set `method: installer` on `setup-cuda-windows`, or `packages: cuda-toolkit` on `setup-cuda-linux`.
@@ -71,7 +73,7 @@ All caches share the repository's 10 GB limit. Over the limit, GitHub evicts the
 
 | Cache | Key | Saved by |
 |---|---|---|
-| vcpkg FFmpeg binaries | `vcpkg-ffmpeg-<os>-<vcpkg commit>`, plus the triplet on Windows | `ffmpeg (<os>)` on a miss |
+| vcpkg FFmpeg binaries | `vcpkg-ffmpeg-<os>-<vcpkg commit>`, plus the triplet and the MSVC toolset version on Windows | `ffmpeg (<os>)` on a miss |
 | dx | `dioxus-cli-<os>-<version>` | the first job that misses |
 | Rust (`Swatinem/rust-cache`): registry and `target`, including the ggml build of whisper-rs-sys | `v0-rust-<cache-key>-<job id>-<os>-<arch>-<environment hash>-<lockfile hash>`. The cache key holds the variant, `GGML_*`, CUDA and Vulkan versions, `crt-static` and the CMake generator on Windows. The environment hash covers the installed Rust toolchains and `CARGO*` variables, the lockfile hash `Cargo.lock` and the manifests. | `develop` only, by the jobs in the table below. Jobs on other refs restore `develop`'s cache. |
 | Compiler cache (ccache): the C, C++ and CUDA objects of ggml | `ccache-<os>-v1-<run id>-<run attempt>`, one family per OS | the one writer job per OS, on `develop`, see [Compiler cache](#compiler-cache) |
@@ -186,7 +188,7 @@ A key covers the compiler binary, the arguments (defines included), the preproce
 
 - Exactly one job per OS saves: `cli (linux, all)`, `cli (macos, metal)`, `cli (windows, cuda-vulkan)`. Every other job restores only. One writer cannot overwrite another's objects, and the entry does not depend on which job finishes first.
 - Key: `ccache-<os>-v1-<run id>-<run attempt>`. The restore key is the prefix `ccache-<os>-v1-`, so a lockfile, Rust or configuration change never misses. Change `v1` in `setup-compiler-cache` to start the cache over.
-- The writer saves only on `develop`, when the job succeeded and the statistics show a miss, meaning something was added. A run that only hits keeps the existing entry and its age.
+- The writer saves only on `develop`, whatever the outcome of the job, when the statistics show a miss, meaning something was added. A build cut short by its step time limit therefore keeps its objects, and the next run resumes from them. A run that only hits keeps the existing entry and its age.
 - After the save, `scripts/prune-rust-caches.sh compiler-cache` deletes the other entries of the family, only if it can list the new one. `prune caches` (`superseded`) clears any leftover.
 - A run cold in ccache but warm in the Rust cache compiles no ggml at all, so it never fills the compiler cache. To seed it, delete the writer's Rust cache entry (`gh cache delete`) and re-run: that cold run compiles ggml and saves the first entry.
 
