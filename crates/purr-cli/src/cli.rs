@@ -224,7 +224,7 @@ pub enum SysCommands {
 }
 
 /// Output format options
-#[derive(Clone, Debug, clap::ValueEnum)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum)]
 pub enum OutputFormat {
     /// Plain text output with optional timestamps
     Text,
