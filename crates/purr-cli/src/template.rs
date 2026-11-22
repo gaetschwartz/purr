@@ -3,12 +3,11 @@
 use crate::cli::OutputFormat;
 use crate::inputs::{InputItem, InputSource};
 use percent_encoding::percent_decode_str;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use strfmt::{FmtError, Formatter};
 use url::Url;
 
 const ALLOWED: &str = "{stem}, {name}, {dir}, {ext}, {index}";
-const INVALID_NAME_CHARS: [char; 9] = ['/', '\\', ':', '*', '?', '"', '<', '>', '|'];
 
 #[oopsie::oopsie]
 pub enum OutputTemplateError {
@@ -73,12 +72,24 @@ impl Placeholder {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+enum Form {
+    Literal(PathBuf),
+    Pattern(String),
+    InDirectory(PathBuf),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OutputTemplate {
-    text: String,
-    literal: Option<PathBuf>,
+    form: Form,
 }
 
 impl OutputTemplate {
+    pub fn in_directory(directory: PathBuf) -> Self {
+        Self {
+            form: Form::InDirectory(directory),
+        }
+    }
+
     pub fn parse(text: &str) -> Result<Self, OutputTemplateError> {
         let mut unknown = None;
         let mut placeholders = 0usize;
@@ -92,8 +103,11 @@ impl OutputTemplate {
         });
         match outcome {
             Ok(unescaped) => Ok(Self {
-                text: text.to_owned(),
-                literal: (placeholders == 0).then(|| PathBuf::from(unescaped)),
+                form: if placeholders == 0 {
+                    Form::Literal(PathBuf::from(unescaped))
+                } else {
+                    Form::Pattern(text.to_owned())
+                },
             }),
             Err(source) => Err(unknown.map_or_else(
                 || OutputTemplateError::Malformed {
@@ -109,11 +123,17 @@ impl OutputTemplate {
     }
 
     pub fn has_placeholders(&self) -> bool {
-        self.literal.is_none()
+        match &self.form {
+            Form::Literal(_) => false,
+            Form::Pattern(_) | Form::InDirectory(_) => true,
+        }
     }
 
     pub fn literal(&self) -> Option<&Path> {
-        self.literal.as_deref()
+        match &self.form {
+            Form::Literal(path) => Some(path),
+            Form::Pattern(_) | Form::InDirectory(_) => None,
+        }
     }
 
     pub fn render(
@@ -121,26 +141,41 @@ impl OutputTemplate {
         item: &InputItem,
         format: OutputFormat,
     ) -> Result<PathBuf, OutputTemplateError> {
-        let mut failure = None;
-        let outcome = strfmt::strfmt_map(&self.text, |mut formatter: Formatter| {
-            let Some(placeholder) = Placeholder::from_key(formatter.key) else {
-                return Err(FmtError::KeyError(formatter.key.to_owned()));
-            };
-            match value(placeholder, item, format) {
-                Ok(text) => formatter.str(&text),
-                Err(error) => {
-                    failure = Some(error);
-                    Err(FmtError::KeyError(placeholder.key().to_owned()))
-                }
+        match &self.form {
+            Form::Literal(path) => Ok(path.clone()),
+            Form::Pattern(text) => render_pattern(text, item, format),
+            Form::InDirectory(directory) => {
+                let stem = value(Placeholder::Stem, item, format)?;
+                Ok(directory.join(format!("{stem}.{}", extension(format))))
             }
-        });
-        match outcome {
-            Ok(rendered) => Ok(PathBuf::from(rendered)),
-            Err(source) => Err(failure.unwrap_or_else(|| OutputTemplateError::Malformed {
-                template: self.text.clone(),
-                source,
-            })),
         }
+    }
+}
+
+fn render_pattern(
+    text: &str,
+    item: &InputItem,
+    format: OutputFormat,
+) -> Result<PathBuf, OutputTemplateError> {
+    let mut failure = None;
+    let outcome = strfmt::strfmt_map(text, |mut formatter: Formatter| {
+        let Some(placeholder) = Placeholder::from_key(formatter.key) else {
+            return Err(FmtError::KeyError(formatter.key.to_owned()));
+        };
+        match value(placeholder, item, format) {
+            Ok(text) => formatter.str(&text),
+            Err(error) => {
+                failure = Some(error);
+                Err(FmtError::KeyError(placeholder.key().to_owned()))
+            }
+        }
+    });
+    match outcome {
+        Ok(rendered) => Ok(PathBuf::from(rendered)),
+        Err(source) => Err(failure.unwrap_or_else(|| OutputTemplateError::Malformed {
+            template: text.to_owned(),
+            source,
+        })),
     }
 }
 
@@ -215,12 +250,11 @@ fn directory(item: &InputItem) -> Result<String, OutputTemplateError> {
 fn url_file_name(url: &Url) -> Option<String> {
     let segment = url.path_segments()?.next_back()?;
     let decoded = percent_decode_str(segment).decode_utf8().ok()?;
-    let usable = !decoded.is_empty()
-        && decoded != "."
-        && decoded != ".."
-        && !decoded.contains(INVALID_NAME_CHARS)
-        && !decoded.chars().any(char::is_control);
-    usable.then(|| decoded.into_owned())
+    let mut components = Path::new(decoded.as_ref()).components();
+    match (components.next(), components.next()) {
+        (Some(Component::Normal(name)), None) => name.to_str().map(str::to_owned),
+        _ => None,
+    }
 }
 
 #[cfg(test)]
@@ -411,6 +445,30 @@ mod tests {
                 .render(&file_item(1, "a.wav"), OutputFormat::Text)
                 .unwrap(),
             PathBuf::from("out/all.txt")
+        );
+    }
+
+    #[test]
+    fn in_directory_renders_stem_and_ext_inside_it() {
+        let template = OutputTemplate::in_directory(PathBuf::from("out {x}"));
+        assert!(template.has_placeholders());
+        assert_eq!(template.literal(), None);
+        assert_eq!(
+            template
+                .render(&file_item(1, "sub/a.b.wav"), OutputFormat::Srt)
+                .unwrap(),
+            PathBuf::from("out {x}").join("a.b.srt")
+        );
+    }
+
+    #[test]
+    fn in_directory_needs_a_name() {
+        let error = OutputTemplate::in_directory(PathBuf::from("out"))
+            .render(&url_item(1, "https://h/"), OutputFormat::Text)
+            .unwrap_err();
+        assert!(
+            matches!(error, OutputTemplateError::NameNeeded { .. }),
+            "{error:?}"
         );
     }
 

@@ -42,7 +42,6 @@ phf = { version = "0.14.0", features = ["macros"] }
 serde = { version = "1.0.229", features = ["derive"] }
 purr-engine-transcribe = { version = "0.1.0", path = "../purr-engine-transcribe", optional = true }
 glob = "0.3.4"
-walkdir = "2.5"
 strfmt = "0.2.6"
 url = "2.5"
 percent-encoding = "2.3.2"

@@ -1,17 +1,8 @@
 #![cfg_attr(not(test), expect(dead_code, reason = "used by the batch run"))]
 
-use purr_core::is_valid_url;
 use std::io;
 use std::path::{Path, PathBuf};
 use url::Url;
-use walkdir::WalkDir;
-
-const MEDIA_EXTENSIONS: &[&str] = &[
-    "wav", "mp3", "flac", "ogg", "oga", "opus", "m4a", "m4b", "aac", "wma", "aiff", "aif", "amr",
-    "mp4", "m4v", "mkv", "webm", "mov", "avi",
-];
-
-const GLOB_META: [char; 3] = ['*', '?', '['];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InputForm {
@@ -53,14 +44,9 @@ pub enum InputsError {
     #[oopsie(
         "Not a file path or URL: '{input}'",
         code = "purr::input::invalid",
-        help = "Pass an audio file path, a wildcard, a directory or an http(s) URL"
+        help = "Pass an audio file path, a wildcard or an http(s) URL"
     )]
     Invalid { input: String },
-    #[oopsie("Not a valid URL: '{input}'", code = "purr::input::invalid_url")]
-    InvalidUrl {
-        input: String,
-        source: url::ParseError,
-    },
     #[oopsie(
         "Not a valid wildcard: '{pattern}'",
         code = "purr::input::invalid_pattern"
@@ -87,24 +73,9 @@ pub enum InputsError {
         "{} is a directory",
         path.display(),
         code = "purr::input::directory",
-        help = "Add --recursive to transcribe the audio and video files in it"
+        help = "Name the files with a wildcard, such as 'dir/*.wav', or 'dir/**/*.mp3' to include subdirectories"
     )]
-    DirectoryNeedsRecursive { path: PathBuf },
-    #[oopsie(
-        "No audio or video file in {}",
-        path.display(),
-        code = "purr::input::empty_directory"
-    )]
-    EmptyDirectory { path: PathBuf },
-    #[oopsie(
-        "Cannot read the directory {}",
-        path.display(),
-        code = "purr::input::directory_unreadable"
-    )]
-    WalkDirectory {
-        path: PathBuf,
-        source: walkdir::Error,
-    },
+    IsDirectory { path: PathBuf },
     #[oopsie(
         "Cannot read the batch file {}",
         path.display(),
@@ -128,23 +99,18 @@ enum Entry {
     Url(Url),
     Plain(PathBuf),
     Pattern(String),
-    Directory(PathBuf),
 }
 
 impl Entry {
     fn forces_batch(&self) -> bool {
         match self {
             Self::Url(_) | Self::Plain(_) => false,
-            Self::Pattern(_) | Self::Directory(_) => true,
+            Self::Pattern(_) => true,
         }
     }
 }
 
-pub fn expand(
-    arguments: &[String],
-    batch_file: Option<&BatchFile>,
-    recursive: bool,
-) -> Result<Inputs, InputsError> {
+pub fn expand(arguments: &[String], batch_file: Option<&BatchFile>) -> Result<Inputs, InputsError> {
     let mut texts: Vec<String> = arguments.to_vec();
     if let Some(batch_file) = batch_file {
         texts.extend(read_batch_file(batch_file)?);
@@ -162,15 +128,6 @@ pub fn expand(
                 for path in expand_pattern(&pattern)? {
                     let display = path.display().to_string();
                     sources.push((InputSource::File(path), display));
-                }
-            }
-            Entry::Directory(path) => {
-                if !recursive {
-                    return Err(InputsError::DirectoryNeedsRecursive { path });
-                }
-                for file in expand_directory(&path)? {
-                    let display = file.display().to_string();
-                    sources.push((InputSource::File(file), display));
                 }
             }
         }
@@ -203,28 +160,27 @@ fn classify(text: &str) -> Result<Entry, InputsError> {
             input: text.to_owned(),
         });
     }
-    if is_valid_url(text) {
-        let url = Url::parse(text).map_err(|source| InputsError::InvalidUrl {
-            input: text.to_owned(),
-            source,
-        })?;
-        return Ok(Entry::Url(url));
-    }
-    let lowered = text.to_ascii_lowercase();
-    if lowered.starts_with("http://") || lowered.starts_with("https://") {
-        return Err(InputsError::Invalid {
-            input: text.to_owned(),
-        });
+    if let Ok(url) = Url::parse(text) {
+        match url.scheme() {
+            "http" | "https" => return Ok(Entry::Url(url)),
+            _ => {}
+        }
     }
 
     let path = Path::new(text);
     if path.is_dir() {
-        Ok(Entry::Directory(path.to_path_buf()))
-    } else if text.contains(GLOB_META) && !path.exists() {
+        Err(InputsError::IsDirectory {
+            path: path.to_path_buf(),
+        })
+    } else if is_wildcard(text) && !path.exists() {
         Ok(Entry::Pattern(text.to_owned()))
     } else {
         Ok(Entry::Plain(path.to_path_buf()))
     }
+}
+
+fn is_wildcard(text: &str) -> bool {
+    glob::Pattern::escape(text) != text
 }
 
 fn read_batch_file(batch_file: &BatchFile) -> Result<Vec<String>, InputsError> {
@@ -238,13 +194,18 @@ fn read_batch_file(batch_file: &BatchFile) -> Result<Vec<String>, InputsError> {
             })?
         }
     };
-    Ok(content
+    Ok(batch_file_lines(&content))
+}
+
+/// The batch file format: one input per line; blank lines and `#` lines are ignored.
+fn batch_file_lines(content: &str) -> Vec<String> {
+    content
         .trim_start_matches('\u{feff}')
         .lines()
         .map(str::trim)
         .filter(|line| !line.is_empty() && !line.starts_with('#'))
         .map(str::to_owned)
-        .collect())
+        .collect()
 }
 
 fn expand_pattern(pattern: &str) -> Result<Vec<PathBuf>, InputsError> {
@@ -276,35 +237,6 @@ fn expand_pattern(pattern: &str) -> Result<Vec<PathBuf>, InputsError> {
     }
     matches.sort();
     Ok(matches)
-}
-
-fn expand_directory(directory: &Path) -> Result<Vec<PathBuf>, InputsError> {
-    let mut files = Vec::new();
-    for entry in WalkDir::new(directory).sort_by_file_name() {
-        let entry = entry.map_err(|source| InputsError::WalkDirectory {
-            path: directory.to_path_buf(),
-            source,
-        })?;
-        if entry.file_type().is_file() && has_media_extension(entry.path()) {
-            files.push(entry.into_path());
-        }
-    }
-    if files.is_empty() {
-        return Err(InputsError::EmptyDirectory {
-            path: directory.to_path_buf(),
-        });
-    }
-    Ok(files)
-}
-
-fn has_media_extension(path: &Path) -> bool {
-    path.extension()
-        .and_then(|extension| extension.to_str())
-        .is_some_and(|extension| {
-            MEDIA_EXTENSIONS
-                .iter()
-                .any(|known| known.eq_ignore_ascii_case(extension))
-        })
 }
 
 #[cfg(test)]
@@ -344,7 +276,7 @@ mod tests {
 
     #[test]
     fn one_plain_path_is_single_form() {
-        let inputs = expand(&args(&["missing.wav"]), None, false).unwrap();
+        let inputs = expand(&args(&["missing.wav"]), None).unwrap();
         assert_eq!(inputs.form, InputForm::Single);
         assert_eq!(
             inputs.items,
@@ -358,7 +290,7 @@ mod tests {
 
     #[test]
     fn dotted_file_name_is_a_path() {
-        let inputs = expand(&args(&["my.recording.v2.wav"]), None, false).unwrap();
+        let inputs = expand(&args(&["my.recording.v2.wav"]), None).unwrap();
         assert_eq!(
             files_of(&inputs),
             vec![PathBuf::from("my.recording.v2.wav")]
@@ -367,7 +299,7 @@ mod tests {
 
     #[test]
     fn two_arguments_are_batch_form() {
-        let inputs = expand(&args(&["a.wav", "b.wav"]), None, false).unwrap();
+        let inputs = expand(&args(&["a.wav", "b.wav"]), None).unwrap();
         assert_eq!(inputs.form, InputForm::Batch);
         assert_eq!(inputs.items.len(), 2);
     }
@@ -376,7 +308,7 @@ mod tests {
     fn wildcard_matching_one_file_is_still_batch_form() {
         let dir = TempDir::new().unwrap();
         let only = touch(dir.path(), "only.wav");
-        let inputs = expand(&[pattern_in(dir.path(), "*.wav")], None, false).unwrap();
+        let inputs = expand(&[pattern_in(dir.path(), "*.wav")], None).unwrap();
         assert_eq!(inputs.form, InputForm::Batch);
         assert_eq!(files_of(&inputs), vec![only]);
     }
@@ -388,7 +320,7 @@ mod tests {
         let c = touch(dir.path(), "c.wav");
         let a = touch(dir.path(), "a.wav");
         touch(dir.path(), "notes.txt");
-        let inputs = expand(&[pattern_in(dir.path(), "*.wav")], None, false).unwrap();
+        let inputs = expand(&[pattern_in(dir.path(), "*.wav")], None).unwrap();
         assert_eq!(files_of(&inputs), vec![a, b, c]);
     }
 
@@ -397,7 +329,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let file = touch(dir.path(), "a.wav");
         std::fs::create_dir(dir.path().join("sub.wav")).unwrap();
-        let inputs = expand(&[pattern_in(dir.path(), "*.wav")], None, false).unwrap();
+        let inputs = expand(&[pattern_in(dir.path(), "*.wav")], None).unwrap();
         assert_eq!(files_of(&inputs), vec![file]);
     }
 
@@ -405,7 +337,7 @@ mod tests {
     fn wildcard_without_matches_is_an_error() {
         let dir = TempDir::new().unwrap();
         touch(dir.path(), "a.txt");
-        let error = expand(&[pattern_in(dir.path(), "*.wav")], None, false).unwrap_err();
+        let error = expand(&[pattern_in(dir.path(), "*.wav")], None).unwrap_err();
         assert!(matches!(error, InputsError::NoMatch { .. }), "{error:?}");
     }
 
@@ -413,76 +345,51 @@ mod tests {
     fn existing_file_with_bracket_in_its_name_is_a_plain_path() {
         let dir = TempDir::new().unwrap();
         let live = touch(dir.path(), "song [live].wav");
-        let inputs = expand(&[live.display().to_string()], None, false).unwrap();
+        let inputs = expand(&[live.display().to_string()], None).unwrap();
         assert_eq!(inputs.form, InputForm::Single);
         assert_eq!(files_of(&inputs), vec![live]);
     }
 
     #[test]
-    fn directory_without_recursive_is_an_error() {
+    fn double_star_recurses_into_subdirectories() {
+        let dir = TempDir::new().unwrap();
+        let top = touch(dir.path(), "a.mp3");
+        let deep = touch(dir.path(), "sub/deep/b.mp3");
+        let nested = touch(dir.path(), "sub/c.mp3");
+        touch(dir.path(), "sub/cover.jpg");
+        let mut expected = vec![top, deep, nested];
+        expected.sort();
+        let inputs = expand(&[pattern_in(dir.path(), "**/*.mp3")], None).unwrap();
+        assert_eq!(inputs.form, InputForm::Batch);
+        assert_eq!(files_of(&inputs), expected);
+    }
+
+    #[test]
+    fn directory_argument_is_an_error() {
         let dir = TempDir::new().unwrap();
         touch(dir.path(), "a.wav");
-        let error = expand(&[dir.path().display().to_string()], None, false).unwrap_err();
+        let error = expand(&[dir.path().display().to_string()], None).unwrap_err();
         assert!(
-            matches!(error, InputsError::DirectoryNeedsRecursive { .. }),
+            matches!(&error, InputsError::IsDirectory { path } if path == dir.path()),
             "{error:?}"
         );
     }
 
     #[test]
-    fn recursive_directory_yields_audio_and_video_files_only() {
+    fn directory_line_in_a_batch_file_is_an_error() {
         let dir = TempDir::new().unwrap();
-        let wanted: Vec<PathBuf> = [
-            "a.wav",
-            "b.MP3",
-            "sub/c.flac",
-            "sub/d.ogg",
-            "sub/deep/e.opus",
-            "f.m4a",
-            "g.mp4",
-            "h.mkv",
-            "i.webm",
-            "j.mov",
-            "k.avi",
-            "l.aac",
-            "m.wma",
-            "n.aiff",
-            "o.amr",
-            "p.oga",
-            "q.m4b",
-            "r.m4v",
-            "s.aif",
-        ]
-        .iter()
-        .map(|name| touch(dir.path(), name))
-        .collect();
-        touch(dir.path(), "notes.txt");
-        touch(dir.path(), "sub/cover.jpg");
-        touch(dir.path(), "noextension");
-
-        let inputs = expand(&[dir.path().display().to_string()], None, true).unwrap();
-        let mut found = files_of(&inputs);
-        let mut expected = wanted;
-        found.sort();
-        expected.sort();
-        assert_eq!(inputs.form, InputForm::Batch);
-        assert_eq!(found, expected);
-    }
-
-    #[test]
-    fn recursive_directory_without_media_is_an_error() {
-        let dir = TempDir::new().unwrap();
-        touch(dir.path(), "notes.txt");
-        let error = expand(&[dir.path().display().to_string()], None, true).unwrap_err();
+        let list = dir.path().join("list.txt");
+        std::fs::write(&list, format!("{}\n", dir.path().display())).unwrap();
+        let error = expand(&[], Some(&BatchFile::Path(list))).unwrap_err();
         assert!(
-            matches!(error, InputsError::EmptyDirectory { .. }),
+            matches!(error, InputsError::IsDirectory { .. }),
             "{error:?}"
         );
     }
 
     #[test]
     fn url_argument_is_kept_as_url() {
-        let inputs = expand(&args(&["https://example.com/live.mp3"]), None, false).unwrap();
+        let inputs = expand(&args(&["https://example.com/live.mp3"]), None).unwrap();
         assert_eq!(inputs.form, InputForm::Single);
         assert_eq!(
             inputs.items,
@@ -503,7 +410,7 @@ mod tests {
             "\u{feff}# first\r\n\r\na.wav\n   \n  # indented comment\n  https://example.com/b.mp3  \r\nc.wav\n",
         )
         .unwrap();
-        let inputs = expand(&[], Some(&BatchFile::Path(list)), false).unwrap();
+        let inputs = expand(&[], Some(&BatchFile::Path(list))).unwrap();
         assert_eq!(inputs.form, InputForm::Batch);
         assert_eq!(
             inputs
@@ -520,7 +427,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let list = dir.path().join("list.txt");
         std::fs::write(&list, "a.wav\n").unwrap();
-        let inputs = expand(&[], Some(&BatchFile::Path(list)), false).unwrap();
+        let inputs = expand(&[], Some(&BatchFile::Path(list))).unwrap();
         assert_eq!(inputs.form, InputForm::Batch);
     }
 
@@ -531,7 +438,7 @@ mod tests {
         let b = touch(dir.path(), "b.wav");
         let list = dir.path().join("list.txt");
         std::fs::write(&list, format!("{}\n", pattern_in(dir.path(), "*.wav"))).unwrap();
-        let inputs = expand(&[], Some(&BatchFile::Path(list)), false).unwrap();
+        let inputs = expand(&[], Some(&BatchFile::Path(list))).unwrap();
         assert_eq!(files_of(&inputs), vec![a, b]);
     }
 
@@ -540,7 +447,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let list = dir.path().join("list.txt");
         std::fs::write(&list, "b.wav\n").unwrap();
-        let inputs = expand(&args(&["a.wav"]), Some(&BatchFile::Path(list)), false).unwrap();
+        let inputs = expand(&args(&["a.wav"]), Some(&BatchFile::Path(list))).unwrap();
         assert_eq!(
             files_of(&inputs),
             vec![PathBuf::from("a.wav"), PathBuf::from("b.wav")]
@@ -552,19 +459,14 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let list = dir.path().join("list.txt");
         std::fs::write(&list, "# nothing here\n\n").unwrap();
-        let error = expand(&[], Some(&BatchFile::Path(list)), false).unwrap_err();
+        let error = expand(&[], Some(&BatchFile::Path(list))).unwrap_err();
         assert!(matches!(error, InputsError::NoInputs), "{error:?}");
     }
 
     #[test]
     fn missing_batch_file_is_an_error() {
         let dir = TempDir::new().unwrap();
-        let error = expand(
-            &[],
-            Some(&BatchFile::Path(dir.path().join("absent.txt"))),
-            false,
-        )
-        .unwrap_err();
+        let error = expand(&[], Some(&BatchFile::Path(dir.path().join("absent.txt")))).unwrap_err();
         assert!(
             matches!(error, InputsError::ReadBatchFile { .. }),
             "{error:?}"
@@ -573,7 +475,7 @@ mod tests {
 
     #[test]
     fn no_arguments_and_no_batch_file_is_an_error() {
-        let error = expand(&[], None, false).unwrap_err();
+        let error = expand(&[], None).unwrap_err();
         assert!(matches!(error, InputsError::NoInputs), "{error:?}");
     }
 
@@ -589,7 +491,6 @@ mod tests {
                 "https://example.com/z.mp3".to_owned(),
             ],
             None,
-            false,
         )
         .unwrap();
         assert_eq!(
@@ -603,9 +504,9 @@ mod tests {
     }
 
     #[test]
-    fn neither_url_nor_path_is_an_error() {
-        for text in ["http://", "https://exa mple.com/a.mp3", "   ", ""] {
-            let error = expand(&args(&[text]), None, false).unwrap_err();
+    fn blank_argument_is_an_error() {
+        for text in ["   ", ""] {
+            let error = expand(&args(&[text]), None).unwrap_err();
             assert!(
                 matches!(error, InputsError::Invalid { .. }),
                 "{text:?}: {error:?}"
@@ -622,7 +523,7 @@ mod tests {
             "{}\\*.wav",
             dir.path().display().to_string().replace('/', "\\")
         );
-        let inputs = expand(&[pattern], None, false).unwrap();
+        let inputs = expand(&[pattern], None).unwrap();
         assert_eq!(files_of(&inputs), vec![a]);
     }
 
@@ -631,7 +532,7 @@ mod tests {
     fn wildcard_matching_ignores_case_on_windows() {
         let dir = TempDir::new().unwrap();
         let loud = touch(dir.path(), "LOUD.WAV");
-        let inputs = expand(&[pattern_in(dir.path(), "*.wav")], None, false).unwrap();
+        let inputs = expand(&[pattern_in(dir.path(), "*.wav")], None).unwrap();
         assert_eq!(files_of(&inputs), vec![loud]);
     }
 }

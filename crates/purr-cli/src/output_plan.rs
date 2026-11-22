@@ -4,6 +4,8 @@ use crate::cli::OutputFormat;
 use crate::inputs::{InputForm, Inputs};
 use crate::template::{OutputTemplate, OutputTemplateError};
 use std::collections::HashMap;
+use std::ffi::{OsStr, OsString};
+use std::hash::{Hash, Hasher};
 use std::path::{Component, Path, PathBuf};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -109,7 +111,7 @@ pub fn plan(
         });
     };
 
-    let template = OutputTemplate::parse(&template_text(file))?;
+    let template = output_template(file)?;
     if merge {
         let Some(path) = template.literal() else {
             return Err(OutputPlanError::MergeWithTemplate);
@@ -127,10 +129,10 @@ pub fn plan(
     }
 
     let mut paths = Vec::with_capacity(inputs.items.len());
-    let mut taken: HashMap<Vec<String>, usize> = HashMap::new();
+    let mut taken: HashMap<CollisionKey, usize> = HashMap::new();
     for (position, item) in inputs.items.iter().enumerate() {
         let path = template.render(item, format)?;
-        if let Some(earlier) = taken.insert(collision_key(&path), position)
+        if let Some(earlier) = taken.insert(CollisionKey::new(&path), position)
             && let Some(first) = inputs.items.get(earlier)
         {
             return Err(OutputPlanError::Collision {
@@ -158,32 +160,59 @@ pub fn plan(
     })
 }
 
-fn template_text(file: &str) -> String {
-    let is_directory = file.ends_with(['/', '\\']) || Path::new(file).is_dir();
-    if !is_directory {
-        return file.to_owned();
-    }
-    let escaped = file.replace('{', "{{").replace('}', "}}");
-    let separator = if file.ends_with(['/', '\\']) {
-        ""
+fn output_template(file: &str) -> Result<OutputTemplate, OutputTemplateError> {
+    let path = Path::new(file);
+    if path.is_dir() {
+        Ok(OutputTemplate::in_directory(path.to_path_buf()))
     } else {
-        std::path::MAIN_SEPARATOR_STR
-    };
-    format!("{escaped}{separator}{{stem}}.{{ext}}")
+        OutputTemplate::parse(file)
+    }
 }
 
-fn collision_key(path: &Path) -> Vec<String> {
-    path.components()
-        .filter(|component| !matches!(component, Component::CurDir))
-        .map(|component| {
-            let text = component.as_os_str().to_string_lossy();
+#[derive(Debug, Eq)]
+struct CollisionKey(Vec<OsString>);
+
+impl CollisionKey {
+    fn new(path: &Path) -> Self {
+        Self(
+            path.components()
+                .filter(|component| !matches!(component, Component::CurDir))
+                .map(|component| component.as_os_str().to_owned())
+                .collect(),
+        )
+    }
+}
+
+impl PartialEq for CollisionKey {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.len() == other.0.len()
+            && self
+                .0
+                .iter()
+                .zip(&other.0)
+                .all(|(left, right)| names_match(left, right))
+    }
+}
+
+impl Hash for CollisionKey {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        for name in &self.0 {
+            let bytes = name.as_encoded_bytes();
             if cfg!(windows) {
-                text.to_lowercase()
+                bytes.to_ascii_lowercase().hash(state);
             } else {
-                text.into_owned()
+                bytes.hash(state);
             }
-        })
-        .collect()
+        }
+    }
+}
+
+fn names_match(left: &OsStr, right: &OsStr) -> bool {
+    if cfg!(windows) {
+        left.eq_ignore_ascii_case(right)
+    } else {
+        left == right
+    }
 }
 
 #[cfg(test)]
@@ -318,22 +347,35 @@ mod tests {
     }
 
     #[test]
-    fn trailing_separator_means_stem_and_ext_inside_it() {
-        let plan = plan(
+    fn only_an_existing_directory_is_a_directory() {
+        let error = plan(
             &batch(&["a.wav", "b.wav"]),
             OutputFormat::Json,
             Some("out/"),
             false,
             false,
         )
-        .unwrap();
-        assert_eq!(
-            plan.sink,
-            Sink::PerInput(vec![
-                PathBuf::from("out/a.json"),
-                PathBuf::from("out/b.json")
-            ])
+        .unwrap_err();
+        assert!(
+            matches!(error, OutputPlanError::PlaceholderlessFile),
+            "{error:?}"
         );
+    }
+
+    #[test]
+    fn directory_with_braces_in_its_name_is_not_a_template() {
+        let dir = TempDir::new().unwrap();
+        let braced = dir.path().join("{x} out");
+        std::fs::create_dir(&braced).unwrap();
+        let plan = plan(
+            &batch(&["a.wav"]),
+            OutputFormat::Text,
+            Some(&braced.display().to_string()),
+            false,
+            false,
+        )
+        .unwrap();
+        assert_eq!(plan.sink, Sink::PerInput(vec![braced.join("a.txt")]));
     }
 
     #[test]
