@@ -1,6 +1,7 @@
 //! Whisper UI CLI - Audio transcription command-line interface
 #![deny(clippy::print_stdout, clippy::print_stderr, clippy::dbg_macro)]
 
+mod bar;
 mod batch;
 mod build_info;
 mod cli;

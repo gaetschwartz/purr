@@ -223,6 +223,34 @@ async fn real_model_cli_single_form_output_file_is_written_whole() -> TestResult
     Ok(())
 }
 
+fn headers_and_body(stdout: &str) -> (Vec<&str>, String) {
+    let (headers, body): (Vec<&str>, Vec<&str>) = stdout
+        .lines()
+        .filter(|line| !line.is_empty())
+        .partition(|line| line.starts_with("==> "));
+    (headers, body.join(" "))
+}
+
+#[tokio::test]
+async fn real_model_cli_batch_with_progress_disabled_matches_default_output() -> TestResult {
+    let dir = workspace_with(&["a.wav", "b.wav"])?;
+    let default = purr_in(dir.path(), &["a.wav", "b.wav"]).await?;
+    let disabled = purr_in(dir.path(), &["a.wav", "b.wav", "--no-progress"]).await?;
+    assert_eq!(default.status.code(), Some(0));
+    assert_eq!(disabled.status.code(), Some(0));
+
+    let default = String::from_utf8(default.stdout)?;
+    let disabled = String::from_utf8(disabled.stdout)?;
+    let (default_headers, default_body) = headers_and_body(&default);
+    let (disabled_headers, disabled_body) = headers_and_body(&disabled);
+    assert_eq!(default_headers, ["==> a.wav <==", "==> b.wav <=="]);
+    assert_eq!(disabled_headers, default_headers);
+    purr_golden::assert_text_close(&default_body, &disabled_body, 0.0);
+    let golden = golden_text()?;
+    purr_golden::assert_text_close(&format!("{golden} {golden}"), &default_body, 0.0);
+    Ok(())
+}
+
 const SAMPLE_RATE: u32 = 16_000;
 const OPEN_ENDED: u32 = 0xFFFF_FFFF;
 

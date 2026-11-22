@@ -1,3 +1,4 @@
+use crate::bar::{Bars, Plan, Surface};
 use crate::cli::{Cli, OutputFormat};
 use crate::download_prompt::Prompting;
 use crate::error::{CliError, CliResult};
@@ -8,9 +9,8 @@ use crate::output_plan::{OutputPlan, Sink};
 use crate::render::{self, Layout, Rendering};
 use crate::theme::Themed as _;
 use crate::writer::PartFile;
-use crate::{errorln, output, progress, result, setup_config, stats, statusln};
+use crate::{errorln, output, result, setup_config, stats, statusln};
 use futures::StreamExt as _;
-use indicatif::{ProgressBar, ProgressFinish, ProgressStyle};
 use purr_common::platform::ChunkKind;
 use purr_core::accel::report::AccelReport;
 use purr_core::error::Error as CoreError;
@@ -29,6 +29,8 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use tokio::sync::watch;
+use tokio::task::JoinHandle;
 use tracing::{debug, info};
 
 enum Destination {
@@ -40,7 +42,6 @@ enum Destination {
 struct Job {
     item: InputItem,
     destination: Destination,
-    length: SourceLength,
     skipped: bool,
 }
 
@@ -48,6 +49,7 @@ struct Context<'a> {
     cli: &'a Cli,
     run: RunConfig,
     show_bar: bool,
+    bars: Option<Bars>,
     interrupt: Interrupt,
 }
 
@@ -77,24 +79,31 @@ pub async fn run(
     }
 
     let OutputPlan { sink, skipped } = plan;
-    let sources: Vec<Option<PathBuf>> = items
-        .iter()
-        .enumerate()
-        .map(|(position, item)| match &item.source {
-            InputSource::File(path) if !skipped.contains(&position) => Some(path.clone()),
-            InputSource::File(_) | InputSource::Url(_) => None,
-        })
-        .collect();
-    let probing = tokio::task::spawn_blocking(move || probe_lengths(&sources));
+    let show_bar = !cli.no_progress && output::is_interactive();
+    let probing = show_bar.then(|| {
+        let sources: Vec<Option<PathBuf>> = items
+            .iter()
+            .enumerate()
+            .map(|(position, item)| match &item.source {
+                InputSource::File(path) if !skipped.contains(&position) => Some(path.clone()),
+                InputSource::File(_) | InputSource::Url(_) => None,
+            })
+            .collect();
+        start_probes(sources)
+    });
     let mut loaded = LoadedModel::load(&model, &config, engines).await?;
-    let lengths = if probing.is_finished() {
-        probing.await.map_err(|source| CoreError::TaskJoin {
-            task: "input probing",
-            source,
-        })?
-    } else {
-        debug!("Probing was still running when the model was ready");
-        vec![SourceLength::Unknown; items.len()]
+    let (bars, probing) = match probing {
+        Some((probes, handle)) => {
+            let plan = Plan {
+                items: &items,
+                skipped: &skipped,
+                form,
+                probes,
+                duration: cli.duration,
+            };
+            (Some(Bars::new(plan, Surface::terminal())?), Some(handle))
+        }
+        None => (None, None),
     };
 
     let destinations: Vec<Destination> = match &sink {
@@ -106,12 +115,10 @@ pub async fn run(
         .into_iter()
         .enumerate()
         .zip(destinations)
-        .zip(lengths)
-        .map(|(((position, item), destination), length)| Job {
+        .map(|((position, item), destination)| Job {
             skipped: skipped.contains(&position),
             item,
             destination,
-            length,
         })
         .collect();
 
@@ -129,7 +136,8 @@ pub async fn run(
             debug!("Streaming transcription");
             config
         },
-        show_bar: cli.progress && output::is_interactive(),
+        show_bar,
+        bars,
         interrupt,
     };
     let mut destination = Output::new(cli, context.show_bar, sink);
@@ -139,7 +147,7 @@ pub async fn run(
     let mut entries = Vec::with_capacity(total);
     let mut audio_seconds = 0.0;
     let mut halted = false;
-    for job in jobs {
+    for (position, job) in jobs.into_iter().enumerate() {
         let display = job.item.display.clone();
         let outcome = if halted || context.interrupt.is_requested() {
             halted = true;
@@ -151,14 +159,31 @@ pub async fn run(
             if matches!(form, InputForm::Batch) {
                 announce(&job.item, Some(total));
             }
+            if let Some(bars) = &context.bars {
+                bars.start_input(position);
+            }
             let finished = run_input(&context, &mut loaded, &mut destination, job).await;
             audio_seconds += finished.audio_seconds;
             finished.outcome
         };
+        if let Some(bars) = &context.bars {
+            bars.finish_input(position, &outcome);
+        }
         if cli.fail_fast && matches!(outcome, Outcome::Failed { .. }) {
             halted = true;
         }
         entries.push(Entry { display, outcome });
+    }
+
+    let Context { bars, .. } = context;
+    if let Some(bars) = bars {
+        bars.finish();
+    }
+    if let Some(probing) = probing {
+        probing.await.map_err(|source| CoreError::TaskJoin {
+            task: "input probing",
+            source,
+        })?;
     }
 
     let summary = Summary::new(entries, audio_seconds, started.elapsed());
@@ -192,14 +217,32 @@ pub async fn run(
     Ok(exit)
 }
 
-fn probe_lengths(sources: &[Option<PathBuf>]) -> Vec<SourceLength> {
+fn start_probes(
+    sources: Vec<Option<PathBuf>>,
+) -> (watch::Receiver<Vec<SourceLength>>, JoinHandle<()>) {
+    let (lengths, receiver) = watch::channel(vec![SourceLength::Unknown; sources.len()]);
+    let handle = tokio::task::spawn_blocking(move || probe_lengths(&sources, &lengths));
+    (receiver, handle)
+}
+
+fn probe_lengths(sources: &[Option<PathBuf>], lengths: &watch::Sender<Vec<SourceLength>>) {
     let started = Instant::now();
-    let lengths: Vec<SourceLength> = sources
-        .iter()
-        .map(|source| source.as_deref().map_or(SourceLength::Unknown, probe_file))
-        .collect();
-    debug!("Probed {} inputs in {:?}", lengths.len(), started.elapsed());
-    lengths
+    for (position, source) in sources.iter().enumerate() {
+        let Some(path) = source else {
+            continue;
+        };
+        if lengths.is_closed() {
+            debug!("Probing stopped at input {position}: nobody is waiting for the lengths");
+            return;
+        }
+        let length = probe_file(path);
+        lengths.send_modify(|known| {
+            if let Some(slot) = known.get_mut(position) {
+                *slot = length;
+            }
+        });
+    }
+    debug!("Probed {} inputs in {:?}", sources.len(), started.elapsed());
 }
 
 fn probe_file(path: &Path) -> SourceLength {
@@ -241,7 +284,6 @@ async fn run_input(
     output: &mut Output,
     job: Job,
 ) -> Finished {
-    debug!("Input {}: length {:?}", job.item.index, job.length);
     output.begin_input(job.destination);
     match attempt(context, loaded, output, &job.item).await {
         Ok(Course::Ended {
@@ -349,6 +391,10 @@ async fn attempt(
         () = context.interrupt.requested() => return Ok(Course::Unopened),
     };
     let length = transcription.length();
+    debug!("Input {}: length {length:?}", item.index);
+    if let Some(bars) = &context.bars {
+        bars.opened(length);
+    }
     let no_stream = context.cli.no_stream;
     if no_stream && matches!(length, SourceLength::Unknown) {
         statusln!(
@@ -431,11 +477,6 @@ async fn streamed(
     item: &InputItem,
     halt: Halt,
 ) -> CliResult<Pumped> {
-    let bar = if context.show_bar {
-        Some(progress_line_bar()?)
-    } else {
-        None
-    };
     let mut chunks = 0usize;
     let mut received = 0.0;
 
@@ -443,8 +484,8 @@ async fn streamed(
         let chunk = match event {
             StreamEvent::Progress(progress) => {
                 received = progress.received;
-                if let Some(bar) = &bar {
-                    bar.set_message(progress::line(&progress).muted().to_string());
+                if let Some(bars) = &context.bars {
+                    bars.update(&progress);
                 }
                 return Ok(());
             }
@@ -463,7 +504,6 @@ async fn streamed(
         Ok(())
     })
     .await?;
-    drop(bar);
 
     output.stream_end()?;
     debug!("Processed {chunks} chunks");
@@ -486,6 +526,9 @@ async fn whole(
 ) -> CliResult<Pumped> {
     let mut collected = Collected::default();
     let asked = pump(transcription, &context.interrupt, halt, |event| {
+        if let (StreamEvent::Progress(progress), Some(bars)) = (&event, &context.bars) {
+            bars.update(progress);
+        }
         collected.absorb(event);
         Ok(())
     })
@@ -573,16 +616,6 @@ impl Collected {
             accel,
         }
     }
-}
-
-fn progress_line_bar() -> CliResult<ProgressBar> {
-    let style = ProgressStyle::with_template("{msg}")
-        .map_err(|source| CliError::ProgressTemplate { source })?;
-    Ok(output::add_bar(
-        ProgressBar::new_spinner()
-            .with_style(style)
-            .with_finish(ProgressFinish::AndClear),
-    ))
 }
 
 struct FileSlot {

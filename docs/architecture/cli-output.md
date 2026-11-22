@@ -26,8 +26,9 @@ no banner, status line, progress bar or statistics) and nothing asks a question:
 an error that names the `purr models download` command instead of a prompt. `--plain` does not
 change colours; `--color` and the environment still decide those.
 
-In interactive mode `--progress` draws one line under the transcript, and the transcript is then
-written one chunk per line so the bar never overwrites a partial line.
+In interactive mode progress bars are drawn under the transcript unless `--no-progress` is given: a
+rule that follows the audio and a status row, with a total rule above them in a batch (`bar.rs`).
+The transcript is then written one chunk per line so the bars never overwrite a partial line.
 
 `--help`, `--version` and usage errors are written by clap, outside the layer.
 

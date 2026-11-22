@@ -46,6 +46,8 @@ strfmt = "0.2.6"
 url = "2.5"
 percent-encoding = "2.3.2"
 humantime = "2.4.0"
+console = "0.16.6"
+parking_lot = "0.13.0"
 
 [dev-dependencies]
 tempfile = "3.21"
@@ -56,6 +58,7 @@ strum = { version = "0.28.0", features = ["derive"] }
 parking_lot = "0.13.0"
 purr-golden = { path = "../purr-golden" }
 axum = "0.8"
+indicatif = { version = "0.18", features = ["in_memory"] }
 
 [features]
 cuda = ["purr-engine-whisper/cuda", "purr-engine-transcribe?/cuda"]

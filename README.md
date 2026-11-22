@@ -152,8 +152,8 @@ cargo test -p purr-cli
 # its least certain token, 0 to 1)
 ./target/release/purr audio.wav --output json --word-timestamps
 
-# Show how far the transcription has come on stderr (2:51 / 7:30)
-./target/release/purr audio.wav --progress
+# On a terminal, progress bars follow the audio; turn them off with
+./target/release/purr audio.wav --no-progress
 
 # Disable GPU acceleration (same as --accel cpu)
 ./target/release/purr audio.wav --no-gpu
@@ -210,7 +210,7 @@ Options:
   -o, --output <OUTPUT>            Output format [default: text] [possible values: text, json, srt]
       --timestamps                 Include timestamps in output (text format only)
       --word-timestamps            Add each word's start, end and score to --output json
-      --progress                   Show position / duration under the streamed text (terminal only)
+      --no-progress                Do not draw progress bars (they only appear on a terminal)
   -v, --verbose                    Verbose output
   -h, --help                       Print help
   -V, --version                    Print version

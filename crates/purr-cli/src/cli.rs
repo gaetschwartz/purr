@@ -117,9 +117,9 @@ pub struct Cli {
     #[arg(long)]
     pub word_timestamps: bool,
 
-    /// Show position / duration under the streamed text (terminal only)
+    /// Do not draw progress bars (they only appear on a terminal)
     #[arg(long)]
-    pub progress: bool,
+    pub no_progress: bool,
 
     /// Print the transcript at the end instead of streaming it
     #[arg(short = 'S', long)]
