@@ -46,17 +46,9 @@ pub fn is_valid_url(input: &str) -> bool {
     }
 }
 
-/// Validates if a string looks like a file path
+/// Whether `input` names a file: anything that is not an HTTP or HTTPS URL
 pub fn is_file_path(input: &str) -> bool {
-    // Consider it a file path if:
-    // 1. It doesn't start with http:// or https://
-    // 2. It contains path separators or is a simple filename
-    !input.starts_with("http://")
-        && !input.starts_with("https://")
-        && (input.contains('/')
-            || input.contains('\\')
-            || !input.contains('.')
-            || input.split('.').count() <= 2)
+    !input.is_empty() && !is_valid_url(input)
 }
 
 /// HTTP streaming client for audio URLs
@@ -290,6 +282,24 @@ mod tests {
         assert!(is_file_path("../file.ogg"));
         assert!(!is_file_path("https://example.com/audio.mp3"));
         assert!(!is_file_path("http://example.com/audio.wav"));
+    }
+
+    #[test]
+    fn file_names_with_many_dots_are_paths() {
+        assert!(is_file_path("my.recording.v2.wav"));
+        assert!(is_file_path("a.b.c.d.e.flac"));
+        assert!(is_file_path("D:\\audio\\take.1.final.wav"));
+    }
+
+    #[test]
+    fn a_url_is_not_a_path_whatever_the_case_of_its_scheme() {
+        assert!(!is_file_path("HTTPS://example.com/audio.mp3"));
+        assert!(!is_file_path("https://example.com/my.recording.v2.wav"));
+    }
+
+    #[test]
+    fn an_empty_string_is_not_a_path() {
+        assert!(!is_file_path(""));
     }
 
     #[test]
