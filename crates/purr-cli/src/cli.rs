@@ -154,7 +154,7 @@ pub struct Cli {
     #[arg(long, global = true, hide = true, value_enum, value_name = "KIND")]
     pub throw_error: Option<crate::fatal::ThrowKind>,
 
-    /// Seconds of audio to gather before decoding up to a pause (with a voice activity model)
+    /// Seconds of audio a live source gathers before decoding up to a pause (with a voice activity model)
     #[arg(long, default_value = "4.0")]
     pub chunk_size: f32,
 

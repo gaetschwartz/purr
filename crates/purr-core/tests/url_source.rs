@@ -14,7 +14,7 @@ use bytes::Bytes;
 use futures::{Stream, StreamExt};
 use pretty_assertions::assert_eq;
 use purr_core::{
-    AudioChunk, AudioProcessor, AudioStream, Error, SourceLength, config::InputConfig,
+    AudioChunk, AudioProcessor, AudioStream, Error, Pacing, SourceLength, config::InputConfig,
 };
 use tokio::{net::TcpListener, sync::oneshot};
 use url::Url;
@@ -77,6 +77,7 @@ async fn file_reports_exact_length_before_decoding() -> TestResult {
     let stream = AudioProcessor::stream_file(&path).await?;
 
     assert_eq!(stream.length(), SourceLength::Exact(Duration::from_secs(3)));
+    assert_eq!(stream.pacing(), Pacing::Recorded);
     Ok(())
 }
 
@@ -99,6 +100,7 @@ async fn url_with_header_duration_reports_exact_length() -> TestResult {
     let stream = AudioProcessor::stream_url_with_config(url, &InputConfig::default()).await?;
 
     assert_eq!(stream.length(), SourceLength::Exact(Duration::from_secs(2)));
+    assert_eq!(stream.pacing(), Pacing::Recorded);
     Ok(())
 }
 
@@ -117,6 +119,7 @@ async fn url_without_header_duration_but_with_content_length_reports_estimated()
         "{:?}",
         stream.length()
     );
+    assert_eq!(stream.pacing(), Pacing::Recorded);
     Ok(())
 }
 
@@ -127,6 +130,7 @@ async fn chunked_body_of_unknown_size_reports_unknown() -> TestResult {
     let stream = AudioProcessor::stream_url_with_config(url, &InputConfig::default()).await?;
 
     assert_eq!(stream.length(), SourceLength::Unknown);
+    assert_eq!(stream.pacing(), Pacing::Live);
     Ok(())
 }
 

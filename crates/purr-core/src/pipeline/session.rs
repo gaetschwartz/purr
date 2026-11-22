@@ -12,6 +12,7 @@ use tokio::sync::mpsc;
 use tracing::{debug, warn};
 
 use crate::{
+    audio::Pacing,
     config::{RunConfig, TentativeText},
     engine::{
         cancel::CancelToken,
@@ -53,6 +54,7 @@ pub struct Decoding {
     pub decoder: Box<dyn WindowDecoder>,
     pub speech: Option<Box<dyn SpeechDetector>>,
     pub policy: WindowPolicy,
+    pub pacing: Pacing,
     pub cancel: CancelToken,
 }
 
@@ -62,6 +64,7 @@ pub struct Session {
     tentative_text: TentativeText,
     timing: Timing,
     policy: WindowPolicy,
+    pacing: Pacing,
     margins: Margins,
     decoder: Box<dyn WindowDecoder>,
     speech: Option<Box<dyn SpeechDetector>>,
@@ -102,6 +105,7 @@ impl Session {
                 Timing::Segment
             },
             policy: decoding.policy,
+            pacing: decoding.pacing,
             margins: Margins::default(),
             decoder: decoding.decoder,
             speech: decoding.speech,
@@ -160,18 +164,25 @@ impl Session {
     pub fn next_window(&self, complete: bool) -> Option<WindowKind> {
         let len = self.pending.len();
         let last = complete && !self.finished;
-        match self.policy {
-            WindowPolicy::Whole => last.then_some(WindowKind::Last),
-            WindowPolicy::Full { max } | WindowPolicy::AtPauses { max, .. } if len >= max => {
-                Some(WindowKind::Full)
+        match (self.policy, self.pacing) {
+            (WindowPolicy::Whole, Pacing::Recorded | Pacing::Live) => {
+                last.then_some(WindowKind::Last)
             }
-            WindowPolicy::Full { .. } | WindowPolicy::AtPauses { .. } if last => {
-                Some(WindowKind::Last)
-            }
-            WindowPolicy::AtPauses { step, .. } if len - self.seen >= step => {
+            (
+                WindowPolicy::Full { max } | WindowPolicy::AtPauses { max, .. },
+                Pacing::Recorded | Pacing::Live,
+            ) if len >= max => Some(WindowKind::Full),
+            (
+                WindowPolicy::Full { .. } | WindowPolicy::AtPauses { .. },
+                Pacing::Recorded | Pacing::Live,
+            ) if last => Some(WindowKind::Last),
+            (WindowPolicy::AtPauses { step, .. }, Pacing::Live) if len - self.seen >= step => {
                 Some(WindowKind::Growing)
             }
-            WindowPolicy::Full { .. } | WindowPolicy::AtPauses { .. } => None,
+            (
+                WindowPolicy::Full { .. } | WindowPolicy::AtPauses { .. },
+                Pacing::Recorded | Pacing::Live,
+            ) => None,
         }
     }
 
@@ -238,10 +249,13 @@ impl Session {
     pub fn tentative_due(&self) -> bool {
         let sr = Self::sample_rate();
         let len = self.pending.len();
-        let ready_at = match self.policy {
-            WindowPolicy::AtPauses { step, max } => max.min(self.seen + step),
-            WindowPolicy::Full { max } => max,
-            WindowPolicy::Whole => return false,
+        let ready_at = match (self.policy, self.pacing) {
+            (WindowPolicy::AtPauses { step, max }, Pacing::Live) => max.min(self.seen + step),
+            (WindowPolicy::AtPauses { max, .. } | WindowPolicy::Full { max }, Pacing::Recorded) => {
+                max
+            }
+            (WindowPolicy::Full { max }, Pacing::Live) => max,
+            (WindowPolicy::Whole, Pacing::Recorded | Pacing::Live) => return false,
         };
         let arrival_rate = self.first_audio.and_then(|first| {
             let wall = first.elapsed().as_secs_f64();

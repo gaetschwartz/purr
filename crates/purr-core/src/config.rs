@@ -51,8 +51,8 @@ pub struct RunConfig {
     /// Number of threads to use
     pub threads: Option<usize>,
 
-    /// Seconds of new audio a stream with a voice activity model gathers before it looks for a
-    /// pause to decode up to
+    /// Seconds of new audio a live stream with a voice activity model gathers before it looks
+    /// for a pause to decode up to
     pub chunk_size: f32,
 
     /// Silero voice activity model (ggml): streaming windows end at pauses in speech, and windows

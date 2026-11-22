@@ -17,8 +17,8 @@ pub enum WindowPolicy {
     /// Windows of `max` samples, decoded once full or once the source ends: without a speech
     /// detector, segment ends in a short window are too loose to commit on
     Full { max: usize },
-    /// Windows that grow by `step` new samples and end at a pause the speech detector finds,
-    /// up to `max`
+    /// Windows that end at a pause the speech detector finds, up to `max`; a live source's also
+    /// grow by `step` new samples
     AtPauses { step: usize, max: usize },
     /// The whole source in one decode, once it has all arrived
     Whole,

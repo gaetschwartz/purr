@@ -133,6 +133,7 @@ impl LoadedModel {
                 decoder,
                 speech,
                 policy,
+                pacing: audio.pacing(),
                 cancel: cancel.clone(),
             },
             tx.clone(),

@@ -58,8 +58,11 @@ once. `--duration TIME` ends an input after that much audio but only when its le
   for the network (so `--http-timeout` means seconds without data); a failed or stalled download
   surfaces as an error, and dropping the stream closes the download. Decoded audio and the
   session's pending samples are bounded too.
-- A streaming session decides window boundaries from the audio that has arrived, so the exact
-  split of a short file can differ slightly between runs; the text stays the same up to punctuation.
+- A recorded source (a file, or a URL of known length) decides its window boundaries from the
+  audio alone, only once a full window is pending or the source has ended, so a run gives the same
+  split whenever the audio arrives. A live source (a URL of unknown length) decodes growing windows
+  as audio arrives, so its split depends on arrival timing and can differ between runs; the text
+  stays the same up to punctuation.
 
 ## Progress (`bar.rs`, `progress.rs`)
 

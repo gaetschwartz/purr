@@ -2,7 +2,7 @@
 
 use std::{
     collections::VecDeque,
-    path::Path,
+    path::{Path, PathBuf},
     sync::{
         Arc,
         atomic::{AtomicUsize, Ordering},
@@ -19,13 +19,16 @@ use purr_common::{
     platform::ChunkKind,
     word::Word,
 };
-use tokio::sync::{mpsc, watch};
+use tokio::{
+    sync::{mpsc, watch},
+    task::JoinHandle,
+};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 
 use crate::{
-    AudioChunk, AudioStream, SourceLength,
+    AudioChunk, AudioStream, Pacing, SourceLength,
     accel::build_info::BuildInfo,
-    config::{ModelRef, RunConfig, Windowing},
+    config::{ModelRef, RunConfig, TentativeText, Windowing},
     dev::Device,
     engine::{
         Engine, OpenSpec,
@@ -101,6 +104,22 @@ impl SpeechDetector for ScriptedDetector {
     }
 }
 
+struct BlockDetector;
+
+impl SpeechDetector for BlockDetector {
+    fn speech(&mut self, pcm: &[f32]) -> std::result::Result<Vec<Span>, DetectError> {
+        let len = pcm.len();
+        Ok((0..len.div_ceil(6 * S))
+            .map(|block| block * 6 * S + S / 2)
+            .filter(|start| *start < len)
+            .map(|start| Span {
+                start,
+                end: (start + 9 * S / 2).min(len),
+            })
+            .collect())
+    }
+}
+
 fn at(seconds: f32) -> usize {
     (seconds * S as f32) as usize
 }
@@ -163,6 +182,28 @@ fn limited_harness(
     speech: Option<Vec<Vec<Span>>>,
     run: &RunConfig,
 ) -> Harness {
+    paced_harness(
+        Pacing::Live,
+        limits,
+        policy,
+        script,
+        speech.map(|script| {
+            Box::new(ScriptedDetector {
+                script: script.into(),
+            }) as Box<dyn SpeechDetector>
+        }),
+        run,
+    )
+}
+
+fn paced_harness(
+    pacing: Pacing,
+    limits: WindowLimits,
+    policy: WindowPolicy,
+    script: Vec<std::result::Result<Decoded, DecodeError>>,
+    speech: Option<Box<dyn SpeechDetector>>,
+    run: &RunConfig,
+) -> Harness {
     let asked = Arc::new(Mutex::new(Vec::new()));
     let (tx, events) = mpsc::unbounded_channel();
     let session = Session::new(
@@ -173,12 +214,9 @@ fn limited_harness(
                 asked: Arc::clone(&asked),
                 limits,
             }),
-            speech: speech.map(|script| {
-                Box::new(ScriptedDetector {
-                    script: script.into(),
-                }) as Box<dyn SpeechDetector>
-            }),
+            speech,
             policy,
+            pacing,
             cancel: CancelToken::new(),
         },
         tx.clone(),
@@ -765,7 +803,7 @@ impl Engine for EchoEngine {
         &self,
         _model: &Path,
     ) -> std::result::Result<Box<dyn SpeechDetector>, OpenError> {
-        Err(OpenError::NoDevice)
+        Ok(Box::new(BlockDetector))
     }
 
     fn install_logging(&self) {}
@@ -1027,5 +1065,190 @@ async fn transcription_reports_the_source_length() -> Result<()> {
     endless.cancel();
     finish(endless).await;
     drop(feeder);
+    Ok(())
+}
+
+#[test]
+fn a_stream_is_paced_by_its_length_unless_told_otherwise() {
+    let paced = |length| {
+        let (_tx, rx) = mpsc::channel(1);
+        AudioStream::new(rx, length)
+    };
+    let known = Duration::from_secs(60);
+    assert_eq!(paced(SourceLength::Exact(known)).pacing(), Pacing::Recorded);
+    assert_eq!(
+        paced(SourceLength::Estimated(known)).pacing(),
+        Pacing::Recorded
+    );
+    assert_eq!(paced(SourceLength::Unknown).pacing(), Pacing::Live);
+    assert_eq!(
+        paced(SourceLength::Unknown)
+            .with_pacing(Pacing::Recorded)
+            .pacing(),
+        Pacing::Recorded
+    );
+    assert_eq!(
+        paced(SourceLength::Exact(known))
+            .with_pacing(Pacing::Live)
+            .pacing(),
+        Pacing::Live
+    );
+    assert_eq!(silence(3).pacing(), Pacing::Recorded);
+}
+
+fn block_harness(pacing: Pacing, run: &RunConfig) -> Harness {
+    paced_harness(
+        pacing,
+        UNLIMITED,
+        AT_PAUSES,
+        Vec::new(),
+        Some(Box::new(BlockDetector)),
+        run,
+    )
+}
+
+#[test]
+fn a_recorded_source_decides_a_window_only_when_full_or_ended() {
+    let mut recorded = block_harness(Pacing::Recorded, &RunConfig::new());
+    recorded.session.push(&vec![0.0; 5 * S]);
+    assert_eq!(recorded.session.next_window(false), None);
+    assert_eq!(recorded.session.next_window(true), Some(WindowKind::Last));
+    recorded.session.push(&vec![0.0; 25 * S]);
+    assert_eq!(recorded.session.next_window(false), Some(WindowKind::Full));
+
+    let mut live = block_harness(Pacing::Live, &RunConfig::new());
+    live.session.push(&vec![0.0; 5 * S]);
+    assert_eq!(live.session.next_window(false), Some(WindowKind::Growing));
+    live.session.push(&vec![0.0; 25 * S]);
+    assert_eq!(live.session.next_window(false), Some(WindowKind::Full));
+}
+
+#[test]
+fn a_recorded_stream_has_no_growing_window_to_wait_for_before_a_tentative_decode() {
+    let run = RunConfig::new().with_tentative(TentativeText::WhileWaiting { every_seconds: 1.0 });
+    let due = |pacing| {
+        let mut h = block_harness(pacing, &run);
+        h.session.push(&vec![0.0; 2 * S]);
+        std::thread::sleep(Duration::from_millis(300));
+        h.session.tentative_due()
+    };
+    assert!(!due(Pacing::Live));
+    assert!(due(Pacing::Recorded));
+}
+
+struct Arrival {
+    pieces: Vec<(usize, Duration)>,
+    final_marked: bool,
+}
+
+impl Arrival {
+    fn in_pieces(total: usize, piece: usize, gap: Duration, final_marked: bool) -> Self {
+        let pieces = (0..total.div_ceil(piece))
+            .map(|index| {
+                let delay = if index == 0 { Duration::ZERO } else { gap };
+                (piece.min(total - index * piece), delay)
+            })
+            .collect();
+        Self {
+            pieces,
+            final_marked,
+        }
+    }
+
+    fn feed(self, length: SourceLength) -> (AudioStream, JoinHandle<()>) {
+        let (tx, rx) = mpsc::channel(8);
+        let feeder = tokio::spawn(async move {
+            let count = self.pieces.len();
+            for (index, (samples, delay)) in self.pieces.into_iter().enumerate() {
+                tokio::time::sleep(delay).await;
+                let chunk = AudioChunk::new(
+                    vec![0.0; samples],
+                    index,
+                    0.0,
+                    self.final_marked && index + 1 == count,
+                );
+                tx.send(Ok(chunk)).await.expect("fed");
+            }
+        });
+        (AudioStream::new(rx, length), feeder)
+    }
+}
+
+fn pausing_run() -> RunConfig {
+    echo_run().with_vad_model(Some(PathBuf::from("vad.bin")))
+}
+
+#[tokio::test]
+async fn a_recorded_source_is_cut_into_the_same_windows_however_its_audio_arrives() -> Result<()> {
+    let engine = EchoEngine::new(false);
+    let mut model = loaded(&engine).await?;
+    let run = pausing_run();
+    let total = 75 * S;
+    let length = SourceLength::Exact(Duration::from_secs(75));
+    let patterns = [
+        Arrival::in_pieces(total, total, Duration::ZERO, false),
+        Arrival::in_pieces(total, total, Duration::ZERO, true),
+        Arrival {
+            pieces: vec![
+                (10 * S, Duration::ZERO),
+                (65 * S, Duration::from_millis(100)),
+            ],
+            final_marked: true,
+        },
+        Arrival::in_pieces(total, S / 2, Duration::from_millis(1), false),
+        Arrival::in_pieces(total, 4 * S, Duration::from_millis(20), true),
+        Arrival::in_pieces(total, 10 * S, Duration::from_millis(5), false),
+    ];
+    for (index, arrival) in patterns.into_iter().enumerate() {
+        let (audio, feeder) = arrival.feed(length);
+        let done = run_once(&mut model, audio, &run).await?;
+        feeder.await.expect("the feeder ends");
+        assert_eq!(done.texts, ["29", "29", "16"], "pattern {index}");
+    }
+    Ok(())
+}
+
+async fn first_text(transcription: &mut Transcription) -> Option<String> {
+    while let Some(event) = transcription.next().await {
+        if let Ok(StreamEvent::Chunk(chunk)) = event
+            && chunk.kind == ChunkKind::Committed
+            && !chunk.text.is_empty()
+        {
+            return Some(chunk.text);
+        }
+    }
+    None
+}
+
+#[tokio::test]
+async fn a_live_source_with_a_step_of_audio_pending_is_decoded_before_it_ends() -> Result<()> {
+    let engine = EchoEngine::new(false);
+    let mut model = loaded(&engine).await?;
+    let (feeder, audio) = live();
+    feeder.send(Ok(heard(0, 10, false))).await.expect("fed");
+    let mut transcription = start(&mut model, audio, &pausing_run()).await?;
+    let early = tokio::time::timeout(PATIENCE, first_text(&mut transcription))
+        .await
+        .expect("a window is decoded before the source ends");
+    assert_eq!(early.as_deref(), Some("5"));
+    drop(feeder);
+    finish(transcription).await;
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_recorded_source_that_stalls_is_not_decoded_before_its_window_is_full() -> Result<()> {
+    let engine = EchoEngine::new(false);
+    let mut model = loaded(&engine).await?;
+    let (feeder, rx) = mpsc::channel(8);
+    let audio = AudioStream::new(rx, SourceLength::Exact(Duration::from_secs(75)));
+    feeder.send(Ok(heard(0, 10, false))).await.expect("fed");
+    let mut transcription = start(&mut model, audio, &pausing_run()).await?;
+    let stalled =
+        tokio::time::timeout(Duration::from_millis(300), first_text(&mut transcription)).await;
+    assert!(stalled.is_err());
+    drop(feeder);
+    let done = finish(transcription).await;
+    assert_eq!(done.texts, ["10"]);
     Ok(())
 }

@@ -112,6 +112,14 @@ Input (file, URL, AudioStream)
   is loaded and `RunConfig::windowing`. `Whole` (the whole source in one decode, what
   `purr --no-stream` asks for) is only chosen when the decoder takes input of any length;
   otherwise the run streams.
+- `Session::next_window` also depends on the source's `Pacing`, which `AudioStream::pacing()`
+  carries. A `Recorded` source (a file, or a URL of known length; `AudioStream::new` derives it
+  from `SourceLength`, `with_pacing` overrides it) decides a window only when `max` samples are
+  pending (`Full`) or the source has ended (`Last`), so the windows depend on the audio alone and
+  not on when it arrives. A `Live` source (a URL of unknown length, or any stream not made from a
+  recording) also decodes `Growing` windows each `step` samples under `AtPauses`, to show early
+  text; its windows stay dependent on arrival timing. `RunConfig::chunk_size` (the `step`) therefore
+  only affects live sources, and `listen_for` still keys on `SourceLength::Unknown`.
 - The `Segmenter` keeps `Segmentation::Native` segments as the engine gave them. For
   `Synthesize` it splits at sentence punctuation (Latin, CJK, Arabic, Devanagari, Ethiopic), at a
   silence of a second between words and at ten seconds, and ends each segment at its last word,

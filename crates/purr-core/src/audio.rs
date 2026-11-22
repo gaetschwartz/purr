@@ -81,10 +81,29 @@ pub enum SourceLength {
     Unknown,
 }
 
+/// Whether a source's audio is all there to be had, or arrives as it is produced.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Pacing {
+    /// A recording: how it is cut into windows depends on the audio alone
+    Recorded,
+    /// A live feed: early text is worth more than the same cuts at every run
+    Live,
+}
+
+impl From<SourceLength> for Pacing {
+    fn from(length: SourceLength) -> Self {
+        match length {
+            SourceLength::Exact(_) | SourceLength::Estimated(_) => Self::Recorded,
+            SourceLength::Unknown => Self::Live,
+        }
+    }
+}
+
 /// Stream of audio chunks
 pub struct AudioStream {
     receiver: mpsc::Receiver<Result<AudioChunk>>,
     length: SourceLength,
+    pacing: Pacing,
     source: Option<SourceGuard>,
 }
 
@@ -103,8 +122,16 @@ impl AudioStream {
         Self {
             receiver,
             length,
+            pacing: Pacing::from(length),
             source: None,
         }
+    }
+
+    /// The same stream, paced as `pacing` instead of as its length suggests.
+    #[must_use]
+    pub fn with_pacing(mut self, pacing: Pacing) -> Self {
+        self.pacing = pacing;
+        self
     }
 
     fn closing(mut self, buffer: Arc<AsyncStreamBuffer>) -> Self {
@@ -115,6 +142,11 @@ impl AudioStream {
     #[must_use]
     pub fn length(&self) -> SourceLength {
         self.length
+    }
+
+    #[must_use]
+    pub fn pacing(&self) -> Pacing {
+        self.pacing
     }
 
     /// A stream that already holds all of `samples` (mono, 16 kHz), in chunks of the usual size.
@@ -152,6 +184,7 @@ impl std::fmt::Debug for AudioStream {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("AudioStream")
             .field("length", &self.length)
+            .field("pacing", &self.pacing)
             .finish_non_exhaustive()
     }
 }
@@ -240,7 +273,7 @@ impl AudioProcessor {
             }
         });
 
-        Ok(AudioStream::new(rx, length))
+        Ok(AudioStream::new(rx, length).with_pacing(Pacing::Recorded))
     }
 
     /// Ends the stream with `error`, so whoever reads the stream sees why it stopped.
