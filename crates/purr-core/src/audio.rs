@@ -17,7 +17,7 @@ use tokio::task::{self, JoinHandle};
 use tracing::{debug, warn};
 use url::Url;
 
-const DECODED_CHANNEL_CAPACITY: usize = 8;
+pub(crate) const DECODED_CHANNEL_CAPACITY: usize = 8;
 
 const SAMPLE_RATE: u64 = 16_000;
 

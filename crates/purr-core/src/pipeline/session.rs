@@ -128,6 +128,16 @@ impl Session {
         self.cancel.is_cancelled()
     }
 
+    /// The model this session decoded with, free for the next one.
+    pub fn into_decoder(self) -> Box<dyn WindowDecoder> {
+        self.decoder
+    }
+
+    /// How many samples the source has delivered so far.
+    pub const fn received_samples(&self) -> usize {
+        self.received
+    }
+
     pub fn push(&mut self, samples: &[f32]) {
         if !samples.is_empty() {
             self.first_audio.get_or_insert_with(Instant::now);

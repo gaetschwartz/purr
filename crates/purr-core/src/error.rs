@@ -251,6 +251,12 @@ pub enum TranscriptionError {
         engine: EngineId,
         reason: purr_common::accel::EngineUnavailable,
     },
+
+    #[oopsie(
+        "The loaded model lost its decoder when a transcription ended abnormally",
+        code = "whisper::transcription::decoder_lost"
+    )]
+    DecoderLost,
 }
 
 /// Acceleration backend selection errors

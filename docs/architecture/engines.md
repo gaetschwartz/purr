@@ -92,9 +92,22 @@ Input (file, URL, AudioStream)
   -> StreamEvent (Chunk | Progress), gathered into a SyncTranscriptionResult by result::collect
 ```
 
-- `run::transcribe(input, RunConfig, &ModelRef, engines)` picks the engine the `ModelRef` names,
-  loads the model while the audio starts to arrive, and returns a `Transcription` stream. Dropping
-  it cancels the run inside the window being decoded.
+- `model::LoadedModel::load(&ModelRef, &RunConfig, engines)` picks the engine the `ModelRef` names
+  and loads the model on the best device, once. `LoadedModel::transcribe(input, &RunConfig)` runs
+  one input on it and returns a `Transcription` stream; it first waits for the previous
+  transcription of that model to end. The run's task owns the decoder and hands it back through a
+  `oneshot` on every exit path (finished, failed, cancelled); each input builds its own window
+  policy, speech detector, language state and `CancelToken`, so nothing but the model carries
+  over. A task that panics drops the sender: the model is then lost and every later call returns
+  `TranscriptionError::DecoderLost`, it never reloads silently.
+- `run::transcribe(input, RunConfig, &ModelRef, engines)` is one load and one run: it loads the
+  model while the audio starts to arrive. Dropping a `Transcription` cancels the run inside the
+  window being decoded.
+- A `Transcription` reports `length()` (the source's `SourceLength`) and, once the source has
+  ended, `end_reason()`: `SourceEnded`, `DurationReached` or `Stopped`. `stop()` ends the source:
+  the audio that has arrived is decoded and the stream finishes normally; `cancel()` ends it at
+  once. `RunConfig::listen_for` ends a source of unknown length after that much audio and leaves a
+  source of known length (exact or estimated) whole.
 - `WindowPolicy::choose` derives the windows from the decoder's limits, whether a speech detector
   is loaded and `RunConfig::windowing`. `Whole` (the whole source in one decode, what
   `purr --no-stream` asks for) is only chosen when the decoder takes input of any length;

@@ -1,6 +1,6 @@
 //! What a transcription is asked to do: the model, how to run it, and how to read its input.
 
-use std::path::PathBuf;
+use std::{path::PathBuf, time::Duration};
 
 use purr_common::{devices::DeviceOrder, language::tag::LanguageTag, model::engine::EngineId};
 use serde::{Deserialize, Serialize};
@@ -66,6 +66,10 @@ pub struct RunConfig {
     pub word_timestamps: bool,
 
     pub windowing: Windowing,
+
+    /// How much audio to take from a source of unknown length before ending it as a normal end;
+    /// a source of known length is always taken whole
+    pub listen_for: Option<Duration>,
 }
 
 /// When a stream shows text it has not committed yet, as tentative chunks.
@@ -97,6 +101,7 @@ impl Default for RunConfig {
             tentative: TentativeText::Off,
             word_timestamps: false,
             windowing: Windowing::Stream,
+            listen_for: None,
         }
     }
 }
@@ -175,6 +180,12 @@ impl RunConfig {
     #[must_use]
     pub fn with_windowing(mut self, windowing: Windowing) -> Self {
         self.windowing = windowing;
+        self
+    }
+
+    #[must_use]
+    pub fn with_listen_for(mut self, listen_for: Option<Duration>) -> Self {
+        self.listen_for = listen_for;
         self
     }
 }

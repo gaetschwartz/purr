@@ -1,22 +1,37 @@
 //! The pipeline driven by scripted engines.
 
-use std::{collections::VecDeque, sync::Arc, time::Duration};
+use std::{
+    collections::VecDeque,
+    path::Path,
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
+    time::Duration,
+};
 
 use futures::StreamExt;
 use parking_lot::Mutex;
 use purr_common::{
-    language::tag::LanguageTag, model::profile::InputLimit, platform::ChunkKind, word::Word,
+    devices::DeviceOrder,
+    language::tag::LanguageTag,
+    model::{engine::EngineId, profile::InputLimit},
+    platform::ChunkKind,
+    word::Word,
 };
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, watch};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 
 use crate::{
-    AudioStream,
-    config::{RunConfig, Windowing},
+    AudioChunk, AudioStream, SourceLength,
+    accel::build_info::BuildInfo,
+    config::{ModelRef, RunConfig, Windowing},
+    dev::Device,
     engine::{
+        Engine, OpenSpec,
         cancel::CancelToken,
         decoder::{DecodeRequest, LanguageRequest, WindowDecoder, WindowLimits},
-        error::{DecodeError, DetectError},
+        error::{DecodeError, DetectError, OpenError},
         hypothesis::{
             Completion, Decoded, Hypothesis, LanguageEstimate, Segment, Segmentation, Span,
         },
@@ -27,9 +42,11 @@ use crate::{
 
 use super::{
     commit::WindowKind,
-    driver::drive,
-    events::{StreamEvent, StreamingChunk},
+    driver::{EndSlot, Ending, Request, drive},
+    events::{EndReason, StreamEvent, StreamingChunk, Transcription, TranscriptionStats},
+    model::LoadedModel,
     policy::{SAMPLE_RATE, WindowPolicy, samples},
+    run::Input,
     session::{Decoding, Events, MAX_PENDING_SAMPLES, Session},
 };
 
@@ -470,12 +487,21 @@ async fn an_engine_error_mid_stream_ends_it_with_the_typed_error() {
         &RunConfig::new(),
     );
     let Harness {
-        session,
+        mut session,
         tx,
         events,
         ..
     } = h;
-    drive(session, AudioStream::from_samples(&vec![0.0; 25 * S]), tx).await;
+    let (_request, ending) = ending(None);
+    drive(
+        &mut session,
+        AudioStream::from_samples(&vec![0.0; 25 * S]),
+        &tx,
+        ending,
+    )
+    .await;
+    drop(tx);
+    drop(session);
     let received: Vec<Result<StreamEvent>> = UnboundedReceiverStream::new(events).collect().await;
     let chunks: Vec<String> = received
         .iter()
@@ -615,12 +641,21 @@ async fn a_whole_source_goes_to_a_decoder_with_a_limit_in_windows_no_longer_than
     assert_eq!(policy, WindowPolicy::Full { max: 20 * S });
     let h = limited_harness(limits, policy, Vec::new(), None, &run);
     let Harness {
-        session,
+        mut session,
         asked,
         tx,
         events,
     } = h;
-    drive(session, AudioStream::from_samples(&vec![0.0; 70 * S]), tx).await;
+    let (_request, ending) = ending(None);
+    drive(
+        &mut session,
+        AudioStream::from_samples(&vec![0.0; 70 * S]),
+        &tx,
+        ending,
+    )
+    .await;
+    drop(tx);
+    drop(session);
     let received: Vec<Result<StreamEvent>> = UnboundedReceiverStream::new(events).collect().await;
     let sizes: Vec<usize> = asked.lock().iter().map(|asked| asked.samples).collect();
     assert!(sizes.len() >= 4, "{sizes:?}");
@@ -651,4 +686,346 @@ fn wants_audio_is_true_for_whole_windowing_whatever_is_pending() {
     let mut h = harness(WindowPolicy::Whole, Vec::new(), None, &RunConfig::new());
     h.session.push(&vec![0.0; MAX_PENDING_SAMPLES + S]);
     assert!(h.session.wants_audio());
+}
+
+fn ending(listen: Option<usize>) -> (watch::Sender<Request>, Ending) {
+    let (request, receiver) = watch::channel(Request::Run);
+    (
+        request,
+        Ending {
+            request: receiver,
+            listen,
+            reason: EndSlot::default(),
+        },
+    )
+}
+
+struct EchoDecoder {
+    panics: bool,
+}
+
+impl WindowDecoder for EchoDecoder {
+    fn limits(&self) -> WindowLimits {
+        UNLIMITED
+    }
+
+    fn supports(&self, _language: &LanguageTag) -> bool {
+        true
+    }
+
+    fn decode(&mut self, request: DecodeRequest<'_>) -> std::result::Result<Decoded, DecodeError> {
+        assert!(!self.panics, "the engine broke");
+        let seconds = request.pcm.len() / S;
+        Ok(decoded(vec![Segment {
+            text: format!("{seconds}"),
+            span: Some(Span {
+                start: 0,
+                end: request.pcm.len(),
+            }),
+            words: Vec::new(),
+        }]))
+    }
+}
+
+struct EchoEngine {
+    opens: AtomicUsize,
+    panics: bool,
+}
+
+impl EchoEngine {
+    fn new(panics: bool) -> Arc<Self> {
+        Arc::new(Self {
+            opens: AtomicUsize::new(0),
+            panics,
+        })
+    }
+}
+
+impl Engine for EchoEngine {
+    fn id(&self) -> EngineId {
+        EngineId::WhisperCpp
+    }
+
+    fn build_info(&self) -> BuildInfo {
+        BuildInfo::default()
+    }
+
+    fn devices(&self) -> Vec<Device> {
+        Vec::new()
+    }
+
+    fn open(&self, _spec: &OpenSpec<'_>) -> std::result::Result<Box<dyn WindowDecoder>, OpenError> {
+        self.opens.fetch_add(1, Ordering::SeqCst);
+        Ok(Box::new(EchoDecoder {
+            panics: self.panics,
+        }))
+    }
+
+    fn open_speech_detector(
+        &self,
+        _model: &Path,
+    ) -> std::result::Result<Box<dyn SpeechDetector>, OpenError> {
+        Err(OpenError::NoDevice)
+    }
+
+    fn install_logging(&self) {}
+}
+
+const PATIENCE: Duration = Duration::from_secs(20);
+
+fn echo_run() -> RunConfig {
+    RunConfig::new()
+        .with_devices(DeviceOrder::cpu_only())
+        .with_threads(1)
+}
+
+async fn loaded(engine: &Arc<EchoEngine>) -> Result<LoadedModel> {
+    let engines: Vec<Arc<dyn Engine>> = vec![Arc::clone(engine) as Arc<dyn Engine>];
+    let model = ModelRef::new(
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml"),
+        EngineId::WhisperCpp,
+    );
+    tokio::time::timeout(PATIENCE, LoadedModel::load(&model, &echo_run(), &engines))
+        .await
+        .expect("the model loads in time")
+}
+
+fn live() -> (mpsc::Sender<Result<AudioChunk>>, AudioStream) {
+    let (tx, rx) = mpsc::channel(8);
+    (tx, AudioStream::new(rx, SourceLength::Unknown))
+}
+
+fn heard(index: usize, seconds: usize, is_final: bool) -> AudioChunk {
+    AudioChunk::new(vec![0.0; seconds * S], index, (index * 10) as f32, is_final)
+}
+
+struct Finished {
+    texts: Vec<String>,
+    stats: Option<TranscriptionStats>,
+    end: Option<EndReason>,
+}
+
+impl Finished {
+    fn audio_seconds(&self) -> Option<f32> {
+        self.stats.as_ref().map(|stats| stats.audio_duration)
+    }
+}
+
+async fn finish(mut transcription: Transcription) -> Finished {
+    let mut texts = Vec::new();
+    let mut stats = None;
+    tokio::time::timeout(PATIENCE, async {
+        while let Some(event) = transcription.next().await {
+            if let Ok(StreamEvent::Chunk(chunk)) = event
+                && chunk.kind == ChunkKind::Committed
+            {
+                if !chunk.text.is_empty() {
+                    texts.push(chunk.text);
+                }
+                stats = chunk.final_stats.or_else(|| stats.take());
+            }
+        }
+    })
+    .await
+    .expect("the transcription ends in time");
+    Finished {
+        texts,
+        stats,
+        end: transcription.end_reason(),
+    }
+}
+
+async fn start(
+    model: &mut LoadedModel,
+    audio: AudioStream,
+    run: &RunConfig,
+) -> Result<Transcription> {
+    tokio::time::timeout(PATIENCE, model.transcribe(Input::Audio(audio), run))
+        .await
+        .expect("the transcription starts in time")
+}
+
+async fn run_once(
+    model: &mut LoadedModel,
+    audio: AudioStream,
+    run: &RunConfig,
+) -> Result<Finished> {
+    Ok(finish(start(model, audio, run).await?).await)
+}
+
+fn silence(seconds: usize) -> AudioStream {
+    AudioStream::from_samples(&vec![0.0; seconds * S])
+}
+
+#[tokio::test]
+async fn loaded_model_runs_two_inputs_with_one_load() -> Result<()> {
+    let engine = EchoEngine::new(false);
+    let mut model = loaded(&engine).await?;
+    let run = echo_run();
+    let first = run_once(&mut model, silence(12), &run).await?;
+    let second = run_once(&mut model, silence(7), &run).await?;
+    assert_eq!(engine.opens.load(Ordering::SeqCst), 1);
+    assert_eq!(first.texts, ["12"]);
+    assert_eq!(second.texts, ["7"]);
+    Ok(())
+}
+
+#[tokio::test]
+async fn decoder_returns_after_a_cancelled_run() -> Result<()> {
+    let engine = EchoEngine::new(false);
+    let mut model = loaded(&engine).await?;
+    let run = echo_run();
+    let (feeder, audio) = live();
+    feeder.send(Ok(heard(0, 10, false))).await.expect("fed");
+    let first = start(&mut model, audio, &run).await?;
+    first.cancel();
+    let cancelled = finish(first).await;
+    assert_eq!(cancelled.end, None);
+    let second = run_once(&mut model, silence(5), &run).await?;
+    assert_eq!(second.texts, ["5"]);
+    assert_eq!(engine.opens.load(Ordering::SeqCst), 1);
+    drop(feeder);
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_decoder_lost_with_its_task_is_a_typed_error() -> Result<()> {
+    let engine = EchoEngine::new(true);
+    let mut model = loaded(&engine).await?;
+    let run = echo_run();
+    let first = run_once(&mut model, silence(5), &run).await?;
+    assert_eq!(first.texts, Vec::<String>::new());
+    for _ in 0..2 {
+        let next = start(&mut model, silence(1), &run).await;
+        assert!(matches!(
+            next,
+            Err(Error::Transcription {
+                source: TranscriptionError::DecoderLost
+            })
+        ));
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn end_reason_is_source_ended_for_a_finite_source() -> Result<()> {
+    let engine = EchoEngine::new(false);
+    let mut model = loaded(&engine).await?;
+    let done = run_once(&mut model, silence(12), &echo_run()).await?;
+    assert_eq!(done.end, Some(EndReason::SourceEnded));
+    Ok(())
+}
+
+#[tokio::test]
+async fn listen_for_ends_a_source_of_unknown_length() -> Result<()> {
+    let engine = EchoEngine::new(false);
+    let mut model = loaded(&engine).await?;
+    let run = echo_run().with_listen_for(Some(Duration::from_secs(30)));
+    let (feeder, audio) = live();
+    for index in 0..5 {
+        feeder.send(Ok(heard(index, 10, false))).await.expect("fed");
+    }
+    let done = run_once(&mut model, audio, &run).await?;
+    assert_eq!(done.end, Some(EndReason::DurationReached));
+    assert_eq!(done.audio_seconds(), Some(30.0));
+    drop(feeder);
+    Ok(())
+}
+
+#[tokio::test]
+async fn listen_for_cuts_inside_a_chunk() -> Result<()> {
+    let engine = EchoEngine::new(false);
+    let mut model = loaded(&engine).await?;
+    let run = echo_run().with_listen_for(Some(Duration::from_secs(25)));
+    let (feeder, audio) = live();
+    for index in 0..4 {
+        feeder.send(Ok(heard(index, 10, false))).await.expect("fed");
+    }
+    let done = run_once(&mut model, audio, &run).await?;
+    assert_eq!(done.end, Some(EndReason::DurationReached));
+    assert_eq!(done.audio_seconds(), Some(25.0));
+    drop(feeder);
+    Ok(())
+}
+
+#[tokio::test]
+async fn listen_for_leaves_a_source_of_known_length_whole() -> Result<()> {
+    let engine = EchoEngine::new(false);
+    let mut model = loaded(&engine).await?;
+    let run = echo_run().with_listen_for(Some(Duration::from_secs(30)));
+    let done = run_once(&mut model, silence(60), &run).await?;
+    assert_eq!(done.end, Some(EndReason::SourceEnded));
+    assert_eq!(done.audio_seconds(), Some(60.0));
+    Ok(())
+}
+
+#[tokio::test]
+async fn listen_for_leaves_an_estimated_length_whole() -> Result<()> {
+    let engine = EchoEngine::new(false);
+    let mut model = loaded(&engine).await?;
+    let run = echo_run().with_listen_for(Some(Duration::from_secs(30)));
+    let (tx, rx) = mpsc::channel(8);
+    for index in 0..6 {
+        tx.send(Ok(heard(index, 10, index == 5)))
+            .await
+            .expect("fed");
+    }
+    let audio = AudioStream::new(rx, SourceLength::Estimated(Duration::from_secs(60)));
+    let done = run_once(&mut model, audio, &run).await?;
+    assert_eq!(done.end, Some(EndReason::SourceEnded));
+    assert_eq!(done.audio_seconds(), Some(60.0));
+    Ok(())
+}
+
+#[tokio::test]
+async fn stop_decodes_what_arrived_and_ends() -> Result<()> {
+    let engine = EchoEngine::new(false);
+    let mut model = loaded(&engine).await?;
+    let (feeder, audio) = live();
+    feeder.send(Ok(heard(0, 10, false))).await.expect("fed");
+    feeder.send(Ok(heard(1, 2, false))).await.expect("fed");
+    let transcription = start(&mut model, audio, &echo_run()).await?;
+    transcription.stop();
+    let done = finish(transcription).await;
+    assert_eq!(done.end, Some(EndReason::Stopped));
+    assert_eq!(done.audio_seconds(), Some(12.0));
+    assert_eq!(done.texts, ["12"]);
+    drop(feeder);
+    Ok(())
+}
+
+#[tokio::test]
+async fn stop_wakes_a_run_waiting_for_a_source_that_sends_nothing() -> Result<()> {
+    let engine = EchoEngine::new(false);
+    let mut model = loaded(&engine).await?;
+    let (feeder, audio) = live();
+    feeder.send(Ok(heard(0, 3, false))).await.expect("fed");
+    let transcription = start(&mut model, audio, &echo_run()).await?;
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    transcription.stop();
+    let done = finish(transcription).await;
+    assert_eq!(done.end, Some(EndReason::Stopped));
+    assert_eq!(done.audio_seconds(), Some(3.0));
+    drop(feeder);
+    Ok(())
+}
+
+#[tokio::test]
+async fn transcription_reports_the_source_length() -> Result<()> {
+    let engine = EchoEngine::new(false);
+    let mut model = loaded(&engine).await?;
+    let run = echo_run();
+    let finite = start(&mut model, silence(12), &run).await?;
+    assert_eq!(
+        finite.length(),
+        SourceLength::Exact(Duration::from_secs(12))
+    );
+    finish(finite).await;
+    let (feeder, audio) = live();
+    let endless = start(&mut model, audio, &run).await?;
+    assert_eq!(endless.length(), SourceLength::Unknown);
+    endless.cancel();
+    finish(endless).await;
+    drop(feeder);
+    Ok(())
 }

@@ -10,8 +10,11 @@ use purr_common::{
     language::tag::LanguageTag, platform::ChunkKind, progress::ProgressFrame, word::Word,
 };
 use serde::{Deserialize, Serialize};
+use tokio::sync::watch;
 
-use crate::{accel::report::AccelReport, engine::cancel::CancelToken, error::Error};
+use crate::{SourceLength, accel::report::AccelReport, engine::cancel::CancelToken, error::Error};
+
+use super::driver::{EndSlot, Request};
 
 /// Transcription statistics
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -110,6 +113,17 @@ pub struct StreamProgress {
     pub source_ended: bool,
 }
 
+/// Why the source of a transcription ended.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EndReason {
+    /// The source delivered all its audio
+    SourceEnded,
+    /// The run took as much audio as it was asked to listen for from a source of unknown length
+    DurationReached,
+    /// [`Transcription::stop`] ended the source
+    Stopped,
+}
+
 /// A running transcription: its events, and the device it runs on.
 ///
 /// Dropping it cancels the transcription, which stops the engine inside the window it decodes.
@@ -117,6 +131,9 @@ pub struct Transcription {
     stream: Pin<Box<dyn Stream<Item = Result<StreamEvent, Error>> + Send>>,
     accel: AccelReport,
     cancel: CancelToken,
+    request: watch::Sender<Request>,
+    length: SourceLength,
+    end: EndSlot,
 }
 
 impl Transcription {
@@ -124,11 +141,17 @@ impl Transcription {
         stream: Pin<Box<dyn Stream<Item = Result<StreamEvent, Error>> + Send>>,
         accel: AccelReport,
         cancel: CancelToken,
+        request: watch::Sender<Request>,
+        length: SourceLength,
+        end: EndSlot,
     ) -> Self {
         Self {
             stream,
             accel,
             cancel,
+            request,
+            length,
+            end,
         }
     }
 
@@ -138,16 +161,36 @@ impl Transcription {
         &self.accel
     }
 
-    /// Stops the transcription. A window being decoded ends with what the engine finished of it,
-    /// committed as the stream's last chunk; otherwise the stream just ends.
+    /// What the source says of its length.
+    #[must_use]
+    pub const fn length(&self) -> SourceLength {
+        self.length
+    }
+
+    /// Why the source ended; set once the source has ended, which is before the last chunk is
+    /// sent, and left `None` when the transcription failed or was cancelled first.
+    #[must_use]
+    pub fn end_reason(&self) -> Option<EndReason> {
+        self.end.get()
+    }
+
+    /// Ends the source now: the audio that has arrived is decoded and the stream finishes with
+    /// its last chunk. Nothing happens when the source has already ended.
+    pub fn stop(&self) {
+        self.request.send_replace(Request::Stop);
+    }
+
+    /// Stops the transcription at once. A window being decoded ends with what the engine finished
+    /// of it, committed as the stream's last chunk; otherwise the stream just ends.
     pub fn cancel(&self) {
         self.cancel.cancel();
+        self.request.send_replace(Request::Cancel);
     }
 }
 
 impl Drop for Transcription {
     fn drop(&mut self) {
-        self.cancel.cancel();
+        self.cancel();
     }
 }
 

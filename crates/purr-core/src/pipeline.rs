@@ -9,6 +9,7 @@ pub mod commit;
 mod driver;
 pub mod events;
 pub mod language;
+pub mod model;
 pub mod pause;
 pub mod policy;
 pub mod result;
