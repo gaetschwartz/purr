@@ -1,0 +1,18 @@
+[package]
+name = "purr-ggml"
+version.workspace = true
+edition = "2024"
+publish = false
+description = "Depends on the sys crates that compile ggml, so each copy can be built alone"
+
+[lints]
+workspace = true
+
+[dependencies]
+transcribe-cpp-sys = { version = "0.4.2", default-features = false, features = ["dynamic-backends"], optional = true }
+whisper-rs-sys = { version = "0.15.0", optional = true }
+
+[features]
+whisper-rs-sys = ["dep:whisper-rs-sys"]
+transcribe-cpp-sys = ["dep:transcribe-cpp-sys"]
+

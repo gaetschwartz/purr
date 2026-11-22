@@ -18,6 +18,12 @@ inputs:
     description: ccache compiler_check. `content` hashes the compiler binaries. `%compiler% --version` is for compilers that are shims whose binary does not change with the toolchain.
     required: false
     default: content
+  scope:
+    description: Name of the cache family this job restores, and saves when it ends with save in finish-compiler-cache. Empty is the family of the OS.
+    required: false
+  extra-scope:
+    description: A second family to restore into the same directory, for a job that compiles what two other jobs prepared
+    required: false
 runs:
   using: composite
   steps:
@@ -30,6 +36,8 @@ runs:
         BASE_DIR: ${{ inputs.base-dir }}
         MAX_SIZE: ${{ inputs.max-size }}
         COMPILER_CHECK: ${{ inputs.compiler-check }}
+        SCOPE: ${{ inputs.scope }}
+        EXTRA_SCOPE: ${{ inputs.extra-scope }}
       run: |
         set -euo pipefail
         trap 'echo "::warning title=Compiler cache::ccache could not be set up, so this job compiles without it"' ERR
@@ -82,10 +90,11 @@ runs:
 
         cache_dir="$(mixed "$RUNNER_TEMP")/ccache"
         mkdir -p "$cache_dir"
-        prefix="ccache-$RUNNER_OS-v1-"
+        prefix="ccache-$RUNNER_OS-${SCOPE:+$SCOPE-}v1-"
         base_dir="$(mixed "$BASE_DIR")"
         native "$bindir" >> "$GITHUB_PATH"
         echo "prefix=$prefix" >> "$GITHUB_OUTPUT"
+        echo "extra_prefix=${EXTRA_SCOPE:+ccache-$RUNNER_OS-$EXTRA_SCOPE-v1-}" >> "$GITHUB_OUTPUT"
         echo "ok=true" >> "$GITHUB_OUTPUT"
         {
           echo "PURR_COMPILER_CACHE_ACTIVE=true"
@@ -109,14 +118,24 @@ runs:
         key: ${{ steps.install.outputs.prefix }}${{ github.run_id }}-${{ github.run_attempt }}
         restore-keys: ${{ steps.install.outputs.prefix }}
 
+    - name: Restore the second compiler cache
+      id: restore-extra
+      if: steps.install.outputs.ok == 'true' && steps.install.outputs.extra_prefix != ''
+      uses: actions/cache/restore@v6
+      with:
+        path: ${{ runner.temp }}/ccache
+        key: ${{ steps.install.outputs.extra_prefix }}${{ github.run_id }}-${{ github.run_attempt }}
+        restore-keys: ${{ steps.install.outputs.extra_prefix }}
+
     - name: Show the compiler cache configuration
       if: steps.install.outputs.ok == 'true'
       shell: bash
       env:
         RESTORED_KEY: ${{ steps.restore.outputs.cache-matched-key }}
+        EXTRA_RESTORED_KEY: ${{ steps.restore-extra.outputs.cache-matched-key }}
       run: |
         set -euo pipefail
-        echo "PURR_COMPILER_CACHE_RESTORED=${RESTORED_KEY:-none}" >> "$GITHUB_ENV"
+        echo "PURR_COMPILER_CACHE_RESTORED=${RESTORED_KEY:-none}${EXTRA_RESTORED_KEY:+, $EXTRA_RESTORED_KEY}" >> "$GITHUB_ENV"
         ccache --zero-stats
         ccache --show-config | grep -E '^\(environment\) (base_dir|hash_dir|max_size|compiler_check|cache_dir) ' || true
         ccache --show-stats

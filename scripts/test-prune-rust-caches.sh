@@ -62,7 +62,9 @@ $(entry 22 "ccache-Linux-v1-102-1" 2026-11-13T11:00:00Z refs/heads/feature),
 $(entry 23 "ccache-Linux-v2-5-1" 2026-11-13T08:00:00Z),
 $(entry 24 "ccache-Windows-v1-100-1" 2026-11-13T09:00:00Z),
 $(entry 25 "ccache-Windows-v1-100-2" 2026-11-13T09:30:00Z),
-$(entry 26 "ccache-Linux-v1-extra-103-1" 2026-11-13T09:45:00Z)
+$(entry 26 "ccache-Linux-v1-extra-103-1" 2026-11-13T09:45:00Z),
+$(entry 27 "ccache-Windows-whisper-v1-100-1" 2026-11-13T09:00:00Z),
+$(entry 28 "ccache-Windows-whisper-v1-101-1" 2026-11-13T10:00:00Z)
 ]
 EOF
 
@@ -95,7 +97,7 @@ prune="$here/prune-rust-caches.sh"
 own() { env PURR_RUST_CACHE_SAVE=true PURR_RUST_CACHE_KEY="$1" GITHUB_JOB="$2" CACHE_HIT="${3-false}" "$prune" own-family; }
 
 run "$prune" superseded
-check "superseded keeps the newest of each family and ignores other refs" "1 12 16 20 24 3"
+check "superseded keeps the newest of each family and ignores other refs" "1 12 16 20 24 27 3"
 
 run own "$linux_all" cli-linux
 check "fallback hit deletes the whole family" "1 12 2"
@@ -148,6 +150,9 @@ check "compiler cache: the saved entry stays, the older ones of the family go" "
 
 run compiler "ccache-Windows-v1-" "ccache-Windows-v1-100-2"
 check "compiler cache: another OS" "24"
+
+run compiler "ccache-Windows-whisper-v1-" "ccache-Windows-whisper-v1-101-1"
+check "compiler cache: a scope is a family of its own" "27"
 
 run compiler "ccache-Linux-v1-" "ccache-Linux-v1-999-1"
 check "compiler cache: an unlisted saved entry deletes nothing" ""

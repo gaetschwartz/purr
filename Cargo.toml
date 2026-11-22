@@ -9,6 +9,7 @@ members = [
   "crates/purr-wasm",
   "crates/purr-test-utils",
   "crates/purr-engine-transcribe",
+  "crates/purr-ggml",
   "crates/purr-golden",
   "crates/purr-onnx-convert",
 ]

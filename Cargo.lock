@@ -5768,6 +5768,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "purr-ggml"
+version = "0.1.0"
+dependencies = [
+ "transcribe-cpp-sys",
+ "whisper-rs-sys",
+]
+
+[[package]]
 name = "purr-golden"
 version = "0.1.0"
 dependencies = [

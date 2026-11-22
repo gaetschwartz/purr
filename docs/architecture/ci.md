@@ -60,7 +60,7 @@ The script only reads names in this list. The other build variants upload as `pu
 
 On Windows the `cmake` crate builds ggml with Ninja, set through `CMAKE_GENERATOR_x86_64_pc_windows_msvc`. That variable reaches only the `cmake` crate, not vcpkg. It takes the MSVC environment from the `cc` crate. Ninja runs nvcc on every core, while the Visual Studio generator compiles the CUDA sources one at a time.
 
-The Windows CLI build runs `cargo build -vv`, because cargo shows a build script's output only with it and the ggml builds run inside build scripts. Its step has its own time limit, shorter than the job's, so the compiler cache is still saved when a cold build does not finish. A cold build is not expected to finish in one run: after a new MSVC toolset every ggml object misses, and the cache fills over the following runs.
+The Windows CLI build runs `cargo build -vv`, because cargo shows a build script's output only with it and the ggml builds run inside build scripts. Its step has its own time limit, shorter than the job's, so the compiler cache is still saved when a cold build does not finish. The two ggml builds do not run inside it: `ggml (windows, whisper)` and `ggml (windows, transcribe)` compile them in parallel with the ffmpeg job, each in its own runner, by building `purr-ggml`, a crate with no code that only depends on `whisper-rs-sys` or `transcribe-cpp-sys`. The CLI and desktop jobs wait for them and then hit the compiler cache. A cold ggml job that reaches its step limit still saves its objects, and the next run resumes.
 
 Fallbacks:
 
@@ -76,7 +76,7 @@ All caches share the repository's 10 GB limit. Over the limit, GitHub evicts the
 | vcpkg FFmpeg binaries | `vcpkg-ffmpeg-<os>-<vcpkg commit>`, plus the triplet and the MSVC toolset version on Windows | `ffmpeg (<os>)` on a miss |
 | dx | `dioxus-cli-<os>-<version>` | the first job that misses |
 | Rust (`Swatinem/rust-cache`): registry and `target`, including the ggml build of whisper-rs-sys | `v0-rust-<cache-key>-<job id>-<os>-<arch>-<environment hash>-<lockfile hash>`. The cache key holds the variant, `GGML_*`, CUDA and Vulkan versions, `crt-static` and the CMake generator on Windows. The environment hash covers the installed Rust toolchains and `CARGO*` variables, the lockfile hash `Cargo.lock` and the manifests. | `develop` only, by the jobs in the table below. Jobs on other refs restore `develop`'s cache. |
-| Compiler cache (ccache): the C, C++ and CUDA objects of ggml | `ccache-<os>-v1-<run id>-<run attempt>`, one family per OS | the one writer job per OS, on `develop`, see [Compiler cache](#compiler-cache) |
+| Compiler cache (ccache): the C, C++ and CUDA objects of ggml | `ccache-<os>[-<scope>]-v1-<run id>-<run attempt>`, one family per OS, two on Windows (`whisper`, `transcribe`) | the writer job of each family, on `develop`, see [Compiler cache](#compiler-cache) |
 
 The vcpkg and dx keys are exact, so they never pile up. The Rust keys change with every lockfile or toolchain change; each change would leave a second entry next to the old one. The compiler cache keys are unique per run on purpose: the writer saves the new entry first and then deletes the older ones of its family.
 
@@ -131,8 +131,8 @@ Compiling ggml (C, C++ and CUDA, inside the `whisper-rs-sys` build script) is th
 
 | Step | Where | What it does |
 |---|---|---|
-| `setup-compiler-cache` | after `setup-rust`, in every job that builds ggml | installs ccache, exports the configuration, restores the OS's newest entry |
-| `finish-compiler-cache` | `if: always()`, before `prune-rust-cache` | prints the statistics and the step summary table, and in the writer job saves the entry |
+| `setup-compiler-cache` | after `setup-rust`, in every job that builds ggml | installs ccache, exports the configuration, restores the newest entry of its family, and of a second one with `extra-scope` |
+| `finish-compiler-cache` | `if: always()`, before `prune-rust-cache` | prints the statistics and the step summary table, and in the writer job of a family saves the entry |
 
 ### How cmake reaches ccache
 
@@ -150,7 +150,7 @@ ccache rewrites the absolute paths under `CCACHE_BASEDIR` to paths relative to t
 |---|---|---|
 | Linux (gcc, nvcc) | ccache 4.14.2 | llama.cpp builds its CUDA 13.5 Linux releases with ccache |
 | macOS (AppleClang) | ccache 4.14.2 | `compiler_check` runs `cc --version`, because `/usr/bin/cc` is the same shim for every Xcode |
-| Windows (`cl`, nvcc, Ninja) | ccache 4.14.2 | llama.cpp builds Windows CUDA 13.5 with MSVC and ccache. Unproven for this repository: read the first Windows summary. |
+| Windows (`cl`, nvcc, Ninja) | ccache 4.14.2 | llama.cpp builds Windows CUDA 13.5 with MSVC and ccache. It hits here, in preprocessed mode only: the direct mode of the first measured run had no hit. |
 
 ccache is a pinned download from the release page, checked against a SHA-256 in the action. If the download, the checksum or the version check fails, the step warns and the job builds without the cache.
 
@@ -168,7 +168,7 @@ ccache is a pinned download from the release page, checked against a SHA-256 in 
 
 - Cached: every `.c`, `.cpp` and `.cu` compilation of ggml and whisper.cpp, including the generated `ggml-vulkan` shader sources (a compile of an array).
 - Not cached: linking and archiving, the `glslc` and `vulkan-shaders-gen` steps that generate those shader sources, the Metal library (embedded, not compiled at build time) and anything ccache calls uncacheable, which the statistics list.
-- Unproven for this repository: ccache with `cl` and with nvcc under MSVC on Windows, and the `/showIncludes` replay Ninja needs. If the Windows summary shows no hits, the cause is in that job's log, and nothing else is affected.
+- On Windows, ccache with `cl` and nvcc served 59 of 403 compilations from the cache of a run with a different MSVC toolset, all through the preprocessed mode. Whether it serves `transcribe-cpp-sys` across jobs depends on its build directory, `%LOCALAPPDATA%\tcs\<hash of OUT_DIR>`, being the same in the preparing and the consuming job. Compare the `OUT_DIR` of `transcribe-cpp-sys` in both logs.
 
 ### Which jobs share objects
 
@@ -186,8 +186,8 @@ A key covers the compiler binary, the arguments (defines included), the preproce
 
 ### Single writer
 
-- Exactly one job per OS saves: `cli (linux, all)`, `cli (macos, metal)`, `cli (windows, cuda-vulkan)`. Every other job restores only. One writer cannot overwrite another's objects, and the entry does not depend on which job finishes first.
-- Key: `ccache-<os>-v1-<run id>-<run attempt>`. The restore key is the prefix `ccache-<os>-v1-`, so a lockfile, Rust or configuration change never misses. Change `v1` in `setup-compiler-cache` to start the cache over.
+- Exactly one job per family saves: `cli (linux, all)`, `cli (macos, metal)` and, on Windows, `ggml (windows, whisper)` and `ggml (windows, transcribe)`, each with the `scope` of its name. Every other job restores only; the Windows CLI and desktop jobs restore both families into one directory. One writer cannot overwrite another's objects, and the entry does not depend on which job finishes first.
+- Key: `ccache-<os>[-<scope>]-v1-<run id>-<run attempt>`. The restore key is the prefix up to the run id, so a lockfile, Rust or configuration change never misses. Change `v1` in `setup-compiler-cache` to start the cache over.
 - The writer saves only on `develop`, whatever the outcome of the job, when the statistics show a miss, meaning something was added. A build cut short by its step time limit therefore keeps its objects, and the next run resumes from them. A run that only hits keeps the existing entry and its age.
 - After the save, `scripts/prune-rust-caches.sh compiler-cache` deletes the other entries of the family, only if it can list the new one. `prune caches` (`superseded`) clears any leftover.
 - A run cold in ccache but warm in the Rust cache compiles no ggml at all, so it never fills the compiler cache. To seed it, delete the writer's Rust cache entry (`gh cache delete`) and re-run: that cold run compiles ggml and saves the first entry.
@@ -244,7 +244,7 @@ The Homebrew formula installs the macOS archive (`cli (macos, metal)`, now with 
 
 #### What the GPU modules cost the jobs
 
-- `cli (windows, cuda-vulkan)` compiles the CUDA and the Vulkan modules of transcribe.cpp, on top of whisper.cpp's. Measured on the 32-thread development machine with the Visual Studio generator, `transcribe-cpp-sys` with `cuda` took 16 minutes, with `vulkan` a few minutes (a `cargo check` of the engine crate that built it finished in 2.5 minutes in all). The runner has 4 cores and the job builds with Ninja, so expect roughly the CUDA time of the whisper.cpp build again (about 30 minutes cold) on a run whose Rust cache misses. `transcribe-cpp-sys` runs with `-DGGML_CCACHE=OFF`, so ccache does not serve it. The Rust cache of the job holds the build once the key `...-transcribe-backends-...` is saved on `develop`.
+- `ggml (windows, transcribe)` compiles the CUDA and the Vulkan modules of transcribe.cpp, and `cli (windows, cuda-vulkan)` links them. Measured on the 32-thread development machine with the Visual Studio generator, `transcribe-cpp-sys` with `cuda` took 16 minutes, with `vulkan` a few minutes (a `cargo check` of the engine crate that built it finished in 2.5 minutes in all). The runner has 4 cores and the job builds with Ninja, so expect roughly the CUDA time of the whisper.cpp build again (about 30 minutes cold) on a run whose Rust cache misses. `transcribe-cpp-sys` runs with `-DGGML_CCACHE=OFF`, so ccache does not serve it. The Rust cache of the job holds the build once the key `...-transcribe-backends-...` is saved on `develop`.
 - `cli (linux, vulkan)` and `cli (macos, metal)` gain a transcribe.cpp build each: the Vulkan module compiles its shaders with `glslc` (a few minutes on the development machine), Metal embeds its library.
 - No job was added.
 - `ggml-cuda.dll` is 148 MB. With `PURR_SPLIT_CUDA_RUNTIME: "false"` it ships in the default Windows CLI zip, next to the cuBLAS libraries that are already there; with `"true"` it moves to the runtime pack with them.
@@ -266,7 +266,7 @@ The Homebrew formula installs the macOS archive (`cli (macos, metal)`, now with 
 - `scripts/drop-ggml-build.sh` removes the `build` and `.fingerprint` directories of both `whisper-rs-sys` and `transcribe-cpp-sys`. A shrinking job that builds transcribe.cpp therefore compiles it again on every run: about 100 MB uncompressed of build tree per CPU build, a few minutes on four cores. `PURR_SHRINK_RUST_CACHE` is off.
 - `whisper-rs-sys` forwards every `CMAKE_*`, `GGML_*` and `WHISPER_*` variable to cmake. `transcribe-cpp-sys` forwards none of them, only `TRANSCRIBE_CMAKE_ARGS` and `CMAKE_ARGS`: `GGML_NATIVE`, `GGML_CUDA_NO_VMM`, `GGML_CPU_ARM_ARCH`, `CFLAGS` aside, and the CMake runtime library settings of `.cargo/config.toml` do not reach it. Its dynamic backends force `GGML_NATIVE=OFF` themselves. cmake itself reads `CMAKE_<LANG>_COMPILER_LAUNCHER` and `CMAKE_GENERATOR*` from the environment, which is how ccache and Ninja would reach it (unproven). `.cargo/config.toml` sets `TRANSCRIBE_CMAKE_ARGS=-DGGML_CCACHE=OFF` so a ccache on a developer's `PATH` is not picked up.
 - `%LOCALAPPDATA%\tcs\<hash>`: `transcribe-cpp-sys` builds through a junction there to stay under `MAX_PATH`, the hash being derived from `OUT_DIR`. The build script creates the junction when it runs and nothing needs to restore it: the real files live in `OUT_DIR`, inside the Rust cache. The path is outside `CCACHE_BASEDIR` (`D:\t`), so its objects hit ccache only while `OUT_DIR` does not change, which it does not between runs of one job on one lockfile. Each of the nine CPU tiers compiles the ggml CPU sources again.
-- The compiler cache is one entry per OS, capped at 2 GiB (1 GiB on macOS), and the Windows writer job (`cli (windows, cuda-vulkan)`) now compiles transcribe.cpp, which adds objects the other Windows jobs do not use. Read `cache size` in its first summary and lower the cap or the writer's role if whisper.cpp's objects are being evicted.
+- The compiler cache is one entry per family, capped at 2 GiB (1 GiB on macOS). Windows has two families, so the repository cache total grows: it stood at 9.49 of 10 GiB before them. Read `cache size` in the first summaries and lower a cap if GitHub starts evicting the Rust caches.
 - Two `cargo` invocations with different profiles or features build `transcribe-cpp-sys` twice (two `out` directories of about 100 MB): running `cargo test -p purr-engine-transcribe` after `cargo build -p purr-cli --features transcribe` rebuilt it on a developer machine. `test (linux)` runs clippy, nextest and a `cargo build` with the feature, so it may build it up to three times; whether those share a unit is not validated. The job is where the crate is meant to be tested, so the cold build stays there; the alternative is `--exclude purr-engine-transcribe` from clippy and nextest and a single job that tests the engine.
 
 ### Linux

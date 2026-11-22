@@ -9,7 +9,7 @@ Usage: prune-rust-caches.sh [--dry-run] superseded
 
 Delete the Swatinem/rust-cache and compiler cache (ccache) entries of the develop branch. A Rust
 family is the entries whose keys only differ by the trailing environment and lockfile hashes. A
-compiler cache family is the entries of one prefix, ccache-<os>-<version>-, which only differ by
+compiler cache family is the entries of one prefix, ccache-<os>[-<scope>]-<version>-, which only differ by
 the trailing run id and run attempt.
 
 superseded      keep the newest entry of every family, Rust and compiler cache alike
@@ -60,7 +60,7 @@ case "$mode" in
 esac
 
 # rust-cache keys read <prefix-key>[-<key>]-<job id>-<os>-<arch>-<environment hash>-<lockfile hash>
-# compiler cache keys read ccache-<os>-<version>-<run id>-<run attempt>
+# compiler cache keys read ccache-<os>[-<scope>]-<version>-<run id>-<run attempt>
 filter='
 def hashes: "-[0-9a-f]{8}-[0-9a-f]{8}$";
 def run: "-[0-9]+-[0-9]+$";

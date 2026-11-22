@@ -542,9 +542,68 @@ jobs:
         with:
           cache-hit: ${{ steps.rust.outputs.cache-hit }}
 
+  ggml-windows:
+    name: ggml (windows, ${{ matrix.scope }})
+    runs-on: windows-2025-vs2026
+    timeout-minutes: 180
+    permissions:
+      contents: read
+      actions: write
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      CARGO_TARGET_DIR: D:\t
+      # Ninja runs nvcc on every core; the Visual Studio generator compiles the CUDA sources one at a time
+      CMAKE_GENERATOR_x86_64_pc_windows_msvc: Ninja
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - scope: whisper
+            features: whisper-rs-sys/cuda,whisper-rs-sys/vulkan
+          - scope: transcribe
+            features: transcribe-cpp-sys/cuda,transcribe-cpp-sys/vulkan
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7
+      - name: Set up MSVC
+        uses: ./.github/actions/setup-msvc
+        with:
+          vs-major: "18"
+      - name: Set up CUDA
+        uses: ./.github/actions/setup-cuda-windows
+        with:
+          version: ${{ env.CUDA_VERSION }}
+      - name: Set up Vulkan
+        uses: ./.github/actions/setup-vulkan
+        with:
+          version: ${{ env.VULKAN_SDK_VERSION }}
+      - name: Set up Rust
+        uses: ./.github/actions/setup-rust
+      - name: Set up the compiler cache
+        uses: ./.github/actions/setup-compiler-cache
+        with:
+          enabled: ${{ env.PURR_COMPILER_CACHE }}
+          base-dir: ${{ env.CARGO_TARGET_DIR }}
+          scope: ${{ matrix.scope }}
+      - name: Compile ggml
+        timeout-minutes: 165
+        run: |
+          cargo build -vv --release -p purr-ggml --features ${{ matrix.features }}
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - if: always()
+        name: Save the compiler cache
+        uses: ./.github/actions/finish-compiler-cache
+        with:
+          label: ggml (windows, ${{ matrix.scope }})
+          job-status: ${{ job.status }}
+          save: true
+          target-dir: ${{ env.CARGO_TARGET_DIR }}
+
   cli-windows:
     name: cli (windows, ${{ matrix.backend == 'none' && 'cpu' || matrix.label || matrix.backend }})
-    needs: [ffmpeg-windows]
+    needs: [ffmpeg-windows, ggml-windows]
     runs-on: windows-2025-vs2026
     timeout-minutes: 180
     permissions:
@@ -568,7 +627,6 @@ jobs:
             label: cuda-vulkan
             is_release: true
             transcribe: true
-            compiler_cache_writer: true
             compiler_cache_shrink: true
     steps:
       - uses: actions/checkout@v7
@@ -599,6 +657,8 @@ jobs:
         with:
           enabled: ${{ env.PURR_COMPILER_CACHE }}
           base-dir: ${{ env.CARGO_TARGET_DIR }}
+          scope: whisper
+          extra-scope: transcribe
       - name: Build the CLI
         timeout-minutes: 140
         run: |
@@ -665,7 +725,6 @@ jobs:
         with:
           label: cli (windows, ${{ matrix.backend == 'none' && 'cpu' || matrix.label || matrix.backend }})
           job-status: ${{ job.status }}
-          save: ${{ matrix.compiler_cache_writer == true }}
           shrink: ${{ matrix.compiler_cache_shrink == true }}
           target-dir: ${{ env.CARGO_TARGET_DIR }}
       - uses: ./.github/actions/prune-rust-cache
@@ -674,7 +733,7 @@ jobs:
 
   desktop-windows:
     name: desktop (windows, cuda-vulkan)
-    needs: [ffmpeg-windows]
+    needs: [ffmpeg-windows, ggml-windows]
     runs-on: windows-2025-vs2026
     timeout-minutes: 120
     permissions:
@@ -721,6 +780,8 @@ jobs:
         with:
           enabled: ${{ env.PURR_COMPILER_CACHE }}
           base-dir: ${{ env.CARGO_TARGET_DIR }}
+          scope: whisper
+          extra-scope: ${{ env.PURR_DESKTOP_TRANSCRIBE == 'on' && 'transcribe' || '' }}
       - name: Build the desktop app
         run: |
           $features = $env:FEATURES
