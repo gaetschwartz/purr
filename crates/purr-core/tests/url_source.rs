@@ -251,25 +251,57 @@ fn endless(
     )
 }
 
-#[tokio::test]
-async fn endless_body_is_bounded_and_dropping_stops_it() -> TestResult {
+struct EndlessServer {
+    url: Url,
+    produced: Arc<AtomicUsize>,
+    dropped: oneshot::Receiver<()>,
+}
+
+async fn serve_endless() -> Result<EndlessServer, Box<dyn std::error::Error>> {
     let produced = Arc::new(AtomicUsize::new(0));
-    let (dropped_tx, dropped_rx) = oneshot::channel();
+    let (dropped_tx, dropped) = oneshot::channel();
     let body = Arc::new(parking_lot::Mutex::new(Some((
         Arc::clone(&produced),
         dropped_tx,
     ))));
-    let url = serve({
-        let body = Arc::clone(&body);
-        move || {
-            let taken = body.lock().take();
-            match taken {
-                Some((produced, dropped)) => Body::from_stream(endless(produced, dropped)),
-                None => Body::empty(),
-            }
+    let url = serve(move || {
+        let taken = body.lock().take();
+        match taken {
+            Some((produced, dropped)) => Body::from_stream(endless(produced, dropped)),
+            None => Body::empty(),
         }
     })
     .await?;
+    Ok(EndlessServer {
+        url,
+        produced,
+        dropped,
+    })
+}
+
+#[tokio::test]
+async fn a_reader_held_back_for_longer_than_the_http_timeout_keeps_its_download() -> TestResult {
+    let server = serve_endless().await?;
+    let config = InputConfig::default().with_http_timeout(1);
+
+    let mut stream = AudioProcessor::stream_url_with_config(server.url, &config).await?;
+    let first = tokio::time::timeout(Duration::from_secs(30), stream.next()).await?;
+    assert!(matches!(first, Some(Ok(_))));
+    tokio::time::sleep(Duration::from_secs(3)).await;
+    for _ in 0..40 {
+        let item = tokio::time::timeout(Duration::from_secs(30), stream.next()).await?;
+        assert!(matches!(item, Some(Ok(_))), "{item:?}");
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn endless_body_is_bounded_and_dropping_stops_it() -> TestResult {
+    let EndlessServer {
+        url,
+        produced,
+        dropped: dropped_rx,
+    } = serve_endless().await?;
 
     let mut stream = AudioProcessor::stream_url_with_config(url, &InputConfig::default()).await?;
     assert_eq!(stream.length(), SourceLength::Unknown);

@@ -139,8 +139,8 @@ impl Session {
     /// Whether the session takes more audio from its source now.
     pub fn wants_audio(&self) -> bool {
         match self.policy {
-            WindowPolicy::Full { .. } | WindowPolicy::AtPauses { .. } => {
-                self.pending.len() < MAX_PENDING_SAMPLES
+            WindowPolicy::Full { max } | WindowPolicy::AtPauses { max, .. } => {
+                self.pending.len() < MAX_PENDING_SAMPLES.max(max)
             }
             WindowPolicy::Whole => true,
         }

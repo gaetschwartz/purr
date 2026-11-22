@@ -193,8 +193,8 @@ impl AudioProcessor {
 
     /// How long the audio file at `path` is, as its container states it.
     pub fn probe_file_length(path: &Path) -> Result<SourceLength> {
-        let processor = Self::new()?;
-        let (_input, length) = processor.open_file(path)?;
+        Self::new()?;
+        let (_input, length) = Self::open_file(path)?;
         Ok(length)
     }
 
@@ -206,7 +206,7 @@ impl AudioProcessor {
 
         let (mut processor, mut input, length) = task::spawn_blocking(move || {
             let processor = Self::new()?;
-            let (input, length) = processor.open_file(&path)?;
+            let (input, length) = Self::open_file(&path)?;
             Ok::<_, Error>((processor, input, length))
         })
         .await
@@ -230,7 +230,7 @@ impl AudioProcessor {
         }
     }
 
-    fn open_file(&self, path: &Path) -> Result<(ffmpeg::format::context::Input, SourceLength)> {
+    fn open_file(path: &Path) -> Result<(ffmpeg::format::context::Input, SourceLength)> {
         if !path.exists() {
             return Err(Error::from(AudioProcessingError::ReadFailed {
                 file: path.to_path_buf(),
@@ -248,7 +248,7 @@ impl AudioProcessor {
 
     /// Synchronous audio loading implementation
     fn load_audio_sync(&mut self, path: &Path) -> Result<AudioData> {
-        let (mut input, _length) = self.open_file(path)?;
+        let (mut input, _length) = Self::open_file(path)?;
         self.load_audio_from_input(&mut input, &|| Ok(()))
     }
 

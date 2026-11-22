@@ -72,6 +72,7 @@ fn describe(error: &dyn std::error::Error) -> String {
 /// HTTP streaming client for audio URLs
 pub struct HttpStreamer {
     client: Client,
+    read_timeout: Duration,
 }
 
 impl HttpStreamer {
@@ -84,7 +85,6 @@ impl HttpStreamer {
     pub fn with_config(config: UrlStreamConfig) -> Result<Self> {
         let client = crate::http::client_builder()?
             .connect_timeout(config.connect_timeout)
-            .read_timeout(config.read_timeout)
             .user_agent(&config.user_agent)
             .redirect(reqwest::redirect::Policy::limited(config.max_redirects))
             .build()
@@ -92,7 +92,10 @@ impl HttpStreamer {
                 message: format!("Failed to create HTTP client: {e}"),
             })?;
 
-        Ok(Self { client })
+        Ok(Self {
+            client,
+            read_timeout: config.read_timeout,
+        })
     }
 
     /// Stream audio data from a URL into an AsyncStreamBuffer
@@ -112,14 +115,12 @@ impl HttpStreamer {
         info!("Starting to stream audio from URL: {}", url);
 
         // Start the streaming request
-        let response =
-            self.client
-                .get(url.clone())
-                .send()
-                .await
-                .map_err(|e| Error::NetworkError {
-                    message: format!("Failed to connect to URL: {e}"),
-                })?;
+        let response = self
+            .within(self.client.get(url.clone()).send())
+            .await?
+            .map_err(|e| Error::NetworkError {
+                message: format!("Failed to connect to URL: {e}"),
+            })?;
 
         // Check response status
         if !response.status().is_success() {
@@ -157,11 +158,27 @@ impl HttpStreamer {
             }
         }
 
+        let read_timeout = self.read_timeout;
         let task = tokio::spawn(async move {
             let mut stream = response.bytes_stream();
             let mut total_received = 0u64;
 
-            while let Some(chunk_result) = stream.next().await {
+            loop {
+                let next = match tokio::time::timeout(read_timeout, stream.next()).await {
+                    Ok(next) => next,
+                    Err(elapsed) => {
+                        let message = format!(
+                            "No data received for {} seconds: {elapsed}",
+                            read_timeout.as_secs()
+                        );
+                        error!("{message}");
+                        buffer.fail(message.clone());
+                        return Err(Error::NetworkError { message });
+                    }
+                };
+                let Some(chunk_result) = next else {
+                    break;
+                };
                 match chunk_result {
                     Ok(chunk) => {
                         total_received += chunk.len() as u64;
@@ -195,20 +212,33 @@ impl HttpStreamer {
         })
     }
 
+    /// Awaits `request`, which must answer within the read timeout.
+    ///
+    /// The timeout runs only while waiting on the network, so a consumer that reads slowly
+    /// never trips it; the client's own read timeout would count that time too.
+    async fn within<T>(&self, request: impl Future<Output = T>) -> Result<T> {
+        tokio::time::timeout(self.read_timeout, request)
+            .await
+            .map_err(|elapsed| Error::NetworkError {
+                message: format!(
+                    "No response within {} seconds: {elapsed}",
+                    self.read_timeout.as_secs()
+                ),
+            })
+    }
+
     /// Get the content length of a URL without downloading it
     pub async fn get_content_info(&self, url: &str) -> Result<UrlContentInfo> {
         let url = Url::parse(url).map_err(|e| Error::InvalidInput {
             message: format!("Invalid URL: {e}"),
         })?;
 
-        let response =
-            self.client
-                .head(url.clone())
-                .send()
-                .await
-                .map_err(|e| Error::NetworkError {
-                    message: format!("Failed to get URL info: {e}"),
-                })?;
+        let response = self
+            .within(self.client.head(url.clone()).send())
+            .await?
+            .map_err(|e| Error::NetworkError {
+                message: format!("Failed to get URL info: {e}"),
+            })?;
 
         if !response.status().is_success() {
             return Err(Error::NetworkError {
