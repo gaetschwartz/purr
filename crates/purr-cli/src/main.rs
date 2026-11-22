@@ -20,6 +20,7 @@ mod output;
 mod output_plan;
 mod profile_text;
 mod progress;
+mod render;
 mod runtime;
 mod scope;
 mod stats;
@@ -29,6 +30,7 @@ mod template;
 mod theme;
 mod verbosity;
 mod vt;
+mod writer;
 
 use crate::download_prompt::prompt_for_model_download;
 use crate::error::{CliError, CliResult};
@@ -199,7 +201,7 @@ async fn handle_streaming_output(mut stream: Transcription, cli: &Cli) -> CliRes
                     }
                 }
                 OutputFormat::Json => {
-                    serde_json::to_string(&json::chunk(&chunk, cli.word_timestamps))
+                    serde_json::to_string(&json::chunk(&chunk, cli.word_timestamps, None))
                         .map_err(|source| CliError::SerializeJson { source })?
                         .into()
                 }
@@ -415,7 +417,7 @@ fn handle_output(result: SyncTranscriptionResult, cli: &Cli) -> CliResult<()> {
             }
         }
         OutputFormat::Json => {
-            serde_json::to_string_pretty(&json::document(&result, cli.word_timestamps))
+            serde_json::to_string_pretty(&json::document(&result, cli.word_timestamps, None))
                 .map_err(|source| CliError::SerializeJson { source })?
         }
         OutputFormat::Srt => result

@@ -23,6 +23,8 @@ pub struct JsonWord<'a> {
 
 #[derive(Debug, Serialize)]
 pub struct JsonChunk<'a> {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    input: Option<&'a str>,
     text: &'a str,
     start: f64,
     end: f64,
@@ -45,6 +47,8 @@ struct JsonSegment<'a> {
 
 #[derive(Debug, Serialize)]
 pub struct JsonDocument<'a> {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    input: Option<&'a str>,
     text: &'a str,
     segments: Vec<JsonSegment<'a>>,
     processing_time: f64,
@@ -69,10 +73,15 @@ pub fn words<'a>(text: &'a str, words: &[Word]) -> Vec<JsonWord<'a>> {
         .collect()
 }
 
-/// One streamed chunk, with its words when `with_words`.
+/// One streamed chunk, with its words when `with_words` and its `input` when given.
 #[must_use]
-pub fn chunk(chunk: &StreamingChunk, with_words: bool) -> JsonChunk<'_> {
+pub fn chunk<'a>(
+    chunk: &'a StreamingChunk,
+    with_words: bool,
+    input: Option<&'a str>,
+) -> JsonChunk<'a> {
     JsonChunk {
+        input,
         text: &chunk.text,
         start: chunk.start,
         end: chunk.end,
@@ -84,10 +93,15 @@ pub fn chunk(chunk: &StreamingChunk, with_words: bool) -> JsonChunk<'_> {
     }
 }
 
-/// A whole transcription, with the words of each segment when `with_words`.
+/// A whole transcription, with the words of each segment when `with_words` and its `input` when given.
 #[must_use]
-pub fn document(result: &SyncTranscriptionResult, with_words: bool) -> JsonDocument<'_> {
+pub fn document<'a>(
+    result: &'a SyncTranscriptionResult,
+    with_words: bool,
+    input: Option<&'a str>,
+) -> JsonDocument<'a> {
     JsonDocument {
+        input,
         text: &result.text,
         segments: result
             .segments
