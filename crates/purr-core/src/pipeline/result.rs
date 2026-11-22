@@ -48,6 +48,11 @@ pub struct TranscriptionSegment {
 
 /// Runs `transcription` to its end and gathers its committed text.
 pub async fn collect(mut transcription: Transcription) -> Result<SyncTranscriptionResult> {
+    collect_from(&mut transcription).await
+}
+
+/// [`collect`] for a transcription the caller keeps, to ask it afterwards how it ended.
+pub async fn collect_from(transcription: &mut Transcription) -> Result<SyncTranscriptionResult> {
     let mut segments = Vec::new();
     let mut final_stats = None;
     while let Some(event) = transcription.next().await {

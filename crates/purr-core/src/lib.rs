@@ -20,6 +20,6 @@ pub use audio::{AudioChunk, AudioProcessor, AudioStream, SourceLength};
 pub use dev::{Device, SystemInfo};
 pub use error::{Error, Result};
 pub use model::ModelManager;
-pub use url::{HttpStreamer, UrlContentInfo, UrlStreamConfig, is_file_path, is_valid_url};
+pub use url::{HttpStreamer, UrlContentInfo, UrlStreamConfig};
 
 pub const PKG_NAME: &str = env!("CARGO_PKG_NAME");

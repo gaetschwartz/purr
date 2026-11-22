@@ -35,22 +35,6 @@ impl Default for UrlStreamConfig {
     }
 }
 
-/// Validates if a string is a valid URL
-pub fn is_valid_url(input: &str) -> bool {
-    match Url::parse(input) {
-        Ok(url) => {
-            // Check if it's a HTTP or HTTPS URL
-            matches!(url.scheme(), "http" | "https")
-        }
-        Err(_) => false,
-    }
-}
-
-/// Whether `input` names a file: anything that is not an HTTP or HTTPS URL
-pub fn is_file_path(input: &str) -> bool {
-    !input.is_empty() && !is_valid_url(input)
-}
-
 /// A download feeding a buffer in the background.
 pub struct StreamingDownload {
     pub task: JoinHandle<Result<()>>,
@@ -311,44 +295,6 @@ fn format_bytes(bytes: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_is_valid_url() {
-        assert!(is_valid_url("https://example.com/audio.mp3"));
-        assert!(is_valid_url("http://example.com/audio.wav"));
-        assert!(!is_valid_url("ftp://example.com/file.mp3"));
-        assert!(!is_valid_url("file.mp3"));
-        assert!(!is_valid_url("/path/to/file.mp3"));
-        assert!(!is_valid_url("not-a-url"));
-    }
-
-    #[test]
-    fn test_is_file_path() {
-        assert!(is_file_path("file.mp3"));
-        assert!(is_file_path("/path/to/file.mp3"));
-        assert!(is_file_path("./relative/path.wav"));
-        assert!(is_file_path("../file.ogg"));
-        assert!(!is_file_path("https://example.com/audio.mp3"));
-        assert!(!is_file_path("http://example.com/audio.wav"));
-    }
-
-    #[test]
-    fn file_names_with_many_dots_are_paths() {
-        assert!(is_file_path("my.recording.v2.wav"));
-        assert!(is_file_path("a.b.c.d.e.flac"));
-        assert!(is_file_path("D:\\audio\\take.1.final.wav"));
-    }
-
-    #[test]
-    fn a_url_is_not_a_path_whatever_the_case_of_its_scheme() {
-        assert!(!is_file_path("HTTPS://example.com/audio.mp3"));
-        assert!(!is_file_path("https://example.com/my.recording.v2.wav"));
-    }
-
-    #[test]
-    fn an_empty_string_is_not_a_path() {
-        assert!(!is_file_path(""));
-    }
 
     #[test]
     fn test_format_bytes() {
