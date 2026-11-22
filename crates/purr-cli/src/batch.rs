@@ -161,8 +161,12 @@ pub async fn run(
         entries.push(Entry { display, outcome });
     }
 
-    let merged = destination.finish();
     let summary = Summary::new(entries, audio_seconds, started.elapsed());
+    let merged = destination.finish(!summary.cut_short());
+    let summary = match &merged {
+        Ok(Some(Merged::Unfinished(part))) => summary.with_merged_part(part.clone()),
+        Ok(Some(Merged::Completed(_)) | None) | Err(_) => summary,
+    };
     let exit = match form {
         InputForm::Single => {
             let summary = summary.into_result()?;
@@ -176,7 +180,7 @@ pub async fn run(
             summary.exit_code()
         }
     };
-    if let Some(path) = merged?
+    if let Some(Merged::Completed(path)) = merged?
         && cli.verbosity.is_verbose()
     {
         statusln!(
@@ -600,6 +604,10 @@ impl FileSlot {
         Ok(())
     }
 
+    fn part_path(&self) -> Option<&Path> {
+        self.part.as_ref().map(PartFile::part_path)
+    }
+
     fn complete(self) -> CliResult<PathBuf> {
         let part = match self.part {
             Some(part) => part,
@@ -607,6 +615,12 @@ impl FileSlot {
         };
         Ok(part.complete()?)
     }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum Merged {
+    Completed(PathBuf),
+    Unfinished(PathBuf),
 }
 
 enum Target {
@@ -745,12 +759,21 @@ impl Output {
         }
     }
 
-    fn finish(&mut self) -> CliResult<Option<PathBuf>> {
+    fn finish(&mut self, complete: bool) -> CliResult<Option<Merged>> {
         match self.target {
-            Target::Merged => match self.slot.take() {
-                Some(slot) if slot.part.is_some() => Ok(Some(slot.complete()?)),
-                Some(_) | None => Ok(None),
-            },
+            Target::Merged => {
+                let Some(slot) = self.slot.take() else {
+                    return Ok(None);
+                };
+                let Some(part) = slot.part_path().map(Path::to_path_buf) else {
+                    return Ok(None);
+                };
+                if complete {
+                    Ok(Some(Merged::Completed(slot.complete()?)))
+                } else {
+                    Ok(Some(Merged::Unfinished(part)))
+                }
+            }
             Target::Stdout | Target::PerInput => Ok(None),
         }
     }
@@ -797,12 +820,45 @@ mod tests {
             output.stream_end().unwrap();
             assert_eq!(output.complete_input().unwrap(), None);
         }
-        assert_eq!(output.finish().unwrap(), Some(path.clone()));
+        assert_eq!(
+            output.finish(true).unwrap(),
+            Some(Merged::Completed(path.clone()))
+        );
         assert_eq!(
             std::fs::read_to_string(&path).unwrap(),
             "==> a.wav <==\nHello\n\n==> b.wav <==\nworld\n"
         );
         assert!(!dir.path().join("all.txt.part").exists());
+    }
+
+    #[test]
+    fn a_merged_output_stays_a_part_file_when_the_run_is_cut_short() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("all.txt");
+        let cli = Cli::try_parse_from(["purr", "a.wav"]).unwrap();
+        let mut output = Output::new(&cli, false, Sink::Merged(path.clone()));
+        output.begin_input(Destination::Merged);
+        output.chunk(&item(1, "a.wav"), &chunk("Hello", 0)).unwrap();
+        output.stream_end().unwrap();
+        let part = dir.path().join("all.txt.part");
+        assert_eq!(
+            output.finish(false).unwrap(),
+            Some(Merged::Unfinished(part.clone()))
+        );
+        assert!(!path.exists());
+        assert_eq!(
+            std::fs::read_to_string(&part).unwrap(),
+            "==> a.wav <==\nHello\n"
+        );
+    }
+
+    #[test]
+    fn a_merged_output_that_wrote_nothing_has_nothing_to_finish() {
+        let dir = TempDir::new().unwrap();
+        let cli = Cli::try_parse_from(["purr", "a.wav"]).unwrap();
+        let mut output = Output::new(&cli, false, Sink::Merged(dir.path().join("all.txt")));
+        assert_eq!(output.finish(false).unwrap(), None);
+        assert_eq!(output.finish(true).unwrap(), None);
     }
 
     #[test]
@@ -816,7 +872,7 @@ mod tests {
             output.chunk(&item(index, name), &chunk("Hi", 0)).unwrap();
             output.stream_end().unwrap();
         }
-        output.finish().unwrap();
+        output.finish(true).unwrap();
         let written = std::fs::read_to_string(&path).unwrap();
         let inputs: Vec<String> = written
             .lines()

@@ -63,6 +63,7 @@ pub struct Summary {
     entries: Vec<Entry>,
     audio_seconds: f64,
     elapsed: Duration,
+    merged_part: Option<PathBuf>,
 }
 
 impl Summary {
@@ -71,7 +72,13 @@ impl Summary {
             entries,
             audio_seconds,
             elapsed,
+            merged_part: None,
         }
+    }
+
+    pub fn with_merged_part(mut self, part: PathBuf) -> Self {
+        self.merged_part = Some(part);
+        self
     }
 
     pub fn into_result(self) -> CliResult<Self> {
@@ -79,6 +86,7 @@ impl Summary {
             entries,
             audio_seconds,
             elapsed,
+            merged_part,
         } = self;
         let entries = entries
             .into_iter()
@@ -89,7 +97,12 @@ impl Summary {
                 })
             })
             .collect::<CliResult<Vec<_>>>()?;
-        Ok(Self::new(entries, audio_seconds, elapsed))
+        Ok(Self {
+            entries,
+            audio_seconds,
+            elapsed,
+            merged_part,
+        })
     }
 
     fn counts(&self) -> Counts {
@@ -167,6 +180,7 @@ impl Summary {
             .entries
             .iter()
             .filter_map(|entry| entry.outcome.part())
+            .chain(self.merged_part.as_ref())
             .map(|part| format!("  {}", part.display()))
             .collect();
         if !parts.is_empty() {
@@ -312,6 +326,23 @@ mod tests {
              out\\broken.txt.part\n  \
              out\\c.txt.part\n\
              Audio: 2:05 in 0:25 (5.0x real time)"
+        );
+    }
+
+    #[test]
+    fn a_merged_part_file_is_listed_as_unfinished_output() {
+        let entries = vec![
+            entry("a.wav", done()),
+            entry("b.wav", Outcome::Interrupted { part: None }),
+        ];
+        let summary = Summary::new(entries, 60.0, Duration::from_secs(30))
+            .with_merged_part(PathBuf::from("all.txt.part"));
+        assert_eq!(
+            summary.render(),
+            "Summary: 1 done, 1 interrupted\n\
+             Unfinished output:\n  \
+             all.txt.part\n\
+             Audio: 1:00 in 0:30 (2.0x real time)"
         );
     }
 
