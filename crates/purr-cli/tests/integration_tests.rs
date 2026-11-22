@@ -1,52 +1,13 @@
 //! Integration tests for purr
 
 use assert_cmd::Command;
-use purr_core::ModelManager;
+mod common;
+
+use common::{TestResult, base_model, golden_path};
 use purr_golden::Recording;
 use rstest::rstest;
 use serde_json::Value;
-use std::{
-    fmt,
-    path::{Path, PathBuf},
-    process::Output,
-    time::Duration,
-};
-
-type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
-
-struct MissingBaseModel {
-    dir: PathBuf,
-}
-
-impl fmt::Debug for MissingBaseModel {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Display::fmt(self, f)
-    }
-}
-
-impl fmt::Display for MissingBaseModel {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "the `base` model is missing or incomplete in {}: run `purr models download base` or `just download-test-models`",
-            self.dir.display()
-        )
-    }
-}
-
-impl std::error::Error for MissingBaseModel {}
-
-async fn base_model() -> TestResult<PathBuf> {
-    let models = ModelManager::new()?;
-    let spec = models.model("base")?;
-    if !models.is_model_downloaded(spec).await? {
-        return Err(MissingBaseModel {
-            dir: models.models_dir().to_path_buf(),
-        }
-        .into());
-    }
-    Ok(models.get_model_path(spec))
-}
+use std::{path::Path, process::Output, time::Duration};
 
 /// The CLI on one thread, CPU only, with the `base` model.
 async fn purr_on(sample: &Path, format: &OutputFormat) -> TestResult<Output> {
@@ -65,12 +26,6 @@ fn test_missing_audio_file() {
     let mut cmd = Command::cargo_bin("purr").unwrap();
     cmd.arg("nonexistent_file.wav");
     cmd.assert().failure();
-}
-
-fn golden_path(name: &str) -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/golden")
-        .join(name)
 }
 
 /// The same recording in every container the samples come in.

@@ -14,17 +14,28 @@ use std::io;
 use std::path::PathBuf;
 use tracing::error;
 
+/// Whether the question may be asked at all; standard input read for something else cannot answer it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Prompting {
+    Allowed,
+    Never,
+}
+
 /// Whether anyone can see and answer the question.
-pub fn can_ask() -> bool {
-    output::is_interactive() && stdin_is_terminal()
+pub fn can_ask(prompting: Prompting) -> bool {
+    match prompting {
+        Prompting::Allowed => output::is_interactive() && stdin_is_terminal(),
+        Prompting::Never => false,
+    }
 }
 
 pub async fn prompt_for_model_download(
     model_manager: &ModelManager,
     model: Option<&ModelSpec>,
+    prompting: Prompting,
 ) -> CliResult<Option<PathBuf>> {
     let program = crate::APP_NAME;
-    if !can_ask() {
+    if !can_ask(prompting) {
         let wanted = model.unwrap_or_else(|| model_manager.registry().default_model());
         return Err(if model.is_some() {
             CliError::ModelNotDownloaded {
@@ -104,5 +115,15 @@ pub async fn prompt_for_model_download(
             format_args!("{program} models download <model>").command()
         );
         Ok(None)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn nobody_is_asked_when_prompting_is_off() {
+        assert!(!can_ask(Prompting::Never));
     }
 }

@@ -26,7 +26,7 @@ pub enum ThrowKind {
 impl ThrowKind {
     pub fn raise(self) -> CliError {
         match self {
-            Self::Message => CliError::NoAudioInput,
+            Self::Message => CliError::NoMediaInput,
             Self::Io => CliError::WriteOutput {
                 path: PathBuf::from("transcript.txt"),
                 source: std::io::Error::other("the disk went away"),

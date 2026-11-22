@@ -1,5 +1,3 @@
-#![cfg_attr(not(test), expect(dead_code, reason = "used by the batch run"))]
-
 use crate::cli::OutputFormat;
 use crate::error::CliError;
 use crate::json;

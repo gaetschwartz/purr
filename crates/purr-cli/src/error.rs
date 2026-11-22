@@ -1,6 +1,9 @@
+use crate::inputs::InputsError;
 use crate::language_arg::LanguageProblem;
 use crate::logging::LoggingError;
 use crate::output::OutputError;
+use crate::output_plan::OutputPlanError;
+use crate::writer::WriterError;
 use indicatif::style::TemplateError;
 use purr_core::accel::selector::SelectorError;
 use purr_core::error::Error as CoreError;
@@ -19,6 +22,12 @@ pub enum CliError {
     Output { source: OutputError },
     #[oopsie(transparent)]
     Logging { source: LoggingError },
+    #[oopsie(transparent)]
+    Inputs { source: InputsError },
+    #[oopsie(transparent)]
+    OutputPlan { source: OutputPlanError },
+    #[oopsie(transparent)]
+    Writer { source: WriterError },
     #[oopsie(
         "{failed} model(s) failed verification",
         code = "purr::models::verification_failed",
@@ -28,19 +37,22 @@ pub enum CliError {
     #[oopsie(
         "Nothing was transcribed",
         code = "purr::transcribe::nothing_transcribed",
-        help = "Check that it is a valid audio file"
+        help = "Check that it is a valid media file"
     )]
     NothingTranscribed,
     #[oopsie(
-        "No audio file or URL given",
+        "No media file or URL given",
         code = "purr::input::missing",
-        help = "Pass an audio file path or a URL"
+        help = "Pass a media file path (audio or video), a wildcard, a URL, or --batch-file"
     )]
-    NoAudioInput,
-    #[oopsie("Not a file path or URL: '{input}'", code = "purr::input::invalid")]
-    InvalidAudioInput { input: String },
+    NoMediaInput,
     #[oopsie(
-        "Audio file not found: {}",
+        "The transcription ended without saying why",
+        code = "purr::transcribe::ended_unexplained"
+    )]
+    EndedUnexplained,
+    #[oopsie(
+        "Media file not found: {}",
         path.display(),
         code = "purr::input::file_not_found"
     )]

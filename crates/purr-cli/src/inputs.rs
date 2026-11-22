@@ -1,7 +1,7 @@
-#![cfg_attr(not(test), expect(dead_code, reason = "used by the batch run"))]
-
+use std::convert::Infallible;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 use url::Url;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -31,12 +31,20 @@ pub struct Inputs {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BatchFile {
-    #[cfg_attr(
-        test,
-        expect(dead_code, reason = "standard input cannot be read in a test")
-    )]
     Stdin,
     Path(PathBuf),
+}
+
+impl FromStr for BatchFile {
+    type Err = Infallible;
+
+    fn from_str(text: &str) -> Result<Self, Self::Err> {
+        Ok(if text == "-" {
+            Self::Stdin
+        } else {
+            Self::Path(PathBuf::from(text))
+        })
+    }
 }
 
 #[oopsie::oopsie]
@@ -44,7 +52,7 @@ pub enum InputsError {
     #[oopsie(
         "Not a file path or URL: '{input}'",
         code = "purr::input::invalid",
-        help = "Pass an audio file path, a wildcard or an http(s) URL"
+        help = "Pass a media file path, a wildcard or an http(s) URL"
     )]
     Invalid { input: String },
     #[oopsie(
@@ -244,6 +252,15 @@ mod tests {
     use super::*;
     use pretty_assertions::assert_eq;
     use tempfile::TempDir;
+
+    #[test]
+    fn a_dash_names_standard_input_and_anything_else_a_path() {
+        assert_eq!("-".parse::<BatchFile>(), Ok(BatchFile::Stdin));
+        assert_eq!(
+            "list.txt".parse::<BatchFile>(),
+            Ok(BatchFile::Path(PathBuf::from("list.txt")))
+        );
+    }
 
     fn touch(dir: &Path, relative: &str) -> PathBuf {
         let path = dir.join(relative);

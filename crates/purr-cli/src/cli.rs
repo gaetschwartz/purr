@@ -1,4 +1,5 @@
 use crate::color::ColorChoice;
+use crate::inputs::BatchFile;
 use crate::language_arg::parse_language;
 use crate::logging::level::LogLevel;
 use crate::theme::CLAP_STYLES;
@@ -19,7 +20,7 @@ use purr_core::{
 };
 use std::{ffi::OsStr, path::PathBuf, str::FromStr as _};
 
-const ABOUT: &str = "😸 Transcribe audio files and URLs on this computer";
+const ABOUT: &str = "😸 Transcribe media files (audio or video) and URLs on this computer";
 #[derive(Parser, Debug)]
 #[command(name = env!("CARGO_BIN_NAME"), bin_name = env!("CARGO_BIN_NAME"), author = env!("CARGO_PKG_AUTHORS"))]
 #[command(about = ABOUT)]
@@ -29,9 +30,13 @@ pub struct Cli {
     #[command(subcommand)]
     pub command: Option<Commands>,
 
-    /// Path to the audio file or URL to transcribe (when no subcommand)
-    #[arg(value_name = "AUDIO_FILE_OR_URL")]
-    pub audio_input: Option<String>,
+    /// Media files (audio or video), wildcards or URLs to transcribe (when no subcommand)
+    #[arg(value_name = "MEDIA_FILE_OR_URL")]
+    pub inputs: Vec<String>,
+
+    /// Read inputs from FILE, one per line (`-` reads standard input)
+    #[arg(short = 'a', long, value_name = "FILE")]
+    pub batch_file: Option<BatchFile>,
 
     /// Path to a model file, or the id of a model from `models list --available`
     #[arg(short, long)]
@@ -78,9 +83,22 @@ pub struct Cli {
     #[arg(short, long, default_value = "text")]
     pub output: OutputFormat,
 
-    /// Output file path (writes to file instead of stdout)
+    /// Output file (writes to file instead of stdout); {stem}, {name}, {dir}, {ext} and {index}
+    /// stand for the input's parts
     #[arg(short = 'f', long = "output-file")]
-    pub output_file: Option<PathBuf>,
+    pub output_file: Option<String>,
+
+    /// Write every input to the one output file
+    #[arg(long)]
+    pub merge: bool,
+
+    /// Leave an input alone when its output file already exists
+    #[arg(long)]
+    pub skip_existing: bool,
+
+    /// Stop at the first input that fails
+    #[arg(long)]
+    pub fail_fast: bool,
 
     /// Include timestamps in output (text format only)
     #[arg(long)]
@@ -135,7 +153,7 @@ pub struct Cli {
     #[arg(long, value_name = "PATH")]
     pub vad_model: Option<PathBuf>,
 
-    /// HTTP timeout for URL requests (in seconds)
+    /// Seconds a URL may go without sending data before the transfer fails
     #[arg(long, default_value = "30")]
     pub http_timeout: u64,
 
@@ -707,5 +725,44 @@ mod tests {
             parse_error(&["--language", "klingon"]),
             ErrorKind::ValueValidation
         );
+    }
+
+    #[test]
+    fn several_inputs_and_a_batch_file_are_taken() {
+        let cli = Cli::try_parse_from(["purr", "a.wav", "b.mp4", "-a", "list.txt"]).unwrap();
+        assert_eq!(cli.inputs, ["a.wav", "b.mp4"]);
+        assert_eq!(
+            cli.batch_file,
+            Some(BatchFile::Path(PathBuf::from("list.txt")))
+        );
+    }
+
+    #[test]
+    fn a_batch_file_named_dash_is_standard_input() {
+        let cli = Cli::try_parse_from(["purr", "--batch-file", "-"]).unwrap();
+        assert_eq!(cli.batch_file, Some(BatchFile::Stdin));
+        assert_eq!(cli.inputs, Vec::<String>::new());
+    }
+
+    #[test]
+    fn a_subcommand_is_not_taken_for_an_input() {
+        let cli = Cli::try_parse_from(["purr", "models", "list"]).unwrap();
+        assert_eq!(cli.inputs, Vec::<String>::new());
+        assert!(matches!(cli.command, Some(Commands::Models { .. })));
+    }
+
+    #[test]
+    fn the_batch_flags_default_to_off() {
+        let cli = cli_of(&[]);
+        assert_eq!(
+            (cli.merge, cli.skip_existing, cli.fail_fast),
+            (false, false, false)
+        );
+        let cli = cli_of(&["--merge", "--skip-existing", "--fail-fast", "-f", "all.txt"]);
+        assert_eq!(
+            (cli.merge, cli.skip_existing, cli.fail_fast),
+            (true, true, true)
+        );
+        assert_eq!(cli.output_file.as_deref(), Some("all.txt"));
     }
 }

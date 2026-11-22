@@ -1,5 +1,3 @@
-#![cfg_attr(not(test), expect(dead_code, reason = "used by the batch run"))]
-
 use std::fs::File;
 use std::io::{self, Write as _};
 use std::path::{Path, PathBuf};
