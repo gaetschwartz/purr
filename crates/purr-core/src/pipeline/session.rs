@@ -35,6 +35,9 @@ use super::{
 
 const SAMPLES_PER_CENTISECOND: usize = SAMPLE_RATE / 100;
 
+/// The most audio a streaming session holds undecoded before it stops asking its source for more.
+pub const MAX_PENDING_SAMPLES: usize = 5 * 60 * SAMPLE_RATE;
+
 pub type Events = mpsc::UnboundedSender<Result<StreamEvent>>;
 
 /// What one decode of a window gave.
@@ -131,6 +134,16 @@ impl Session {
         }
         self.received += samples.len();
         self.pending.extend_from_slice(samples);
+    }
+
+    /// Whether the session takes more audio from its source now.
+    pub fn wants_audio(&self) -> bool {
+        match self.policy {
+            WindowPolicy::Full { .. } | WindowPolicy::AtPauses { .. } => {
+                self.pending.len() < MAX_PENDING_SAMPLES
+            }
+            WindowPolicy::Whole => true,
+        }
     }
 
     /// The window to decode now, if any.

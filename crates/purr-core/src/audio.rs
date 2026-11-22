@@ -1,18 +1,25 @@
 //! Audio processing functionality using `FFmpeg`
 
 use crate::error::{AudioProcessingError, Error, Result};
-use crate::input::AsyncStreamBuffer;
+use crate::input::{AsyncCustomInput, AsyncStreamBuffer};
 use crate::resample::FrameResampler;
+use crate::url::{HttpStreamer, UrlStreamConfig};
 use ffmpeg_next as ffmpeg;
 use futures::Stream;
 use reqwest::IntoUrl;
 use std::path::Path;
 use std::pin::Pin;
+use std::sync::Arc;
 use std::task::{Context, Poll};
+use std::time::Duration;
 use tokio::sync::mpsc;
-use tokio::task;
+use tokio::task::{self, JoinHandle};
 use tracing::{debug, warn};
 use url::Url;
+
+const DECODED_CHANNEL_CAPACITY: usize = 8;
+
+const SAMPLE_RATE: u64 = 16_000;
 
 /// Audio data structure
 #[derive(Debug, Clone)]
@@ -64,21 +71,37 @@ impl AudioChunk {
     }
 }
 
+/// How much audio a source holds, as far as it says.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SourceLength {
+    /// The container states its duration
+    Exact(Duration),
+    /// Worked out from the size of the body and the bit rate
+    Estimated(Duration),
+    Unknown,
+}
+
 /// Stream of audio chunks
 pub struct AudioStream {
-    receiver: mpsc::UnboundedReceiver<Result<AudioChunk>>,
+    receiver: mpsc::Receiver<Result<AudioChunk>>,
+    length: SourceLength,
 }
 
 impl AudioStream {
-    pub fn new(receiver: mpsc::UnboundedReceiver<Result<AudioChunk>>) -> Self {
-        Self { receiver }
+    pub fn new(receiver: mpsc::Receiver<Result<AudioChunk>>, length: SourceLength) -> Self {
+        Self { receiver, length }
+    }
+
+    #[must_use]
+    pub fn length(&self) -> SourceLength {
+        self.length
     }
 
     /// A stream that already holds all of `samples` (mono, 16 kHz), in chunks of the usual size.
     #[must_use]
     pub fn from_samples(samples: &[f32]) -> Self {
-        let (tx, rx) = mpsc::unbounded_channel();
         let parts = samples.chunks(AudioChunk::TARGET_SAMPLES).count();
+        let (tx, rx) = mpsc::channel(parts.max(1));
         for (index, part) in samples.chunks(AudioChunk::TARGET_SAMPLES).enumerate() {
             let chunk = AudioChunk::new(
                 part.to_vec(),
@@ -86,11 +109,14 @@ impl AudioStream {
                 index as f32 * AudioChunk::TARGET_DURATION,
                 index + 1 == parts,
             );
-            if tx.send(Ok(chunk)).is_err() {
+            if tx.try_send(Ok(chunk)).is_err() {
                 break;
             }
         }
-        Self::new(rx)
+        let length = SourceLength::Exact(Duration::from_micros(
+            samples.len() as u64 * 1_000_000 / SAMPLE_RATE,
+        ));
+        Self::new(rx, length)
     }
 }
 
@@ -104,8 +130,36 @@ impl Stream for AudioStream {
 
 impl std::fmt::Debug for AudioStream {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("AudioStream").finish()
+        f.debug_struct("AudioStream")
+            .field("length", &self.length)
+            .finish_non_exhaustive()
     }
+}
+
+fn container_duration(input: &ffmpeg::format::context::Input) -> Option<Duration> {
+    u64::try_from(input.duration())
+        .ok()
+        .filter(|micros| *micros > 0)
+        .map(Duration::from_micros)
+}
+
+fn estimated_duration(
+    input: &ffmpeg::format::context::Input,
+    content_length: u64,
+) -> Option<Duration> {
+    let stream_rate = input
+        .streams()
+        .best(ffmpeg::media::Type::Audio)
+        .map(|stream| stream.parameters().bit_rate());
+    let bit_rate = [Some(input.bit_rate()), stream_rate]
+        .into_iter()
+        .flatten()
+        .find(|rate| *rate > 0)?;
+    Duration::try_from_secs_f64(content_length as f64 * 8.0 / bit_rate as f64).ok()
+}
+
+fn join_error(source: task::JoinError) -> Error {
+    Error::from(AudioProcessingError::TaskJoin { source })
 }
 
 /// Audio processor using `FFmpeg`
@@ -134,43 +188,49 @@ impl AudioProcessor {
             processor.load_audio_sync(&path)
         })
         .await
-        .map_err(|e| Error::from(AudioProcessingError::TaskJoin { source: e }))?
+        .map_err(join_error)?
+    }
+
+    /// How long the audio file at `path` is, as its container states it.
+    pub fn probe_file_length(path: &Path) -> Result<SourceLength> {
+        let processor = Self::new()?;
+        let (_input, length) = processor.open_file(path)?;
+        Ok(length)
     }
 
     /// Stream audio file as chunks for real-time processing
+    ///
+    /// The file is opened before this returns, so a file that cannot be read fails here.
     pub async fn stream_file<P: AsRef<Path>>(path: P) -> Result<AudioStream> {
         let path = path.as_ref().to_path_buf();
 
-        let (tx, rx) = mpsc::unbounded_channel();
+        let (mut processor, mut input, length) = task::spawn_blocking(move || {
+            let processor = Self::new()?;
+            let (input, length) = processor.open_file(&path)?;
+            Ok::<_, Error>((processor, input, length))
+        })
+        .await
+        .map_err(join_error)??;
 
-        // Process audio in a background task
+        let (tx, rx) = mpsc::channel(DECODED_CHANNEL_CAPACITY);
+
         task::spawn_blocking(move || {
-            let mut processor = match Self::new() {
-                Err(e) => {
-                    let _ = tx.send(Err(e));
-                    return;
-                }
-                Ok(p) => p,
-            };
-
-            if let Err(error) = processor.stream_audio(&path, &tx) {
+            if let Err(error) = processor.stream_audio_from_input(&mut input, &tx, &|| Ok(())) {
                 Self::send_failure(&tx, error);
             }
         });
 
-        Ok(AudioStream::new(rx))
+        Ok(AudioStream::new(rx, length))
     }
 
     /// Ends the stream with `error`, so whoever reads the stream sees why it stopped.
-    fn send_failure(tx: &mpsc::UnboundedSender<Result<AudioChunk>>, error: Error) {
-        if tx.send(Err(error)).is_err() {
+    fn send_failure(tx: &mpsc::Sender<Result<AudioChunk>>, error: Error) {
+        if tx.blocking_send(Err(error)).is_err() {
             debug!("Audio stream dropped, failure not delivered");
         }
     }
 
-    /// Synchronous audio loading implementation
-    fn load_audio_sync(&mut self, path: &Path) -> Result<AudioData> {
-        // Validate file exists
+    fn open_file(&self, path: &Path) -> Result<(ffmpeg::format::context::Input, SourceLength)> {
         if !path.exists() {
             return Err(Error::from(AudioProcessingError::ReadFailed {
                 file: path.to_path_buf(),
@@ -178,51 +238,56 @@ impl AudioProcessor {
             }));
         }
 
-        // Open input file and convert to AsyncCustomInput
-        let input_ctx = ffmpeg::format::input(&path).map_err(|source| Error::OpenAudioInput {
+        let input = ffmpeg::format::input(&path).map_err(|source| Error::OpenAudioInput {
             path: path.to_path_buf(),
             source,
         })?;
-        let custom_input =
-            crate::input::AsyncCustomInput::from_input_context(input_ctx).map_err(|source| {
-                Error::OpenAudioInput {
-                    path: path.to_path_buf(),
-                    source,
-                }
-            })?;
-
-        // Use the common input processing logic
-        self.load_audio_from_input(custom_input)
+        let length = container_duration(&input).map_or(SourceLength::Unknown, SourceLength::Exact);
+        Ok((input, length))
     }
 
-    /// Synchronous streaming audio implementation
-    fn stream_audio(
-        &mut self,
-        path: &Path,
-        tx: &mpsc::UnboundedSender<Result<AudioChunk>>,
-    ) -> Result<()> {
-        if !path.exists() {
-            return Err(Error::from(AudioProcessingError::ReadFailed {
-                file: path.to_path_buf(),
-                source: std::io::Error::new(std::io::ErrorKind::NotFound, "File not found"),
-            }));
+    /// Synchronous audio loading implementation
+    fn load_audio_sync(&mut self, path: &Path) -> Result<AudioData> {
+        let (mut input, _length) = self.open_file(path)?;
+        self.load_audio_from_input(&mut input, &|| Ok(()))
+    }
+
+    fn url_stream_config(config: &crate::config::InputConfig) -> UrlStreamConfig {
+        UrlStreamConfig {
+            connect_timeout: Duration::from_secs(config.http_connect_timeout),
+            read_timeout: Duration::from_secs(config.http_timeout),
+            ..Default::default()
         }
+    }
 
-        // Open input file and convert to AsyncCustomInput
-        let input_ctx = ffmpeg::format::input(&path).map_err(|source| Error::OpenAudioInput {
-            path: path.to_path_buf(),
-            source,
-        })?;
-        let custom_input =
-            crate::input::AsyncCustomInput::from_input_context(input_ctx).map_err(|source| {
-                Error::OpenAudioInput {
-                    path: path.to_path_buf(),
-                    source,
+    /// Fails with the reason the download broke off, if it did.
+    fn source_failure(buffer: &AsyncStreamBuffer) -> Result<()> {
+        buffer
+            .failure()
+            .map_or_else(|| Ok(()), |message| Err(Error::NetworkError { message }))
+    }
+
+    async fn open_stream(buffer: &Arc<AsyncStreamBuffer>) -> Result<AsyncCustomInput> {
+        match AsyncCustomInput::create(Arc::clone(buffer)).await {
+            Ok(input) => Ok(input),
+            Err(source) => {
+                Self::source_failure(buffer)?;
+                Err(Error::OpenStreamInput { source })
+            }
+        }
+    }
+
+    fn watch_download(task: JoinHandle<Result<()>>, buffer: Arc<AsyncStreamBuffer>) {
+        tokio::spawn(async move {
+            match task.await {
+                Ok(Ok(())) => debug!("The download finished"),
+                Ok(Err(error)) => debug!("The download ended with an error: {error}"),
+                Err(source) => {
+                    warn!("The download task did not finish: {source}");
+                    buffer.fail(format!("The download task did not finish: {source}"));
                 }
-            })?;
-
-        // Use the common input processing logic
-        self.stream_audio_from_input(custom_input, tx)
+            }
+        });
     }
 
     /// Load audio from URL and convert to the format expected by Whisper
@@ -240,41 +305,20 @@ impl AudioProcessor {
         url: Url,
         config: &crate::config::InputConfig,
     ) -> Result<AudioData> {
-        use crate::input::AsyncCustomInput;
-        use crate::url::{HttpStreamer, UrlStreamConfig};
-        use std::time::Duration;
-
-        // Create URL streamer with timeout configuration from InputConfig
-        let url_config = UrlStreamConfig {
-            timeout: Duration::from_secs(config.http_timeout),
-            connect_timeout: Duration::from_secs(config.http_connect_timeout),
-            ..Default::default()
-        };
-        let streamer = HttpStreamer::with_config(url_config)?;
-
-        // Create buffer for streaming
+        let streamer = HttpStreamer::with_config(Self::url_stream_config(config))?;
         let buffer = AsyncStreamBuffer::new();
+        let download = streamer.stream_url(url, Arc::clone(&buffer)).await?;
+        Self::watch_download(download.task, Arc::clone(&buffer));
 
-        // Start streaming URL data
-        let streaming_handle = streamer.stream_url(url, buffer.clone()).await?;
+        let mut custom_input = Self::open_stream(&buffer).await?;
 
-        // Create custom input from the buffer
-        let custom_input = AsyncCustomInput::create(buffer)
-            .await
-            .map_err(|source| Error::OpenStreamInput { source })?;
-
-        // Process the streaming input
-        let audio_data = task::spawn_blocking(move || {
+        task::spawn_blocking(move || {
             let mut processor = Self::new()?;
-            processor.load_audio_from_input(custom_input)
+            processor
+                .load_audio_from_input(custom_input.input_mut(), &|| Self::source_failure(&buffer))
         })
         .await
-        .map_err(|e| Error::from(AudioProcessingError::TaskJoin { source: e }))??;
-
-        // Wait for streaming to complete
-        let _ = streaming_handle.await;
-
-        Ok(audio_data)
+        .map_err(join_error)?
     }
 
     /// Stream audio from URL as chunks for real-time processing
@@ -283,64 +327,59 @@ impl AudioProcessor {
     }
 
     /// Stream audio from URL with custom configuration
+    ///
+    /// The stream is opened and probed before this returns.
     pub async fn stream_url_with_config(
         url: Url,
         config: &crate::config::InputConfig,
     ) -> Result<AudioStream> {
-        use crate::input::AsyncCustomInput;
-        use crate::url::{HttpStreamer, UrlStreamConfig};
-        use std::time::Duration;
-
-        // Create URL streamer with timeout configuration from InputConfig
-        let url_config = UrlStreamConfig {
-            timeout: Duration::from_secs(config.http_timeout),
-            connect_timeout: Duration::from_secs(config.http_connect_timeout),
-            ..Default::default()
-        };
-        let streamer = HttpStreamer::with_config(url_config)?;
-
-        // Create buffer for streaming
+        let streamer = HttpStreamer::with_config(Self::url_stream_config(config))?;
         let buffer = AsyncStreamBuffer::new();
+        let download = streamer.stream_url(url, Arc::clone(&buffer)).await?;
+        let content_length = download.content_length;
+        Self::watch_download(download.task, Arc::clone(&buffer));
 
-        // Start streaming URL data
-        let _streaming_handle = streamer.stream_url(url, buffer.clone()).await?;
+        let mut custom_input = Self::open_stream(&buffer).await?;
+        let length = container_duration(custom_input.input()).map_or_else(
+            || {
+                content_length
+                    .and_then(|bytes| estimated_duration(custom_input.input(), bytes))
+                    .map_or(SourceLength::Unknown, SourceLength::Estimated)
+            },
+            SourceLength::Exact,
+        );
 
-        let (tx, rx) = mpsc::unbounded_channel();
+        let (tx, rx) = mpsc::channel(DECODED_CHANNEL_CAPACITY);
 
-        // Process audio in a background task
         task::spawn_blocking(move || {
             let mut processor = match Self::new() {
                 Err(e) => {
-                    let _ = tx.send(Err(e));
+                    Self::send_failure(&tx, e);
                     return;
                 }
                 Ok(p) => p,
             };
 
-            // Create custom input from the buffer
-            let custom_input = match futures::executor::block_on(AsyncCustomInput::create(buffer)) {
-                Err(source) => {
-                    let _ = tx.send(Err(Error::OpenStreamInput { source }));
-                    return;
-                }
-                Ok(input) => input,
-            };
-
-            if let Err(error) = processor.stream_audio_from_input(custom_input, &tx) {
+            if let Err(error) =
+                processor.stream_audio_from_input(custom_input.input_mut(), &tx, &|| {
+                    Self::source_failure(&buffer)
+                })
+            {
                 Self::send_failure(&tx, error);
             }
         });
 
-        Ok(AudioStream::new(rx))
+        Ok(AudioStream::new(rx, length))
     }
 
-    /// Load audio from AsyncCustomInput
+    /// Load audio from an opened input
+    ///
+    /// `check_source` runs once the input has ended and fails if it ended early.
     fn load_audio_from_input(
         &mut self,
-        input: crate::input::AsyncCustomInput,
+        ictx: &mut ffmpeg::format::context::Input,
+        check_source: &dyn Fn() -> Result<()>,
     ) -> Result<AudioData> {
-        let mut ictx = input.into_input();
-
         // Find the audio stream
         let input_stream = ictx
             .streams()
@@ -386,6 +425,8 @@ impl AudioProcessor {
             }
         }
 
+        check_source()?;
+
         // Flush decoder
         match decoder.send_eof() {
             Ok(()) => {
@@ -394,7 +435,7 @@ impl AudioProcessor {
                 }
             }
             Err(e) => {
-                eprintln!("Warning: Failed to flush decoder, but continuing: {e}");
+                warn!("Failed to flush the decoder, but continuing: {e}");
             }
         }
 
@@ -419,7 +460,7 @@ impl AudioProcessor {
         output_samples: &mut Vec<f32>,
         chunk_index: &mut usize,
         total_processed_time: &mut f32,
-        tx: &mpsc::UnboundedSender<Result<AudioChunk>>,
+        tx: &mpsc::Sender<Result<AudioChunk>>,
     ) -> bool {
         while output_samples.len() >= AudioChunk::TARGET_SAMPLES {
             let chunk_samples: Vec<f32> =
@@ -428,21 +469,24 @@ impl AudioProcessor {
             *total_processed_time += chunk.duration;
             *chunk_index += 1;
 
-            if tx.send(Ok(chunk)).is_err() {
+            if tx.blocking_send(Ok(chunk)).is_err() {
+                debug!("Audio stream dropped, stopping the decode");
                 return false;
             }
         }
         true
     }
 
-    /// Stream audio from AsyncCustomInput for real-time processing
+    /// Stream audio from an opened input for real-time processing
+    ///
+    /// Waits while the receiver holds as many chunks as the channel takes. `check_source` runs
+    /// once the input has ended, before the last chunk goes out, and fails if it ended early.
     fn stream_audio_from_input(
         &mut self,
-        input: crate::input::AsyncCustomInput,
-        tx: &mpsc::UnboundedSender<Result<AudioChunk>>,
+        ictx: &mut ffmpeg::format::context::Input,
+        tx: &mpsc::Sender<Result<AudioChunk>>,
+        check_source: &dyn Fn() -> Result<()>,
     ) -> Result<()> {
-        let mut ictx = input.into_input();
-
         // Find the audio stream
         let input_stream = ictx
             .streams()
@@ -500,6 +544,8 @@ impl AudioProcessor {
             }
         }
 
+        check_source()?;
+
         // Flush decoder
         match decoder.send_eof() {
             Ok(()) => {
@@ -517,7 +563,7 @@ impl AudioProcessor {
                 }
             }
             Err(e) => {
-                eprintln!("Warning: Failed to flush decoder, but continuing: {e}");
+                warn!("Failed to flush the decoder, but continuing: {e}");
             }
         }
 
@@ -535,7 +581,9 @@ impl AudioProcessor {
         if !output_samples.is_empty() {
             let final_chunk =
                 AudioChunk::new(output_samples, chunk_index, total_processed_time, true);
-            let _ = tx.send(Ok(final_chunk));
+            if tx.blocking_send(Ok(final_chunk)).is_err() {
+                debug!("Audio stream dropped, final chunk not delivered");
+            }
         } else if chunk_index == 0 {
             return Err(Error::from(AudioProcessingError::NoAudioData));
         }
@@ -673,8 +721,8 @@ mod tests {
     async fn test_audio_stream_creation() {
         use tokio::sync::mpsc;
 
-        let (tx, rx) = mpsc::unbounded_channel();
-        let stream = AudioStream::new(rx);
+        let (tx, rx) = mpsc::channel(1);
+        let stream = AudioStream::new(rx, SourceLength::Unknown);
 
         // Create a simple test by dropping the stream immediately
         drop(stream);
@@ -686,12 +734,12 @@ mod tests {
         use futures::StreamExt;
         use tokio::sync::mpsc;
 
-        let (tx, rx) = mpsc::unbounded_channel();
-        let mut stream = AudioStream::new(rx);
+        let (tx, rx) = mpsc::channel(1);
+        let mut stream = AudioStream::new(rx, SourceLength::Unknown);
 
         // Send a test chunk
         let test_chunk = AudioChunk::new(vec![0.1, 0.2, 0.3], 0, 0.0, true);
-        tx.send(Ok(test_chunk.clone())).unwrap();
+        tx.send(Ok(test_chunk.clone())).await.unwrap();
         drop(tx); // Close the channel
 
         // Receive the chunk
@@ -713,15 +761,15 @@ mod tests {
         use futures::StreamExt;
         use tokio::sync::mpsc;
 
-        let (tx, rx) = mpsc::unbounded_channel();
-        let mut stream = AudioStream::new(rx);
+        let (tx, rx) = mpsc::channel(1);
+        let mut stream = AudioStream::new(rx, SourceLength::Unknown);
 
         // Send an error
         let test_error = Error::from(AudioProcessingError::processing_failed(
             "test operation",
             std::io::Error::other("Test error"),
         ));
-        tx.send(Err(test_error)).unwrap();
+        tx.send(Err(test_error)).await.unwrap();
         drop(tx);
 
         // Receive the error

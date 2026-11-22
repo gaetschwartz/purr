@@ -41,7 +41,7 @@ pub async fn drive(mut session: Session, mut input: AudioStream, tx: Events) {
             debug!("Transcription cancelled");
             return;
         }
-        if !complete {
+        if !complete && session.wants_audio() {
             if session.next_window(false).is_none() {
                 let item = match input.next().now_or_never() {
                     Some(item) => item,
@@ -68,7 +68,10 @@ pub async fn drive(mut session: Session, mut input: AudioStream, tx: Events) {
                     return;
                 }
             }
-            while !complete && let Some(item) = input.next().now_or_never() {
+            while !complete
+                && session.wants_audio()
+                && let Some(item) = input.next().now_or_never()
+            {
                 if receive(item, &mut session, &mut complete).is_break() {
                     return;
                 }

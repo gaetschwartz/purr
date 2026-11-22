@@ -182,7 +182,7 @@ impl RunConfig {
 /// How audio is fetched from a URL.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct InputConfig {
-    /// HTTP timeout for URL requests, in seconds
+    /// Seconds a URL transfer may go without data before it fails
     pub http_timeout: u64,
     /// HTTP connection timeout for URL requests, in seconds
     pub http_connect_timeout: u64,

@@ -16,7 +16,7 @@ pub mod pipeline;
 mod resample;
 pub mod url;
 
-pub use audio::{AudioChunk, AudioProcessor, AudioStream};
+pub use audio::{AudioChunk, AudioProcessor, AudioStream, SourceLength};
 pub use dev::{Device, SystemInfo};
 pub use error::{Error, Result};
 pub use model::ModelManager;

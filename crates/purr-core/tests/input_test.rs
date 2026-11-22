@@ -19,20 +19,17 @@ const CHUNK_SIMILARITY_TOLERANCE: f32 = 0.01; // Allow 1% tolerance for floating
 async fn test_async_stream_buffer_basic_operations() {
     let buffer = AsyncStreamBuffer::new();
 
-    // Test writing data
     let test_data = b"Hello, World!";
-    buffer.write(test_data);
+    assert!(buffer.push(test_data).await);
 
-    // Test reading data
     let mut read_buffer = vec![0u8; test_data.len()];
-    let bytes_read = buffer.try_read(&mut read_buffer);
+    let bytes_read = buffer.read(&mut read_buffer);
     assert_eq!(bytes_read, test_data.len() as i32);
     assert_eq!(&read_buffer, test_data);
 
-    // Test EOF
     buffer.set_eof();
     let mut empty_buffer = vec![0u8; 10];
-    let eof_result = buffer.try_read(&mut empty_buffer);
+    let eof_result = buffer.read(&mut empty_buffer);
     assert_eq!(eof_result, ffmpeg_next::sys::AVERROR_EOF);
 }
 
@@ -41,35 +38,31 @@ async fn test_async_stream_buffer_concurrent_write_read() {
     let buffer = AsyncStreamBuffer::new();
     let buffer_clone = buffer.clone();
 
-    // Spawn a task to write data
     let write_handle = tokio::spawn(async move {
         for i in 0..10 {
             let data = format!("chunk-{i}");
-            buffer_clone.write(data.as_bytes());
+            assert!(buffer_clone.push(data.as_bytes()).await);
             tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
         }
         buffer_clone.set_eof();
     });
 
-    // Read data as it becomes available
-    let mut total_read = Vec::new();
-    let mut read_buffer = vec![0u8; 1024];
-
-    loop {
-        let bytes_read = buffer.try_read(&mut read_buffer);
-        if bytes_read == ffmpeg_next::sys::AVERROR_EOF {
-            break;
-        } else if bytes_read > 0 {
+    let reader = tokio::task::spawn_blocking(move || {
+        let mut total_read = Vec::new();
+        let mut read_buffer = vec![0u8; 1024];
+        loop {
+            let bytes_read = buffer.read(&mut read_buffer);
+            if bytes_read == ffmpeg_next::sys::AVERROR_EOF {
+                break;
+            }
             total_read.extend_from_slice(&read_buffer[..bytes_read as usize]);
-        } else {
-            // No data available yet, wait a bit
-            tokio::time::sleep(tokio::time::Duration::from_millis(5)).await;
         }
-    }
+        total_read
+    });
 
     write_handle.await.unwrap();
+    let total_read = reader.await.unwrap();
 
-    // Verify we read all the expected data
     let expected = (0..10).map(|i| format!("chunk-{i}")).collect::<String>();
     assert_eq!(String::from_utf8(total_read).unwrap(), expected);
 }
@@ -79,7 +72,7 @@ async fn test_async_custom_input_creation() {
     let buffer = AsyncStreamBuffer::new();
 
     // Add some test data
-    buffer.write(b"test audio data");
+    assert!(buffer.push(b"test audio data").await);
     buffer.set_eof();
 
     // Create AsyncCustomInput

@@ -9,7 +9,7 @@ use common::{Mode, Sample, TestResult, TranscribeModel};
 use futures::StreamExt;
 use purr_common::{model::engine::EngineId, platform::ChunkKind};
 use purr_core::{
-    AudioChunk, AudioStream,
+    AudioChunk, AudioStream, SourceLength,
     config::{ModelRef, TentativeText},
     pipeline::{
         events::StreamEvent,
@@ -43,18 +43,18 @@ const HALF_SECOND: usize = 8_000;
 
 /// Feeds `samples` in half seconds at the pace of speech, from a thread of its own.
 fn paced(samples: Vec<f32>) -> AudioStream {
-    let (tx, rx) = mpsc::unbounded_channel();
+    let (tx, rx) = mpsc::channel(8);
     std::thread::spawn(move || {
         let parts = samples.chunks(HALF_SECOND).count();
         for (i, part) in samples.chunks(HALF_SECOND).enumerate() {
             std::thread::sleep(Duration::from_millis(500));
             let chunk = AudioChunk::new(part.to_vec(), i, i as f32 * 0.5, i + 1 == parts);
-            if tx.send(Ok(chunk)).is_err() {
+            if tx.blocking_send(Ok(chunk)).is_err() {
                 return;
             }
         }
     });
-    AudioStream::new(rx)
+    AudioStream::new(rx, SourceLength::Unknown)
 }
 
 /// Lasts as long as the sample it plays: tentative text is produced while the pipeline waits for

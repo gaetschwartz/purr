@@ -30,7 +30,7 @@ use super::{
     driver::drive,
     events::{StreamEvent, StreamingChunk},
     policy::{SAMPLE_RATE, WindowPolicy, samples},
-    session::{Decoding, Events, Session},
+    session::{Decoding, Events, MAX_PENDING_SAMPLES, Session},
 };
 
 const S: usize = SAMPLE_RATE;
@@ -633,4 +633,22 @@ async fn a_whole_source_goes_to_a_decoder_with_a_limit_in_windows_no_longer_than
         })
         .last();
     assert!(last.is_some_and(|chunk| chunk.is_final));
+}
+
+#[test]
+fn wants_audio_is_false_when_streaming_and_pending_is_full() {
+    for policy in [FULL, AT_PAUSES] {
+        let mut h = harness(policy, Vec::new(), None, &RunConfig::new());
+        h.session.push(&vec![0.0; MAX_PENDING_SAMPLES - 1]);
+        assert!(h.session.wants_audio());
+        h.session.push(&[0.0]);
+        assert!(!h.session.wants_audio());
+    }
+}
+
+#[test]
+fn wants_audio_is_true_for_whole_windowing_whatever_is_pending() {
+    let mut h = harness(WindowPolicy::Whole, Vec::new(), None, &RunConfig::new());
+    h.session.push(&vec![0.0; MAX_PENDING_SAMPLES + S]);
+    assert!(h.session.wants_audio());
 }

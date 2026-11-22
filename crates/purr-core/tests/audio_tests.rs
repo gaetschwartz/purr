@@ -236,17 +236,12 @@ async fn test_audio_processor_load_valid_wav() {
 
 #[tokio::test]
 async fn test_audio_processor_stream_nonexistent() {
-    let mut stream = AudioProcessor::stream_file("nonexistent_file.wav")
-        .await
-        .unwrap();
-
-    match stream.next().await {
-        Some(Err(Error::AudioProcessing {
+    match AudioProcessor::stream_file("nonexistent_file.wav").await {
+        Err(Error::AudioProcessing {
             source: AudioProcessingError::ReadFailed { file, .. },
-        })) => assert_eq!(file, std::path::Path::new("nonexistent_file.wav")),
+        }) => assert_eq!(file, std::path::Path::new("nonexistent_file.wav")),
         other => panic!("Expected a ReadFailed error, got: {other:?}"),
     }
-    assert!(stream.next().await.is_none());
 }
 
 #[tokio::test]
@@ -271,13 +266,10 @@ async fn test_audio_processor_stream_non_audio_file() {
         .await
         .unwrap();
 
-    let mut stream = AudioProcessor::stream_file(temp_file.path()).await.unwrap();
-
-    match stream.next().await {
-        Some(Err(Error::OpenAudioInput { path, .. })) => assert_eq!(path, temp_file.path()),
+    match AudioProcessor::stream_file(temp_file.path()).await {
+        Err(Error::OpenAudioInput { path, .. }) => assert_eq!(path, temp_file.path()),
         other => panic!("Expected an OpenAudioInput error, got: {other:?}"),
     }
-    assert!(stream.next().await.is_none());
 }
 
 #[tokio::test]

@@ -11,10 +11,10 @@ use url::Url;
 /// Configuration for URL streaming
 #[derive(Debug, Clone)]
 pub struct UrlStreamConfig {
-    /// HTTP timeout for requests
-    pub timeout: Duration,
     /// HTTP connection timeout
     pub connect_timeout: Duration,
+    /// How long a read may wait for data before the transfer fails
+    pub read_timeout: Duration,
     /// User agent string for requests
     pub user_agent: String,
     /// Maximum number of redirects to follow
@@ -26,8 +26,8 @@ pub struct UrlStreamConfig {
 impl Default for UrlStreamConfig {
     fn default() -> Self {
         Self {
-            timeout: Duration::from_secs(30),
             connect_timeout: Duration::from_secs(10),
+            read_timeout: Duration::from_secs(30),
             user_agent: format!("purr-audio-transcriber/{}", env!("CARGO_PKG_VERSION")),
             max_redirects: 10,
             buffer_size: 8192,
@@ -51,10 +51,27 @@ pub fn is_file_path(input: &str) -> bool {
     !input.is_empty() && !is_valid_url(input)
 }
 
+/// A download feeding a buffer in the background.
+pub struct StreamingDownload {
+    pub task: JoinHandle<Result<()>>,
+    /// The size of the body, when the server announced it
+    pub content_length: Option<u64>,
+}
+
+fn describe(error: &dyn std::error::Error) -> String {
+    let mut text = error.to_string();
+    let mut source = error.source();
+    while let Some(cause) = source {
+        text.push_str(": ");
+        text.push_str(&cause.to_string());
+        source = cause.source();
+    }
+    text
+}
+
 /// HTTP streaming client for audio URLs
 pub struct HttpStreamer {
     client: Client,
-    config: UrlStreamConfig,
 }
 
 impl HttpStreamer {
@@ -66,8 +83,8 @@ impl HttpStreamer {
     /// Create a new URL streamer with custom configuration
     pub fn with_config(config: UrlStreamConfig) -> Result<Self> {
         let client = crate::http::client_builder()?
-            .timeout(config.timeout)
             .connect_timeout(config.connect_timeout)
+            .read_timeout(config.read_timeout)
             .user_agent(&config.user_agent)
             .redirect(reqwest::redirect::Policy::limited(config.max_redirects))
             .build()
@@ -75,15 +92,17 @@ impl HttpStreamer {
                 message: format!("Failed to create HTTP client: {e}"),
             })?;
 
-        Ok(Self { client, config })
+        Ok(Self { client })
     }
 
     /// Stream audio data from a URL into an AsyncStreamBuffer
+    ///
+    /// The buffer ends with `set_eof` when the body ends and with `fail` when it breaks off.
     pub async fn stream_url(
         &self,
         url: Url,
         buffer: Arc<AsyncStreamBuffer>,
-    ) -> Result<JoinHandle<Result<()>>> {
+    ) -> Result<StreamingDownload> {
         if !matches!(url.scheme(), "http" | "https") {
             return Err(Error::InvalidInput {
                 message: "Only HTTP and HTTPS URLs are supported".to_owned(),
@@ -138,12 +157,7 @@ impl HttpStreamer {
             }
         }
 
-        // Clone necessary data for the async task
-        let buffer_clone = buffer.clone();
-        let _config = self.config.clone();
-
-        // Spawn async task to stream the response
-        let handle = tokio::spawn(async move {
+        let task = tokio::spawn(async move {
             let mut stream = response.bytes_stream();
             let mut total_received = 0u64;
 
@@ -156,25 +170,29 @@ impl HttpStreamer {
                             chunk.len(),
                             total_received
                         );
-
-                        // Write chunk to buffer
-                        buffer_clone.write(&chunk);
+                        if !buffer.push(&chunk).await {
+                            debug!("The reader is gone, stopping the download");
+                            return Ok(());
+                        }
                     }
                     Err(e) => {
-                        error!("Error receiving chunk: {}", e);
-                        return Err(Error::NetworkError {
-                            message: format!("Error receiving data chunk: {e}"),
-                        });
+                        let message = format!("Error receiving data chunk: {}", describe(&e));
+                        error!("{message}");
+                        buffer.fail(message.clone());
+                        return Err(Error::NetworkError { message });
                     }
                 }
             }
 
             info!("Finished streaming {} bytes from URL", total_received);
-            buffer_clone.set_eof();
+            buffer.set_eof();
             Ok(())
         });
 
-        Ok(handle)
+        Ok(StreamingDownload {
+            task,
+            content_length,
+        })
     }
 
     /// Get the content length of a URL without downloading it
