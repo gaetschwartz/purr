@@ -29,7 +29,7 @@ pub enum WriterError {
     #[oopsie(
         "Cannot write to {}",
         path.display(),
-        code = "purr::output::write_failed"
+        code = "purr::output::append_failed"
     )]
     Append { path: PathBuf, source: io::Error },
     #[oopsie(
