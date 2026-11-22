@@ -320,3 +320,46 @@ async fn endless_body_is_bounded_and_dropping_stops_it() -> TestResult {
     );
     Ok(())
 }
+
+#[test]
+fn dropping_the_stream_lets_the_runtime_shut_down_while_the_source_stalls() -> TestResult {
+    let (done_tx, done_rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let outcome = tokio::runtime::Runtime::new()
+            .map_err(|error| error.to_string())
+            .and_then(|runtime| {
+                let outcome = runtime.block_on(async {
+                    let url = serve(|| {
+                        let first = Bytes::from(wav::open_ended_wav(12));
+                        Body::from_stream(
+                            futures::stream::once(async move { Ok::<_, Infallible>(first) })
+                                .chain(futures::stream::pending()),
+                        )
+                    })
+                    .await
+                    .map_err(|error| error.to_string())?;
+                    let mut stream =
+                        AudioProcessor::stream_url_with_config(url, &InputConfig::default())
+                            .await
+                            .map_err(|error| error.to_string())?;
+                    let first = tokio::time::timeout(Duration::from_secs(10), stream.next())
+                        .await
+                        .map_err(|error| error.to_string())?;
+                    if matches!(first, Some(Ok(_))) {
+                        Ok(())
+                    } else {
+                        Err(format!("the first chunk did not arrive: {first:?}"))
+                    }
+                });
+                drop(runtime);
+                outcome
+            });
+        if done_tx.send(outcome).is_err() {
+            tracing::debug!("The test stopped waiting for the runtime to shut down");
+        }
+    });
+
+    let outcome = done_rx.recv_timeout(Duration::from_secs(20))?;
+    assert_eq!(outcome, Ok(()));
+    Ok(())
+}

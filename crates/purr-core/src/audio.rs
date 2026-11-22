@@ -85,11 +85,31 @@ pub enum SourceLength {
 pub struct AudioStream {
     receiver: mpsc::Receiver<Result<AudioChunk>>,
     length: SourceLength,
+    source: Option<SourceGuard>,
+}
+
+/// Closes the byte buffer of a downloaded source when the stream is dropped, so the thread
+/// decoding it stops waiting for bytes that will never come.
+struct SourceGuard(Arc<AsyncStreamBuffer>);
+
+impl Drop for SourceGuard {
+    fn drop(&mut self) {
+        self.0.close();
+    }
 }
 
 impl AudioStream {
     pub fn new(receiver: mpsc::Receiver<Result<AudioChunk>>, length: SourceLength) -> Self {
-        Self { receiver, length }
+        Self {
+            receiver,
+            length,
+            source: None,
+        }
+    }
+
+    fn closing(mut self, buffer: Arc<AsyncStreamBuffer>) -> Self {
+        self.source = Some(SourceGuard(buffer));
+        self
     }
 
     #[must_use]
@@ -350,6 +370,7 @@ impl AudioProcessor {
         );
 
         let (tx, rx) = mpsc::channel(DECODED_CHANNEL_CAPACITY);
+        let closing = Arc::clone(&buffer);
 
         task::spawn_blocking(move || {
             let mut processor = match Self::new() {
@@ -369,7 +390,7 @@ impl AudioProcessor {
             }
         });
 
-        Ok(AudioStream::new(rx, length))
+        Ok(AudioStream::new(rx, length).closing(closing))
     }
 
     /// Load audio from an opened input
