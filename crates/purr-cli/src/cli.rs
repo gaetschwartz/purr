@@ -1,4 +1,5 @@
 use crate::color::ColorChoice;
+use crate::duration_arg::parse_duration_arg;
 use crate::inputs::BatchFile;
 use crate::language_arg::parse_language;
 use crate::logging::level::LogLevel;
@@ -18,7 +19,7 @@ use purr_core::{
     },
     config::{InputConfig, RunConfig},
 };
-use std::{ffi::OsStr, path::PathBuf, str::FromStr as _};
+use std::{ffi::OsStr, path::PathBuf, str::FromStr as _, time::Duration};
 
 const ABOUT: &str = "😸 Transcribe media files (audio or video) and URLs on this computer";
 #[derive(Parser, Debug)]
@@ -99,6 +100,14 @@ pub struct Cli {
     /// Stop at the first input that fails
     #[arg(long)]
     pub fail_fast: bool,
+
+    /// End a stream of unknown length after this much audio: seconds, or a duration like 30m or
+    /// 1h30m; files and sources that state their length are always transcribed whole
+    #[arg(long, value_name = "TIME", value_parser = parse_duration_arg)]
+    pub duration: Option<Duration>,
+
+    #[arg(long, hide = true, value_name = "MS")]
+    pub interrupt_after: Option<u64>,
 
     /// Include timestamps in output (text format only)
     #[arg(long)]
@@ -417,6 +426,7 @@ impl Cli {
             .with_vad_model(self.vad_model.clone())
             .with_devices(self.device_order())
             .with_word_timestamps(self.word_timestamps)
+            .with_listen_for(self.duration)
     }
 
     /// How the command line asks a URL to be fetched.

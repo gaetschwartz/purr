@@ -3,18 +3,24 @@
 mod common;
 
 use assert_cmd::Command;
+use axum::{Router, body::Body, body::Bytes, http::header, routing::get};
 use common::{TestResult, base_model, golden_path};
+use futures::StreamExt as _;
 use pretty_assertions::assert_eq;
+use purr_core::AudioProcessor;
 use purr_golden::Recording;
 use rstest::rstest;
 use serde_json::Value;
 use std::{
+    convert::Infallible,
     fs,
+    future::IntoFuture as _,
     path::{Path, PathBuf},
     process::Output,
     time::Duration,
 };
 use tempfile::TempDir;
+use tokio::net::TcpListener;
 
 fn sample() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../samples/jfk.wav")
@@ -214,5 +220,182 @@ async fn real_model_cli_single_form_output_file_is_written_whole() -> TestResult
     assert_eq!(file_names(dir.path())?, ["a.out.txt", "a.wav"]);
     let written = fs::read_to_string(dir.path().join("a.out.txt"))?;
     purr_golden::assert_text_close(&golden_text()?, &written, 0.0);
+    Ok(())
+}
+
+const SAMPLE_RATE: u32 = 16_000;
+const OPEN_ENDED: u32 = 0xFFFF_FFFF;
+
+fn wav_header(data_size: u32, riff_size: u32) -> Vec<u8> {
+    let mut bytes = Vec::with_capacity(44);
+    bytes.extend_from_slice(b"RIFF");
+    bytes.extend_from_slice(&riff_size.to_le_bytes());
+    bytes.extend_from_slice(b"WAVEfmt ");
+    bytes.extend_from_slice(&16u32.to_le_bytes());
+    bytes.extend_from_slice(&1u16.to_le_bytes());
+    bytes.extend_from_slice(&1u16.to_le_bytes());
+    bytes.extend_from_slice(&SAMPLE_RATE.to_le_bytes());
+    bytes.extend_from_slice(&(SAMPLE_RATE * 2).to_le_bytes());
+    bytes.extend_from_slice(&2u16.to_le_bytes());
+    bytes.extend_from_slice(&16u16.to_le_bytes());
+    bytes.extend_from_slice(b"data");
+    bytes.extend_from_slice(&data_size.to_le_bytes());
+    bytes
+}
+
+async fn sample_pcm() -> TestResult<Vec<u8>> {
+    let mut stream = AudioProcessor::stream_file(&sample()).await?;
+    let mut pcm = Vec::new();
+    while let Some(chunk) = stream.next().await {
+        for value in chunk?.samples {
+            let scaled = (value.clamp(-1.0, 1.0) * f32::from(i16::MAX)).round();
+            pcm.extend_from_slice(&(scaled as i16).to_le_bytes());
+        }
+    }
+    Ok(pcm)
+}
+
+async fn write_long_sample(path: &Path, copies: usize) -> TestResult {
+    let pcm = sample_pcm().await?;
+    let size = u32::try_from(pcm.len() * copies)?;
+    let mut bytes = wav_header(size, 36 + size);
+    for _ in 0..copies {
+        bytes.extend_from_slice(&pcm);
+    }
+    fs::write(path, bytes)?;
+    Ok(())
+}
+
+const LIVE_PIECE: usize = 8_000;
+const LIVE_PACE: Duration = Duration::from_millis(50);
+
+async fn serve_live_sample() -> TestResult<String> {
+    let pcm = sample_pcm().await?;
+    let app = Router::new().route(
+        "/audio",
+        get(move || {
+            let pcm = pcm.clone();
+            async move {
+                let live = futures::stream::unfold(
+                    (Some(wav_header(OPEN_ENDED, OPEN_ENDED)), 0usize),
+                    move |(header, at)| {
+                        let pcm = pcm.clone();
+                        async move {
+                            if let Some(header) = header {
+                                return Some((
+                                    Ok::<_, Infallible>(Bytes::from(header)),
+                                    (None, at),
+                                ));
+                            }
+                            tokio::time::sleep(LIVE_PACE).await;
+                            let piece: Vec<u8> = pcm
+                                .iter()
+                                .cycle()
+                                .skip(at)
+                                .take(LIVE_PIECE)
+                                .copied()
+                                .collect();
+                            let next = (at + LIVE_PIECE) % pcm.len();
+                            Some((Ok(Bytes::from(piece)), (None, next)))
+                        }
+                    },
+                );
+                (
+                    [(header::CONTENT_TYPE, "audio/wav")],
+                    Body::from_stream(live),
+                )
+            }
+        }),
+    );
+    let listener = TcpListener::bind("127.0.0.1:0").await?;
+    let address = listener.local_addr()?;
+    tokio::spawn(axum::serve(listener, app).into_future());
+    Ok(format!("http://{address}/audio"))
+}
+
+fn words(text: &str) -> usize {
+    text.split_whitespace().count()
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn real_model_cli_interrupt_known_length_leaves_part_and_exits_130() -> TestResult {
+    let dir = TempDir::new()?;
+    write_long_sample(&dir.path().join("long.wav"), 40).await?;
+    let output = purr_in(
+        dir.path(),
+        &["long.wav", "-f", "{stem}.txt", "--interrupt-after", "8000"],
+    )
+    .await?;
+    assert_eq!(output.status.code(), Some(130));
+
+    assert_eq!(file_names(dir.path())?, ["long.txt.part", "long.wav"]);
+    assert_ne!(fs::read_to_string(dir.path().join("long.txt.part"))?, "");
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn real_model_cli_duration_cuts_only_streams_in_a_mix() -> TestResult {
+    let dir = workspace_with(&["a.wav"])?;
+    let url = serve_live_sample().await?;
+    let output = purr_in(
+        dir.path(),
+        &["a.wav", &url, "--duration", "6s", "-f", "out_{index}.txt"],
+    )
+    .await?;
+    assert_eq!(output.status.code(), Some(0));
+
+    assert_eq!(file_names(dir.path())?, ["a.wav", "out_1.txt", "out_2.txt"]);
+    let file = fs::read_to_string(dir.path().join("out_1.txt"))?;
+    purr_golden::assert_text_close(&golden_text()?, &file, 0.0);
+    let stream = fs::read_to_string(dir.path().join("out_2.txt"))?;
+    assert!(words(&stream) > 0, "{stream:?}");
+    assert!(words(&stream) < words(&file), "{stream:?}");
+
+    let stderr = String::from_utf8(output.stderr)?;
+    let lines: Vec<&str> = stderr.lines().collect();
+    let heading = lines
+        .iter()
+        .position(|line| *line == "Ended at the --duration limit:")
+        .ok_or("the summary does not name the input cut at the duration")?;
+    assert_eq!(lines.get(heading + 1), Some(&format!("  {url}").as_str()));
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn real_model_cli_stop_on_unknown_length_completes_the_file() -> TestResult {
+    let dir = TempDir::new()?;
+    let url = serve_live_sample().await?;
+    let output = purr_in(
+        dir.path(),
+        &[&url, "-f", "radio.txt", "--interrupt-after", "4000"],
+    )
+    .await?;
+    assert_eq!(output.status.code(), Some(0));
+
+    assert_eq!(file_names(dir.path())?, ["radio.txt"]);
+    assert_ne!(fs::read_to_string(dir.path().join("radio.txt"))?, "");
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn real_model_cli_interrupt_between_inputs_leaves_the_rest_unstarted() -> TestResult {
+    let dir = workspace_with(&["a.wav", "b.wav"])?;
+    let output = purr_in(
+        dir.path(),
+        &[
+            "a.wav",
+            "b.wav",
+            "-f",
+            "{stem}.txt",
+            "--interrupt-after",
+            "1",
+        ],
+    )
+    .await?;
+    assert_eq!(output.status.code(), Some(130));
+
+    assert!(!dir.path().join("a.txt").exists());
+    assert!(!dir.path().join("b.txt").exists());
+    assert!(!dir.path().join("b.txt.part").exists());
     Ok(())
 }

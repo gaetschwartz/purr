@@ -18,10 +18,6 @@ pub enum Outcome {
         error: CliError,
         part: Option<PathBuf>,
     },
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "constructed once Ctrl-C ends a run")
-    )]
     Interrupted {
         part: Option<PathBuf>,
     },
@@ -125,6 +121,11 @@ impl Summary {
         }
     }
 
+    pub fn cut_short(&self) -> bool {
+        let counts = self.counts();
+        counts.interrupted > 0 || counts.not_started > 0
+    }
+
     pub fn exit_code(&self) -> ExitCode {
         ExitCode::from(self.status())
     }
@@ -171,6 +172,26 @@ impl Summary {
         if !parts.is_empty() {
             lines.push("Unfinished output:".to_owned());
             lines.extend(parts);
+        }
+
+        let cut: Vec<String> = self
+            .entries
+            .iter()
+            .filter(|entry| match &entry.outcome {
+                Outcome::Done { ended } => match ended {
+                    EndReason::DurationReached => true,
+                    EndReason::SourceEnded | EndReason::Stopped => false,
+                },
+                Outcome::Skipped
+                | Outcome::Failed { .. }
+                | Outcome::Interrupted { .. }
+                | Outcome::NotStarted => false,
+            })
+            .map(|entry| format!("  {}", entry.display))
+            .collect();
+        if !cut.is_empty() {
+            lines.push("Ended at the --duration limit:".to_owned());
+            lines.extend(cut);
         }
 
         let audio = self.audio_seconds;
@@ -292,6 +313,48 @@ mod tests {
              out\\c.txt.part\n\
              Audio: 2:05 in 0:25 (5.0x real time)"
         );
+    }
+
+    #[test]
+    fn inputs_cut_at_the_duration_are_named() {
+        let entries = vec![
+            entry("a.wav", done()),
+            entry(
+                "radio",
+                Outcome::Done {
+                    ended: EndReason::DurationReached,
+                },
+            ),
+            entry(
+                "other",
+                Outcome::Done {
+                    ended: EndReason::Stopped,
+                },
+            ),
+        ];
+        let summary = Summary::new(entries, 60.0, Duration::from_secs(30));
+        assert_eq!(
+            summary.render(),
+            "Summary: 3 done\n\
+             Ended at the --duration limit:\n  \
+             radio\n\
+             Audio: 1:00 in 0:30 (2.0x real time)"
+        );
+    }
+
+    #[test]
+    fn only_interrupted_or_unstarted_inputs_cut_a_run_short() {
+        let summary = |outcomes: Vec<Outcome>| {
+            Summary::new(
+                outcomes.into_iter().map(|o| entry("x", o)).collect(),
+                0.0,
+                Duration::ZERO,
+            )
+            .cut_short()
+        };
+        assert!(!summary(vec![done(), failed("a.wav", None)]));
+        assert!(summary(vec![done(), Outcome::Interrupted { part: None }]));
+        assert!(summary(vec![done(), Outcome::NotStarted]));
     }
 
     #[test]

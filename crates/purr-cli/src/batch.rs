@@ -2,6 +2,7 @@ use crate::cli::{Cli, OutputFormat};
 use crate::download_prompt::Prompting;
 use crate::error::{CliError, CliResult};
 use crate::inputs::{InputForm, InputItem, InputSource, Inputs};
+use crate::interrupt::Interrupt;
 use crate::outcome::{Entry, Outcome, Summary};
 use crate::output_plan::{OutputPlan, Sink};
 use crate::render::{self, Layout, Rendering};
@@ -11,10 +12,13 @@ use crate::{errorln, output, progress, result, setup_config, stats, statusln};
 use futures::StreamExt as _;
 use indicatif::{ProgressBar, ProgressFinish, ProgressStyle};
 use purr_common::platform::ChunkKind;
+use purr_core::accel::report::AccelReport;
 use purr_core::error::Error as CoreError;
-use purr_core::pipeline::events::{EndReason, StreamEvent, StreamingChunk, Transcription};
+use purr_core::pipeline::events::{
+    EndReason, StreamEvent, StreamingChunk, Transcription, TranscriptionStats,
+};
 use purr_core::pipeline::model::LoadedModel;
-use purr_core::pipeline::result::{SyncTranscriptionResult, collect_from};
+use purr_core::pipeline::result::{SyncTranscriptionResult, TranscriptionSegment};
 use purr_core::pipeline::run::Input;
 use purr_core::{
     AudioProcessor, SourceLength,
@@ -24,7 +28,7 @@ use purr_core::{
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tracing::{debug, info};
 
 enum Destination {
@@ -44,6 +48,7 @@ struct Context<'a> {
     cli: &'a Cli,
     run: RunConfig,
     show_bar: bool,
+    interrupt: Interrupt,
 }
 
 struct Finished {
@@ -110,6 +115,11 @@ pub async fn run(
         })
         .collect();
 
+    let interrupt = cli
+        .interrupt_after
+        .map_or_else(Interrupt::install, |millis| {
+            Interrupt::after(Duration::from_millis(millis))
+        });
     let context = Context {
         cli,
         run: if cli.no_stream {
@@ -120,8 +130,9 @@ pub async fn run(
             config
         },
         show_bar: cli.progress && output::is_interactive(),
+        interrupt,
     };
-    let mut destination = Output::new(&context, sink);
+    let mut destination = Output::new(cli, context.show_bar, sink);
 
     let started = Instant::now();
     let total = jobs.len();
@@ -130,7 +141,8 @@ pub async fn run(
     let mut halted = false;
     for job in jobs {
         let display = job.item.display.clone();
-        let outcome = if halted {
+        let outcome = if halted || context.interrupt.is_requested() {
+            halted = true;
             Outcome::NotStarted
         } else if job.skipped {
             statusln!("{} {display} (output exists)", "Skipping:".warning());
@@ -152,7 +164,13 @@ pub async fn run(
     let merged = destination.finish();
     let summary = Summary::new(entries, audio_seconds, started.elapsed());
     let exit = match form {
-        InputForm::Single => summary.into_result()?.exit_code(),
+        InputForm::Single => {
+            let summary = summary.into_result()?;
+            if summary.cut_short() {
+                errorln!("{}", summary.render());
+            }
+            summary.exit_code()
+        }
         InputForm::Batch => {
             errorln!("{}", summary.render());
             summary.exit_code()
@@ -222,9 +240,22 @@ async fn run_input(
     debug!("Input {}: length {:?}", job.item.index, job.length);
     output.begin_input(job.destination);
     match attempt(context, loaded, output, &job.item).await {
-        Ok((ended, audio_seconds)) => Finished {
+        Ok(Course::Ended {
+            ended,
+            audio_seconds,
+        }) => Finished {
             outcome: Outcome::Done { ended },
             audio_seconds,
+        },
+        Ok(Course::Interrupted { audio_seconds }) => Finished {
+            outcome: Outcome::Interrupted {
+                part: output.unfinished(),
+            },
+            audio_seconds,
+        },
+        Ok(Course::Unopened) => Finished {
+            outcome: Outcome::NotStarted,
+            audio_seconds: 0.0,
         },
         Err(error) => Finished {
             outcome: Outcome::Failed {
@@ -236,12 +267,71 @@ async fn run_input(
     }
 }
 
+enum Course {
+    Ended {
+        ended: EndReason,
+        audio_seconds: f64,
+    },
+    Interrupted {
+        audio_seconds: f64,
+    },
+    Unopened,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Halt {
+    Stop,
+    Cancel,
+}
+
+impl Halt {
+    const fn for_run(length: SourceLength, no_stream: bool) -> Self {
+        match (length, no_stream) {
+            (SourceLength::Unknown, _)
+            | (SourceLength::Exact(_) | SourceLength::Estimated(_), true) => Self::Stop,
+            (SourceLength::Exact(_) | SourceLength::Estimated(_), false) => Self::Cancel,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Verdict {
+    Ended(EndReason),
+    Interrupted,
+}
+
+fn verdict(
+    asked: Option<Halt>,
+    ended: Option<EndReason>,
+    length: SourceLength,
+) -> CliResult<Verdict> {
+    match (asked, ended) {
+        (Some(Halt::Cancel), _) => Ok(Verdict::Interrupted),
+        (Some(Halt::Stop), Some(EndReason::Stopped)) => Ok(match length {
+            SourceLength::Unknown => Verdict::Ended(EndReason::Stopped),
+            SourceLength::Exact(_) | SourceLength::Estimated(_) => Verdict::Interrupted,
+        }),
+        (
+            Some(Halt::Stop) | None,
+            Some(reason @ (EndReason::SourceEnded | EndReason::DurationReached)),
+        ) => Ok(Verdict::Ended(reason)),
+        (None, Some(EndReason::Stopped)) | (Some(Halt::Stop) | None, None) => {
+            Err(CliError::EndedUnexplained)
+        }
+    }
+}
+
+struct Pumped {
+    audio_seconds: f64,
+    verdict: Verdict,
+}
+
 async fn attempt(
     context: &Context<'_>,
     loaded: &mut LoadedModel,
     output: &mut Output,
     item: &InputItem,
-) -> CliResult<(EndReason, f64)> {
+) -> CliResult<Course> {
     ensure_exists(item)?;
     let input = match &item.source {
         InputSource::File(path) => Input::File(path.clone()),
@@ -250,16 +340,84 @@ async fn attempt(
             config: context.cli.input_config(),
         },
     };
-    let mut transcription = loaded.transcribe(input, &context.run).await?;
-    let audio_seconds = if context.cli.no_stream {
-        whole(context, &mut transcription, output, item).await?
-    } else {
-        streamed(context, &mut transcription, output, item).await?
+    let mut transcription = tokio::select! {
+        opened = loaded.transcribe(input, &context.run) => opened?,
+        () = context.interrupt.requested() => return Ok(Course::Unopened),
     };
-    let ended = transcription
-        .end_reason()
-        .ok_or(CliError::EndedUnexplained)?;
-    Ok((ended, audio_seconds))
+    let length = transcription.length();
+    let no_stream = context.cli.no_stream;
+    if no_stream && matches!(length, SourceLength::Unknown) {
+        statusln!(
+            "{} {} has no known length; nothing is written until it ends",
+            "Warning:".warning(),
+            item.display.path()
+        );
+    }
+    let halt = Halt::for_run(length, no_stream);
+    let Pumped {
+        audio_seconds,
+        verdict,
+    } = if no_stream {
+        whole(context, &mut transcription, output, item, halt).await?
+    } else {
+        streamed(context, &mut transcription, output, item, halt).await?
+    };
+    match verdict {
+        Verdict::Interrupted => Ok(Course::Interrupted { audio_seconds }),
+        Verdict::Ended(ended) => {
+            if let Some(path) = output.complete_input()?
+                && context.cli.verbosity.is_verbose()
+            {
+                let what = if no_stream {
+                    "Output"
+                } else {
+                    "Streaming output"
+                };
+                statusln!(
+                    "{} {what} written to: {}",
+                    "Success:".success(),
+                    path.display().path()
+                );
+            }
+            Ok(Course::Ended {
+                ended,
+                audio_seconds,
+            })
+        }
+    }
+}
+
+async fn pump(
+    transcription: &mut Transcription,
+    interrupt: &Interrupt,
+    halt: Halt,
+    mut on_event: impl FnMut(StreamEvent) -> CliResult<()>,
+) -> CliResult<Option<Halt>> {
+    let mut asked = false;
+    let mut complete = false;
+    loop {
+        let event = tokio::select! {
+            event = transcription.next() => event,
+            () = interrupt.requested(), if !asked && !complete => {
+                asked = true;
+                match halt {
+                    Halt::Stop => transcription.stop(),
+                    Halt::Cancel => transcription.cancel(),
+                }
+                continue;
+            }
+        };
+        let Some(event) = event else {
+            return Ok(asked.then_some(halt));
+        };
+        let event = event?;
+        if let StreamEvent::Chunk(chunk) = &event
+            && chunk.is_final
+        {
+            complete = true;
+        }
+        on_event(event)?;
+    }
 }
 
 async fn streamed(
@@ -267,7 +425,8 @@ async fn streamed(
     transcription: &mut Transcription,
     output: &mut Output,
     item: &InputItem,
-) -> CliResult<f64> {
+    halt: Halt,
+) -> CliResult<Pumped> {
     let bar = if context.show_bar {
         Some(progress_line_bar()?)
     } else {
@@ -276,20 +435,20 @@ async fn streamed(
     let mut chunks = 0usize;
     let mut received = 0.0;
 
-    while let Some(event) = transcription.next().await {
-        let chunk = match event? {
+    let asked = pump(transcription, &context.interrupt, halt, |event| {
+        let chunk = match event {
             StreamEvent::Progress(progress) => {
                 received = progress.received;
                 if let Some(bar) = &bar {
                     bar.set_message(progress::line(&progress).muted().to_string());
                 }
-                continue;
+                return Ok(());
             }
             StreamEvent::Chunk(chunk) => chunk,
         };
         match chunk.kind {
             ChunkKind::Committed => chunks += 1,
-            ChunkKind::Tentative => continue,
+            ChunkKind::Tentative => return Ok(()),
         }
         output.chunk(item, &chunk)?;
         if let Some(ref chunk_stats) = chunk.final_stats
@@ -297,24 +456,21 @@ async fn streamed(
         {
             stats::show("Streaming Transcription Statistics:", chunk_stats, None);
         }
-    }
+        Ok(())
+    })
+    .await?;
     drop(bar);
 
     output.stream_end()?;
     debug!("Processed {chunks} chunks");
-    if chunks == 0 {
+    let verdict = verdict(asked, transcription.end_reason(), transcription.length())?;
+    if chunks == 0 && matches!(verdict, Verdict::Ended(_)) {
         return Err(CliError::NothingTranscribed);
     }
-    if let Some(path) = output.complete_input()?
-        && context.cli.verbosity.is_verbose()
-    {
-        statusln!(
-            "{} Streaming output written to: {}",
-            "Success:".success(),
-            path.display().path()
-        );
-    }
-    Ok(received)
+    Ok(Pumped {
+        audio_seconds: received,
+        verdict,
+    })
 }
 
 async fn whole(
@@ -322,17 +478,21 @@ async fn whole(
     transcription: &mut Transcription,
     output: &mut Output,
     item: &InputItem,
-) -> CliResult<f64> {
-    let result = collect_from(transcription).await?;
-    output.document(item, &result)?;
-    if let Some(path) = output.complete_input()?
-        && context.cli.verbosity.is_verbose()
-    {
-        statusln!(
-            "{} Output written to: {}",
-            "Success:".success(),
-            path.display().path()
-        );
+    halt: Halt,
+) -> CliResult<Pumped> {
+    let mut collected = Collected::default();
+    let asked = pump(transcription, &context.interrupt, halt, |event| {
+        collected.absorb(event);
+        Ok(())
+    })
+    .await?;
+    let verdict = verdict(asked, transcription.end_reason(), transcription.length())?;
+    let received = collected.received;
+    let result = collected.into_result(transcription.accel().clone());
+    match verdict {
+        Verdict::Ended(_) => output.document(item, &result)?,
+        Verdict::Interrupted if !result.segments.is_empty() => output.document(item, &result)?,
+        Verdict::Interrupted => {}
     }
     if context.cli.verbosity.is_verbose() {
         stats::show(
@@ -341,7 +501,74 @@ async fn whole(
             Some(result.accel.selected.pretty_name()),
         );
     }
-    Ok(f64::from(result.audio_duration))
+    Ok(Pumped {
+        audio_seconds: if result.audio_duration > 0.0 {
+            f64::from(result.audio_duration)
+        } else {
+            received
+        },
+        verdict,
+    })
+}
+
+#[derive(Default)]
+struct Collected {
+    segments: Vec<TranscriptionSegment>,
+    final_stats: Option<TranscriptionStats>,
+    received: f64,
+}
+
+impl Collected {
+    fn absorb(&mut self, event: StreamEvent) {
+        let chunk = match event {
+            StreamEvent::Progress(progress) => {
+                self.received = progress.received;
+                return;
+            }
+            StreamEvent::Chunk(chunk) => chunk,
+        };
+        match chunk.kind {
+            ChunkKind::Committed => {}
+            ChunkKind::Tentative => return,
+        }
+        if chunk.final_stats.is_some() {
+            self.final_stats = chunk.final_stats;
+        }
+        if !chunk.text.is_empty() {
+            self.segments.push(TranscriptionSegment {
+                text: chunk.text,
+                start: chunk.start,
+                end: chunk.end,
+                words: chunk.words,
+            });
+        }
+    }
+
+    fn into_result(self, accel: AccelReport) -> SyncTranscriptionResult {
+        let text = self
+            .segments
+            .iter()
+            .map(|segment| segment.text.as_str())
+            .collect::<Vec<_>>()
+            .join(" ");
+        let (processing_time, audio_duration) = self.final_stats.map_or((0.0, 0.0), |stats| {
+            (stats.processing_time, stats.audio_duration)
+        });
+        let stats = TranscriptionStats {
+            processing_time,
+            audio_duration,
+            segment_count: self.segments.len(),
+            word_count: text.split_whitespace().count(),
+        };
+        SyncTranscriptionResult {
+            text,
+            segments: self.segments,
+            processing_time,
+            audio_duration,
+            stats,
+            accel,
+        }
+    }
 }
 
 fn progress_line_bar() -> CliResult<ProgressBar> {
@@ -401,8 +628,7 @@ struct Output {
 }
 
 impl Output {
-    fn new(context: &Context<'_>, sink: Sink) -> Self {
-        let cli = context.cli;
+    fn new(cli: &Cli, show_bar: bool, sink: Sink) -> Self {
         let format = cli.output;
         let text_like = match format {
             OutputFormat::Text | OutputFormat::Txt => true,
@@ -414,7 +640,7 @@ impl Output {
                     Layout::File
                 } else {
                     Layout::Stdout {
-                        one_chunk_per_line: context.show_bar,
+                        one_chunk_per_line: show_bar,
                     }
                 };
                 (Target::Stdout, None, batch, layout)
@@ -537,14 +763,6 @@ mod tests {
     use pretty_assertions::assert_eq;
     use tempfile::TempDir;
 
-    fn context(cli: &Cli) -> Context<'_> {
-        Context {
-            cli,
-            run: RunConfig::new(),
-            show_bar: false,
-        }
-    }
-
     fn item(index: usize, display: &str) -> InputItem {
         InputItem {
             index,
@@ -572,7 +790,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("all.txt");
         let cli = Cli::try_parse_from(["purr", "a.wav"]).unwrap();
-        let mut output = Output::new(&context(&cli), Sink::Merged(path.clone()));
+        let mut output = Output::new(&cli, false, Sink::Merged(path.clone()));
         for (index, name, text) in [(1, "a.wav", "Hello"), (2, "b.wav", "world")] {
             output.begin_input(Destination::Merged);
             output.chunk(&item(index, name), &chunk(text, 0)).unwrap();
@@ -592,7 +810,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("all.jsonl");
         let cli = Cli::try_parse_from(["purr", "a.wav", "-o", "json"]).unwrap();
-        let mut output = Output::new(&context(&cli), Sink::Merged(path.clone()));
+        let mut output = Output::new(&cli, false, Sink::Merged(path.clone()));
         for (index, name) in [(1, "a.wav"), (2, "b.wav")] {
             output.begin_input(Destination::Merged);
             output.chunk(&item(index, name), &chunk("Hi", 0)).unwrap();
@@ -615,7 +833,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("a.txt");
         let cli = Cli::try_parse_from(["purr", "a.wav", "-f", "x_{stem}.txt"]).unwrap();
-        let mut output = Output::new(&context(&cli), Sink::PerInput(vec![path.clone()]));
+        let mut output = Output::new(&cli, false, Sink::PerInput(vec![path.clone()]));
         output.begin_input(Destination::File(path.clone()));
         output.chunk(&item(1, "a.wav"), &chunk("Hello", 0)).unwrap();
         assert_eq!(
@@ -632,7 +850,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("a.txt");
         let cli = Cli::try_parse_from(["purr", "a.wav", "-f", "x_{stem}.txt"]).unwrap();
-        let mut output = Output::new(&context(&cli), Sink::PerInput(vec![path.clone()]));
+        let mut output = Output::new(&cli, false, Sink::PerInput(vec![path.clone()]));
         output.begin_input(Destination::File(path.clone()));
         output.chunk(&item(1, "a.wav"), &chunk("Hello", 0)).unwrap();
         assert_eq!(output.unfinished(), Some(dir.path().join("a.txt.part")));
@@ -648,9 +866,66 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("a.txt");
         let cli = Cli::try_parse_from(["purr", "a.wav", "-f", "x_{stem}.txt"]).unwrap();
-        let mut output = Output::new(&context(&cli), Sink::PerInput(vec![path.clone()]));
+        let mut output = Output::new(&cli, false, Sink::PerInput(vec![path.clone()]));
         output.begin_input(Destination::File(path));
         assert_eq!(output.unfinished(), None);
+    }
+
+    const KNOWN: SourceLength = SourceLength::Exact(Duration::from_secs(60));
+
+    #[test]
+    fn a_stream_of_unknown_length_is_stopped_and_a_known_one_is_cancelled() {
+        assert_eq!(Halt::for_run(SourceLength::Unknown, false), Halt::Stop);
+        assert_eq!(Halt::for_run(KNOWN, false), Halt::Cancel);
+        assert_eq!(
+            Halt::for_run(SourceLength::Estimated(Duration::from_secs(5)), false),
+            Halt::Cancel
+        );
+    }
+
+    #[test]
+    fn a_stop_before_the_end_of_a_known_length_is_interrupted_and_of_an_unknown_one_is_done() {
+        assert_eq!(
+            verdict(
+                Some(Halt::Stop),
+                Some(EndReason::Stopped),
+                SourceLength::Unknown
+            )
+            .unwrap(),
+            Verdict::Ended(EndReason::Stopped)
+        );
+        assert_eq!(
+            verdict(Some(Halt::Stop), Some(EndReason::Stopped), KNOWN).unwrap(),
+            Verdict::Interrupted
+        );
+        assert_eq!(
+            verdict(Some(Halt::Cancel), None, KNOWN).unwrap(),
+            Verdict::Interrupted
+        );
+    }
+
+    #[test]
+    fn a_source_that_ended_first_is_done_whatever_was_asked() {
+        for asked in [None, Some(Halt::Stop)] {
+            for reason in [EndReason::SourceEnded, EndReason::DurationReached] {
+                assert_eq!(
+                    verdict(asked, Some(reason), KNOWN).unwrap(),
+                    Verdict::Ended(reason)
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn an_end_nobody_explains_is_an_error() {
+        assert!(matches!(
+            verdict(None, None, KNOWN),
+            Err(CliError::EndedUnexplained)
+        ));
+        assert!(matches!(
+            verdict(Some(Halt::Stop), None, KNOWN),
+            Err(CliError::EndedUnexplained)
+        ));
     }
 
     #[test]

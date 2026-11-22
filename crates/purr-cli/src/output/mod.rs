@@ -82,6 +82,13 @@ impl Output {
     pub fn add_bar(&self, bar: ProgressBar) -> ProgressBar {
         self.progress.add(bar)
     }
+
+    /// Erases every bar from the terminal.
+    pub fn clear_bars(&self) {
+        if let Err(error) = self.progress.clear() {
+            tracing::debug!("the progress bars could not be cleared: {error}");
+        }
+    }
 }
 
 static OUTPUT: OnceLock<Output> = OnceLock::new();
@@ -97,6 +104,10 @@ pub fn is_interactive() -> bool {
 
 pub fn add_bar(bar: ProgressBar) -> ProgressBar {
     current().add_bar(bar)
+}
+
+pub fn clear_bars() {
+    current().clear_bars();
 }
 
 /// The command's product. Failing to write it fails the command.
