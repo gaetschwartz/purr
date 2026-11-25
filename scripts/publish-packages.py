@@ -31,11 +31,16 @@ LICENSE = "MIT"
 DESCRIPTION = "Transcribe audio files and URLs on this computer"
 APP_BUNDLE = "purr-app.app"
 MAC = "macos-arm64-metal"
-LINUX = "linux-x64-all"
+LINUX = "linux-x64-vulkan"
+LINUX_CUDA = "linux-x64-all"
 WINDOWS = "windows-x64-cuda-vulkan"
-SIZE_NOTE = (
-    "The Windows build bundles the CUDA runtime, so the download is about 500 MB. "
-    "It uses an NVIDIA GPU when present, then Vulkan, then the CPU."
+DEFAULT_NOTE = (
+    "This build has no CUDA libraries: it uses Vulkan, then the CPU. "
+    "For an NVIDIA GPU, install {cuda} instead (a much larger download)."
+)
+CUDA_NOTE = (
+    "This build adds the CUDA libraries, so the download is large, and it needs an NVIDIA driver "
+    "to use them. It uses an NVIDIA GPU when present, then Vulkan, then the CPU."
 )
 CANARY_SKIP = "Rolling canary, republished by CI on every build"
 CANARY_VERSION = re.compile(r"^\d+\.\d+\.\d+-canary\.\d+$")
@@ -51,7 +56,12 @@ class Channel:
     cask: str
     scoop_cli: str
     scoop_app: str
+    formula_cuda: str
+    formula_cuda_class: str
+    scoop_cli_cuda: str
+    scoop_app_cuda: str
     conflict_formula: str
+    conflict_formula_cuda: str
     conflict_cask: str
     title_suffix: str
     description_note: str
@@ -63,6 +73,9 @@ class Channel:
         prefix = "purr" if self.name == "canary" else f"purr-{self.tag(version)}"
         return f"{prefix}-{kind}-{platform}{ext}"
 
+    def cuda_pack(self, version: str) -> str:
+        return self.asset(version, "runtime", "cuda-windows-x64", ".zip")
+
 
 STABLE = Channel(
     name="stable",
@@ -72,7 +85,12 @@ STABLE = Channel(
     cask="purr-app",
     scoop_cli="purr",
     scoop_app="purr-app",
+    formula_cuda="purr-cuda",
+    formula_cuda_class="PurrCuda",
+    scoop_cli_cuda="purr-cuda",
+    scoop_app_cuda="purr-app-cuda",
     conflict_formula="purr-canary",
+    conflict_formula_cuda="purr-canary-cuda",
     conflict_cask="purr-app-canary",
     title_suffix="",
     description_note="",
@@ -85,7 +103,12 @@ CANARY = Channel(
     cask="purr-app-canary",
     scoop_cli="purr-canary",
     scoop_app="purr-app-canary",
+    formula_cuda="purr-canary-cuda",
+    formula_cuda_class="PurrCanaryCuda",
+    scoop_cli_cuda="purr-canary-cuda",
+    scoop_app_cuda="purr-app-canary-cuda",
     conflict_formula="purr",
+    conflict_formula_cuda="purr-cuda",
     conflict_cask="purr-app",
     title_suffix=" Canary",
     description_note=", canary build",
@@ -110,7 +133,9 @@ def version_of(channel: Channel, tag: str) -> str:
         sys.exit(f"tag {tag!r} does not match the {channel.name} channel")
     version = tag.removeprefix(channel.tag_prefix)
     if channel.name == "stable" and "-" in version:
-        sys.exit(f"{tag!r} is a prerelease tag and is not published to the stable channel")
+        sys.exit(
+            f"{tag!r} is a prerelease tag and is not published to the stable channel"
+        )
     if channel.name == "canary" and CANARY_VERSION.match(version) is None:
         sys.exit(f"{tag!r} is not canary-X.Y.Z-canary.N")
     return version
@@ -120,14 +145,18 @@ def expected_assets(channel: Channel, version: str) -> list[str]:
     return [
         channel.asset(version, "cli", MAC, ".tar.gz"),
         channel.asset(version, "cli", LINUX, ".tar.gz"),
+        channel.asset(version, "cli", LINUX_CUDA, ".tar.gz"),
         channel.asset(version, "desktop", MAC, ".dmg"),
         channel.asset(version, "cli", WINDOWS, ".zip"),
         channel.asset(version, "desktop", WINDOWS, "-portable.zip"),
+        channel.cuda_pack(version),
     ]
 
 
 def render_ruby(template: str, **fields: str) -> str:
-    return Template((TEMPLATES / template).read_text(encoding="utf-8")).substitute(fields)
+    return Template((TEMPLATES / template).read_text(encoding="utf-8")).substitute(
+        fields
+    )
 
 
 def livecheck(channel: Channel, url: str) -> str:
@@ -138,6 +167,19 @@ def livecheck(channel: Channel, url: str) -> str:
 
 def release_url(repo: str, channel: Channel, version: str, asset: str) -> str:
     return f"https://github.com/{repo}/releases/download/{channel.tag(version)}/{asset}"
+
+
+def conflicts(channel: Channel, own: str) -> str:
+    siblings = (channel.formula, channel.formula_cuda)
+    names = (
+        *(n for n in siblings if n != own),
+        channel.conflict_formula,
+        channel.conflict_formula_cuda,
+    )
+    return "\n".join(
+        f'  conflicts_with "{name}", because: "both install a `purr` binary"'
+        for name in names
+    )
 
 
 def formula(channel: Channel, repo: str, version: str, sums: Mapping[str, str]) -> str:
@@ -153,7 +195,23 @@ def formula(channel: Channel, repo: str, version: str, sums: Mapping[str, str]) 
         linux_url=release_url(repo, channel, version, linux),
         linux_sha256=sums[linux],
         livecheck=livecheck(channel, ":stable"),
-        conflict=channel.conflict_formula,
+        conflicts=conflicts(channel, channel.formula),
+    )
+
+
+def formula_cuda(
+    channel: Channel, repo: str, version: str, sums: Mapping[str, str]
+) -> str:
+    linux = channel.asset(version, "cli", LINUX_CUDA, ".tar.gz")
+    return render_ruby(
+        "formula-cuda.rb.tmpl",
+        class_name=channel.formula_cuda_class,
+        repo=repo,
+        version=version,
+        linux_url=release_url(repo, channel, version, linux),
+        linux_sha256=sums[linux],
+        livecheck=livecheck(channel, ":stable"),
+        conflicts=conflicts(channel, channel.formula_cuda),
     )
 
 
@@ -165,7 +223,10 @@ def cask(channel: Channel, repo: str, version: str, sums: Mapping[str, str]) -> 
         token=channel.cask,
         repo=repo,
         url=release_url(
-            repo, channel, "#{version}", channel.asset("#{version}", "desktop", MAC, ".dmg")
+            repo,
+            channel,
+            "#{version}",
+            channel.asset("#{version}", "desktop", MAC, ".dmg"),
         ),
         version=version,
         sha256=sums[asset],
@@ -193,29 +254,39 @@ def scoop_manifest(
     *,
     kind: str,
     ext: str,
+    cuda: bool,
     description: str,
     extra: dict[str, Json],
 ) -> dict[str, Json]:
-    asset = channel.asset(version, kind, WINDOWS, ext)
-    template_asset = channel.asset("$version", kind, WINDOWS, ext)
+    assets = [channel.asset(version, kind, WINDOWS, ext)]
+    template_assets = [channel.asset("$version", kind, WINDOWS, ext)]
+    if cuda:
+        assets.append(channel.cuda_pack(version))
+        template_assets.append(channel.cuda_pack("$version"))
+    urls: list[Json] = [release_url(repo, channel, version, name) for name in assets]
+    hashes: list[Json] = [sums[name] for name in assets]
+    template_urls: list[Json] = [
+        release_url(repo, channel, "$version", name) for name in template_assets
+    ]
+    package = channel.scoop_cli_cuda if kind == "cli" else channel.scoop_app_cuda
     return {
         "$schema": SCHEMA,
         "version": version,
         "description": description,
         "homepage": f"https://github.com/{repo}",
         "license": LICENSE,
-        "notes": SIZE_NOTE,
+        "notes": CUDA_NOTE if cuda else DEFAULT_NOTE.format(cuda=package),
         "architecture": {
             "64bit": {
-                "url": release_url(repo, channel, version, asset),
-                "hash": sums[asset],
+                "url": urls if cuda else urls[0],
+                "hash": hashes if cuda else hashes[0],
             }
         },
         **extra,
         "checkver": scoop_checkver(channel, repo),
         "autoupdate": {
             "architecture": {
-                "64bit": {"url": release_url(repo, channel, "$version", template_asset)}
+                "64bit": {"url": template_urls if cuda else template_urls[0]}
             },
             "hash": {"url": "$baseurl/SHA256SUMS.txt"},
         },
@@ -223,7 +294,7 @@ def scoop_manifest(
 
 
 def scoop_cli(
-    channel: Channel, repo: str, version: str, sums: Mapping[str, str]
+    channel: Channel, repo: str, version: str, sums: Mapping[str, str], *, cuda: bool
 ) -> dict[str, Json]:
     return scoop_manifest(
         channel,
@@ -232,13 +303,14 @@ def scoop_cli(
         sums,
         kind="cli",
         ext=".zip",
+        cuda=cuda,
         description=f"{DESCRIPTION} (command-line tool{channel.description_note})",
         extra={"bin": "purr.exe"},
     )
 
 
 def scoop_app(
-    channel: Channel, repo: str, version: str, sums: Mapping[str, str]
+    channel: Channel, repo: str, version: str, sums: Mapping[str, str], *, cuda: bool
 ) -> dict[str, Json]:
     return scoop_manifest(
         channel,
@@ -247,6 +319,7 @@ def scoop_app(
         sums,
         kind="desktop",
         ext="-portable.zip",
+        cuda=cuda,
         description=f"{DESCRIPTION} (desktop app{channel.description_note})",
         extra={"shortcuts": [["purr-app.exe", f"Purr{channel.title_suffix}"]]},
     )
@@ -282,13 +355,37 @@ def main() -> None:
             args.tap / "Formula" / f"{channel.formula}.rb",
             formula(channel, args.repo, version, sums),
         )
-        write(args.tap / "Casks" / f"{channel.cask}.rb", cask(channel, args.repo, version, sums))
+        write(
+            args.tap / "Formula" / f"{channel.formula_cuda}.rb",
+            formula_cuda(channel, args.repo, version, sums),
+        )
+        write(
+            args.tap / "Casks" / f"{channel.cask}.rb",
+            cask(channel, args.repo, version, sums),
+        )
     if args.bucket is not None:
         for name, manifest in (
-            (channel.scoop_cli, scoop_cli(channel, args.repo, version, sums)),
-            (channel.scoop_app, scoop_app(channel, args.repo, version, sums)),
+            (
+                channel.scoop_cli,
+                scoop_cli(channel, args.repo, version, sums, cuda=False),
+            ),
+            (
+                channel.scoop_app,
+                scoop_app(channel, args.repo, version, sums, cuda=False),
+            ),
+            (
+                channel.scoop_cli_cuda,
+                scoop_cli(channel, args.repo, version, sums, cuda=True),
+            ),
+            (
+                channel.scoop_app_cuda,
+                scoop_app(channel, args.repo, version, sums, cuda=True),
+            ),
         ):
-            write(args.bucket / "bucket" / f"{name}.json", json.dumps(manifest, indent=4) + "\n")
+            write(
+                args.bucket / "bucket" / f"{name}.json",
+                json.dumps(manifest, indent=4) + "\n",
+            )
 
 
 if __name__ == "__main__":

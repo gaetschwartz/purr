@@ -22,7 +22,7 @@ class $class_name < Formula
 $livecheck
   end
 
-  conflicts_with "$conflict", because: "both install a `purr` binary"
+$conflicts
 
   def install
     libexec.install Dir["*"]

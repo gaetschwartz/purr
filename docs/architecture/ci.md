@@ -247,7 +247,7 @@ The Homebrew formula installs the macOS archive (`cli (macos, metal)`, now with 
 - `ggml (windows, transcribe)` compiles the CUDA and the Vulkan modules of transcribe.cpp, and `cli (windows, cuda-vulkan)` links them. Measured on the 32-thread development machine with the Visual Studio generator, `transcribe-cpp-sys` with `cuda` took 16 minutes, with `vulkan` a few minutes (a `cargo check` of the engine crate that built it finished in 2.5 minutes in all). The runner has 4 cores and the job builds with Ninja, so expect roughly the CUDA time of the whisper.cpp build again (about 30 minutes cold) on a run whose Rust cache misses. `transcribe-cpp-sys` runs with `-DGGML_CCACHE=OFF`, so ccache does not serve it. The Rust cache of the job holds the build once the key `...-transcribe-backends-...` is saved on `develop`.
 - `cli (linux, vulkan)` and `cli (macos, metal)` gain a transcribe.cpp build each: the Vulkan module compiles its shaders with `glslc` (a few minutes on the development machine), Metal embeds its library.
 - No job was added.
-- `ggml-cuda.dll` is 148 MB. With `PURR_SPLIT_CUDA_RUNTIME: "false"` it ships in the default Windows CLI zip, next to the cuBLAS libraries that are already there; with `"true"` it moves to the runtime pack with them.
+- `ggml-cuda.dll` is 148 MB. With `PURR_SPLIT_CUDA_RUNTIME: "true"` (the setting) it ships in the runtime pack with the cuBLAS libraries, not in the Windows CLI zip or the portable zip; with `"false"` it would ship in both.
 
 ### Windows packaging
 

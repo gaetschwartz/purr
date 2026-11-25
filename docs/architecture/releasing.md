@@ -8,10 +8,12 @@ Purr ships on two channels. Both install the same command, `purr`.
 | `purr --version` | `purr 0.3.0-canary.123 (abc1234 2026-11-13)` | `purr 0.3.0 (abc1234 2026-11-13)` |
 | GitHub release | pre-release `canary-0.3.0-canary.123`, titled `Canary 0.3.0-canary.123 (abc1234)` | release `vX.Y.Z` (a tag with a `-` is marked pre-release) |
 | Asset names | unversioned: `purr-cli-linux-x64-all.tar.gz` | `purr-vX.Y.Z-cli-linux-x64-all.tar.gz` |
-| Homebrew (`gaetschwartz/tap`) | formula `purr-canary`, cask `purr-app-canary` | formula `purr`, cask `purr-app` |
-| Scoop (`scoop-gaetschwartz`) | `purr-canary`, `purr-app-canary` | `purr`, `purr-app` |
+| Homebrew (`gaetschwartz/tap`) | formulae `purr-canary`, `purr-canary-cuda` (Linux only), cask `purr-app-canary` | formulae `purr`, `purr-cuda` (Linux only), cask `purr-app` |
+| Scoop (`scoop-gaetschwartz`) | `purr-canary`, `purr-canary-cuda`, `purr-app-canary`, `purr-app-canary-cuda` | `purr`, `purr-cuda`, `purr-app`, `purr-app-cuda` |
 
 The Scoop app packages (`purr-app`, `purr-app-canary`) ship the desktop app only and do not depend on the CLI packages. The `purr` command comes from `purr` or `purr-canary`, so installing the app does not add it. The Homebrew cask `purr-app-canary` still depends on the `purr-canary` formula.
+
+The default packages carry no CUDA libraries; the `-cuda` ones do. Homebrew on Linux: `purr` installs `cli-linux-x64-vulkan` (Whisper, Parakeet and Qwen3 on Vulkan and the CPU), `purr-cuda` installs `cli-linux-x64-all` (Whisper only on CUDA, until the two engines share one ggml). Scoop: the default packages install the Windows CLI or portable zip, which `PURR_SPLIT_CUDA_RUNTIME: "true"` leaves without `cublas*`, `cudart*` and `ggml-cuda.dll`; the `-cuda` ones install that zip and `purr-runtime-cuda-windows-x64.zip` into the same folder. A `purr` formula conflicts with the three other `purr` formulae of both channels. Moving from a default package to a `-cuda` one is a reinstall.
 
 A local build reports `purr 0.3.0-dev (abc1234 2026-11-13)`, with `abc1234-dirty` when the tree has uncommitted changes. Outside a git checkout the commit is left out.
 
